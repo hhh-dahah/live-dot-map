@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>活点地图 — 项目的探索状态,一眼看清</title>
+<style>
+  :root {
+    --bg:            oklch(100% 0 0);
+    --surface:       oklch(98.6% 0.004 286);
+    --surface-hover: oklch(96% 0.008 286);
+    --fg:            oklch(27% 0.015 285);
+    --muted:         oklch(55% 0.02 285);
+    --border:        oklch(91% 0.008 285);
+    --accent:        oklch(54% 0.16 286);
+    --accent-soft:   oklch(91% 0.035 288);
+    --ink:           oklch(24% 0.01 285);
+
+    /* 方案状态三色 — 仅用于方案线/状态徽标 */
+    --success:       oklch(58% 0.15 145);
+    --danger:        oklch(56% 0.19 27);
+    --pending:       oklch(68% 0.012 285);
+
+    --font-body: 'Söhne', 'Avenir Next', -apple-system, BlinkMacSystemFont,
+                 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  .wrap {
+    max-width: 1024px;
+    margin: 0 auto;
+    padding: 0 clamp(20px, 5vw, 40px);
+  }
+
+  /* ---------- 顶部导航 ---------- */
+
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg);
+    border-bottom: 1px solid transparent;
+    transition: border-color .2s ease;
+  }
+  .nav.is-scrolled { border-bottom-color: var(--border); }
+
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+  }
+
+  .nav-name {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .nav-name svg { display: block; }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: clamp(14px, 3vw, 24px);
+    font-size: 13px;
+  }
+  .nav-links a { color: var(--muted); }
+  .nav-links a:hover { color: var(--fg); }
+  .nav-links a.nav-cta { color: var(--fg); font-weight: 500; }
+
+  /* ---------- 按钮 ---------- */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 22px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .btn-primary { background: var(--ink); color: var(--bg); }
+  .btn-primary:hover { background: var(--fg); }
+  .btn-secondary { background: transparent; color: var(--fg); border-color: var(--border); }
+  .btn-secondary:hover { background: var(--surface); }
+  .btn svg { display: block; }
+
+  /* ---------- Hero ---------- */
+
+  .hero {
+    padding: clamp(64px, 10vw, 112px) 0 clamp(40px, 6vw, 64px);
+    text-align: center;
+  }
+
+  .hero h1 {
+    font-size: clamp(28px, 5.5vw, 44px);
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+
+  .hero .sub {
+    margin: 18px auto 0;
+    max-width: 560px;
+    color: var(--muted);
+    font-size: clamp(14px, 2.4vw, 16px);
+  }
+
+  .hero-actions {
+    margin-top: 32px;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  /* ---------- 地图示意图 ---------- */
+
+  .map-frame {
+    margin: clamp(40px, 6vw, 64px) auto 0;
+    max-width: 880px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 1px 5px rgba(27, 27, 31, .12);
+    padding: clamp(12px, 2.5vw, 24px);
+  }
+
+  .map-frame svg { display: block; width: 100%; height: auto; }
+
+  .map-caption {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  /* 示意图内部样式:状态色只出现在这里与状态图例 */
+  .m-node   { fill: var(--bg); stroke: var(--fg); stroke-width: 1.4; }
+  .m-num    { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+  .m-name   { fill: var(--fg); font-size: 12.5px; font-weight: 500; }
+  .m-scheme { fill: var(--muted); font-size: 12px; }
+  .m-src    { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 4; }
+  .m-ok     { stroke: var(--success); stroke-width: 2; fill: none; }
+  .m-bad    { stroke: var(--danger); stroke-width: 2; fill: none; stroke-dasharray: 7 6; }
+  .m-wait   { stroke: var(--pending); stroke-width: 2; fill: none; stroke-dasharray: 0.5 6; stroke-linecap: round; }
+
+  /* ---------- 通用小节 ---------- */
+
+  section { padding: clamp(56px, 9vw, 96px) 0; }
+  section + section { border-top: 1px solid var(--border); }
+
+  .sec-head { max-width: 560px; margin-bottom: clamp(32px, 5vw, 48px); }
+  .sec-head.center { margin-left: auto; margin-right: auto; text-align: center; }
+  .sec-head h2 {
+    font-size: clamp(22px, 3.6vw, 28px);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .sec-head p { margin-top: 10px; color: var(--muted); font-size: 14px; }
+
+  /* ---------- 三列价值点 ---------- */
+
+  .values {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(20px, 3vw, 32px);
+  }
+
+  .value h3 {
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .value h3::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1.4px solid var(--fg);
+    flex: none;
+  }
+  .value p { margin-top: 10px; color: var(--muted); font-size: 14px; }
+
+  /* ---------- 三种方案状态 ---------- */
+
+  .states {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(16px, 2.5vw, 24px);
+  }
+
+  .state {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .state svg { display: block; width: 100%; height: auto; }
+  .state h3 { margin-top: 14px; font-size: 14px; font-weight: 600; }
+  .state p { margin-top: 4px; font-size: 13px; color: var(--muted); }
+
+  .s-node { fill: var(--bg); stroke: var(--fg); stroke-width: 1.4; }
+  .s-ok   { stroke: var(--success); stroke-width: 2; fill: none; }
+  .s-bad  { stroke: var(--danger); stroke-width: 2; fill: none; stroke-dasharray: 6 5; }
+  .s-wait { stroke: var(--pending); stroke-width: 2; fill: none; stroke-dasharray: 0.5 5.5; stroke-linecap: round; }
+
+  /* ---------- 本地优先 ---------- */
+
+  .local { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(28px, 5vw, 56px); align-items: center; }
+
+  .local-copy h2 { font-size: clamp(22px, 3.6vw, 28px); font-weight: 700; letter-spacing: -0.01em; }
+  .local-copy p { margin-top: 12px; color: var(--muted); font-size: 14px; }
+
+  .tree {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 22px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.9;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--fg);
+  }
+  .tree .cmt { color: var(--muted); }
+
+  /* ---------- 页脚 ---------- */
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 0 40px;
+  }
+  .foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .foot .foot-name { color: var(--fg); font-weight: 600; }
+
+  /* ---------- 响应式 ---------- */
+
+  @media (max-width: 760px) {
+    .values, .states { grid-template-columns: 1fr; }
+    .local { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="nav-name" href="#top">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <circle cx="4" cy="12" r="2.2" stroke="currentColor" stroke-width="1.3"/>
+        <circle cx="12" cy="4" r="2.2" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M5.5 10.5 10.5 5.5" stroke="currentColor" stroke-width="1.3"/>
+      </svg>
+      活点地图
+    </a>
+    <nav class="nav-links">
+      <a href="#">GitHub</a>
+      <a class="nav-cta" href="canvas.html">开始探索</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- Hero -->
+  <section class="hero wrap">
+    <h1>项目的探索状态,一眼看清</h1>
+    <p class="sub">少量节点、路线和方案线,表达项目正在向哪里推进、哪些方案已走通、哪些已失败、哪些仍待验证。</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="canvas.html">开始探索</a>
+      <a class="btn btn-secondary" href="#">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38l-.01-1.49c-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48l-.01 2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/>
+        </svg>
+        在 GitHub 查看
+      </a>
+    </div>
+
+    <!-- 地图示意图:动态壁纸主路线 + 幽灵脸问题路线 -->
+    <div class="map-frame">
+      <svg viewBox="0 0 720 400" role="img" aria-label="探索地图示意图">
+        <defs>
+          <marker id="arrow-ok" viewBox="0 0 10 10" refX="8" refY="5"
+                  markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" style="fill: var(--success);"/>
+          </marker>
+        </defs>
+
+        <!-- 主路线方案线 -->
+        <line class="m-ok" x1="86" y1="110" x2="193" y2="110" marker-end="url(#arrow-ok)"/>
+        <line class="m-ok" x1="240" y1="110" x2="347" y2="110" marker-end="url(#arrow-ok)"/>
+        <line class="m-ok" x1="394" y1="110" x2="531" y2="110" marker-end="url(#arrow-ok)"/>
+        <text class="m-scheme" x="141" y="95" text-anchor="middle">生成基础图片</text>
+        <text class="m-scheme" x="295" y="95" text-anchor="middle">实现放大</text>
+        <text class="m-scheme" x="464" y="95" text-anchor="middle">生成动画</text>
+
+        <!-- 主路线节点 -->
+        <circle class="m-node" cx="64" cy="110" r="22"/>
+        <text class="m-num" x="64" y="114" text-anchor="middle">01</text>
+        <text class="m-name" x="64" y="152" text-anchor="middle">开始</text>
+
+        <circle class="m-node" cx="218" cy="110" r="22"/>
+        <text class="m-num" x="218" y="114" text-anchor="middle">02</text>
+        <text class="m-name" x="218" y="152" text-anchor="middle">生成图片</text>
+
+        <circle class="m-node" cx="372" cy="110" r="22"/>
+        <text class="m-num" x="372" y="114" text-anchor="middle">03</text>
+        <text class="m-name" x="372" y="152" text-anchor="middle">完成放大</text>
+
+        <circle class="m-node" cx="556" cy="110" r="22"/>
+        <text class="m-num" x="556" y="114" text-anchor="middle">04</text>
+        <text class="m-name" x="556" y="152" text-anchor="middle">动态壁纸完成</text>
+
+        <!-- 问题路线来源 -->
+        <line class="m-src" x1="218" y1="132" x2="218" y2="275"/>
+        <text class="m-scheme" x="230" y="208" font-size="11">来源</text>
+
+        <!-- 幽灵脸问题路线 -->
+        <line class="m-bad" x1="233" y1="288" x2="418" y2="218"/>
+        <text class="m-scheme" x="328" y="238" text-anchor="middle">修改提示词</text>
+
+        <line class="m-wait" x1="231" y1="317" x2="418" y2="380"/>
+        <text class="m-scheme" x="326" y="372" text-anchor="middle">更换模型</text>
+
+        <line class="m-ok" x1="240" y1="300" x2="531" y2="300" marker-end="url(#arrow-ok)"/>
+        <text class="m-scheme" x="387" y="285" text-anchor="middle">引入遮罩检测</text>
+
+        <circle class="m-node" cx="218" cy="300" r="22"/>
+        <text class="m-num" x="218" y="304" text-anchor="middle">05</text>
+        <text class="m-name" x="218" y="342" text-anchor="middle">幽灵脸问题</text>
+
+        <circle class="m-node" cx="556" cy="300" r="22"/>
+        <text class="m-num" x="556" y="304" text-anchor="middle">06</text>
+        <text class="m-name" x="556" y="342" text-anchor="middle">问题解决</text>
+      </svg>
+      <p class="map-caption">一张地图,两条路线:项目主路线与幽灵脸问题路线</p>
+    </div>
+  </section>
+
+  <!-- 三列价值点 -->
+  <section>
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>为什么不一样</h2>
+      </div>
+      <div class="values">
+        <div class="value">
+          <h3>地图,不是文档容器</h3>
+          <p>画布只保留结构和状态。详细背景、尝试过程和结论,继续留在本地 Markdown。</p>
+        </div>
+        <div class="value">
+          <h3>探索,不是任务管理</h3>
+          <p>没有截止日期、负责人和固定流程。探索允许失败、回退、悬空和新的问题路线。</p>
+        </div>
+        <div class="value">
+          <h3>Agent 原生,不是 AI 按钮</h3>
+          <p>Agent 与人共同操作地图:创建节点、建立路线、更新方案状态、维护 Markdown。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 三种方案状态 -->
+  <section>
+    <div class="wrap">
+      <div class="sec-head center">
+        <h2>三种方案状态</h2>
+        <p>状态属于方案线,不属于节点。</p>
+      </div>
+      <div class="states">
+        <div class="state">
+          <svg viewBox="0 0 220 56" aria-label="成功方案:绿色实线连接结果节点">
+            <defs>
+              <marker id="arrow-s-ok" viewBox="0 0 10 10" refX="8" refY="5"
+                      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 0 L10 5 L0 10 z" style="fill: var(--success);"/>
+              </marker>
+            </defs>
+            <circle class="s-node" cx="26" cy="28" r="12"/>
+            <line class="s-ok" x1="40" y1="28" x2="170" y2="28" marker-end="url(#arrow-s-ok)"/>
+            <circle class="s-node" cx="194" cy="28" r="12"/>
+          </svg>
+          <h3>成功</h3>
+          <p>方案已走通,实线连接结果节点。</p>
+        </div>
+        <div class="state">
+          <svg viewBox="0 0 220 56" aria-label="失败方案:红色虚线,悬空保留">
+            <circle class="s-node" cx="26" cy="28" r="12"/>
+            <line class="s-bad" x1="40" y1="28" x2="176" y2="20"/>
+          </svg>
+          <h3>失败</h3>
+          <p>方案已证伪,虚线悬空,记录保留。</p>
+        </div>
+        <div class="state">
+          <svg viewBox="0 0 220 56" aria-label="待验证方案:灰色点线,悬空等待">
+            <circle class="s-node" cx="26" cy="28" r="12"/>
+            <line class="s-wait" x1="40" y1="28" x2="176" y2="36"/>
+          </svg>
+          <h3>待验证</h3>
+          <p>方案未确认,点线悬空,等待结论。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 本地优先 -->
+  <section>
+    <div class="wrap local">
+      <div class="local-copy">
+        <h2>本地优先</h2>
+        <p>地图数据和 Markdown 位于本地项目目录。离线可用,不要求登录账号,不要求云数据库。</p>
+        <p>Codex、Claude Code、Cursor、Gemini CLI 等 Agent 通过项目文件读写同一张地图。不同 Agent,同一份地图。</p>
+      </div>
+      <div class="tree">项目目录/
+├── MAP.html          <span class="cmt"># 地图入口</span>
+├── MAP.md            <span class="cmt"># 地图说明与项目概览</span>
+├── nodes/            <span class="cmt"># 节点详情</span>
+├── routes/           <span class="cmt"># 路线与方案记录</span>
+└── AGENTS.md         <span class="cmt"># 项目级 Agent 指令</span></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span class="foot-name">活点地图</span>
+    <span>免费开源,MIT 许可证 · 画布基于 Excalidraw 改造,保留其版权与许可声明 · 本地优先</span>
+  </div>
+</footer>
+
+<script>
+  // 平滑滚动:仅处理页内锚点,使用 window.scrollTo
+  document.querySelectorAll('a[href^="#"]').forEach(function (link) {
+    link.addEventListener('click', function (event) {
+      var id = link.getAttribute('href');
+      if (id.length <= 1) { event.preventDefault(); return; }
+      var target = document.querySelector(id);
+      if (!target) { return; }
+      event.preventDefault();
+      window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY, behavior: 'smooth' });
+    });
+  });
+
+  // 导航:滚动后显示发丝边框
+  var nav = document.getElementById('nav');
+  function onScroll() {
+    nav.classList.toggle('is-scrolled', window.scrollY > 8);
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+</script>
+
+</body>
+</html>
