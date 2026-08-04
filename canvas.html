@@ -60,8 +60,8 @@ input{font:inherit;color:inherit}
 @keyframes pulse{0%{box-shadow:0 0 0 0 var(--accent-soft)}60%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
 
 /* 路线名称:低强调 */
-.route-label{position:absolute;font-size:12px;color:var(--muted);white-space:nowrap;
-  letter-spacing:.02em;transform:translate(-50%,0);pointer-events:none}
+.route-label{position:absolute;font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;
+  letter-spacing:.04em;transform:translate(-50%,0);pointer-events:none}
 
 /* 标注:黄色小便签(人与 Agent 统一),归属由细引导线表明 */
 .ann{position:absolute;font-size:12px;line-height:1.3;color:var(--fg);white-space:nowrap;
@@ -227,12 +227,18 @@ input{font:inherit;color:inherit}
 .inline-edit{background:var(--bg);border:1px solid var(--accent);border-radius:6px;
   padding:4px 8px;font:inherit;font-size:12px;outline:none;box-shadow:var(--shadow)}
 
+/* 工具提示:底部居中,切换工具时短暂显示 */
+#tool-hint{position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:40;
+  background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 16px;
+  font-size:12px;color:var(--muted);box-shadow:var(--shadow);pointer-events:none;
+  opacity:0;transition:opacity .3s}
+#tool-hint.on{opacity:1}
+
 /* ============ 响应式 ============ */
 @media (max-width:760px){
   #toolbar{max-width:calc(100vw - 24px);overflow-x:auto}
   #project-pill .pname{max-width:96px}
   #panel{top:auto;left:12px;right:12px;bottom:76px;width:auto;max-height:52vh}
-  #empty-hero h1{font-size:24px}
   #drawer{width:100vw;max-width:100vw}
 }
 </style>
@@ -257,6 +263,9 @@ input{font:inherit;color:inherit}
 
 <!-- 顶部中央:核心工具 -->
 <div class="chrome" id="toolbar">
+  <button class="icb" data-tool="hand" title="平移画布">
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7.5 15.5c-2 0-3.4-1.2-4.1-3.2l-.9-2.6c-.2-.5.1-1.1.6-1.3.5-.1 1 .1 1.2.6l.5 1.3V5.2a.9.9 0 0 1 1.8 0V4a.9.9 0 0 1 1.8 0v.8a.9.9 0 0 1 1.8 0v5c0 .4.5.5.7.2l.8-1.1c.3-.4.9-.5 1.3-.2.4.3.5.8.3 1.2l-1.6 2.9c-.8 1.6-2.2 2.7-4.2 2.7Z" stroke-linejoin="round"/></svg><kbd>H</kbd>
+  </button>
   <button class="icb active" data-tool="select" title="选择和移动">
     <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2.5 13.5 9l-5 .8L6 14.5 4 2.5Z" stroke-linejoin="round"/></svg><kbd>V</kbd>
   </button>
@@ -363,8 +372,9 @@ input{font:inherit;color:inherit}
 
 <div class="menu" id="menu"></div>
 <div id="marquee"></div>
-<button id="del-float" title="删除">{TRASH}</button>
+<button id="del-float" title="删除"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h12M7 5V3.5h4V5M5 5l.8 9.5h6.4L13 5" stroke-linejoin="round"/></svg></button>
 <div id="toast"></div>
+<div id="tool-hint"></div>
 
 <script>
 /* =====================================================================
@@ -374,6 +384,7 @@ input{font:inherit;color:inherit}
 
 /* ---------- 图标 ---------- */
 const I = {
+  hand:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7.5 15.5c-2 0-3.4-1.2-4.1-3.2l-.9-2.6c-.2-.5.1-1.1.6-1.3.5-.1 1 .1 1.2.6l.5 1.3V5.2a.9.9 0 0 1 1.8 0V4a.9.9 0 0 1 1.8 0v.8a.9.9 0 0 1 1.8 0v5c0 .4.5.5.7.2l.8-1.1c.3-.4.9-.5 1.3-.2.4.3.5.8.3 1.2l-1.6 2.9c-.8 1.6-2.2 2.7-4.2 2.7Z" stroke-linejoin="round"/></svg>',
   node:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="9" r="5.5"/></svg>',
   edge:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 14 13 4.5M10.5 4h3v3"/></svg>',
   ann:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3.5h12v8H8l-3.5 3v-3H3v-8Z" stroke-linejoin="round"/></svg>',
@@ -588,6 +599,14 @@ function render(){
     // 悬空端点手柄:常显,视觉轻(select 工具下可拖动)
     if (!e.to && !drawing) lines += `<circle class="handle" data-handle="end" data-edge="${e.id}" cx="${g.x2}" cy="${g.y2}" r="4.5"
       fill="var(--bg)" stroke="${st.color}" stroke-width="1.5"/>`;
+    // 已连接线:选中或悬停时显示末端手柄(可拖下脱钩重新布线),位置向外偏移便于抓取
+    if (e.to && (singleSel || S.hoverEdge === e.id)){
+      const b = nodeById(e.to);
+      const hdx = g.x2-b.x, hdy = g.y2-b.y, hl = Math.hypot(hdx,hdy)||1;
+      const hx = b.x + hdx/hl*(b.r+16), hy = b.y + hdy/hl*(b.r+16);
+      lines += `<circle class="handle" data-handle="end" data-edge="${e.id}" cx="${hx}" cy="${hy}" r="6"
+        fill="var(--bg)" stroke="${st.color}" stroke-width="1.5"/>`;
+    }
     // 弯曲手柄:仅单选该边时显示在曲线中点(Excalidraw 式:抓取点固定弯折)
     if (singleSel) lines += `<circle class="handle" data-handle="bend" data-edge="${e.id}" cx="${g.bx}" cy="${g.by}" r="4.5"
       fill="var(--accent)" stroke="var(--bg)" stroke-width="1.5"/>`;
@@ -716,6 +735,7 @@ function render(){
     world.appendChild(el);
   }
   for (const { a, ax, ay, rot } of annPos){
+    if (inlineEditing && inlineEditing.annId === a.id) continue; // 编辑中的便签由输入框占位,不重建(避免重影)
     const el = document.createElement('div');
     el.className = 'ann' + (S.selAnn === a.id ? ' sel':''); el.dataset.ann = a.id;
     el.style.left = ax + 'px'; el.style.top = ay + 'px';
@@ -775,7 +795,6 @@ function renderPanel(){
     title.innerHTML = `<span class="swatch" style="background:var(--fg)"></span>节点`;
     body.innerHTML =
       field('名称', `<div class="v" data-edit="name">${esc(n.name)}</div>`) +
-      field('编号', `<div class="v mono">${n.num}</div>`) +
       field('类型', `<div class="v" style="cursor:default">${n.type}</div>`) +
       field('所属路线', `<div class="v" style="cursor:default">${esc(routeById(n.route)?.name || '—')}</div>`) +
       field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(n.md)}</span>${I.ext}</div>`) +
@@ -818,9 +837,10 @@ function setEdgeStatus(e, s){
     toast('已创建目标节点并标记成功');
   }
   if (s !== 'success' && e.to){
-    // 成功 → 失败/待验证:移除目标关系,保留原目标节点
+    // 成功 → 失败/待验证:移除目标关系,端点视觉脱离节点
     const b = nodeById(e.to), a = nodeById(e.from);
-    e.dx = Math.max(140, b.x - a.x); e.dy = b.y - a.y;
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx,dy)||1;
+    e.dx = dx/d*(d+50); e.dy = dy/d*(d+50);
     e.to = null;
   }
   e.status = s;
@@ -857,7 +877,14 @@ function nodeMenu(n, x, y){
     {id:'md', icon:I.md, label:'打开 Markdown', fn(){ toast('原型中不打开真实文件:' + n.md); }},
     {sep:true},
     {id:'del', icon:I.trash, label:'删除', danger:true, fn(){ pushHistory();
-      S.edges = S.edges.filter(e => e.from!==n.id && e.to!==n.id);
+      // 删除节点时保留方案线:目标节点边变灰色悬空,起点边删除
+      for (const e of S.edges){
+        if (e.to === n.id){ e.to = null; e.status = 'pending';
+          const a = nodeById(e.from), d = Math.hypot(n.x-a.x, n.y-a.y)||1;
+          e.dx = (n.x-a.x)/d*(d+50); e.dy = (n.y-a.y)/d*(d+50);
+        }
+      }
+      S.edges = S.edges.filter(e => e.from !== n.id);
       S.nodes = S.nodes.filter(m => m.id!==n.id); select(null); render(); }}
   ], x, y);
 }
@@ -908,16 +935,49 @@ function addAnnotation(kind, id){
     if (el) inlineEdit(el, a.text, v => { a.text = v || a.text; render(); renderPanel(); });
   });
 }
+let inlineEditing = null; // 正在行内编辑的便签 {annId, input}
 function inlineEdit(el, initial, done){
   const input = document.createElement('input');
   input.className = 'inline-edit'; input.value = initial;
   input.style.width = Math.max(120, el.offsetWidth + 24) + 'px';
   el.replaceWith(input); input.focus(); input.select();
-  const commit = () => { if (input.isConnected){ input.replaceWith(el); done(input.value.trim()); } };
+  let finished = false;
+  const commit = () => {
+    if (finished) return; finished = true;
+    const v = input.value.trim();
+    if (input.isConnected) input.replaceWith(el);
+    done(v);
+  };
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', ev => {
-    if (ev.key === 'Enter') input.blur();
-    if (ev.key === 'Escape'){ input.value = initial; input.blur(); }
+    if (ev.isComposing || ev.keyCode === 229) return; // 中文输入法组词中不拦截按键
+    if (ev.key === 'Enter') commit();
+    if (ev.key === 'Escape'){ input.value = initial; commit(); }
+  });
+}
+/* 便签行内编辑:点击已选中的便签直接在原位置改字 */
+function editAnn(a){
+  const el = document.querySelector(`.ann[data-ann="${a.id}"]`); if (!el) return;
+  const input = document.createElement('input');
+  input.className = 'inline-edit'; input.value = a.text;
+  input.style.position = 'absolute'; input.style.left = el.style.left; input.style.top = el.style.top;
+  input.style.width = Math.max(120, el.offsetWidth + 24) + 'px'; input.style.zIndex = 5;
+  el.replaceWith(input); input.focus(); input.select();
+  inlineEditing = { annId: a.id, input };
+  let finished = false;
+  const commit = () => {
+    if (finished) return; finished = true;
+    inlineEditing = null;
+    const v = input.value.trim();
+    if (input.isConnected) input.remove(); // render() 不清理输入框,必须自己移除
+    if (v && v !== a.text){ pushHistory(); a.text = v; }
+    render(); renderPanel();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev => {
+    if (ev.isComposing || ev.keyCode === 229) return; // 中文输入法组词中不拦截按键
+    if (ev.key === 'Enter') commit();
+    if (ev.key === 'Escape'){ input.value = a.text; commit(); }
   });
 }
 
@@ -949,11 +1009,28 @@ $('#panel-more').onclick = ev => {
 };
 
 /* ---------- 工具栏 ---------- */
+const TOOL_HINTS = {
+  hand:'按住拖拽移动画布，或滚轮/中键平移',
+  select:'点击选择对象，空白处拖拽框选',
+  node:'点击画布新建节点',
+  edge:'在节点上按住拖拽拉出方案线 · 空格/中键拖拽平移画布',
+  ann:'点击节点或方案线添加标注'
+};
+function showToolHint(t){
+  const h = $('#tool-hint');
+  h.textContent = TOOL_HINTS[t] || '';
+  if (!h.textContent) return;
+  h.classList.add('on');
+  clearTimeout(h._timer);
+  h._timer = setTimeout(() => h.classList.remove('on'), 2500);
+}
 function setTool(t){
-  S.tool = t; S.pendingEdgeFrom = null;
-  viewport.classList.toggle('tool-place', t !== 'select');
+  S.tool = t; S.drawingEdge = null;
+  viewport.classList.toggle('tool-place', t !== 'select' && t !== 'hand');
+  viewport.style.cursor = t === 'hand' ? 'grab' : '';
   document.querySelectorAll('#toolbar [data-tool]').forEach(b =>
     b.classList.toggle('active', b.dataset.tool === t));
+  showToolHint(t);
 }
 document.querySelectorAll('#toolbar [data-tool]').forEach(b =>
   b.onclick = () => setTool(b.dataset.tool));
@@ -975,7 +1052,7 @@ $('#proj-menu-btn').onclick = ev => {
   const demo = () => toast('原型演示:正式版接入文件系统');
   openMenu([
     {id:'open', icon:I.folder, label:'打开地图…', kbd:'Ctrl+O', fn:demo},
-    {id:'new', icon:I.plus, label:'新建地图', fn(){ enterEmpty(true); }},
+    {id:'new', icon:I.plus, label:'新建地图', fn(){ newBlankMap(); }},
     {id:'imp', icon:I.imp, label:'导入地图…', fn:demo},
     {sep:true},
     {id:'save', icon:I.save, label:'保存到…', fn:demo},
@@ -991,23 +1068,50 @@ $('#bridge-switch').onclick = ev => {
   toast(S.bridge ? '本地桥接已开启' : '本地桥接已关闭,Agent 仍可通过文件协作');
 };
 
-/* ---------- 画布交互:平移 / 缩放 / 拖拽 / 放置 ---------- */
-let drag = null; // {type:'pan'|'node', ...}
+/* ---------- 画布交互:平移 / 缩放 / 拖拽 / 框选 / 拉出方案线 ---------- */
+let drag = null, spaceDown = false;
+const marqueeEl = $('#marquee'), delFloat = $('#del-float');
+delFloat.innerHTML = I.trash;
+/* 二次贝塞尔取点:弯折命中检测用 */
+function bezPt(t, g){ const it = 1-t;
+  return { x: it*it*g.x1 + 2*it*t*g.cpx + t*t*g.x2, y: it*it*g.y1 + 2*it*t*g.cpy + t*t*g.y2 }; }
+function clearMulti(){ S.multi = []; delFloat.classList.remove('on'); }
 viewport.addEventListener('pointerdown', ev => {
   closeMenu();
-  if (ev.button !== 0) return;
-  if (ev.target.closest('.chrome,#panel,#drawer,#agent-dock,#empty-hero,.menu')) return;
+  if (ev.button !== 0 && ev.button !== 1) return;
+  if (ev.target.closest('.chrome,#panel,#drawer,#agent-dock,.menu')) return;
+  if (ev.target.closest('.inline-edit')) return; // 点击行内输入框不触发画布交互
+  // 手掌工具:拖任何位置都是平移(Excalidraw 式),对象不可拖
+  if (S.tool === 'hand'){
+    drag = { type:'pan', sx:ev.clientX, sy:ev.clientY, ox:S.view.x, oy:S.view.y };
+    viewport.classList.add('panning');
+    return;
+  }
+  // 空格/中键:任何工具模式下都优先平移
+  if (spaceDown || ev.button === 1){
+    drag = { type:'pan', sx:ev.clientX, sy:ev.clientY, ox:S.view.x, oy:S.view.y };
+    viewport.classList.add('panning');
+    return;
+  }
   const nodeEl = ev.target.closest('.node');
   const edgeEl = ev.target.closest('[data-edge]');
   const annEl = ev.target.closest('.ann');
   const w = toWorld(ev.clientX, ev.clientY);
 
   if (S.tool === 'node' && !nodeEl){ pushHistory(); addNodeAt(w.x, w.y); setTool('select'); return; }
+  // 方案线工具:在节点上按住直接拉出,起点自动吸附该节点;终点松手时命中节点则吸附并变绿
   if (S.tool === 'edge'){
     if (nodeEl){
-      if (!S.pendingEdgeFrom){ S.pendingEdgeFrom = nodeEl.dataset.id; toast('选择目标节点,或点击空白处悬空'); }
-      else { pushHistory(); addEdge(S.pendingEdgeFrom, nodeEl.dataset.id); S.pendingEdgeFrom = null; setTool('select'); }
-    } else if (S.pendingEdgeFrom){ pushHistory(); addEdge(S.pendingEdgeFrom, null, w); S.pendingEdgeFrom = null; setTool('select'); }
+      pushHistory();
+      const fromId = nodeEl.dataset.id, from = nodeById(fromId);
+      const e = { id:'e'+(S.nextEdge++), from:fromId, to:null, name:'新方案',
+        status:'pending', route:from.route, md:`routes/e${S.nextEdge-1}-新方案.md`,
+        dx:w.x-from.x, dy:w.y-from.y };
+      S.edges.push(e);
+      S.drawingEdge = e.id; S.sel = {kind:'edge', id:e.id}; S.selAnn = null; clearMulti();
+      drag = { type:'end', e, moved:false, anchor: bezPt(.25, edgeCurve(e)) };
+      render(); renderPanel();
+    }
     return;
   }
   if (S.tool === 'ann'){
@@ -1021,25 +1125,53 @@ viewport.addEventListener('pointerdown', ev => {
   const handleEl = ev.target.closest('[data-handle]');
   if (handleEl){
     const e = edgeById(handleEl.dataset.edge);
-    if (e) drag = { type:handleEl.dataset.handle, e, moved:false };
+    if (e){
+      const t = handleEl.dataset.handle === 'bend' ? .5 : 0; // 弯曲手柄在曲线中点
+      // 拖动已连接端点即重新布线:先脱钩悬空变灰,拖到别的节点松手则吸附变绿
+      if (handleEl.dataset.handle === 'end' && e.to){
+        const a = nodeById(e.from), b = nodeById(e.to);
+        e.dx = b.x - a.x; e.dy = b.y - a.y; e.to = null;
+        e.status = 'pending';
+        drag = { type:'end', e, t, moved:false, wasConnected:true, anchor: bezPt(.25, edgeCurve(e)) };
+      } else {
+        drag = { type:handleEl.dataset.handle, e, t, moved:false };
+        if (handleEl.dataset.handle === 'end') drag.anchor = bezPt(.25, edgeCurve(e));
+      }
+    }
     return;
   }
-  // 便签可直接拖拽微调位置(偏移保存在 a.dx/a.dy)
+  // 便签:选中态紫色;已选中再点直接行内编辑;拖动微调位置
   if (annEl){
     const a = S.anns.find(x => x.id === annEl.dataset.ann);
-    if (a){ drag = { type:'ann', a, moved:false, sx:ev.clientX, sy:ev.clientY, odx:a.dx||0, ody:a.dy||0 }; return; }
+    if (a){
+      drag = { type:'ann', a, moved:false, sx:ev.clientX, sy:ev.clientY, odx:a.dx||0, ody:a.dy||0,
+        wasSel: S.selAnn === a.id };
+      return;
+    }
   }
   if (nodeEl){
     const n = nodeById(nodeEl.dataset.id);
     drag = { type:'node', n, moved:false, sx:ev.clientX, sy:ev.clientY, ox:n.x, oy:n.y };
   } else if (edgeEl){
-    // 选中后可直接按住线身弯折(曲线经过指针,反推控制点)
+    // 选中后可直接按住线身弯折:抓取点固定在指针下,其余部分随之变形(Excalidraw 式)
     const eid = edgeEl.dataset.edge, e = edgeById(eid);
     if (!(S.sel && S.sel.kind === 'edge' && S.sel.id === eid)) select('edge', eid);
-    if (e) drag = { type:'bend', e, moved:false };
-  } else {
+    if (e){
+      let t = .5, bd = 1e9; const g = edgeCurve(e);
+      for (let tt = .05; tt < .951; tt += .05){
+        const p = bezPt(tt, g), dd = Math.hypot(p.x-w.x, p.y-w.y);
+        if (dd < bd){ bd = dd; t = tt; }
+      }
+      drag = { type:'bend', e, t, moved:false };
+    }
+  } else if (ev.button === 1 || spaceDown){
     drag = { type:'pan', sx:ev.clientX, sy:ev.clientY, ox:S.view.x, oy:S.view.y };
     viewport.classList.add('panning');
+  } else {
+    // 空白处拖拽 = 紫色框选(Excalidraw 式);平移用滚轮/中键/空格
+    S.sel = null; S.selAnn = null; clearMulti(); renderPanel(); render();
+    drag = { type:'marquee', sx:ev.clientX, sy:ev.clientY };
+    marqueeEl.style.display = 'block';
   }
 });
 function addEdge(fromId, toId, w){
@@ -1051,21 +1183,62 @@ function addEdge(fromId, toId, w){
   S.edges.push(e); select('edge', e.id); render();
 }
 addEventListener('pointermove', ev => {
-  if (!drag) return;
+  // 无拖拽时:方案线悬停紫色发光
+  if (!drag){
+    if (S.tool !== 'select') { if (S.hoverEdge){ S.hoverEdge = null; render(); } return; }
+    const w = toWorld(ev.clientX, ev.clientY);
+    let hov = null;
+    for (const e of S.edges){
+      const g = edgeCurve(e);
+      for (let t = 0; t <= 1.001; t += .04){
+        const p = bezPt(t, g);
+        if (Math.hypot(p.x-w.x, p.y-w.y) < 8/S.view.k){ hov = e.id; break; }
+      }
+      if (hov) break;
+    }
+    if (hov !== S.hoverEdge){ S.hoverEdge = hov; render(); }
+    return;
+  }
   if (drag.type === 'pan'){
     S.view.x = drag.ox + ev.clientX - drag.sx;
     S.view.y = drag.oy + ev.clientY - drag.sy;
     applyView();
+  } else if (drag.type === 'marquee'){
+    const x = Math.min(drag.sx, ev.clientX), y = Math.min(drag.sy, ev.clientY);
+    marqueeEl.style.left = x+'px'; marqueeEl.style.top = y+'px';
+    marqueeEl.style.width = Math.abs(ev.clientX-drag.sx)+'px';
+    marqueeEl.style.height = Math.abs(ev.clientY-drag.sy)+'px';
+    drag.ex = ev.clientX; drag.ey = ev.clientY;
   } else if (drag.type === 'end' || drag.type === 'bend'){
-    // 拖动悬空端点 / 弯折线身:弯折让曲线经过指针(B(0.5) 反推控制点),线跟手走
     const w = toWorld(ev.clientX, ev.clientY);
     drag.moved = true;
     if (drag.type === 'end'){
+      // 端点吸附:命中节点时高亮并吸到其边缘,松手未命中则保持悬空灰色
+      // 已连接边拖拽时使用更小吸附半径,便于脱离
+      const snapRadius = drag.wasConnected ? (n) => n.r * 0.6 : (n) => n.r + 12;
+      const snap = S.nodes.find(n => n.id !== drag.e.from && Math.hypot(n.x-w.x, n.y-w.y) < snapRadius(n)) || null;
       const a = nodeById(drag.e.from);
-      drag.e.dx = w.x - a.x; drag.e.dy = w.y - a.y;
+      let px = w.x, py = w.y;
+      if (snap !== null){
+        if (S.snapTo !== snap.id){ S.snapTo = snap.id; }
+        const dx = snap.x-a.x, dy = snap.y-a.y, d = Math.hypot(dx,dy)||1;
+        const len = Math.max(10, d - snap.r);
+        px = a.x + dx/d*len; py = a.y + dy/d*len;
+      } else {
+        if (S.snapTo){ S.snapTo = null; }
+      }
+      drag.e.dx = px - a.x; drag.e.dy = py - a.y;
+      // 钉住前段锚点 B(0.25):曲线前半段基本固定,后半段自由弯折,保持平滑
+      if (drag.anchor){
+        const g = edgeEnds(drag.e), t = .25, it = .75;
+        drag.e.cx = (drag.anchor.x - it*it*g.x1 - t*t*g.x2) / (2*it*t) - (g.x1+g.x2)/2;
+        drag.e.cy = (drag.anchor.y - it*it*g.y1 - t*t*g.y2) / (2*it*t) - (g.y1+g.y2)/2;
+      }
     } else {
-      const g = edgeEnds(drag.e);
-      drag.e.cx = 2*w.x - g.x1 - g.x2; drag.e.cy = 2*w.y - g.y1 - g.y2;
+      // 弯折:抓取点(参数 t 处)固定在指针下,反推控制点,其余部分随之变形
+      const g = edgeEnds(drag.e), t = drag.t || .5, it = 1-t;
+      drag.e.cx = (w.x - it*it*g.x1 - t*t*g.x2) / (2*it*t) - (g.x1+g.x2)/2;
+      drag.e.cy = (w.y - it*it*g.y1 - t*t*g.y2) / (2*it*t) - (g.y1+g.y2)/2;
     }
     render();
   } else if (drag.type === 'ann'){
@@ -1085,18 +1258,91 @@ addEventListener('pointermove', ev => {
   }
 });
 addEventListener('pointerup', ev => {
+  if (drag && drag.type === 'marquee'){
+    marqueeEl.style.display = 'none';
+    const x1 = Math.min(drag.sx, drag.ex ?? drag.sx), y1 = Math.min(drag.sy, drag.ey ?? drag.sy);
+    const x2 = Math.max(drag.sx, drag.ex ?? drag.sx), y2 = Math.max(drag.sy, drag.ey ?? drag.sy);
+    if (x2 - x1 > 6 || y2 - y1 > 6){
+      const p1 = toWorld(x1, y1), p2 = toWorld(x2, y2);
+      const inRect = (x, y) => x >= p1.x && x <= p2.x && y >= p1.y && y <= p2.y;
+      for (const n of S.nodes) if (inRect(n.x, n.y)) S.multi.push({kind:'node', id:n.id});
+      for (const e of S.edges){
+        const g = edgeCurve(e); let hit = inRect(g.x1, g.y1) && inRect(g.x2, g.y2);
+        if (!hit) for (let t = 0; t <= 1.001 && !hit; t += .1) hit = inRect(bezPt(t, g).x, bezPt(t, g).y);
+        if (hit) S.multi.push({kind:'edge', id:e.id});
+      }
+      render();
+      if (S.multi.length){
+        // 一键删除按钮:悬浮在选区右上角
+        let mX = -1e9, mY = 1e9;
+        for (const m of S.multi){
+          if (m.kind==='node'){ const n=nodeById(m.id); if (n){ mX=Math.max(mX,n.x+n.r); mY=Math.min(mY,n.y-n.r); } }
+          else { const e2=edgeById(m.id); if (e2){ const g=edgeCurve(e2); mX=Math.max(mX,g.x1,g.x2); mY=Math.min(mY,g.y1,g.y2); } }
+        }
+        delFloat.style.left = (mX*S.view.k + S.view.x + 12) + 'px';
+        delFloat.style.top = (mY*S.view.k + S.view.y - 44) + 'px';
+        delFloat.classList.add('on');
+      }
+    } else {
+      // 框选距离太小视为点击空白:清空选择
+      S.selAnn = null; clearMulti(); select(null); render();
+    }
+  }
   if (drag && drag.type === 'node' && !drag.moved) select('node', drag.n.id);
   if (drag && drag.type === 'node' && drag.moved) pushHistory();
-  // 手柄拖拽结束纳入撤销历史;未移动则视为点击,选中该边
-  if (drag && (drag.type === 'end' || drag.type === 'bend')){
+  // 手柄拖拽结束:端点命中节点则吸附连接并标为成功(变绿);未命中保持悬空灰色
+  if (drag && drag.type === 'end'){
+    if (drag.moved){
+      if (S.snapTo){
+        const snap = nodeById(S.snapTo);
+        if (snap && snap.id !== drag.e.from){
+          delete drag.e.dx; delete drag.e.dy;
+          drag.e.to = snap.id; drag.e.status = 'success';
+        }
+        S.snapTo = null;
+      }
+      pushHistory();
+    } else if (S.drawingEdge === drag.e.id){
+      // 只点了一下没拖动:给个默认悬空长度
+      drag.e.dx = 150; drag.e.dy = 40;
+    }
+    if (S.drawingEdge === drag.e.id){ S.drawingEdge = null; setTool('select'); }
+    render(); renderPanel();
+  }
+  if (drag && drag.type === 'bend'){
     if (drag.moved) pushHistory();
     else select('edge', drag.e.id);
   }
-  if (drag && drag.type === 'ann' && drag.moved) pushHistory();
+  if (drag && drag.type === 'ann'){
+    if (drag.moved) pushHistory();
+    else if (drag.wasSel) editAnn(drag.a);          // 已选中再点:行内编辑
+    else if (S.selAnn !== drag.a.id){ S.selAnn = drag.a.id; render(); } // 首次点击:紫色选中
+  }
   if (drag && drag.type === 'pan' && Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) < 4
-      && ev.target === viewport) select(null);
+      && ev.target === viewport){ S.selAnn = null; select(null); clearMulti(); render(); }
   drag = null; viewport.classList.remove('panning');
 });
+/* 框选后一键删除 */
+delFloat.onclick = () => {
+  if (!S.multi.length) return;
+  pushHistory();
+  const nodeIds = new Set(S.multi.filter(m => m.kind==='node').map(m => m.id));
+  const edgeIds = new Set(S.multi.filter(m => m.kind==='edge').map(m => m.id));
+  S.edges = S.edges.filter(e => {
+    if (edgeIds.has(e.id)) return false;
+    if (nodeIds.has(e.from)) return false;
+    if (nodeIds.has(e.to)){
+      const origTo = e.to; e.to = null; e.status = 'pending';
+      const a = nodeById(e.from), b = S.nodes.find(n => n.id === origTo) || {x:a.x+200,y:a.y};
+      const d = Math.hypot(b.x-a.x, b.y-a.y)||1;
+      e.dx = (b.x-a.x)/d*(d+50); e.dy = (b.y-a.y)/d*(d+50);
+    }
+    return true;
+  });
+  S.nodes = S.nodes.filter(n => !nodeIds.has(n.id));
+  S.anns = S.anns.filter(a => (a.target.kind==='node' ? !nodeIds.has(a.target.id) : !edgeIds.has(a.target.id)));
+  clearMulti(); select(null); render();
+};
 viewport.addEventListener('wheel', ev => {
   ev.preventDefault();
   if (ev.ctrlKey || ev.metaKey) zoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1.09 : 1/1.09);
@@ -1126,21 +1372,31 @@ $('#redo').onclick = () => { if (hIndex < history.length - 1){ hIndex++; restore
 addEventListener('keydown', ev => {
   if (ev.target.matches('input,textarea,[contenteditable="true"]')) return;
   const k = ev.key.toLowerCase();
+  if (ev.code === 'Space'){ spaceDown = true; viewport.style.cursor = 'grab'; }
   if (k === 'v') setTool('select');
+  if (k === 'h') setTool('hand');
   if (k === 'n') setTool('node');
   if (k === 'l') setTool('edge');
   if (k === 'm') setTool('ann');
-  if (k === 'escape'){ S.pendingEdgeFrom = null; setTool('select'); select(null); closeMenu(); $('#drawer').classList.remove('on'); }
-  if ((k === 'delete' || k === 'backspace') && S.sel){
-    pushHistory();
-    if (S.sel.kind === 'node'){ const id = S.sel.id;
-      S.edges = S.edges.filter(e => e.from!==id && e.to!==id);
-      S.nodes = S.nodes.filter(n => n.id!==id);
-    } else S.edges = S.edges.filter(e => e.id !== S.sel.id);
-    select(null); render();
+  if (k === 'escape'){ setTool('select'); S.selAnn = null; clearMulti(); select(null); closeMenu(); $('#drawer').classList.remove('on'); render(); }
+  if (k === 'delete' || k === 'backspace'){
+    // 框选一键删除 > 便签 > 单选对象
+    if (S.multi.length){ delFloat.click(); return; }
+    if (S.selAnn){ pushHistory(); S.anns = S.anns.filter(x => x.id !== S.selAnn); S.selAnn = null; render(); renderPanel(); return; }
+    if (S.sel){
+      pushHistory();
+      if (S.sel.kind === 'node'){ const id = S.sel.id;
+        S.edges = S.edges.filter(e => e.from!==id && e.to!==id);
+        S.nodes = S.nodes.filter(n => n.id!==id);
+      } else S.edges = S.edges.filter(e => e.id !== S.sel.id);
+      select(null); render();
+    }
   }
   if ((ev.ctrlKey || ev.metaKey) && k === 'z' && !ev.shiftKey){ ev.preventDefault(); $('#undo').click(); }
   if ((ev.ctrlKey || ev.metaKey) && (k === 'y' || (k === 'z' && ev.shiftKey))){ ev.preventDefault(); $('#redo').click(); }
+});
+addEventListener('keyup', ev => {
+  if (ev.code === 'Space'){ spaceDown = false; viewport.style.cursor = ''; }
 });
 
 /* ---------- Agent:命令入口 + 模拟更新 ---------- */
@@ -1182,33 +1438,27 @@ function submitAgent(){
   });
 }
 
-/* ---------- 空画布 ---------- */
-function enterEmpty(on){
-  S.empty = on;
-  $('#empty-hero').classList.toggle('on', on);
-  $('#toolbar').style.display = on ? 'none' : '';
-  $('#agent-dock').style.display = on ? 'none' : '';
-  $('#zoombar').style.display = on ? 'none' : '';
+/* ---------- 新建地图:直接进空白画布(不再有中央输入态) ---------- */
+function newBlankMap(){
+  pushHistory();
+  S.nodes = []; S.edges = []; S.anns = [];
+  S.routes = [{id:'r1', name:'主路线', source:null}];
+  S.sel = null; S.selAnn = null; clearMulti();
+  S.view = { x:innerWidth/2, y:innerHeight/2, k:1 };
+  setTool('select'); render();
+  toast('已新建地图');
 }
-$('#empty-send').onclick = () => {
-  const v = $('#empty-input').value.trim(); if (!v) return;
-  enterEmpty(false);
-  agentWork('正在建立地图…', () => { render(); fitView(); }, 2100);
-};
 
 /* ---------- 启动 ---------- */
 const q = new URLSearchParams(location.search);
-if (q.get('blank') === '1'){
-  // 手动开始:空画布,工具可用,无中央输入
+if (q.get('blank') === '1' || q.get('empty') === '1'){
+  // 空画布:工具可用,无中央输入
   S.nodes = []; S.edges = []; S.anns = []; S.routes = [{id:'r1', name:'主路线', source:null}];
 }
 render();
-if (q.get('empty') === '1'){ enterEmpty(true); }
-else {
-  fitView();
-  if (q.get('from') === 'agent'){
-    agentWork('正在建立地图…', () => { render(); }, 1400);
-  }
+fitView();
+if (q.get('from') === 'agent'){
+  agentWork('正在建立地图…', () => { render(); }, 1400);
 }
 pushHistory();
 </script>

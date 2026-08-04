@@ -48,19 +48,14 @@ footer{margin-top:48px;color:var(--muted);font-size:12px;line-height:1.7}
 <body>
 <header>
   <h1><span class="dot"></span>活点地图 · 交互原型</h1>
-  <p>供 UI/UX 审计与正式开发参考。审核顺序:空地图输入与空白画布 → 单路线、多路线与方案状态 → 选择面板、标注与 Agent 更新。</p>
+  <p>供 UI/UX 审计与正式开发参考。审核顺序:空白画布与新建地图 → 单路线、多路线与方案状态 → 选择面板、标注与 Agent 更新。</p>
 </header>
 
 <h2>主流程</h2>
 <div class="grid">
-  <a class="card" href="canvas.html?empty=1">
-    <div class="t">画布 · 空地图输入</div>
-    <div class="d">空地图时 Agent 通过中央输入区出现;提交后模拟建立地图并进入画布。</div>
-    <div class="p">canvas.html?empty=1</div>
-  </a>
   <a class="card" href="canvas.html?blank=1">
-    <div class="t">画布 · 空白</div>
-    <div class="d">不使用 Agent 时的起点:纯净画布,只保留核心工具。</div>
+    <div class="t">画布 · 空白（新建地图）</div>
+    <div class="d">新建地图直接进入空白画布,无中央输入态;选择项目在地图中进行。</div>
     <div class="p">canvas.html?blank=1</div>
   </a>
   <a class="card" href="canvas.html">
@@ -92,8 +87,10 @@ footer{margin-top:48px;color:var(--muted);font-size:12px;line-height:1.7}
 </div>
 
 <footer>
-  画布内可试:拖拽平移、滚轮缩放、拖动节点、拖动方案线悬空端点、选中方案线后拖动弯曲手柄、
-  点击对象查看属性面板、右键打开菜单、左上角项目菜单(打开/新建/导入地图)、
+  画布内可试:滚轮/中键/空格平移、滚轮缩放、拖动节点、悬浮对象紫色发光、
+  空白处拖拽框选 + 一键删除、便签点击选中再点改字、拖动方案线悬空端点(拖到节点上自动吸附变绿)、
+  按住线身弯折(抓取点固定)、箭头工具在节点上按住拉出新线、
+  点击对象查看属性面板、右键打开菜单、左上角项目菜单(新建地图直接进空白画布)、
   切换方案状态(待验证→成功会自动创建目标节点)、右下角「交给 Agent」模拟地图更新。
 </footer>
 </body>
