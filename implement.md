@@ -14,6 +14,7 @@
 - **走查第 5 轮**：Excalidraw 式交互细节——悬浮发光、抓取点固定弯折、便签小尾巴、框选一键删除、拉出式新建箭头、新建地图直进空白画布。（第 5 条）
 - **走查第 6 轮**：手掌工具；拖末端时前半段固定弯折；绿色已连接线末端可拖起脱钩变灰。（第 6 条）
 - **冻结**：原型定稿，git 提交 `42bf985`，作为 Excalidraw 改造的验收样板，不再修改。
+- **走查工具链切换**：Kimi WebBridge 已删除（用户侧卸载），交互式走查改用 opencode 自带 Playwright MCP 工具（`playwright_browser_*`）；headless Chrome 纯视觉截图保留。
 
 ## 当前原型实现要点（canvas.html）
 
@@ -57,7 +58,6 @@
 - **原型解冻**：用户反馈仍有细节体验问题，冻结暂缓，继续按「记入 `设计细节.md` → 改 canvas.html → 截图验证 → 提交」迭代。
 - **截图产物**：`走查截图/` 目录，已加入 `.gitignore` 不进仓库。
 - **headless Chrome**（无交互、纯视觉）：`chrome.exe --headless=new --screenshot=<绝对Windows路径> --window-size=1600,1000 <url>`；注意 `--screenshot` 必须用绝对 Windows 路径（相对路径+中文会写盘失败）。
-- **Kimi WebBridge**（可交互，操作用户真实浏览器）：daemon 已装（`~/.kimi-webbridge`，v1.11.3 运行中，v1.11.5 可 `kimi-webbridge upgrade`），REST 入口 `POST http://127.0.0.1:10086/command`，请求体写 JSON 文件后 `--data-binary` 发送（Windows 上行内中文会损坏）；会话名 `live-dot-map-review`。
-  - **不支持 file://**（扩展无本地文件权限），需本地服务器：`node 走查截图/serve.cjs` → `http://127.0.0.1:8123/canvas.html`（CommonJS 必须 `.cjs` 后缀——上级目录 package.json 是 `"type":"module"`）。
-  - 实测通过：navigate 打开画布标签页（标签组 «活点地图走查»）、screenshot 落盘并读回，渲染与 headless 一致。
-- **Playwright MCP**：`~/.kimi-code/mcp.json` 已存在且已含 playwright 条目（另有 cloudbase/weapp_dev/tokenhub/comfyui），未覆写；MCP 与 kimi-webbridge skill 均在**新会话**生效（kimi-webbridge skill 已装入 `~/.kimi-code/skills/kimi-webbridge`）。
+- **Playwright MCP**（可交互，opencode 会话自带）：`playwright_browser_*` 工具（navigate / snapshot / click / type / take_screenshot 等），可直接打开 `file://` 或本地服务器页面；交互后截图落盘到 `走查截图/` 供 `see` 技能识别。
+- **本地服务器**（可选）：`node 走查截图/serve.cjs` → `http://127.0.0.1:8123/canvas.html`（CommonJS 必须 `.cjs` 后缀——上级目录 package.json 是 `"type":"module"`）。
+- **弃用记录**：Kimi WebBridge 实测后被弃用（用户反馈太慢），已用其官方 `uninstall` 命令卸载 daemon 并删除 `~/.kimi-webbridge` 与三个 skill 目录（kimi-code/claude/codex）；浏览器里的 WebBridge 扩展需用户在 chrome://extensions 手动移除。

@@ -16,7 +16,7 @@
 
 ## 目录结构与技术栈
 
-无构建系统、无包管理器、无依赖——全部是零依赖单文件静态 HTML（内联 CSS + 原生 JS），双击或任意静态服务器即可打开。无自动化测试，按 `index (2).html` 中的审核顺序在浏览器人工走查；视觉自验可用 WebBridge 或 headless Chrome 截图到 `走查截图/`（已 gitignore），方法见 `implement.md`「走查工具链」。
+无构建系统、无包管理器、无依赖——全部是零依赖单文件静态 HTML（内联 CSS + 原生 JS），双击或任意静态服务器即可打开。无自动化测试，按 `index (2).html` 中的审核顺序在浏览器人工走查；视觉自验可用 Playwright 或 headless Chrome 截图到 `走查截图/`（已 gitignore），方法见 `implement.md`「走查工具链」。
 
 ```
 ├── index (2).html   # 原型导航页（注意文件名带空格和括号）
