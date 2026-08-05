@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>活点地图 — 动态壁纸</title>
 <style>
 /* ============ 设计令牌(见 brand-spec.md) ============ */
@@ -59,9 +62,9 @@ input{font:inherit;color:inherit}
 .node.pulse .dot{animation:pulse 1.1s ease-out 3}
 @keyframes pulse{0%{box-shadow:0 0 0 0 var(--accent-soft)}60%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
 
-/* 路线名称:低强调 */
+/* 路线名称:低强调,双击可编辑 */
 .route-label{position:absolute;font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;
-  letter-spacing:.04em;transform:translate(-50%,0);pointer-events:none}
+  letter-spacing:.04em;transform:translate(-50%,0);cursor:text}
 
 /* 标注:黄色小便签(人与 Agent 统一),归属由细引导线表明 */
 .ann{position:absolute;font-size:12px;line-height:1.3;color:var(--fg);white-space:nowrap;
@@ -226,6 +229,9 @@ input{font:inherit;color:inherit}
 /* 行内输入(标注/名称) */
 .inline-edit{background:var(--bg);border:1px solid var(--accent);border-radius:6px;
   padding:4px 8px;font:inherit;font-size:12px;outline:none;box-shadow:var(--shadow)}
+
+/* 面板底部内部编号:极小标注,可在设置中隐藏 */
+.pnum{font-size:10px;color:var(--muted);text-align:center;padding:10px 0 2px}
 
 /* 工具提示:底部居中,切换工具时短暂显示 */
 #tool-hint{position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:40;
@@ -446,10 +452,10 @@ const seed = () => ({
     {id:'a2', target:{kind:'edge', id:'e6'}, text:'等 SD3 本地部署完成再试', hidden:false},
     {id:'a3', target:{kind:'edge', id:'e4'}, text:'先验证 24fps 是否够用', hidden:true}
   ],
-  showAnns:true, showRoutes:true,
+  showAnns:true, showRoutes:true, showNums:false,
   sel:null, multi:[], selAnn:null, hoverEdge:null, snapTo:null,
   tool:'select', bridge:true,
-  nextNum:8, nextEdge:10, nextAnn:4,
+  nextNum:8, nextEdge:10, nextAnn:4, nextNodeName:1, nextEdgeName:1,
   /* 瞬时交互态:不随快照进撤销历史 */
   hoverEdge:null, snapTo:null, selAnn:null, pendingEdgeFrom:null, drawingEdge:null
 });
@@ -470,7 +476,7 @@ function nodeAt(wx, wy, excludeId){
   return S.nodes.find(n => n.id !== excludeId && Math.hypot(n.x-wx, n.y-wy) < n.r + 12) || null;
 }
 
-function snapshot(){ return JSON.stringify({routes:S.routes,nodes:S.nodes,edges:S.edges,anns:S.anns,nextNum:S.nextNum,nextEdge:S.nextEdge,nextAnn:S.nextAnn}); }
+function snapshot(){ return JSON.stringify({routes:S.routes,nodes:S.nodes,edges:S.edges,anns:S.anns,nextNum:S.nextNum,nextEdge:S.nextEdge,nextAnn:S.nextAnn,nextNodeName:S.nextNodeName,nextEdgeName:S.nextEdgeName}); }
 function pushHistory(){
   history = history.slice(0, hIndex + 1);
   history.push(snapshot()); hIndex = history.length - 1;
@@ -611,6 +617,7 @@ function render(){
     if (singleSel) lines += `<circle class="handle" data-handle="bend" data-edge="${e.id}" cx="${g.bx}" cy="${g.by}" r="4.5"
       fill="var(--accent)" stroke="var(--bg)" stroke-width="1.5"/>`;
     if (drawing) continue; // 拉出中的临时线不画标签
+    if (inlineEdgeEdit === e.id) continue; // 方案名行内编辑中,不重建标签避免重影
     // 方案名:贝塞尔 t=0.5 的实际点,沿法线偏移约 14px 避免压线
     const lcx = g.bx + g.nx*sign*15, lcy = g.by + g.ny*sign*15 + 4;
     const lw = measureText12(e.name);
@@ -718,14 +725,16 @@ function render(){
   // 节点 / 路线名 / 标注
   world.querySelectorAll('.node,.route-label,.ann,#selbox').forEach(el => el.remove());
   if (S.showRoutes) for (const r of S.routes){
+    if (inlineRouteEdit === r.id) continue; // 路线名行内编辑中,不重建标签避免重影
     const first = S.nodes.find(n => n.route === r.id); if (!first) continue;
     const el = document.createElement('div');
-    el.className = 'route-label';
+    el.className = 'route-label'; el.dataset.route = r.id;
     el.style.left = first.x + 'px'; el.style.top = (first.y - first.r - 30) + 'px';
     el.textContent = r.name;
     world.appendChild(el);
   }
   for (const n of S.nodes){
+    if (inlineNodeEdit === n.id) continue; // 节点名行内编辑中,不重建节点避免重影
     const L = layout.get(n.id);
     const el = document.createElement('div');
     el.className = 'node' + (isSelObj('node', n.id) ? ' sel':'') + (S.snapTo === n.id ? ' snap':'');
@@ -795,10 +804,13 @@ function renderPanel(){
     title.innerHTML = `<span class="swatch" style="background:var(--fg)"></span>节点`;
     body.innerHTML =
       field('名称', `<div class="v" data-edit="name">${esc(n.name)}</div>`) +
-      field('类型', `<div class="v" style="cursor:default">${n.type}</div>`) +
+      field('类型', `<div class="v" data-edit="type" title="点击自定义类型">${esc(n.type)}</div>`) +
       field('所属路线', `<div class="v" style="cursor:default">${esc(routeById(n.route)?.name || '—')}</div>`) +
       field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(n.md)}</span>${I.ext}</div>`) +
-      annBlock('node', n.id);
+      annBlock('node', n.id) +
+      (!S.routes.some(r => r.source === n.id)
+        ? `<button class="addline" data-act="promote">${I.route} 升级成问题路线</button>` : '') +
+      (S.showNums ? `<div class="pnum">编号 #${n.num}</div>` : '');
   } else {
     const e = edgeById(S.sel.id); if (!e){ S.sel=null; p.classList.remove('on'); return; }
     const st = STATUS[e.status];
@@ -817,7 +829,8 @@ function renderPanel(){
         : '') +
       field('所属路线', `<div class="v" style="cursor:default">${esc(routeById(e.route)?.name || '—')}</div>`) +
       field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(e.md)}</span>${I.ext}</div>`) +
-      annBlock('edge', e.id);
+      annBlock('edge', e.id) +
+      (S.showNums ? `<div class="pnum">编号 #${e.id.slice(1)}</div>` : '');
   }
 }
 
@@ -829,9 +842,10 @@ function setEdgeStatus(e, s){
     // 待验证/失败 → 成功:必须创建或选择目标节点(原型:自动创建结果节点)
     const from = nodeById(e.from);
     const end = e.to ? nodeById(e.to) : { x: from.x + (e.dx||220), y: from.y + (e.dy||0) };
+    const name = `新节点${S.nextNodeName++}`;
     const n = { id:'n'+(++S.nextNum+100), num:String(S.nextNum).padStart(2,'0'),
-      name:'新结果', type:'结果', route:e.route, x:end.x, y:end.y, r:34,
-      md:`nodes/${String(S.nextNum).padStart(2,'0')}-新结果.md` };
+      name, type:'结果', route:e.route, x:end.x, y:end.y, r:34,
+      md:`nodes/${String(S.nextNum).padStart(2,'0')}-${name}.md` };
     delete e.dx; delete e.dy;
     S.nodes.push(n); e.to = n.id;
     toast('已创建目标节点并标记成功');
@@ -872,7 +886,7 @@ document.addEventListener('pointerdown', ev => {
 
 function nodeMenu(n, x, y){
   openMenu([
-    {id:'issue', icon:I.route, label:'新建问题路线', fn(){ createIssueRoute(n); }},
+    {id:'issue', icon:I.route, label:'升级为问题路线', fn(){ promoteToIssueRoute(n); }},
     {id:'ann', icon:I.ann, label:'添加标注', fn(){ addAnnotation('node', n.id); }},
     {id:'md', icon:I.md, label:'打开 Markdown', fn(){ toast('原型中不打开真实文件:' + n.md); }},
     {sep:true},
@@ -908,20 +922,28 @@ function canvasMenu(x, y){
     {id:'paste', icon:I.paste, label:'粘贴', fn(){ toast('剪贴板为空'); }}
   ], x, y);
 }
-function createIssueRoute(n){
+/* 普通节点就地升级为问题路线起点:直连方案线与对端节点并入新路线 */
+function promoteToIssueRoute(n){
+  if (S.routes.some(r => r.source === n.id)){ toast('该节点已是问题路线起点'); return; }
   pushHistory();
   const rid = 'r' + Date.now();
-  S.routes.push({ id:rid, name:'新问题', source:n.id });
-  const nn = { id:'n'+(++S.nextNum+100), num:String(S.nextNum).padStart(2,'0'),
-    name:'新问题', type:'问题', route:rid, x:n.x + 40, y:n.y + 190, r:34,
-    md:`nodes/${String(S.nextNum).padStart(2,'0')}-新问题.md` };
-  S.nodes.push(nn); select('node', nn.id); render();
-  toast('已创建问题路线');
+  S.routes.push({ id:rid, name:n.name, source:n.id });
+  n.type = '问题'; n.route = rid;
+  for (const e of S.edges){
+    if (e.from === n.id || e.to === n.id){
+      e.route = rid;
+      const other = nodeById(e.from === n.id ? e.to : e.from);
+      if (other) other.route = rid;
+    }
+  }
+  render(); renderPanel();
+  toast('已升级为问题路线');
 }
 function addNodeAt(x, y){
+  const name = `新节点${S.nextNodeName++}`;
   const n = { id:'n'+(++S.nextNum+100), num:String(S.nextNum).padStart(2,'0'),
-    name:'新节点', type:'目的', route:S.routes[0]?.id || 'r1', x, y, r:34,
-    md:`nodes/${String(S.nextNum).padStart(2,'0')}-新节点.md` };
+    name, type:'目的', route:S.routes[0]?.id || 'r1', x, y, r:34,
+    md:`nodes/${String(S.nextNum).padStart(2,'0')}-${name}.md` };
   S.nodes.push(n); select('node', n.id); render();
 }
 
@@ -936,6 +958,77 @@ function addAnnotation(kind, id){
   });
 }
 let inlineEditing = null; // 正在行内编辑的便签 {annId, input}
+let inlineEdgeEdit = null; // 正在行内编辑方案名的边 id
+let inlineNodeEdit = null; // 正在行内编辑名称的节点 id
+let inlineRouteEdit = null; // 正在行内编辑名称的路线 id
+/* 在目标元素位置弹固定定位行内输入框:Enter 提交、Escape 取消、blur 提交 */
+function popInlineEdit(rect, initial, onCommit){
+  const input = document.createElement('input');
+  input.className = 'inline-edit'; input.value = initial;
+  input.style.position = 'fixed';
+  input.style.left = (rect.left + rect.width/2) + 'px'; input.style.top = (rect.top + rect.height/2) + 'px';
+  input.style.transform = 'translate(-50%,-50%)';
+  input.style.width = Math.max(120, rect.width + 40) + 'px'; input.style.zIndex = 60;
+  document.body.appendChild(input); input.focus(); input.select();
+  let finished = false;
+  const commit = () => {
+    if (finished) return; finished = true;
+    const v = input.value.trim();
+    if (input.isConnected) input.remove(); // render() 不清理输入框,必须自己移除
+    onCommit(v);
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev => {
+    if (ev.isComposing || ev.keyCode === 229) return; // 中文输入法组词中不拦截按键
+    if (ev.key === 'Enter') commit();
+    if (ev.key === 'Escape'){ input.value = initial; commit(); }
+  });
+}
+/* 节点名双击行内编辑:保存后同步 Markdown 文件名,半径随文字自动重算 */
+function editNodeName(n, nodeEl){
+  inlineNodeEdit = n.id;
+  popInlineEdit(nodeEl.getBoundingClientRect(), n.name, v => {
+    inlineNodeEdit = null;
+    if (v && v !== n.name){ pushHistory(); n.name = v; n.md = `nodes/${n.num}-${v}.md`; }
+    render(); renderPanel();
+  });
+}
+/* 路线名双击行内编辑 */
+function editRouteName(r, labelEl){
+  inlineRouteEdit = r.id;
+  popInlineEdit(labelEl.getBoundingClientRect(), r.name, v => {
+    inlineRouteEdit = null;
+    if (v && v !== r.name){ pushHistory(); r.name = v; }
+    render(); renderPanel();
+  });
+}
+/* 方案名双击行内编辑:在标签位置弹输入框,Enter 保存 */
+function editEdgeName(e, textEl){
+  const r = textEl.getBoundingClientRect();
+  const input = document.createElement('input');
+  input.className = 'inline-edit'; input.value = e.name;
+  input.style.position = 'fixed';
+  input.style.left = (r.left + r.width/2) + 'px'; input.style.top = (r.top + r.height/2) + 'px';
+  input.style.transform = 'translate(-50%,-50%)';
+  input.style.width = Math.max(120, r.width + 40) + 'px'; input.style.zIndex = 60;
+  document.body.appendChild(input); input.focus(); input.select();
+  inlineEdgeEdit = e.id;
+  let finished = false;
+  const commit = () => {
+    if (finished) return; finished = true;
+    inlineEdgeEdit = null;
+    const v = input.value.trim();
+    if (input.isConnected) input.remove(); // render() 不清理输入框,必须自己移除
+    if (v && v !== e.name){ pushHistory(); e.name = v; e.md = `routes/${e.id}-${v}.md`; }
+    render(); renderPanel();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev => {
+    if (ev.isComposing || ev.keyCode === 229) return; // 中文输入法组词中不拦截按键
+    if (ev.key === 'Enter') commit();
+    if (ev.key === 'Escape'){ input.value = e.name; commit(); }
+  });
+}
 function inlineEdit(el, initial, done){
   const input = document.createElement('input');
   input.className = 'inline-edit'; input.value = initial;
@@ -987,12 +1080,17 @@ $('#panel-body').addEventListener('click', ev => {
   const edit = ev.target.closest('[data-edit]');
   if (edit && edit.contentEditable !== 'true'){
     const obj = S.sel.kind === 'node' ? nodeById(S.sel.id) : edgeById(S.sel.id);
-    inlineEdit(edit, obj.name, v => { if (v){ pushHistory(); obj.name = v; } render(); renderPanel(); });
+    const key = edit.dataset.edit === 'type' ? 'type' : 'name'; // 名称与类型均可点击行内编辑
+    inlineEdit(edit, obj[key], v => { if (v){ pushHistory(); obj[key] = v;
+      if (key === 'name'){
+        if (S.sel.kind === 'edge') obj.md = `routes/${obj.id}-${v}.md`;
+        else obj.md = `nodes/${obj.num}-${v}.md`; } } render(); renderPanel(); });
     return;
   }
   const act = ev.target.closest('[data-act]'); if (!act) return;
   const a = act.dataset;
   if (a.act === 'open-md'){ const o = S.sel.kind==='node'?nodeById(S.sel.id):edgeById(S.sel.id); toast('原型中不打开真实文件:' + o.md); }
+  if (a.act === 'promote') promoteToIssueRoute(nodeById(S.sel.id));
   if (a.act === 'add-ann') addAnnotation(a.kind === 'node' ? 'node' : 'edge', a.id);
   if (a.act === 'toggle-ann'){ const an = S.anns.find(x => x.id === act.closest('.annitem').dataset.ann); pushHistory(); an.hidden = !an.hidden; render(); renderPanel(); }
   if (a.act === 'del-ann'){ const item = act.closest('.annitem'); pushHistory(); S.anns = S.anns.filter(x => x.id !== item.dataset.ann); render(); renderPanel(); }
@@ -1039,6 +1137,7 @@ $('#more-btn').onclick = ev => {
   openMenu([
     {id:'anns', icon:I.eye, label:'显示标注', checked:S.showAnns, fn(){ S.showAnns = !S.showAnns; render(); }},
     {id:'routes', icon:I.route, label:'显示路线名称', checked:S.showRoutes, fn(){ S.showRoutes = !S.showRoutes; render(); }},
+    {id:'nums', icon:I.eye, label:'显示内部编号', checked:S.showNums, fn(){ S.showNums = !S.showNums; renderPanel(); }},
     {sep:true},
     {id:'tidy', icon:I.tidy, label:'自动整理', fn(){ toast('原型中未实现自动整理'); }},
     {id:'fit', icon:I.fit, label:'适应视图', fn(){ fitView(); }}
@@ -1104,12 +1203,14 @@ viewport.addEventListener('pointerdown', ev => {
     if (nodeEl){
       pushHistory();
       const fromId = nodeEl.dataset.id, from = nodeById(fromId);
-      const e = { id:'e'+(S.nextEdge++), from:fromId, to:null, name:'新方案',
-        status:'pending', route:from.route, md:`routes/e${S.nextEdge-1}-新方案.md`,
+      const eName = `方案${S.nextEdgeName++}`;
+      const e = { id:'e'+(S.nextEdge++), from:fromId, to:null, name:eName,
+        status:'pending', route:from.route, md:`routes/e${S.nextEdge-1}-${eName}.md`,
         dx:w.x-from.x, dy:w.y-from.y };
       S.edges.push(e);
       S.drawingEdge = e.id; S.sel = {kind:'edge', id:e.id}; S.selAnn = null; clearMulti();
-      drag = { type:'end', e, moved:false, anchor: bezPt(.25, edgeCurve(e)) };
+      // 新建边拉出中保持直线,不用前段锚点算法(锚点仅用于已存在边重布线)
+      drag = { type:'end', e, moved:false };
       render(); renderPanel();
     }
     return;
@@ -1176,9 +1277,10 @@ viewport.addEventListener('pointerdown', ev => {
 });
 function addEdge(fromId, toId, w){
   const from = nodeById(fromId);
-  const e = { id:'e'+(S.nextEdge++), from:fromId, to:toId, name:'新方案',
+  const eName = `方案${S.nextEdgeName++}`;
+  const e = { id:'e'+(S.nextEdge++), from:fromId, to:toId, name:eName,
     status: toId ? 'success' : 'pending', route:from.route,
-    md:`routes/e${S.nextEdge-1}-新方案.md` };
+    md:`routes/e${S.nextEdge-1}-${eName}.md` };
   if (!toId){ e.dx = w.x - from.x; e.dy = w.y - from.y; }
   S.edges.push(e); select('edge', e.id); render();
 }
@@ -1306,7 +1408,7 @@ addEventListener('pointerup', ev => {
       // 只点了一下没拖动:给个默认悬空长度
       drag.e.dx = 150; drag.e.dy = 40;
     }
-    if (S.drawingEdge === drag.e.id){ S.drawingEdge = null; setTool('select'); }
+    if (S.drawingEdge === drag.e.id) S.drawingEdge = null; // 保持箭头工具,可连续拉线
     render(); renderPanel();
   }
   if (drag && drag.type === 'bend'){
@@ -1357,6 +1459,17 @@ viewport.addEventListener('contextmenu', ev => {
   else canvasMenu(ev.clientX, ev.clientY);
 });
 world.addEventListener('dblclick', ev => {
+  // 双击方案名标签:行内编辑并保存
+  if (ev.target.tagName === 'text'){
+    const gEl = ev.target.closest('[data-edge]');
+    if (gEl){ const e = edgeById(gEl.dataset.edge); if (e){ editEdgeName(e, ev.target); return; } }
+  }
+  // 双击节点:行内编辑节点名
+  const nodeEl = ev.target.closest('.node');
+  if (nodeEl){ const n = nodeById(nodeEl.dataset.id); if (n){ editNodeName(n, nodeEl); return; } }
+  // 双击路线名:行内编辑路线名
+  const rl = ev.target.closest('.route-label');
+  if (rl){ const r = S.routes.find(x => x.id === rl.dataset.route); if (r){ editRouteName(r, rl); return; } }
   // 双击便签:重置手动偏移,回到自动避让位置
   const el = ev.target.closest('.ann'); if (!el) return;
   const a = S.anns.find(x => x.id === el.dataset.ann);
