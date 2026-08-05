@@ -51,3 +51,13 @@
   - `yarn install`：官方源直连不通，换 npmmirror 镜像后成功（`yarn install --registry https://registry.npmmirror.com`，1213s）；peer dependency 警告为正常噪音
   - `yarn start`：跑通，TypeScript 0 错误、ESLint 0 错误；本机实际端口 **3001**（3000 被占用），访问 `http://localhost:3001/` 返回 200（页面标题 Excalidraw Whiteboard）；验证后已关闭服务器
 - 第二次提交：文档类改动（新建 goal/implement、精简 AGENTS、修设计细节头部）。
+
+## 走查工具链（第 7 轮起）
+
+- **原型解冻**：用户反馈仍有细节体验问题，冻结暂缓，继续按「记入 `设计细节.md` → 改 canvas.html → 截图验证 → 提交」迭代。
+- **截图产物**：`走查截图/` 目录，已加入 `.gitignore` 不进仓库。
+- **headless Chrome**（无交互、纯视觉）：`chrome.exe --headless=new --screenshot=<绝对Windows路径> --window-size=1600,1000 <url>`；注意 `--screenshot` 必须用绝对 Windows 路径（相对路径+中文会写盘失败）。
+- **Kimi WebBridge**（可交互，操作用户真实浏览器）：daemon 已装（`~/.kimi-webbridge`，v1.11.3 运行中，v1.11.5 可 `kimi-webbridge upgrade`），REST 入口 `POST http://127.0.0.1:10086/command`，请求体写 JSON 文件后 `--data-binary` 发送（Windows 上行内中文会损坏）；会话名 `live-dot-map-review`。
+  - **不支持 file://**（扩展无本地文件权限），需本地服务器：`node 走查截图/serve.cjs` → `http://127.0.0.1:8123/canvas.html`（CommonJS 必须 `.cjs` 后缀——上级目录 package.json 是 `"type":"module"`）。
+  - 实测通过：navigate 打开画布标签页（标签组 «活点地图走查»）、screenshot 落盘并读回，渲染与 headless 一致。
+- **Playwright MCP**：`~/.kimi-code/mcp.json` 已存在且已含 playwright 条目（另有 cloudbase/weapp_dev/tokenhub/comfyui），未覆写；MCP 与 kimi-webbridge skill 均在**新会话**生效（kimi-webbridge skill 已装入 `~/.kimi-code/skills/kimi-webbridge`）。
