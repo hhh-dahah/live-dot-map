@@ -13,6 +13,7 @@
 - 本机 Codex 会话默认不直接接收图片内容；用户贴图或引用本地图片时，优先用 `see` 技能读取图片文件，不要直接回复“看不到”。
 - 先确认图片路径存在，再运行技能入口脚本（Windows：`C:/Users/Thomas/.codex/skills/see/scripts/see.ps1 <图片路径>`），然后读取输出中 `output_path=<路径>` 指向的识别结果 Markdown。
 - 只运行技能自带脚本，不自行调用模型 API；识别结果以脚本返回为准。
+- **用户贴图工作流（ShareX 通道）**：用户在 opencode 粘贴的图片由 ShareX 自动保存，固定目录 `C:/Users/Thomas/Documents/ShareX/Screenshots/<YYYY-MM>/`；报错信息里出现的文件名（如 `Weixin_*.png`）即指向该目录。用户贴图后**直接按时间排序取该目录最新文件**，不要全盘搜索。
 
 ## 目录结构与技术栈
 

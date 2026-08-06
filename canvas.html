@@ -47,6 +47,10 @@ input{font:inherit;color:inherit}
 #edges .hit{pointer-events:stroke;cursor:pointer}
 /* 方案线手柄:悬空端点 / 弯曲控制点 */
 #edges .handle{pointer-events:all;cursor:grab}
+/* 箭头/新建节点等工具下统一 crosshair:避免拖线时节点/线/手柄光标频繁切换造成"光标闪烁消失"观感 */
+#viewport.tool-place .node,
+#viewport.tool-place #edges .hit,
+#viewport.tool-place #edges .handle{cursor:crosshair}
 
 /* 节点:圆形,名称直接写在圆内(半径按文字自适应,见 nodeTextLayout) */
 .node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;
@@ -147,6 +151,7 @@ input{font:inherit;color:inherit}
 .field .k{font-size:11px;color:var(--muted);margin-bottom:2px}
 .field .v{font-size:13px;border-radius:6px;padding:3px 6px;margin-left:-6px;min-height:22px}
 .field .v:hover{background:var(--surface-hover);cursor:text}
+.field .v.pick{cursor:pointer}
 .field .v[contenteditable="true"]{background:var(--accent-soft);outline:none;cursor:text}
 .field .v.mono{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
 .field .v.link{color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer}
@@ -452,15 +457,16 @@ const seed = () => ({
     {id:'a2', target:{kind:'edge', id:'e6'}, text:'等 SD3 本地部署完成再试', hidden:false},
     {id:'a3', target:{kind:'edge', id:'e4'}, text:'先验证 24fps 是否够用', hidden:true}
   ],
-  showAnns:true, showRoutes:true, showNums:false,
+  showAnns:true, showRoutes:true, showNums:false, showFailed:true,
   sel:null, multi:[], selAnn:null, hoverEdge:null, snapTo:null,
   tool:'select', bridge:true,
-  nextNum:8, nextEdge:10, nextAnn:4, nextNodeName:1, nextEdgeName:1,
+  nextNum:8, nextEdge:10, nextAnn:4, nextNodeName:1, nextEdgeName:1, nextRouteName:1,
   /* 瞬时交互态:不随快照进撤销历史 */
   hoverEdge:null, snapTo:null, selAnn:null, pendingEdgeFrom:null, drawingEdge:null
 });
 let S = seed();
 let history = [], hIndex = -1;
+let lastClick = null; // 双击检测(标签行内编辑):{key, t}
 
 /* ---------- 工具 ---------- */
 const $ = s => document.querySelector(s);
@@ -476,7 +482,7 @@ function nodeAt(wx, wy, excludeId){
   return S.nodes.find(n => n.id !== excludeId && Math.hypot(n.x-wx, n.y-wy) < n.r + 12) || null;
 }
 
-function snapshot(){ return JSON.stringify({routes:S.routes,nodes:S.nodes,edges:S.edges,anns:S.anns,nextNum:S.nextNum,nextEdge:S.nextEdge,nextAnn:S.nextAnn,nextNodeName:S.nextNodeName,nextEdgeName:S.nextEdgeName}); }
+function snapshot(){ return JSON.stringify({routes:S.routes,nodes:S.nodes,edges:S.edges,anns:S.anns,nextNum:S.nextNum,nextEdge:S.nextEdge,nextAnn:S.nextAnn,nextNodeName:S.nextNodeName,nextEdgeName:S.nextEdgeName,nextRouteName:S.nextRouteName}); }
 function pushHistory(){
   history = history.slice(0, hIndex + 1);
   history.push(snapshot()); hIndex = history.length - 1;
@@ -541,6 +547,57 @@ function edgeCurve(e){
   return { ...g, cpx, cpy, bx, by, nx, ny, d:`M ${g.x1} ${g.y1} Q ${cpx} ${cpy} ${g.x2} ${g.y2}` };
 }
 
+/* 同 from 节点的其它方案线方向角(度):悬空线取悬空端方向,已连接线取对端方向 */
+function otherEdgeAngles(e){
+  const a = nodeById(e.from);
+  const angs = [];
+  for (const o of S.edges){
+    if (o.id === e.id || o.from !== e.from) continue;
+    let dx, dy;
+    if (o.to){ const b = nodeById(o.to); dx = b.x-a.x; dy = b.y-a.y; }
+    else { dx = o.dx||0; dy = o.dy||0; }
+    if (Math.hypot(dx,dy) > 1) angs.push(Math.atan2(dy,dx)*180/Math.PI);
+  }
+  return angs;
+}
+/* 从 baseDeg 出发,找与同节点已有线夹角 ≥ 30° 的最近角度(新建/重布线自动避让) */
+function avoidAngleDeg(baseDeg, e, minDeg = 30){
+  const angs = otherEdgeAngles(e);
+  if (!angs.length) return baseDeg;
+  const diff = (a,b) => { let d = Math.abs(a-b)%360; return d>180 ? 360-d : d; };
+  if (angs.every(a => diff(baseDeg, a) >= minDeg)) return baseDeg;
+  let best = null, bestD = 1e9;
+  for (const a of angs){
+    for (const off of [minDeg, -minDeg]){
+      const cand = a + off;
+      if (angs.every(b => diff(cand, b) >= minDeg - .01)){
+        const d = diff(cand, baseDeg);
+        if (d < bestD){ bestD = d; best = cand; }
+      }
+    }
+  }
+  if (best === null){ // 角度被占满:取与所有已有线最近距离最大的方向
+    let far = baseDeg, fD = -1;
+    for (let a = 0; a < 360; a += 2){
+      const m = Math.min(...angs.map(b => diff(a,b)));
+      if (m > fD){ fD = m; far = a; }
+    }
+    best = far;
+  }
+  return best;
+}
+/* 同 from→to 的已连接线重叠:按线在组内索引沿法线对称展开,46px 间隔(渲染时调用,自动排开) */
+function staggerParallel(e){
+  if (!e.to) return;
+  const group = S.edges.filter(o => o.from === e.from && o.to === e.to);
+  if (group.length < 2) return; // 无平行线时不动,保留用户手动弯折
+  const n = group.length;
+  const off = (group.indexOf(e) - (n - 1) / 2) * 46;
+  const a = nodeById(e.from), b = nodeById(e.to);
+  const dx = b.x-a.x, dy = b.y-a.y, d = Math.hypot(dx,dy)||1;
+  e.cx = -dy/d*off; e.cy = dx/d*off;
+}
+
 /* 节点圆内文字:每行最多 4 字,按文字量自动计算半径(离屏 canvas 测宽) */
 const measCtx = document.createElement('canvas').getContext('2d');
 let measFont = '';
@@ -569,8 +626,9 @@ function render(){
   const layout = new Map();
   for (const n of S.nodes){ const L = nodeTextLayout(n.name); n.r = L.r; layout.set(n.id, L); }
   // 同一 from 节点的多条方案线:标签法向偏移方向交替,天然错开
+  const visEdges = S.showFailed ? S.edges : S.edges.filter(e => e.status !== 'failed'); // 隐藏失败方案时仅渲染其余
   const signOf = {}, fromCnt = {};
-  for (const e of S.edges){ const i = fromCnt[e.from]||0; fromCnt[e.from] = i+1; signOf[e.id] = i%2===0 ? 1 : -1; }
+  for (const e of visEdges){ const i = fromCnt[e.from]||0; fromCnt[e.from] = i+1; signOf[e.id] = i%2===0 ? 1 : -1; }
 
   // 三种状态各一个箭头 marker,用各自状态色填充
   const css = v => getComputedStyle(document.documentElement).getPropertyValue(v);
@@ -582,7 +640,8 @@ function render(){
   // 边:透明宽命中 path + 选中高亮 path + 可见 path(二次贝塞尔)
   let lines = '', labels = '', leaders = '';
   const labelBoxes = []; // 方案名标签包围盒,供标注避让
-  for (const e of S.edges){
+  for (const e of visEdges){
+    staggerParallel(e); // 同 from→to 的平行线自动错开
     const st = STATUS[e.status], g = edgeCurve(e);
     const isSel = isSelObj('edge', e.id);
     const singleSel = S.sel && S.sel.kind==='edge' && S.sel.id===e.id;
@@ -631,7 +690,7 @@ function render(){
   const ANN_H = 24;
   // 障碍物:方案线曲线采样点 + 方案名/路线名标签包围盒 + 节点圆
   const obsPts = [], obsBoxes = [...labelBoxes];
-  for (const e of S.edges){
+  for (const e of visEdges){
     const g = edgeCurve(e);
     for (let t = 0; t <= 1.001; t += .05){
       const it = 1 - t;
@@ -780,6 +839,11 @@ function select(kind, id){
   render(); renderPanel();
 }
 function field(k, vHTML){ return `<div class="field"><div class="k">${k}</div>${vHTML}</div>`; }
+/* 所属路线显示:有关联显示路线名,否则显示"无";点击弹出下拉选择已有路线 */
+const routeNameOf = o => o.route ? (routeById(o.route)?.name || '无') : '无';
+function routePickHTML(o){
+  return `<div class="v pick" data-pick="route" title="点击选择所属路线">${esc(routeNameOf(o))}</div>`;
+}
 
 function renderPanel(){
   const p = $('#panel'), body = $('#panel-body'), title = $('#panel-title');
@@ -803,9 +867,9 @@ function renderPanel(){
     const n = nodeById(S.sel.id); if (!n){ S.sel=null; p.classList.remove('on'); return; }
     title.innerHTML = `<span class="swatch" style="background:var(--fg)"></span>节点`;
     body.innerHTML =
+      field('所属路线', routePickHTML(n)) +
       field('名称', `<div class="v" data-edit="name">${esc(n.name)}</div>`) +
       field('类型', `<div class="v" data-edit="type" title="点击自定义类型">${esc(n.type)}</div>`) +
-      field('所属路线', `<div class="v" style="cursor:default">${esc(routeById(n.route)?.name || '—')}</div>`) +
       field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(n.md)}</span>${I.ext}</div>`) +
       annBlock('node', n.id) +
       (!S.routes.some(r => r.source === n.id)
@@ -821,43 +885,37 @@ function renderPanel(){
           <span class="pip ${s==='success'?'s':s==='failed'?'f':'p'}"></span>${STATUS[s].label}</button>`).join('')}
     </div>`;
     body.innerHTML =
+      field('所属路线', routePickHTML(e)) +
       field('方案名称', `<div class="v" data-edit="name">${esc(e.name)}</div>`) +
       field('状态', seg) +
       field('起点', `<div class="v" style="cursor:default">${esc(nodeById(e.from)?.name || '—')}</div>`) +
       (e.status === 'success'
         ? field('目标节点', `<div class="v" style="cursor:default">${esc(nodeById(e.to)?.name || '—')}</div>`)
         : '') +
-      field('所属路线', `<div class="v" style="cursor:default">${esc(routeById(e.route)?.name || '—')}</div>`) +
       field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(e.md)}</span>${I.ext}</div>`) +
       annBlock('edge', e.id) +
       (S.showNums ? `<div class="pnum">编号 #${e.id.slice(1)}</div>` : '');
   }
 }
 
-/* ---------- 状态规则(PRD §5.4 强制约束) ---------- */
+/* ---------- 状态:只改颜色,与连接关系解耦 ---------- */
 function setEdgeStatus(e, s){
   if (e.status === s) return;
   pushHistory();
-  if (s === 'success' && !e.to){
-    // 待验证/失败 → 成功:必须创建或选择目标节点(原型:自动创建结果节点)
-    const from = nodeById(e.from);
-    const end = e.to ? nodeById(e.to) : { x: from.x + (e.dx||220), y: from.y + (e.dy||0) };
-    const name = `新节点${S.nextNodeName++}`;
-    const n = { id:'n'+(++S.nextNum+100), num:String(S.nextNum).padStart(2,'0'),
-      name, type:'结果', route:e.route, x:end.x, y:end.y, r:34,
-      md:`nodes/${String(S.nextNum).padStart(2,'0')}-${name}.md` };
-    delete e.dx; delete e.dy;
-    S.nodes.push(n); e.to = n.id;
-    toast('已创建目标节点并标记成功');
-  }
-  if (s !== 'success' && e.to){
-    // 成功 → 失败/待验证:移除目标关系,端点视觉脱离节点
-    const b = nodeById(e.to), a = nodeById(e.from);
-    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx,dy)||1;
-    e.dx = dx/d*(d+50); e.dy = dy/d*(d+50);
-    e.to = null;
-  }
-  e.status = s;
+  e.status = s; // 连不连节点由用户自己定(拖拽/「新建连接节点」),不随状态强制
+  render(); renderPanel();
+}
+/* 为悬空方案线自动创建目标节点并连接(右键菜单「新建连接节点」) */
+function createTargetNode(e){
+  pushHistory();
+  const from = nodeById(e.from);
+  const end = { x: from.x + (e.dx||220), y: from.y + (e.dy||0) };
+  const name = `新节点${S.nextNodeName++}`;
+  const n = { id:'n'+(++S.nextNum+100), num:String(S.nextNum).padStart(2,'0'),
+    name, type:'结果', route:e.route, x:end.x, y:end.y, r:34,
+    md:`nodes/${String(S.nextNum).padStart(2,'0')}-${name}.md` };
+  delete e.dx; delete e.dy;
+  S.nodes.push(n); e.to = n.id;
   render(); renderPanel();
 }
 
@@ -907,6 +965,7 @@ function edgeMenu(e, x, y){
     {id:'s', label:'标记成功', icon:'<span class="pip s" style="width:9px;height:9px;border-radius:50%;background:var(--success)"></span>', fn(){ setEdgeStatus(e,'success'); }},
     {id:'f', label:'标记失败', icon:'<span class="pip f" style="width:9px;height:9px;border-radius:50%;background:var(--danger)"></span>', fn(){ setEdgeStatus(e,'failed'); }},
     {id:'p', label:'标记待验证', icon:'<span class="pip p" style="width:9px;height:9px;border-radius:50%;background:var(--pending)"></span>', fn(){ setEdgeStatus(e,'pending'); }},
+    ...(e.to ? [] : [{id:'link', icon:I.node, label:'新建连接节点', fn(){ createTargetNode(e); }}]),
     {sep:true},
     {id:'ann', icon:I.ann, label:'添加标注', fn(){ addAnnotation('edge', e.id); }},
     {id:'md', icon:I.md, label:'打开 Markdown', fn(){ toast('原型中不打开真实文件:' + e.md); }},
@@ -927,7 +986,7 @@ function promoteToIssueRoute(n){
   if (S.routes.some(r => r.source === n.id)){ toast('该节点已是问题路线起点'); return; }
   pushHistory();
   const rid = 'r' + Date.now();
-  S.routes.push({ id:rid, name:n.name, source:n.id });
+  S.routes.push({ id:rid, name:`分支路线${S.nextRouteName++}`, source:n.id });
   n.type = '问题'; n.route = rid;
   for (const e of S.edges){
     if (e.from === n.id || e.to === n.id){
@@ -942,7 +1001,7 @@ function promoteToIssueRoute(n){
 function addNodeAt(x, y){
   const name = `新节点${S.nextNodeName++}`;
   const n = { id:'n'+(++S.nextNum+100), num:String(S.nextNum).padStart(2,'0'),
-    name, type:'目的', route:S.routes[0]?.id || 'r1', x, y, r:34,
+    name, type:'目的', route:null, x, y, r:34, // 新建节点默认不属于任何路线(显示"无")
     md:`nodes/${String(S.nextNum).padStart(2,'0')}-${name}.md` };
   S.nodes.push(n); select('node', n.id); render();
 }
@@ -1087,6 +1146,22 @@ $('#panel-body').addEventListener('click', ev => {
         else obj.md = `nodes/${obj.num}-${v}.md`; } } render(); renderPanel(); });
     return;
   }
+  // 所属路线:点击弹出下拉,选择已有路线或"无",或重命名当前路线
+  const pk = ev.target.closest('[data-pick="route"]');
+  if (pk){
+    const obj = S.sel.kind === 'node' ? nodeById(S.sel.id) : edgeById(S.sel.id);
+    const rect = pk.getBoundingClientRect();
+    openMenu([
+      {id:'none', label:'无', checked: !obj.route, fn(){ pushHistory(); obj.route = null; render(); renderPanel(); }},
+      ...S.routes.map(r => ({ id:'r:'+r.id, label:r.name, checked: obj.route === r.id, fn(){ pushHistory(); obj.route = r.id; render(); renderPanel(); }})),
+      ...(obj.route ? [{sep:true},{id:'ren', label:'重命名当前路线…', fn(){
+        const r = routeById(obj.route); if (!r) return;
+        const el = document.querySelector('#panel-body [data-pick="route"]');
+        if (el) inlineEdit(el, r.name, v => { if (v && v !== r.name){ pushHistory(); r.name = v; } render(); renderPanel(); });
+      }}] : [])
+    ], rect.left, rect.bottom + 4);
+    return;
+  }
   const act = ev.target.closest('[data-act]'); if (!act) return;
   const a = act.dataset;
   if (a.act === 'open-md'){ const o = S.sel.kind==='node'?nodeById(S.sel.id):edgeById(S.sel.id); toast('原型中不打开真实文件:' + o.md); }
@@ -1137,6 +1212,7 @@ $('#more-btn').onclick = ev => {
   openMenu([
     {id:'anns', icon:I.eye, label:'显示标注', checked:S.showAnns, fn(){ S.showAnns = !S.showAnns; render(); }},
     {id:'routes', icon:I.route, label:'显示路线名称', checked:S.showRoutes, fn(){ S.showRoutes = !S.showRoutes; render(); }},
+    {id:'failed', icon:I.eye, label:'显示失败方案', checked:S.showFailed, fn(){ S.showFailed = !S.showFailed; render(); }},
     {id:'nums', icon:I.eye, label:'显示内部编号', checked:S.showNums, fn(){ S.showNums = !S.showNums; renderPanel(); }},
     {sep:true},
     {id:'tidy', icon:I.tidy, label:'自动整理', fn(){ toast('原型中未实现自动整理'); }},
@@ -1203,11 +1279,12 @@ viewport.addEventListener('pointerdown', ev => {
     if (nodeEl){
       pushHistory();
       const fromId = nodeEl.dataset.id, from = nodeById(fromId);
-      const eName = `方案${S.nextEdgeName++}`;
+      // 方案名从起点节点自己的 1 开始数,区分靠内部编号
+      const eName = `方案${S.edges.filter(o => o.from === fromId).length + 1}`;
       const e = { id:'e'+(S.nextEdge++), from:fromId, to:null, name:eName,
-        status:'pending', route:from.route, md:`routes/e${S.nextEdge-1}-${eName}.md`,
-        dx:w.x-from.x, dy:w.y-from.y };
+        status:'pending', route:from.route, md:`routes/e${S.nextEdge-1}-${eName}.md` };
       S.edges.push(e);
+      e.dx = w.x - from.x; e.dy = w.y - from.y; // 方向跟随指针:拖拽时自由自定义
       S.drawingEdge = e.id; S.sel = {kind:'edge', id:e.id}; S.selAnn = null; clearMulti();
       // 新建边拉出中保持直线,不用前段锚点算法(锚点仅用于已存在边重布线)
       drag = { type:'end', e, moved:false };
@@ -1277,7 +1354,7 @@ viewport.addEventListener('pointerdown', ev => {
 });
 function addEdge(fromId, toId, w){
   const from = nodeById(fromId);
-  const eName = `方案${S.nextEdgeName++}`;
+  const eName = `方案${S.edges.filter(o => o.from === fromId).length + 1}`;
   const e = { id:'e'+(S.nextEdge++), from:fromId, to:toId, name:eName,
     status: toId ? 'success' : 'pending', route:from.route,
     md:`routes/e${S.nextEdge-1}-${eName}.md` };
@@ -1329,7 +1406,7 @@ addEventListener('pointermove', ev => {
       } else {
         if (S.snapTo){ S.snapTo = null; }
       }
-      drag.e.dx = px - a.x; drag.e.dy = py - a.y;
+      drag.e.dx = px - a.x; drag.e.dy = py - a.y; // 拖拽完全跟随指针:方向自由自定义
       // 钉住前段锚点 B(0.25):曲线前半段基本固定,后半段自由弯折,保持平滑
       if (drag.anchor){
         const g = edgeEnds(drag.e), t = .25, it = .75;
@@ -1369,6 +1446,7 @@ addEventListener('pointerup', ev => {
       const inRect = (x, y) => x >= p1.x && x <= p2.x && y >= p1.y && y <= p2.y;
       for (const n of S.nodes) if (inRect(n.x, n.y)) S.multi.push({kind:'node', id:n.id});
       for (const e of S.edges){
+        if (!S.showFailed && e.status === 'failed') continue; // 隐藏的失败线不参与框选
         const g = edgeCurve(e); let hit = inRect(g.x1, g.y1) && inRect(g.x2, g.y2);
         if (!hit) for (let t = 0; t <= 1.001 && !hit; t += .1) hit = inRect(bezPt(t, g).x, bezPt(t, g).y);
         if (hit) S.multi.push({kind:'edge', id:e.id});
@@ -1386,11 +1464,35 @@ addEventListener('pointerup', ev => {
         delFloat.classList.add('on');
       }
     } else {
-      // 框选距离太小视为点击空白:清空选择
-      S.selAnn = null; clearMulti(); select(null); render();
+      // 框选距离太小视为点击:清空选择(延迟渲染)
+      S.selAnn = null; clearMulti(); S.sel = null;
+      // 路线名/方案名标签双击行内编辑:浏览器 dblclick 会因渲染重建 DOM 而丢失,这里手动识别(按对象 key,元素实例会随渲染重建)
+      const dblTarget = ev.target.closest('.route-label') || ev.target.closest('#edges text');
+      if (dblTarget){
+        const isRoute = dblTarget.classList.contains('route-label');
+        const key = isRoute ? 'r:' + dblTarget.dataset.route : 'e:' + (dblTarget.closest('[data-edge]')?.dataset.edge || '');
+        const now = Date.now();
+        if (lastClick && lastClick.key === key && now - lastClick.t < 400){
+          lastClick = null;
+          if (isRoute){
+            const r = S.routes.find(x => x.id === dblTarget.dataset.route);
+            if (r) editRouteName(r, dblTarget);
+          } else {
+            const g = dblTarget.closest('[data-edge]');
+            if (g){ const e = edgeById(g.dataset.edge); if (e) editEdgeName(e, dblTarget); }
+          }
+        } else {
+          lastClick = { key, t: now };
+        }
+      }
+      requestAnimationFrame(() => { render(); renderPanel(); });
     }
   }
-  if (drag && drag.type === 'node' && !drag.moved) select('node', drag.n.id);
+  if (drag && drag.type === 'node' && !drag.moved){
+    S.sel = {kind:'node', id:drag.n.id}; S.selAnn = null;
+    // 延迟渲染保持 DOM 稳定:同步重建会销毁事件目标,浏览器不再派发 click/dblclick(双击编辑依赖它)
+    requestAnimationFrame(() => { render(); renderPanel(); });
+  }
   if (drag && drag.type === 'node' && drag.moved) pushHistory();
   // 手柄拖拽结束:端点命中节点则吸附连接并标为成功(变绿);未命中保持悬空灰色
   if (drag && drag.type === 'end'){
@@ -1405,15 +1507,29 @@ addEventListener('pointerup', ev => {
       }
       pushHistory();
     } else if (S.drawingEdge === drag.e.id){
-      // 只点了一下没拖动:给个默认悬空长度
-      drag.e.dx = 150; drag.e.dy = 40;
+      // 点击节点未拖动:自动生成一条默认长度悬空线,方向与同节点已有线 ≥30° 自动错开
+      const len = Math.hypot(150, 40);
+      const ang = avoidAngleDeg(Math.atan2(40, 150) * 180 / Math.PI, drag.e) * Math.PI / 180;
+      drag.e.dx = len * Math.cos(ang); drag.e.dy = len * Math.sin(ang);
     }
     if (S.drawingEdge === drag.e.id) S.drawingEdge = null; // 保持箭头工具,可连续拉线
     render(); renderPanel();
   }
   if (drag && drag.type === 'bend'){
     if (drag.moved) pushHistory();
-    else select('edge', drag.e.id);
+    else {
+      // 方案名标签双击:先编辑再选中(编辑依赖旧元素 rect,选中会渲染重建)
+      const tx = ev.target.closest('#edges text');
+      const eid = tx ? tx.closest('[data-edge]')?.dataset.edge : null;
+      if (tx && eid && lastClick && lastClick.key === 'e:'+eid && Date.now() - lastClick.t < 400){
+        lastClick = null;
+        const e = edgeById(eid);
+        if (e) editEdgeName(e, tx);
+      } else {
+        if (tx) lastClick = { key:'e:'+eid, t: Date.now() };
+      }
+      select('edge', drag.e.id);
+    }
   }
   if (drag && drag.type === 'ann'){
     if (drag.moved) pushHistory();
