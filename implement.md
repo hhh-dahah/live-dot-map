@@ -122,3 +122,12 @@
 - **A2 `docs/map-json-v1.md`**：map.json v1 schema（routes/nodes/edges/anns + meta/counters/ui/view；时间戳天级供停滞检测；`shelved` 表达「勿再提议」；写入规则含删除级联/改名同步/长度约束；示例用 PRD §13 案例建模）。
 - **A3 `docs/agent-protocol.md`**：贴入项目 AGENTS.md 的协议段——会话开始铁律（读 map.json 主动输出地图摘要：主路线位置/pending 清单/停滞路线/建议下一步）、干活后同步、语义规则、安全边界、迁移四步。
 - **A4 壁纸项目迁移（狗粮）**：explore 子代理通读 `E:/壁纸制作/PROJECT_STATUS_AND_ACCEPTANCE.md` 689 行提取 → 生成 `E:/壁纸制作/map.json`（9 路线/20 节点/60 方案线/24 标注；pending 全部显式化并挂等待原因标注；已排除平台 failed+shelved；md 链接挂现有文档不新建内容文件）；`E:/壁纸制作/AGENTS.md` 追加协议段。迁移为草稿，待用户在画布审核。
+
+## 阶段 3 执行：app.html 正式版（B/C，2026-08-06，Kimi，提交 4fb3c1b）
+
+- **B 文件 IO**：`app.html`（自 canvas.html 复制起步，1924 行）接入 File System Access API——`showDirectoryPicker` 打开项目文件夹、IndexedDB 记句柄（刷新后 queryPermission 自动重连）、无 map.json 时确认创建；编辑经 `scheduleSave()` 防抖 800ms 用 `createWritable` 原子写回；2s 轮询 `lastModified` 自动重读外部改动（Agent 改 map.json → 画布自动刷新）；降级路径：不支持的浏览器用导入/导出（动态 input + Blob 下载，Ctrl+S）。左上 pill 圆点三态（未连接/保存中/已同步）。启动参数 `?blank=1`（空白）、`?stress=N`（N 节点 +2N 边压测数据）。
+- **C 编辑落盘与 md 分片**：节点/边右键菜单与面板「打开 Markdown」接通 `openMd()`——连接文件夹时读 `md` 路径文件，读不到确认后创建（带标题模板），内置查看器展示；改名同步 md 路径（原型原有逻辑保留）。项目菜单改真实功能（打开项目文件夹/新建空白/导入/导出）。新建空白地图在连接中需确认覆盖，并写入 main 路线日期字段。
+- **顺带修遗传 bug**：canvas.html 的撤销栈只存前态，导致「最新一步无法重做」（走查实测 a4 重做后丢便签）。改标准双栈（undoStack/redoStack，上限 200 步），重做任意深度完整恢复。
+- **走查（Playwright MCP，截图在 走查截图/阶段3-*）**：加载零报错；导入 `E:/壁纸制作/map.json` 精确渲染 20 节点/60 边/9 路线/24 便签并自适应缩放；L 拉线悬空灰 → 拖端点吸附变绿；M 便签、右键菜单、面板切三态、隐藏失败过滤、撤销重做、导出下载逐项通过。
+- **压测结论**：平移/缩放走 `applyView()` 纯 CSS transform，任意节点数 60fps；全量 `render()`（拖拽节点等数据变更）200 节点约 24ms/帧（~40fps）、400 节点约 50-64ms/帧（~15-20fps）。真实项目体量（数十节点）流畅；超大图的增量渲染优化记入后续候选。
+- **待人工手测**：FS Access 文件夹直连与轮询同步无法自动化（需真实用户授权手势），留给用户在 Chrome/Edge 实测「打开项目文件夹 → 连 E:/壁纸制作 → Agent 改 map.json 后画布 2s 内自刷新」。

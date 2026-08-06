@@ -4,9 +4,9 @@
 
 ## 项目概述
 
-这是「活点地图」的 **UI 原型目录**，不是完整应用。活点地图是面向人机协作的探索状态画布：用少量节点、路线、方案线和标注表达项目探索过程，详情存本地 Markdown，人和本地 Agent 读写同一组文件。本地优先、免费开源、轻量无限画布。
+这是「活点地图」的**原型 + 单文件正式版**目录。活点地图是面向人机协作的探索状态画布：用少量节点、路线、方案线和标注表达项目探索过程，详情存本地 Markdown，人和本地 Agent 读写同一组文件。本地优先、免费开源、轻量无限画布。`canvas.html` 是冻结的验收样板，`app.html` 是在其上演进的正式版（数据契约见 `docs/map-json-v1.md`）。
 
-**当前阶段**：HTML 原型经 11 轮走查已定稿为验收样板（`canvas.html`，保持冻结）。阶段 2（基于 `D:/桌面/活点地图/excalidraw` fork 复刻画布）已完成并被否决——底层数据格式改为自研，fork 存档于 GitHub 私有仓库 `hhh-dahah/live-dot-map-canvas` 与本地 `wip-stage2` 分支，仅作交互参考。当前为阶段 3：协议层（map.json + Agent 协议）先行、画布沿 HTML 路线产品化，计划见 `docs/plans/2026-08-06-阶段3-协议层与HTML正式化.md`。
+**当前阶段**：HTML 原型经 11 轮走查已定稿为验收样板（`canvas.html`，保持冻结）。阶段 2（基于 `D:/桌面/活点地图/excalidraw` fork 复刻画布）已完成并被否决——底层数据格式改为自研，fork 存档于 GitHub 私有仓库 `hhh-dahah/live-dot-map-canvas` 与本地 `wip-stage2` 分支，仅作交互参考。阶段 3 已完成：`app.html` 正式版（map.json 读写/文件夹直连/轮询同步）+ 协议层（`docs/map-json-v1.md`、`docs/agent-protocol.md`）+ 壁纸项目迁移狗粮（`E:/壁纸制作/map.json`），计划与日志见 `docs/plans/2026-08-06-阶段3-协议层与HTML正式化.md` 与 `implement.md`。
 
 ## 图片读取
 
@@ -22,6 +22,7 @@
 ```
 ├── index (2).html   # 原型导航页（注意文件名带空格和括号）
 ├── canvas.html      # 核心原型：无限画布（验收样板，已冻结）
+├── app.html         # 正式版：自 canvas.html 演进，map.json 读写 + 项目文件夹直连（FS Access）+ 轮询同步
 ├── landing.html     # 产品落地页
 ├── goal.md          # 重大方案：阶段路线、最终形态、边界、完成标准
 ├── implement.md     # 执行与修改过程日志 + canvas.html 实现要点（改原型前先读）
@@ -29,7 +30,9 @@
 ├── 产品需求文档-PRD.md   # PRD：产品定义、数据模型、状态与连接规则、开发优先级
 ├── UI设计需求文档.md     # 界面方向、逐条界面需求与文案要求
 ├── brand-spec.md    # 设计规范：色彩令牌（OKLch）、字体栈、布局姿态、文案基调
-├── docs/plans/      # 阶段计划（explore-plan 产出，含当前阶段 3 计划）
+├── docs/map-json-v1.md   # map.json v1 schema（数据契约，读写以此为准）
+├── docs/agent-protocol.md # Agent 协议段（贴入项目 AGENTS.md：会话开始铁律/同步/迁移四步）
+├── docs/plans/      # 阶段计划（explore-plan 产出，含阶段 3 计划）
 └── 参考ui/          # Excalidraw 界面截图（布局姿态参考，非视觉验收标准）
 ```
 
