@@ -1,7 +1,8 @@
-# map.json v1 — 活点地图数据格式
+# map.json v1.1 — 活点地图数据格式
 
 > 单一事实源：人和 Agent 都读写这份文件。设计目标：**Agent 每次会话无脑全读得起**，因此长文本一律不进 map.json（进 Markdown 分片）。
 > 对应 PRD §4 术语与 §5.4 状态/连接规则；画布实现见 `app.html`。
+> v1.1（2026-08-07）：新增 `score`/`archived`（记忆生命周期：重要性标签与归档衰减）与「投影读取」约定。均为可选字段，v1 文件完全兼容，`version` 仍为 `1`。演化依据见 `docs/plans/2026-08-07-记忆系统演化路径研究.md`。
 
 ## 顶层结构
 
@@ -37,6 +38,7 @@
 | `name` | string | ≤20 字。 |
 | `source` | string\|null | 问题路线的来源节点 id；主路线/专题路线为 `null`。 |
 | `main` | bool | 可选。`true` 标记项目主路线，全图仅一条；Agent 摘要以此汇报「主路线当前位置」。 |
+| `archived` | bool | 可选。`true` = 整条路线归档折叠：其下方案线视为归档（不进投影、画布弱化），数据保留。归档 ≠ 删除。 |
 | `createdAt` / `updatedAt` | date | `YYYY-MM-DD`。 |
 
 ## nodes[] 节点
@@ -61,7 +63,9 @@
 | `to` | string\|null | 目标节点 id；`null` = 悬空。 |
 | `name` | string | ≤20 字，附着在线中。 |
 | `status` | enum | `success`（绿实线）/ `failed`（红虚线）/ `pending`（灰点线）。与连接解耦，规则见 PRD §5.4。 |
+| `score` | number | 可选。0–100 质量评分（重要性感官标签：三态是粗分类，score 是细粒度）。由人评定或 Agent 建议；用于方案排序与创新循环的比较依据。画布在方案名旁渲染徽标。 |
 | `shelved` | bool | 可选。`true` = 已否决勿再提议（仅对 `failed` 有意义）；Agent 见到不得再建议该方向。 |
+| `archived` | bool | 可选。`true` = 归档：不进投影、画布弱化半透明，数据保留，随时可恢复。归档 ≠ 删除（没有自动遗忘，判断权在人）。 |
 | `route` | string\|null | 所属路线 id。 |
 | `dx` / `dy` | number | 仅悬空线：悬空端相对起点的偏移。连接时删除。 |
 | `cx` / `cy` | number | 可选。弯折控制点相对直线中点的偏移，缺省为直线。 |
@@ -79,6 +83,20 @@
 | `dx` / `dy` | number | 可选。手动微调相对自动避让位置的偏移；双击复位即删除。 |
 | `createdAt` / `updatedAt` | date | |
 
+## 投影读取（中图模式）
+
+「百行级」是**读取预算**而非地图容量上限。地图长大后，Agent 不逐条吞全量，按投影读全局：
+
+- **小图（节点 < 100）**：照旧全读。
+- **中图（节点 ≥ 100，或全读明显占上下文）**：只读以下四块——
+  1. 主路线（`main:true`）链：按连接顺序的节点序列与当前位置；
+  2. 全部未归档的 `pending` 方案线（等待判断清单）；
+  3. 停滞路线（其下对象最大 `updatedAt` 距今 >7 天）；
+  4. 每条未归档路线的一行摘要（路线名：当前位置 / 下一步 / 最高分方案）。
+  需要细节再按 `md` 指针下探对应分片。
+- **归档对象（`archived:true` 及其路线归档的边）一律不进投影**，但仍在文件里，需要时可查。
+- 画布同步遵守：归档线在画布上弱化显示，不参与悬停命中。
+
 ## 写入规则（人与 Agent 共同遵守）
 
 1. **删除级联**：删节点 → 从它出发的方案线随删；指向它的方案线变 `to:null` + `status:pending` + 补 `dx/dy`（沿原方向外延 50px）。删方案线不连带节点。
@@ -86,7 +104,8 @@
 3. **改名同步**：节点改名 → `md` 同步为 `nodes/<num>-<新名>.md`；方案改名 → `routes/<id>-<新名>.md`（不重排 num/id）。
 4. **任何修改**：更新对象的 `updatedAt` 与文件级 `updatedAt`；新建对象递增对应 counter。
 5. **长度约束**：节点/方案/路线名 ≤20 字，标注 ≤80 字；超出写入对应 md。
-6. 未知字段保留不删（前向兼容）；`version` 不认识的文件不写。
+6. **评分与归档**：`score` 取 0–100 整数，改分即更新 `updatedAt`；归档只置 `archived:true`，**不删任何字段**，恢复即删该字段；归档对象照常可读。
+7. 未知字段保留不删（前向兼容）；`version` 不认识的文件不写。
 
 ## 示例（PRD §13 案例）
 
@@ -108,9 +127,9 @@
   ],
   "edges": [
     { "id": "e1", "from": "n1", "to": "n2", "name": "生成基础图片", "status": "success", "route": "r1", "md": "routes/e1-生成基础图片.md", "createdAt": "2026-08-01", "updatedAt": "2026-08-03" },
-    { "id": "e2", "from": "n2", "to": "n3", "name": "实现放大", "status": "success", "route": "r1", "md": "routes/e2-实现放大.md", "createdAt": "2026-08-02", "updatedAt": "2026-08-04" },
+    { "id": "e2", "from": "n2", "to": "n3", "name": "实现放大", "status": "success", "score": 85, "route": "r1", "md": "routes/e2-实现放大.md", "createdAt": "2026-08-02", "updatedAt": "2026-08-04" },
     { "id": "e3", "from": "n3", "to": "n4", "name": "生成动画", "status": "success", "route": "r1", "md": "routes/e3-生成动画.md", "createdAt": "2026-08-04", "updatedAt": "2026-08-06" },
-    { "id": "e5", "from": "n5", "to": null, "name": "修改提示词", "status": "failed", "route": "r2", "dx": 150, "dy": 110, "md": "routes/e5-修改提示词.md", "createdAt": "2026-08-03", "updatedAt": "2026-08-04" },
+    { "id": "e5", "from": "n5", "to": null, "name": "修改提示词", "status": "failed", "archived": true, "route": "r2", "dx": 150, "dy": 110, "md": "routes/e5-修改提示词.md", "createdAt": "2026-08-03", "updatedAt": "2026-08-04" },
     { "id": "e6", "from": "n5", "to": null, "name": "更换模型", "status": "pending", "route": "r2", "dx": 60, "dy": 150, "md": "routes/e6-更换模型.md", "createdAt": "2026-08-04", "updatedAt": "2026-08-04" },
     { "id": "e7", "from": "n5", "to": "n6", "name": "引入遮罩检测", "status": "success", "route": "r2", "md": "routes/e7-引入遮罩检测.md", "createdAt": "2026-08-05", "updatedAt": "2026-08-05" }
   ],
