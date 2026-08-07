@@ -6,7 +6,7 @@
 
 这是「活点地图」的**原型 + 单文件正式版**目录。活点地图是面向人机协作的探索状态画布：用少量节点、路线、方案线和标注表达项目探索过程，详情存本地 Markdown，人和本地 Agent 读写同一组文件。本地优先、免费开源、轻量无限画布。`canvas.html` 是冻结的验收样板，`app.html` 是在其上演进的正式版（数据契约见 `docs/map-json-v1.md`）。
 
-**当前阶段**：HTML 原型经 11 轮走查已定稿为验收样板（`canvas.html`，保持冻结）。阶段 2（基于 `D:/桌面/活点地图/excalidraw` fork 复刻画布）已完成并被否决——底层数据格式改为自研，fork 存档于 GitHub 私有仓库 `hhh-dahah/live-dot-map-canvas` 与本地 `wip-stage2` 分支，仅作交互参考。阶段 3 已完成：`app.html` 正式版（map.json 读写/文件夹直连/轮询同步）+ 协议层（`docs/map-json-v1.md`、`docs/agent-protocol.md`）+ 壁纸项目迁移狗粮（`E:/壁纸制作/map.json`），计划与日志见 `docs/plans/2026-08-06-阶段3-协议层与HTML正式化.md` 与 `implement.md`。
+**当前阶段**：HTML 原型经 11 轮走查已定稿为验收样板（`canvas.html`，保持冻结）。阶段 2（基于 `D:/桌面/活点地图/excalidraw` fork 复刻画布）已完成并被否决——底层数据格式改为自研，fork 存档于 GitHub 私有仓库 `hhh-dahah/live-dot-map-canvas` 与本地 `wip-stage2` 分支，仅作交互参考。阶段 3 已完成：`app.html` 正式版（map.json 读写/文件夹直连/轮询同步）+ 协议层（`docs/map-json-v1.md`、`docs/agent-protocol.md`）+ 壁纸项目迁移狗粮（`E:/壁纸制作/map.json`），计划与日志见 `docs/plans/2026-08-06-阶段3-协议层与HTML正式化.md` 与 `implement.md`。阶段 4 已完成：记忆生命周期（路径 A）——schema 与协议升至 v1.1（`score`/`archived`/投影读取/整理例程/创新循环），研究与决策记录见 `docs/plans/2026-08-07-记忆系统演化路径研究.md`。
 
 ## 图片读取
 

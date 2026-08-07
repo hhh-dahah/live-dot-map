@@ -474,6 +474,8 @@ const viewport = $('#viewport'), world = $('#world'), svg = $('#edges');
 const nodeById = id => S.nodes.find(n => n.id === id);
 const edgeById = id => S.edges.find(e => e.id === id);
 const routeById = id => S.routes.find(r => r.id === id);
+/* 归档=自身归档或所属路线归档:画布弱化、不参与悬停,数据保留 */
+const isEdgeArchived = e => !!(e.archived || (e.route && routeById(e.route)?.archived));
 const esc = t => String(t).replace(/[&<>]"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 /* 选中判断:单选或多选命中 */
 const isSelObj = (kind,id) => (S.sel && S.sel.kind===kind && S.sel.id===id) || S.multi.some(m => m.kind===kind && m.id===id);
@@ -645,6 +647,7 @@ function render(){
   for (const e of visEdges){
     staggerParallel(e); // 同 from→to 的平行线自动错开
     const st = STATUS[e.status], g = edgeCurve(e);
+    const arch = isEdgeArchived(e); // 归档线弱化渲染
     const isSel = isSelObj('edge', e.id);
     const singleSel = S.sel && S.sel.kind==='edge' && S.sel.id===e.id;
     const drawing = S.drawingEdge === e.id; // 正在从节点拉出:隐藏标签与端点手柄
@@ -661,7 +664,7 @@ function render(){
       dv = `M ${g.x1} ${g.y1} Q ${g.cpx} ${g.cpy} ${g.x2-tx*6} ${g.y2-ty*6}`;
     }
     lines += `<path data-edge="${e.id}" class="hit" d="${dv}" fill="none"
-      stroke="${st.color}" stroke-width="2" ${st.dash?`stroke-dasharray="${st.dash}"`:''}
+      stroke="${st.color}" stroke-width="2" ${st.dash?`stroke-dasharray="${st.dash}"`:''} ${arch?'opacity=".28"':''}
       marker-end="url(#${markerOf[e.status]})" stroke-linecap="round"/>`;
     // 悬空端点手柄:常显,视觉轻(select 工具下可拖动)
     if (!e.to && !drawing) lines += `<circle class="handle" data-handle="end" data-edge="${e.id}" cx="${g.x2}" cy="${g.y2}" r="4.5"
@@ -682,10 +685,14 @@ function render(){
     // 方案名:贝塞尔 t=0.5 的实际点,沿法线偏移约 14px 避免压线
     const lcx = g.bx + g.nx*sign*15, lcy = g.by + g.ny*sign*15 + 4;
     const lw = measureText12(e.name);
-    labelBoxes.push({ x: lcx - lw/2 - 3, y: lcy - 13, w: lw + 6, h: 17 });
-    labels += `<g class="hit" data-edge="${e.id}" style="pointer-events:all;cursor:pointer">
+    const hasScore = e.score != null && e.score !== ''; // 评分徽标(0-100,人打/Agent建议)
+    const bw = hasScore ? 20 : 0;
+    labelBoxes.push({ x: lcx - lw/2 - 3, y: lcy - 13, w: lw + 6 + bw, h: 17 });
+    labels += `<g class="hit" data-edge="${e.id}" style="pointer-events:all;cursor:pointer" ${arch?'opacity=".45"':''}>
       <text x="${lcx}" y="${lcy}" text-anchor="middle" font-size="12.5" font-weight="500"
-        fill="var(--fg)" stroke="var(--bg)" stroke-width="5" paint-order="stroke">${esc(e.name)}</text></g>`;
+        fill="var(--fg)" stroke="var(--bg)" stroke-width="5" paint-order="stroke">${esc(e.name)}</text>${
+      hasScore ? `<text x="${lcx + lw/2 + 11}" y="${lcy}" text-anchor="middle" font-size="10" font-weight="600"
+        fill="var(--muted)" stroke="var(--bg)" stroke-width="4" paint-order="stroke">${esc(String(e.score))}</text>` : ''}</g>`;
   }
 
   /* ---- 标注避让布局:便签位置候选打分,引导线表明归属 ---- */
@@ -890,12 +897,17 @@ function renderPanel(){
       field('所属路线', routePickHTML(e)) +
       field('方案名称', `<div class="v" data-edit="name">${esc(e.name)}</div>`) +
       field('状态', seg) +
+      field('评分', `<div class="v" style="cursor:default;display:flex;align-items:center;gap:8px">
+        <input type="number" min="0" max="100" data-score value="${e.score ?? ''}" placeholder="—"
+          style="width:64px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit">
+        <span style="color:var(--muted);font-size:12px">0–100，留空即未评</span></div>`) +
       field('起点', `<div class="v" style="cursor:default">${esc(nodeById(e.from)?.name || '—')}</div>`) +
       (e.status === 'success'
         ? field('目标节点', `<div class="v" style="cursor:default">${esc(nodeById(e.to)?.name || '—')}</div>`)
         : '') +
       field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(e.md)}</span>${I.ext}</div>`) +
       annBlock('edge', e.id) +
+      `<button class="addline" data-act="toggle-archive">${e.archived ? '取消归档（恢复显示）' : '归档此方案（弱化显示，不删数据）'}</button>` +
       (S.showNums ? `<div class="pnum">编号 #${e.id.slice(1)}</div>` : '');
   }
 }
@@ -1171,6 +1183,17 @@ $('#panel-body').addEventListener('click', ev => {
   if (a.act === 'add-ann') addAnnotation(a.kind === 'node' ? 'node' : 'edge', a.id);
   if (a.act === 'toggle-ann'){ const an = S.anns.find(x => x.id === act.closest('.annitem').dataset.ann); pushHistory(); an.hidden = !an.hidden; render(); renderPanel(); }
   if (a.act === 'del-ann'){ const item = act.closest('.annitem'); pushHistory(); S.anns = S.anns.filter(x => x.id !== item.dataset.ann); render(); renderPanel(); }
+  if (a.act === 'toggle-archive'){ const eo = edgeById(S.sel.id); if (eo){ pushHistory(); eo.archived = !eo.archived; eo.updatedAt = today(); render(); renderPanel(); } }
+});
+// 评分输入:change 时落盘,0-100 之外或留空视为未评
+$('#panel-body').addEventListener('change', ev => {
+  const si = ev.target.closest('[data-score]'); if (!si || !S.sel || S.sel.kind !== 'edge') return;
+  const eo = edgeById(S.sel.id); if (!eo) return;
+  const v = si.value.trim();
+  pushHistory();
+  if (v === '') delete eo.score;
+  else { const num = Math.round(Number(v)); if (Number.isFinite(num)) eo.score = Math.max(0, Math.min(100, num)); }
+  eo.updatedAt = today(); render(); renderPanel();
 });
 $('#panel-body').addEventListener('click', ev => {
   const sb = ev.target.closest('.seg button'); if (!sb) return;
@@ -1368,6 +1391,7 @@ addEventListener('pointermove', ev => {
     const w = toWorld(ev.clientX, ev.clientY);
     let hov = null;
     for (const e of S.edges){
+      if (isEdgeArchived(e)) continue; // 归档线不参与悬停命中
       const g = edgeCurve(e);
       for (let t = 0; t <= 1.001; t += .04){
         const p = bezPt(t, g);
