@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>活点地图 — 项目的探索状态,一眼看清</title>
+<title>活点地图 — 给 YES 工程师与 TA 的 Agent 的行车记录仪</title>
+<link rel="icon" href="favicon.ico">
 <style>
   :root {
     --bg:            oklch(100% 0 0);
@@ -105,7 +106,6 @@
   .btn-primary:hover { background: var(--fg); }
   .btn-secondary { background: transparent; color: var(--fg); border-color: var(--border); }
   .btn-secondary:hover { background: var(--surface); }
-  .btn svg { display: block; }
 
   /* ---------- Hero ---------- */
 
@@ -115,14 +115,14 @@
   }
 
   .hero h1 {
-    font-size: clamp(28px, 5.5vw, 44px);
+    font-size: clamp(24px, 4.6vw, 38px);
     font-weight: 700;
-    line-height: 1.25;
+    line-height: 1.3;
     letter-spacing: -0.01em;
   }
 
   .hero .sub {
-    margin: 18px auto 0;
+    margin: 16px auto 0;
     max-width: 560px;
     color: var(--muted);
     font-size: clamp(14px, 2.4vw, 16px);
@@ -136,19 +136,25 @@
     flex-wrap: wrap;
   }
 
-  /* ---------- 地图示意图 ---------- */
+  /* ---------- 产品截图 ---------- */
 
   .map-frame {
     margin: clamp(40px, 6vw, 64px) auto 0;
-    max-width: 880px;
+    max-width: 960px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
     box-shadow: 0 1px 5px rgba(27, 27, 31, .12);
-    padding: clamp(12px, 2.5vw, 24px);
+    padding: clamp(8px, 1.5vw, 14px);
   }
 
-  .map-frame svg { display: block; width: 100%; height: auto; }
+  .map-frame img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
 
   .map-caption {
     margin-top: 12px;
@@ -156,16 +162,6 @@
     color: var(--muted);
     text-align: center;
   }
-
-  /* 示意图内部样式:状态色只出现在这里与状态图例 */
-  .m-node   { fill: var(--bg); stroke: var(--fg); stroke-width: 1.4; }
-  .m-num    { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; }
-  .m-name   { fill: var(--fg); font-size: 12.5px; font-weight: 500; }
-  .m-scheme { fill: var(--muted); font-size: 12px; }
-  .m-src    { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 4; }
-  .m-ok     { stroke: var(--success); stroke-width: 2; fill: none; }
-  .m-bad    { stroke: var(--danger); stroke-width: 2; fill: none; stroke-dasharray: 7 6; }
-  .m-wait   { stroke: var(--pending); stroke-width: 2; fill: none; stroke-dasharray: 0.5 6; stroke-linecap: round; }
 
   /* ---------- 通用小节 ---------- */
 
@@ -181,53 +177,113 @@
   }
   .sec-head p { margin-top: 10px; color: var(--muted); font-size: 14px; }
 
-  /* ---------- 三列价值点 ---------- */
+  /* ---------- 一键接入 ---------- */
 
-  .values {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: clamp(20px, 3vw, 32px);
-  }
-
-  .value h3 {
-    font-size: 16px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .value h3::before {
-    content: "";
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    border: 1.4px solid var(--fg);
-    flex: none;
-  }
-  .value p { margin-top: 10px; color: var(--muted); font-size: 14px; }
-
-  /* ---------- 三种方案状态 ---------- */
-
-  .states {
+  .join-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: clamp(16px, 2.5vw, 24px);
   }
 
-  .state {
+  .jcard {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 20px;
+    border-radius: 10px;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
-  .state svg { display: block; width: 100%; height: auto; }
-  .state h3 { margin-top: 14px; font-size: 14px; font-weight: 600; }
-  .state p { margin-top: 4px; font-size: 13px; color: var(--muted); }
+  .jcard h3 {
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+  }
+  .jcard h3 .n {
+    display: inline-flex;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    margin-right: 8px;
+    flex: none;
+  }
+  .jcard p { font-size: 13.5px; color: var(--fg); }
+  .jcard .hint { font-size: 12.5px; color: var(--muted); }
+  .jcard .btn { align-self: flex-start; height: 38px; padding: 0 16px; font-size: 13px; }
 
-  .s-node { fill: var(--bg); stroke: var(--fg); stroke-width: 1.4; }
-  .s-ok   { stroke: var(--success); stroke-width: 2; fill: none; }
-  .s-bad  { stroke: var(--danger); stroke-width: 2; fill: none; stroke-dasharray: 6 5; }
-  .s-wait { stroke: var(--pending); stroke-width: 2; fill: none; stroke-dasharray: 0.5 5.5; stroke-linecap: round; }
+  .cmd {
+    position: relative;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 64px 12px 14px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--fg);
+  }
+  .cmd button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--fg);
+  }
+  .cmd button:hover { background: var(--accent-soft); }
+
+  .dls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: clamp(20px, 3vw, 28px);
+    justify-content: center;
+  }
+  .dls a {
+    flex: 1;
+    min-width: 200px;
+    max-width: 300px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    background: var(--bg);
+    font-size: 13.5px;
+    font-weight: 500;
+    transition: border-color .15s ease;
+  }
+  .dls a:hover { border-color: var(--accent); }
+  .dls a span { display: block; font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+
+  /* ---------- 功能演示(GIF 占位) ---------- */
+
+  .fdemos {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(20px, 3vw, 32px);
+  }
+
+  .gifph {
+    aspect-ratio: 16 / 10;
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .fdemo h3 { margin-top: 14px; font-size: 15px; font-weight: 600; }
+  .fdemo p { margin-top: 6px; font-size: 13.5px; color: var(--muted); }
 
   /* ---------- 本地优先 ---------- */
 
@@ -250,6 +306,13 @@
   }
   .tree .cmt { color: var(--muted); }
 
+  /* ---------- 底部 CTA ---------- */
+
+  .bottom-cta { text-align: center; }
+  .bottom-cta h2 { font-size: clamp(20px, 3.4vw, 26px); font-weight: 700; }
+  .bottom-cta p { margin-top: 8px; color: var(--muted); font-size: 14px; }
+  .bottom-cta .hero-actions { margin-top: 24px; }
+
   /* ---------- 页脚 ---------- */
 
   footer {
@@ -270,7 +333,7 @@
   /* ---------- 响应式 ---------- */
 
   @media (max-width: 760px) {
-    .values, .states { grid-template-columns: 1fr; }
+    .join-grid, .fdemos { grid-template-columns: 1fr; }
     .local { grid-template-columns: 1fr; }
   }
 </style>
@@ -288,8 +351,10 @@
       活点地图
     </a>
     <nav class="nav-links">
-      <a href="#">GitHub</a>
-      <a class="nav-cta" href="canvas.html">开始探索</a>
+      <a href="#features">功能</a>
+      <a href="#join">接入</a>
+      <a href="agent-kit/index.html">说明</a>
+      <a class="nav-cta" href="app.html">打开画布</a>
     </nav>
   </div>
 </header>
@@ -298,140 +363,76 @@
 
   <!-- Hero -->
   <section class="hero wrap">
-    <h1>项目的探索状态,一眼看清</h1>
-    <p class="sub">少量节点、路线和方案线,表达项目正在向哪里推进、哪些方案已走通、哪些已失败、哪些仍待验证。</p>
+    <h1>给 YES 工程师与 TA 的 Agent 的行车记录仪</h1>
+    <p class="sub">人机共享的探索地图:人看画布,Agent 读 map.json</p>
     <div class="hero-actions">
-      <a class="btn btn-primary" href="canvas.html">开始探索</a>
-      <a class="btn btn-secondary" href="#">
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-          <path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38l-.01-1.49c-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48l-.01 2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/>
-        </svg>
-        在 GitHub 查看
-      </a>
+      <a class="btn btn-primary" href="app.html">打开画布</a>
+      <a class="btn btn-secondary" href="#join">一键接入 Agent</a>
     </div>
 
-    <!-- 地图示意图:动态壁纸主路线 + 幽灵脸问题路线 -->
     <div class="map-frame">
-      <svg viewBox="0 0 720 400" role="img" aria-label="探索地图示意图">
-        <defs>
-          <marker id="arrow-ok" viewBox="0 0 10 10" refX="8" refY="5"
-                  markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M0 0 L10 5 L0 10 z" style="fill: var(--success);"/>
-          </marker>
-        </defs>
-
-        <!-- 主路线方案线 -->
-        <line class="m-ok" x1="86" y1="110" x2="193" y2="110" marker-end="url(#arrow-ok)"/>
-        <line class="m-ok" x1="240" y1="110" x2="347" y2="110" marker-end="url(#arrow-ok)"/>
-        <line class="m-ok" x1="394" y1="110" x2="531" y2="110" marker-end="url(#arrow-ok)"/>
-        <text class="m-scheme" x="141" y="95" text-anchor="middle">生成基础图片</text>
-        <text class="m-scheme" x="295" y="95" text-anchor="middle">实现放大</text>
-        <text class="m-scheme" x="464" y="95" text-anchor="middle">生成动画</text>
-
-        <!-- 主路线节点 -->
-        <circle class="m-node" cx="64" cy="110" r="22"/>
-        <text class="m-num" x="64" y="114" text-anchor="middle">01</text>
-        <text class="m-name" x="64" y="152" text-anchor="middle">开始</text>
-
-        <circle class="m-node" cx="218" cy="110" r="22"/>
-        <text class="m-num" x="218" y="114" text-anchor="middle">02</text>
-        <text class="m-name" x="218" y="152" text-anchor="middle">生成图片</text>
-
-        <circle class="m-node" cx="372" cy="110" r="22"/>
-        <text class="m-num" x="372" y="114" text-anchor="middle">03</text>
-        <text class="m-name" x="372" y="152" text-anchor="middle">完成放大</text>
-
-        <circle class="m-node" cx="556" cy="110" r="22"/>
-        <text class="m-num" x="556" y="114" text-anchor="middle">04</text>
-        <text class="m-name" x="556" y="152" text-anchor="middle">动态壁纸完成</text>
-
-        <!-- 问题路线来源 -->
-        <line class="m-src" x1="218" y1="132" x2="218" y2="275"/>
-        <text class="m-scheme" x="230" y="208" font-size="11">来源</text>
-
-        <!-- 幽灵脸问题路线 -->
-        <line class="m-bad" x1="233" y1="288" x2="418" y2="218"/>
-        <text class="m-scheme" x="328" y="238" text-anchor="middle">修改提示词</text>
-
-        <line class="m-wait" x1="231" y1="317" x2="418" y2="380"/>
-        <text class="m-scheme" x="326" y="372" text-anchor="middle">更换模型</text>
-
-        <line class="m-ok" x1="240" y1="300" x2="531" y2="300" marker-end="url(#arrow-ok)"/>
-        <text class="m-scheme" x="387" y="285" text-anchor="middle">引入遮罩检测</text>
-
-        <circle class="m-node" cx="218" cy="300" r="22"/>
-        <text class="m-num" x="218" y="304" text-anchor="middle">05</text>
-        <text class="m-name" x="218" y="342" text-anchor="middle">幽灵脸问题</text>
-
-        <circle class="m-node" cx="556" cy="300" r="22"/>
-        <text class="m-num" x="556" y="304" text-anchor="middle">06</text>
-        <text class="m-name" x="556" y="342" text-anchor="middle">问题解决</text>
-      </svg>
-      <p class="map-caption">一张地图,两条路线:项目主路线与幽灵脸问题路线</p>
+      <img src="assets/landing-hero.png" alt="活点地图画布实拍:主路线绿色实线推进,问题路线红色虚线悬空,便签挂在节点上">
+      <p class="map-caption">画布实拍:绿实线走通、红虚线证伪、灰点线待验证,便签挂在节点与方案上</p>
     </div>
   </section>
 
-  <!-- 三列价值点 -->
-  <section>
-    <div class="wrap">
-      <div class="sec-head">
-        <h2>为什么不一样</h2>
-      </div>
-      <div class="values">
-        <div class="value">
-          <h3>地图,不是文档容器</h3>
-          <p>画布只保留结构和状态。详细背景、尝试过程和结论,继续留在本地 Markdown。</p>
-        </div>
-        <div class="value">
-          <h3>探索,不是任务管理</h3>
-          <p>没有截止日期、负责人和固定流程。探索允许失败、回退、悬空和新的问题路线。</p>
-        </div>
-        <div class="value">
-          <h3>Agent 原生,不是 AI 按钮</h3>
-          <p>Agent 与人共同操作地图:创建节点、建立路线、更新方案状态、维护 Markdown。</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 三种方案状态 -->
-  <section>
+  <!-- 一键接入 -->
+  <section id="join">
     <div class="wrap">
       <div class="sec-head center">
-        <h2>三种方案状态</h2>
-        <p>状态属于方案线,不属于节点。</p>
+        <h2>一分钟接入你的项目</h2>
+        <p>给用 Codex、Kimi Code、Claude Code 等 AI 编程助手的人。接入后,Agent 每次会话开始先读地图,主动汇报:当前进展、等你判断的方案、停滞的路线。</p>
       </div>
-      <div class="states">
-        <div class="state">
-          <svg viewBox="0 0 220 56" aria-label="成功方案:绿色实线连接结果节点">
-            <defs>
-              <marker id="arrow-s-ok" viewBox="0 0 10 10" refX="8" refY="5"
-                      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M0 0 L10 5 L0 10 z" style="fill: var(--success);"/>
-              </marker>
-            </defs>
-            <circle class="s-node" cx="26" cy="28" r="12"/>
-            <line class="s-ok" x1="40" y1="28" x2="170" y2="28" marker-end="url(#arrow-s-ok)"/>
-            <circle class="s-node" cx="194" cy="28" r="12"/>
-          </svg>
-          <h3>成功</h3>
-          <p>方案已走通,实线连接结果节点。</p>
+      <div class="join-grid">
+        <div class="jcard">
+          <h3><span class="n">1</span>复制接入协议</h3>
+          <p>协议告诉 Agent:map.json 怎么读、什么时候汇报全局、干活后怎么同步、什么不许碰。</p>
+          <button class="btn btn-primary" id="copy-snippet">复制接入协议</button>
+          <p class="hint">也可以手动打开 agent-kit/AGENTS.snippet.md,全文复制。</p>
         </div>
-        <div class="state">
-          <svg viewBox="0 0 220 56" aria-label="失败方案:红色虚线,悬空保留">
-            <circle class="s-node" cx="26" cy="28" r="12"/>
-            <line class="s-bad" x1="40" y1="28" x2="176" y2="20"/>
-          </svg>
-          <h3>失败</h3>
-          <p>方案已证伪,虚线悬空,记录保留。</p>
+        <div class="jcard">
+          <h3><span class="n">2</span>贴给你的 Agent</h3>
+          <p>在你的项目目录里,对 Agent 说一句:</p>
+          <div class="cmd"><span id="prompt-text">把 agent-kit/AGENTS.snippet.md 的内容追加到我的 AGENTS.md 末尾,以后按里面的活点地图协议工作。</span><button id="copy-prompt">复制</button></div>
+          <p class="hint">它自己会完成配置。已有的记录文件也不用扔——对它说「初始化活点地图」,它会读你的记录生成地图草稿,你在画布上审核。</p>
         </div>
-        <div class="state">
-          <svg viewBox="0 0 220 56" aria-label="待验证方案:灰色点线,悬空等待">
-            <circle class="s-node" cx="26" cy="28" r="12"/>
-            <line class="s-wait" x1="40" y1="28" x2="176" y2="36"/>
-          </svg>
-          <h3>待验证</h3>
-          <p>方案未确认,点线悬空,等待结论。</p>
+        <div class="jcard">
+          <h3><span class="n">3</span>连上项目文件夹</h3>
+          <p>打开画布,菜单里选「打开项目文件夹」。画布改动自动存进 map.json;Agent 改了,画布两秒内自己刷新。</p>
+          <a class="btn btn-secondary" href="app.html">打开画布</a>
+          <p class="hint">文件夹直连需要 Chrome 或 Edge;不行就导出 map.json 交给 Agent,一样能用。</p>
+        </div>
+      </div>
+      <div class="dls">
+        <a href="agent-kit/AGENTS.snippet.md" download>AGENTS.snippet.md<span>协议段全文,贴入项目 AGENTS.md</span></a>
+        <a href="agent-kit/map.template.json" download>map.template.json<span>空白地图模板:一条主路线 + 一个「开始」节点</span></a>
+        <a href="agent-kit/index.html">接入说明页<span>图文版详细指引</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 功能演示(GIF 占位) -->
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>画布上能干什么</h2>
+        <p>状态属于方案线,不属于节点;探索允许失败、回退、悬空。</p>
+      </div>
+      <div class="fdemos">
+        <div class="fdemo">
+          <div class="gifph">演示 GIF 待补充</div>
+          <h3>建节点 · 拉方案线</h3>
+          <p>N 建节点,L 从节点拉出方案线。绿实线走通、红虚线证伪、灰点线待验证——切状态只改颜色,不动连接。</p>
+        </div>
+        <div class="fdemo">
+          <div class="gifph">演示 GIF 待补充</div>
+          <h3>便签标注 · 评分归档</h3>
+          <p>黄便签挂在节点与方案线上记结论;结果打分 0–100;归档只弱化、不删除,历史永远翻得回来。</p>
+        </div>
+        <div class="fdemo">
+          <div class="gifph">演示 GIF 待补充</div>
+          <h3>与 Agent 共享一张图</h3>
+          <p>画布和 Agent 读写同一个 map.json。你改完它接着用;它改完,画布两秒自刷新。</p>
         </div>
       </div>
     </div>
@@ -442,15 +443,26 @@
     <div class="wrap local">
       <div class="local-copy">
         <h2>本地优先</h2>
-        <p>地图数据和 Markdown 位于本地项目目录。离线可用,不要求登录账号,不要求云数据库。</p>
-        <p>Codex、Claude Code、Cursor、Gemini CLI 等 Agent 通过项目文件读写同一张地图。不同 Agent,同一份地图。</p>
+        <p>地图数据和 Markdown 都在你自己的项目目录里。离线可用,不要账号,不要云数据库。</p>
+        <p>Codex、Kimi Code、Claude Code 等 Agent 通过项目文件读写同一张地图。不同 Agent,同一份记忆。</p>
+        <p>判断权永远在人:评分你打、归档你确认、画布上随便改,Agent 下次读到的就是你的版本。</p>
       </div>
       <div class="tree">项目目录/
-├── MAP.html          <span class="cmt"># 地图入口</span>
-├── MAP.md            <span class="cmt"># 地图说明与项目概览</span>
-├── nodes/            <span class="cmt"># 节点详情</span>
-├── routes/           <span class="cmt"># 路线与方案记录</span>
-└── AGENTS.md         <span class="cmt"># 项目级 Agent 指令</span></div>
+├── map.json          <span class="cmt"># 单一事实源:路线/节点/方案线/标注</span>
+├── nodes/  routes/   <span class="cmt"># 节点与方案的 Markdown 详情分片</span>
+└── AGENTS.md         <span class="cmt"># 项目级 Agent 指令(含活点地图协议段)</span></div>
+    </div>
+  </section>
+
+  <!-- 底部 CTA -->
+  <section class="bottom-cta">
+    <div class="wrap">
+      <h2>先让 Agent 给你汇报一次全局</h2>
+      <p>复制协议 → 贴给 Agent → 连上文件夹。从下一次会话开始,它先开口。</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#join">一键接入 Agent</a>
+        <a class="btn btn-secondary" href="app.html">先看看画布</a>
+      </div>
     </div>
   </section>
 
@@ -459,12 +471,150 @@
 <footer>
   <div class="wrap foot">
     <span class="foot-name">活点地图</span>
-    <span>免费开源,MIT 许可证 · 画布基于 Excalidraw 改造,保留其版权与许可声明 · 本地优先</span>
+    <span>免费开源,MIT 许可证 · 本地优先 · 本体为零依赖单文件 HTML</span>
   </div>
 </footer>
 
+<!-- 协议段内嵌副本:file:// 下 fetch 被浏览器拦截时,复制按钮回退用这份。
+     由 agent-kit/AGENTS.snippet.md 生成,改协议请先改源文件并同步此处。 -->
+<script type="text/plain" id="snippet-fallback"><!-- 本文件由 docs/agent-protocol.md 的「协议正文」生成,请勿手改;改协议先改源文件 -->
+
+### 活点地图
+
+本项目用「活点地图」记录探索状态：`map.json` 是**单一事实源**（路线/节点/方案线/标注的结构、状态、布局），长文本详情在 `nodes/`、`routes/` 的 Markdown 分片。你（Agent）和人读写同一组文件。
+
+#### 会话开始铁律
+
+每次会话开始，读完入口文档后**必须读 `map.json`**，然后**主动输出一次地图摘要**（不用等用户问）：
+
+1. 主路线（`main:true`）当前推进到哪个节点；
+2. 等待用户验收/判断的方案清单（`status:pending`，附方案名与一句话等待原因）；
+3. 停滞路线：其下节点与方案线的最大 `updatedAt` 距今超过 7 天的路线；
+4. 你建议的下一步（一条即可）。
+
+摘要控制在 10 行以内。之后正常响应用户指令。
+
+#### 干活后同步
+
+完成实质工作（实验、验证、决策、发现新问题）后，**会话结束前更新 `map.json`**：
+
+- 新尝试 → 在对应节点下新增方案线（`status:pending`，递增 `counters.edge`）；
+- 有客观证据的验证结果 → 改 `status` 为 `success`/`failed`，并把证据一句话写进该方案的标注或 md；
+- 需要人审美/判断才能定论的 → **保持 `pending`**，写一条标注说明「等什么」（如「等用户播放 S1–S6 选优胜」）；
+- 明确否决、以后不得再提议的方向 → `status:failed` + `shelved:true` + 标注写清否决原因；
+- 发现新的独立问题 → 可新建问题路线（`source` 指向来源节点），不要把问题塞进主路线节点名里；
+- 更新被改动对象的 `updatedAt` 与文件级 `updatedAt`；新建对象递增对应 counter，**编号不复用**。
+
+#### 投影读取（地图变大时）
+
+- 节点 < 100：`map.json` 无脑全读。
+- 节点 ≥ 100（或读取占用明显）时，改读**投影**四块，细节按 `md` 指针按需下探：
+  1. 主路线链（`main:true` 路线及其节点/方案）；
+  2. 全部未归档的 `status:pending` 方案（等待人判断清单）；
+  3. 停滞路线（最大 `updatedAt` 距今 > 7 天）；
+  4. 每条未归档路线的一行摘要（路线名 + 当前所在节点 + 最近状态）。
+- `archived:true` 的路线与方案线**一律不进投影**；只有用户明确问起历史时，才回 `map.json` 全文里翻归档区。
+
+#### 整理例程（睡眠巩固）
+
+用户说「整理地图」，或每 ~10 个会话且地图明显变乱时执行。先向用户说明要做什么，做完汇报改动清单：
+
+1. 合并冗余：同义节点、重复方案线合并，保留信息更全的一方；
+2. 建议归档：停滞 > 30 天且低分（`score < 60`）或 `failed` 且 `shelved` 的方案/路线 → 建议置 `archived:true`，**逐条等用户确认后才改**；只归档，永不删除；
+3. 建议沉淀：走通的绿线（`success` 且 `score ≥ 80`）→ 建议把 SOP 写进 `AGENTS.md` 或 `skills/`，让经验下沉为习惯；
+4. 重算每条未归档路线的一行摘要，保证投影新鲜。
+
+#### 创新循环
+
+会话摘要之后，或用户问「接下来做什么 / 有什么新想法」时，做一次**结构空隙检查**，从地图结构本身找机会：
+
+- 停滞路线里值得复活的（停滞原因已消失）；
+- 高分方案（`score ≥ 80`）可迁移到其他路线的场景；
+- 两条路线的潜在交叉点（一条线的方案可能解另一条线的问题）;
+- 低分但方向重要的路线，值得换条路径再试的。
+
+只提 1–2 条，每条必须引用具体节点/方案 id 和理由，不说套话；没有就直说没有。
+
+#### 语义规则（违反即数据损坏）
+
+- 状态与连接解耦：改 `status` 不动 `to/dx/dy`；`to:null` = 悬空。手动状态变更不得增删连接。
+- 节点只表达目的/问题/结果，方案永远在线（`edges`）上，不建成节点。
+- 名称 ≤20 字、标注 ≤80 字；长内容写进 `nodes/`、`routes/` 分片，map.json 里只留结论。
+- 分片命名：节点 `nodes/<num>-<名称>.md`，方案 `routes/<id>-<方案名>.md`；改名时同步改路径，不新建重复文件。
+- `shelved:true` 的方案：**禁止再次提议**（它已死，原因在标注里）。
+- `score`（0–100）由人打或你建议、人确认；只表达「结果有多好」，不改动 `status`；不要自动评分。
+- `archived:true` 只置标志不删数据；归档对象不进投影、画布弱化显示，但你随时可以回全文读它。
+- 隐藏标注（`hidden:true`）你始终可读，只是人暂时不看。
+
+#### 安全边界
+
+- 删除节点/路线、一次性改动超过 10 个对象前，先向用户说明并等确认。
+- 不写 `version` 字段不认识的文件；遇到未知字段保留原样。
+- 只读写本项目目录。
+
+#### 初始化（项目还没有 map.json 时）
+
+用户说「转成地图/初始化活点地图」时，按迁移四步：
+
+1. 读入口文档（AGENTS.md 指定的）+ 按链接下探一层；
+2. 提取：路线（按主题聚类）、节点（目的/问题/结果）、方案（每次尝试），从文字推断状态（「确定为默认/已验证」→ success，「未通过/弃用」→ failed，「待用户/未验收」→ pending）；
+3. 生成 `map.json` 草稿，节点挂**现有** md 链接（不新建内容文件）；
+4. 明确告诉用户：这是草稿，请他在画布上审核修正——判断权在人。
+</script>
+
 <script>
-  // 平滑滚动:仅处理页内锚点,使用 window.scrollTo
+  // ---- 复制:优先 fetch 协议源文件,file:// 下回退到页内内嵌副本 ----
+  var snippetCache = null;
+  function getSnippet() {
+    if (snippetCache) return Promise.resolve(snippetCache);
+    return fetch('agent-kit/AGENTS.snippet.md').then(function (r) {
+      if (!r.ok) throw new Error('http ' + r.status);
+      return r.text();
+    }).catch(function () {
+      return document.getElementById('snippet-fallback').textContent;
+    }).then(function (t) {
+      snippetCache = t.replace(/\r\n/g, '\n');
+      return snippetCache;
+    });
+  }
+
+  function flash(btn, okText) {
+    var old = btn.textContent;
+    btn.textContent = okText;
+    setTimeout(function () { btn.textContent = old; }, 1500);
+  }
+
+  function doCopy(text, btn) {
+    function legacy() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      flash(btn, '已复制 ✓');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        flash(btn, '已复制 ✓');
+      }, legacy);
+    } else {
+      legacy();
+    }
+  }
+
+  document.getElementById('copy-snippet').addEventListener('click', function () {
+    var btn = this;
+    getSnippet().then(function (t) { doCopy(t, btn); });
+  });
+
+  document.getElementById('copy-prompt').addEventListener('click', function () {
+    doCopy(document.getElementById('prompt-text').textContent, this);
+  });
+
+  // ---- 平滑滚动:仅处理页内锚点 ----
   document.querySelectorAll('a[href^="#"]').forEach(function (link) {
     link.addEventListener('click', function (event) {
       var id = link.getAttribute('href');
@@ -476,7 +626,7 @@
     });
   });
 
-  // 导航:滚动后显示发丝边框
+  // ---- 导航:滚动后显示发丝边框 ----
   var nav = document.getElementById('nav');
   function onScroll() {
     nav.classList.toggle('is-scrolled', window.scrollY > 8);

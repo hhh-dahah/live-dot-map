@@ -1,0 +1,82 @@
+<!doctype html>
+<!-- agent-kit 说明页:替代裸 md 链接,解决公网 md 编码乱码 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-kit · 一分钟把活点地图接入你的项目</title>
+<style>
+  :root{
+    --bg: oklch(100% 0 0); --surface: oklch(98.6% 0.004 286); --fg: oklch(27% 0.015 285);
+    --muted: oklch(55% 0.02 285); --border: oklch(91% 0.008 285);
+    --accent: oklch(54% 0.16 286); --accent-soft: oklch(91% 0.035 288); --ink: oklch(24% 0.01 285);
+    --r: 10px; --shadow: 0 2px 12px oklch(24% 0.01 285 / .08);
+  }
+  *{box-sizing:border-box;margin:0}
+  body{font:15px/1.75 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;background:var(--surface);color:var(--fg);
+    display:flex;justify-content:center;padding:40px 16px 64px}
+  main{width:min(640px,100%)}
+  h1{font-size:22px;margin-bottom:6px}
+  .sub{color:var(--muted);margin-bottom:28px}
+  section{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);
+    padding:18px 20px;margin-bottom:16px}
+  h2{font-size:15px;margin-bottom:8px}
+  h2 .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
+    align-items:center;justify-content:center;font-size:12px;margin-right:8px}
+  p{margin:6px 0;color:var(--fg)}
+  .cmd{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:8px;
+    padding:12px 14px;margin:10px 0;font-size:13.5px;line-height:1.7}
+  .cmd button{position:absolute;top:8px;right:8px;border:1px solid var(--border);background:var(--bg);
+    border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--fg)}
+  .cmd button:hover{background:var(--accent-soft)}
+  .files{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .files a{flex:1;min-width:180px;text-decoration:none;color:var(--fg);border:1px solid var(--border);
+    border-radius:8px;padding:10px 14px;background:var(--surface)}
+  .files a:hover{border-color:var(--accent)}
+  .files b{display:block;font-size:13.5px}
+  .files span{font-size:12px;color:var(--muted)}
+  .note{font-size:13px;color:var(--muted);margin-top:8px}
+  a.plain{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+  <h1>把活点地图接入你的项目</h1>
+  <p class="sub">给使用 AI 编程助手(Codex / Kimi Code / Claude Code 等)的人。接入后,Agent 每次会话开始会主动汇报项目全局:当前进展、等你判断的方案、停滞的路线。</p>
+
+  <section>
+    <h2><span class="n">1</span>让 Agent 自己接(推荐)</h2>
+    <p>在项目目录里对你的 Agent 说一句:</p>
+    <div class="cmd" id="cmd1">把 agent-kit/AGENTS.snippet.md 的内容追加到我的 AGENTS.md 末尾,以后按里面的活点地图协议工作。<button onclick="copyCmd()">复制</button></div>
+    <p class="note">前提是这两个文件在项目目录里——本页下方可下载。</p>
+  </section>
+
+  <section>
+    <h2><span class="n">2</span>或者手动接</h2>
+    <p>① 打开 <code>AGENTS.snippet.md</code>,把全部内容追加到你项目根目录 <code>AGENTS.md</code> 的末尾(没有就新建一个)。</p>
+    <p>② 可选:把 <code>map.template.json</code> 复制为项目根目录的 <code>map.json</code>。不复制也行——下次会话对 Agent 说「初始化活点地图」,它会读你的现有记录生成草稿。</p>
+    <div class="files">
+      <a href="AGENTS.snippet.md" download><b>AGENTS.snippet.md</b><span>协议段,贴入项目 AGENTS.md</span></a>
+      <a href="map.template.json" download><b>map.template.json</b><span>空白地图模板:一条主路线 + 一个「开始」节点</span></a>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span>打开画布,连上项目文件夹</h2>
+    <p><a class="plain" href="../app.html">打开活点地图画布</a>,菜单里选「打开项目文件夹」。之后你在画布上的改动会自动存进文件夹的 map.json,Agent 读写同一份文件;Agent 改了,画布两秒内自己刷新。</p>
+    <p class="note">判断权永远在你:评分你打、归档你确认、画布上随便改,Agent 下次读到的就是你的版本。</p>
+  </section>
+
+  <p class="note">文件说明与细节见 <a class="plain" href="README.md">README.md</a>(纯文本)。本页离线可用:整个 agent-kit 目录就在你下载的活点地图里。</p>
+</main>
+<script>
+function copyCmd(){
+  const t = document.querySelector('#cmd1').childNodes[0].textContent.trim();
+  navigator.clipboard.writeText(t).then(() => {
+    const b = document.querySelector('#cmd1 button'); b.textContent = '已复制';
+    setTimeout(() => b.textContent = '复制', 1500);
+  });
+}
+</script>
+</body>
+</html>

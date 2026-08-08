@@ -6,7 +6,7 @@
 
 这是「活点地图」的**原型 + 单文件正式版**目录。活点地图是面向人机协作的探索状态画布：用少量节点、路线、方案线和标注表达项目探索过程，详情存本地 Markdown，人和本地 Agent 读写同一组文件。本地优先、免费开源、轻量无限画布。`canvas.html` 是冻结的验收样板，`app.html` 是在其上演进的正式版（数据契约见 `docs/map-json-v1.md`）。
 
-**当前阶段**：HTML 原型经 11 轮走查已定稿为验收样板（`canvas.html`，保持冻结）。阶段 2（基于 `D:/桌面/活点地图/excalidraw` fork 复刻画布）已完成并被否决——底层数据格式改为自研，fork 存档于 GitHub 私有仓库 `hhh-dahah/live-dot-map-canvas` 与本地 `wip-stage2` 分支，仅作交互参考。阶段 3 已完成：`app.html` 正式版（map.json 读写/文件夹直连/轮询同步）+ 协议层（`docs/map-json-v1.md`、`docs/agent-protocol.md`）+ 壁纸项目迁移狗粮（`E:/壁纸制作/map.json`），计划与日志见 `docs/plans/2026-08-06-阶段3-协议层与HTML正式化.md` 与 `implement.md`。阶段 4 已完成：记忆生命周期（路径 A）——schema 与协议升至 v1.1（`score`/`archived`/投影读取/整理例程/创新循环），研究与决策记录见 `docs/plans/2026-08-07-记忆系统演化路径研究.md`。
+**当前阶段**：HTML 原型经 11 轮走查已定稿为验收样板（`canvas.html`，保持冻结）。阶段 2（基于 `D:/桌面/活点地图/excalidraw` fork 复刻画布）已完成并被否决——底层数据格式改为自研，fork 存档于 GitHub 私有仓库 `hhh-dahah/live-dot-map-canvas` 与本地 `wip-stage2` 分支，仅作交互参考。阶段 3 已完成：`app.html` 正式版（map.json 读写/文件夹直连/轮询同步）+ 协议层（`docs/map-json-v1.md`、`docs/agent-protocol.md`）+ 壁纸项目迁移狗粮（`E:/壁纸制作/map.json`），计划与日志见 `docs/plans/2026-08-06-阶段3-协议层与HTML正式化.md` 与 `implement.md`。阶段 4 已完成：记忆生命周期（路径 A）——schema 与协议升至 v1.1（`score`/`archived`/投影读取/整理例程/创新循环），研究与决策记录见 `docs/plans/2026-08-07-记忆系统演化路径研究.md`。阶段 5 已完成：分发与上手工程——首次引导+演示地图、agent-kit 接入包、PWA、Cloudflare Workers 部署（`https://app.live-dot-map.workers.dev`，用户明确暂不追求公网）。阶段 5.5 已完成：`landing.html` 重写为本地落地页（一键复制接入协议 + 三步上手 + GIF 占位），日志均见 `implement.md`。
 
 ## 图片读取
 
@@ -17,13 +17,16 @@
 
 ## 目录结构与技术栈
 
-无构建系统、无包管理器、无依赖——全部是零依赖单文件静态 HTML（内联 CSS + 原生 JS），双击或任意静态服务器即可打开。无自动化测试，按 `index (2).html` 中的审核顺序在浏览器人工走查；视觉自验可用 Playwright 或 headless Chrome 截图到 `走查截图/`（已 gitignore），方法见 `implement.md`「走查工具链」。
+本体 `app.html` 是零依赖单文件静态 HTML（内联 CSS + 原生 JS），双击或任意静态服务器即可打开；根目录另有少量外挂工程文件（PWA `manifest.webmanifest`/`sw.js`、`agent-kit/` 接入包、部署配置 `wrangler.toml`/`.deploy/`）。无构建系统、无自动化测试，按 `index (2).html` 中的审核顺序在浏览器人工走查；视觉自验可用 Playwright 或 headless Chrome 截图到 `走查截图/`（已 gitignore），方法见 `implement.md`「走查工具链」。
 
 ```
 ├── index (2).html   # 原型导航页（注意文件名带空格和括号）
 ├── canvas.html      # 核心原型：无限画布（验收样板，已冻结）
 ├── app.html         # 正式版：自 canvas.html 演进，map.json 读写 + 项目文件夹直连（FS Access）+ 轮询同步
-├── landing.html     # 产品落地页
+├── landing.html     # 产品落地页（本地用：一键复制接入协议 + 三步上手 + 功能 GIF 占位）
+├── assets/          # landing 用图（landing-hero.png 为 app.html 实拍）
+├── agent-kit/       # Agent 接入包：AGENTS.snippet.md 协议段 + map.template.json + index.html 说明页
+├── wrangler.toml    # Cloudflare Workers 部署配置（静态资产目录 ./.deploy，仅部署时用）
 ├── goal.md          # 重大方案：阶段路线、最终形态、边界、完成标准
 ├── implement.md     # 执行与修改过程日志 + canvas.html 实现要点（改原型前先读）
 ├── 设计细节.md       # 走查问题记录：问题描述/涉及位置/正式版期望行为/状态
@@ -41,5 +44,5 @@
 - 界面文案、代码注释、文档一律使用简体中文。
 - 色彩一律用 `:root` 中的 OKLch CSS 变量，改令牌必须同步 `brand-spec.md`。
 - 绿/红/灰只用于方案线与状态徽标；节点圆形、名称写圆内；方案名附着在线上。
-- 保持单文件、零依赖、原生 JS：不引入构建工具、npm 依赖或 CSS 框架。
+- 工程形态不设硬约束：以「最大范围完成产品目标」为唯一标准。本体 `app.html` 目前保持单文件零依赖（双击即用），允许为分发/上手增加少量外挂工程文件（PWA manifest/sw、部署配置、agent-kit），但新增第三方依赖前需在 implement.md 记录理由。
 - 存档的 Excalidraw fork 仅作交互参考；如复制其代码片段，须遵守 MIT License 保留版权与许可声明（PRD §11.2）。

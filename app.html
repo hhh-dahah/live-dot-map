@@ -6,7 +6,12 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>活点地图 — 动态壁纸</title>
+<!-- PWA:可安装到桌面、离线可用(sw.js 只缓存应用壳,地图数据仍走本地文件夹) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#26262e">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>活点地图</title>
 <style>
 /* ============ 设计令牌(见 brand-spec.md) ============ */
 :root{
@@ -112,24 +117,10 @@ input{font:inherit;color:inherit}
 
 /* Agent 入口:缩小到边角 */
 #agent-dock{right:12px;bottom:12px;display:flex;flex-direction:column;align-items:flex-end;gap:8px;z-index:20;position:fixed}
-#agent-status{display:none;font-size:12px;color:var(--muted);background:var(--bg);
-  border-radius:var(--r);box-shadow:var(--shadow);padding:8px 12px;align-items:center;gap:8px}
-#agent-status.on{display:flex}
-#agent-status .spin{width:12px;height:12px;border-radius:50%;flex:none;
-  border:1.5px solid var(--border);border-top-color:var(--accent);animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
 #agent-btn{height:40px;padding:0 16px;border-radius:var(--r);background:var(--bg);
   box-shadow:var(--shadow);font-weight:500;display:flex;align-items:center;gap:8px}
 #agent-btn:hover{background:var(--surface-hover)}
 #agent-btn svg{width:16px;height:16px}
-#agent-cmd{display:none;width:min(420px,calc(100vw - 24px));background:var(--bg);
-  border-radius:12px;box-shadow:var(--shadow);padding:8px;gap:8px;align-items:flex-end}
-#agent-cmd.on{display:flex}
-#agent-cmd textarea{flex:1;border:0;outline:0;resize:none;font:inherit;font-size:13px;
-  padding:8px;max-height:120px;background:transparent}
-#agent-cmd .send{width:34px;height:34px;border-radius:8px;background:var(--ink);
-  color:var(--bg);display:flex;align-items:center;justify-content:center;flex:none}
-#agent-cmd .send svg{width:15px;height:15px}
 
 /* 框选矩形与多选包围框(Excalidraw 式) */
 #marquee{position:fixed;z-index:30;border:1.5px dashed var(--accent);
@@ -305,18 +296,11 @@ input{font:inherit;color:inherit}
   <button class="icb" id="redo" title="重做"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m12 4 3 3-3 3M15 7H8a5 5 0 0 0 0 10h1" stroke-linejoin="round"/></svg></button>
 </div>
 
-<!-- 右下:Agent -->
+<!-- 右下:Agent 接入指引(真实接入走项目文件夹+协议,见设置抽屉) -->
 <div id="agent-dock">
-  <div id="agent-status"><span class="spin"></span><span id="agent-status-text">正在更新地图…</span></div>
-  <div id="agent-cmd">
-    <textarea id="agent-input" rows="1" placeholder="交给 Agent"></textarea>
-    <button class="send" id="agent-send" title="发送">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" stroke-linejoin="round"/></svg>
-    </button>
-  </div>
   <button id="agent-btn">
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5 9.8 6l4.7.3-3.6 3 1.1 4.6L8 11.4l-4 2.5L5.1 9.3l-3.6-3L6.2 6 8 1.5Z" stroke-linejoin="round"/></svg>
-    交给 Agent
+    接入 Agent
   </button>
 </div>
 
@@ -342,29 +326,22 @@ input{font:inherit;color:inherit}
     </button>
   </header>
   <div class="dbody">
-    <h3>AGENT</h3>
+    <h3>AGENT 接入</h3>
+    <div class="drow">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/></svg></span>
+      <span class="tt"><div class="a">① 连接项目文件夹</div><div class="b">地图自动存为文件夹里的 map.json,Agent 读写同一份</div></span>
+      <button class="icb drawer-folder-open" style="width:30px;height:30px" title="打开项目文件夹">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3h7v7M13 3 7 9M5 5H3v8h8v-2" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
     <div class="drow">
       <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2.5h7l3 3v8H3v-11Z"/><path d="M10 2.5v3h3"/></svg></span>
-      <span class="tt"><div class="a">项目指令</div><div class="b">AGENTS.md · skill 已就绪</div></span>
-      <span class="dstate"><span class="live"></span>已生效</span>
+      <span class="tt"><div class="a">② 给 Agent 贴协议</div><div class="b">把 agent-kit/AGENTS.snippet.md 追加进项目的 AGENTS.md</div></span>
+      <button class="icb" id="drawer-open-kit" style="width:30px;height:30px" title="查看接入说明">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3h7v7M13 3 7 9M5 5H3v8h8v-2" stroke-linejoin="round"/></svg>
+      </button>
     </div>
-    <div class="drow">
-      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 8h4l2-4 2 8 2-4h2" stroke-linejoin="round"/></svg></span>
-      <span class="tt"><div class="a">本地桥接</div><div class="b">127.0.0.1:6432 · 画布实时刷新</div></span>
-      <button class="switch on" id="bridge-switch" title="本地桥接"></button>
-    </div>
-    <div class="dnote">没有桥接时,Agent 仍可通过项目文件读写地图。</div>
-    <h3>检测到的 AGENT</h3>
-    <div class="drow">
-      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="m4 4 4 4-4 4M8 12h5" stroke-linejoin="round"/></svg></span>
-      <span class="tt"><div class="a">Codex</div><div class="b">工作目录已关联</div></span>
-      <span class="dstate"><span class="live"></span>已连接</span>
-    </div>
-    <div class="drow" style="opacity:.6">
-      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="m4 4 4 4-4 4M8 12h5" stroke-linejoin="round"/></svg></span>
-      <span class="tt"><div class="a">Claude Code</div><div class="b">未启动</div></span>
-      <span class="dstate">—</span>
-    </div>
+    <div class="dnote">接入后,Agent 每次会话先读 map.json,主动汇报「等你判断的清单」。不能直连文件夹时,导出的 map.json 也一样能用。</div>
     <h3>安全边界</h3>
     <div class="drow">
       <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5 13.5 4v4c0 3.5-2.5 5.8-5.5 6.5C5 13.8 2.5 11.5 2.5 8V4L8 1.5Z" stroke-linejoin="round"/></svg></span>
@@ -373,8 +350,8 @@ input{font:inherit;color:inherit}
     <h3>数据</h3>
     <div class="drow">
       <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/></svg></span>
-      <span class="tt"><div class="a">项目文件夹</div><div class="b">~/projects/live-wallpaper</div></span>
-      <button class="icb" style="width:30px;height:30px" title="打开" onclick="toast('原型中不打开真实文件夹')">
+      <span class="tt"><div class="a">项目文件夹</div><div class="b" id="drawer-folder-state">未连接(演示模式)</div></span>
+      <button class="icb drawer-folder-open" style="width:30px;height:30px" title="打开项目文件夹">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3h7v7M13 3 7 9M5 5H3v8h8v-2" stroke-linejoin="round"/></svg>
       </button>
     </div>
@@ -459,7 +436,7 @@ const seed = () => ({
   ],
   showAnns:true, showRoutes:true, showNums:false, showFailed:true,
   sel:null, multi:[], selAnn:null, hoverEdge:null, snapTo:null,
-  tool:'select', bridge:true,
+  tool:'select',
   nextNum:8, nextEdge:10, nextAnn:4, nextNodeName:1, nextEdgeName:1, nextRouteName:1,
   /* 瞬时交互态:不随快照进撤销历史 */
   hoverEdge:null, snapTo:null, selAnn:null, pendingEdgeFrom:null, drawingEdge:null
@@ -1240,7 +1217,7 @@ $('#more-btn').onclick = ev => {
     {id:'failed', icon:I.eye, label:'显示失败方案', checked:S.showFailed, fn(){ S.showFailed = !S.showFailed; render(); }},
     {id:'nums', icon:I.eye, label:'显示内部编号', checked:S.showNums, fn(){ S.showNums = !S.showNums; renderPanel(); }},
     {sep:true},
-    {id:'tidy', icon:I.tidy, label:'自动整理', fn(){ toast('原型中未实现自动整理'); }},
+    {id:'tidy', icon:I.tidy, label:'自动整理', fn(){ toast('自动整理:后续版本提供;可先让 Agent 按整理例程整理 map.json'); }},
     {id:'fit', icon:I.fit, label:'适应视图', fn(){ fitView(); }}
   ], innerWidth/2 - 90, 64);
 };
@@ -1256,15 +1233,22 @@ $('#proj-menu-btn').onclick = ev => {
     {id:'exp', icon:I.save, label:'导出 map.json', kbd:'Ctrl+S', fn(){ exportMap(); }},
     {id:'img', icon:I.img, label:'导出图片…', fn(){ toast('导出图片:后续版本提供'); }},
     {sep:true},
+    {id:'guide', icon:'？', label:'新手引导', fn(){ showGuide(true); }},
     {id:'set', icon:I.gear, label:'设置', fn(){ $('#drawer').classList.add('on'); }}
   ], 12, 64);
 };
 $('#drawer-close').onclick = () => $('#drawer').classList.remove('on');
-$('#bridge-switch').onclick = ev => {
-  ev.currentTarget.classList.toggle('on');
-  S.bridge = ev.currentTarget.classList.contains('on');
-  toast(S.bridge ? '本地桥接已开启' : '本地桥接已关闭,Agent 仍可通过文件协作');
-};
+/* 抽屉按钮:打开项目文件夹(两处共用) / 打开 agent-kit 接入说明 */
+document.querySelectorAll('.drawer-folder-open').forEach(b => b.onclick = () => {
+  if (hasFS) openProjectFolder();
+  else toast('文件夹直连需要 Chrome 或 Edge;也可以导出 map.json 交给 Agent');
+});
+$('#drawer-open-kit').onclick = () => window.open('agent-kit/index.html', '_blank');
+/* 抽屉「项目文件夹」状态跟随真实连接状态(在 syncBadge 里同步) */
+function syncDrawerFolder(){
+  const el = $('#drawer-folder-state');
+  if (el) el.textContent = IO.dir ? '已连接:' + IO.dir.name : '未连接(演示模式)';
+}
 
 /* ---------- 画布交互:平移 / 缩放 / 拖拽 / 框选 / 拉出方案线 ---------- */
 let drag = null, spaceDown = false;
@@ -1653,44 +1637,8 @@ addEventListener('keyup', ev => {
   if (ev.code === 'Space'){ spaceDown = false; viewport.style.cursor = ''; }
 });
 
-/* ---------- Agent:命令入口 + 模拟更新 ---------- */
-$('#agent-btn').onclick = () => {
-  $('#agent-cmd').classList.toggle('on');
-  if ($('#agent-cmd').classList.contains('on')) $('#agent-input').focus();
-};
-$('#agent-send').onclick = submitAgent;
-$('#agent-input').addEventListener('keydown', ev => {
-  if (ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); submitAgent(); }
-});
-function agentWork(statusText, fn, delay = 1700){
-  $('#agent-cmd').classList.remove('on');
-  $('#agent-status-text').textContent = statusText;
-  $('#agent-status').classList.add('on');
-  setTimeout(() => {
-    $('#agent-status').classList.remove('on');
-    fn();
-    toast('地图已更新');
-  }, delay);
-}
-function submitAgent(){
-  const v = $('#agent-input').value.trim(); if (!v) return;
-  $('#agent-input').value = '';
-  agentWork('正在更新地图…', () => {
-    pushHistory();
-    // 模拟 Agent:在性能路线补充一个方案 + 一条标注
-    const n7 = nodeById('n7');
-    if (n7){
-      const e = { id:'e'+(S.nextEdge++), from:'n7', to:null, name:'离屏渲染',
-        status:'pending', route:'r3', md:'routes/e-离屏渲染.md', dx:210, dy:60 };
-      S.edges.push(e);
-      S.anns.push({ id:'a'+(S.nextAnn++), target:{kind:'edge', id:e.id},
-        text:'来自 Agent:' + v.slice(0, 24), hidden:false });
-    }
-    render();
-    const el = document.querySelector('.node[data-id="n7"]');
-    if (el){ el.classList.add('pulse'); setTimeout(() => el.classList.remove('pulse'), 3600); }
-  });
-}
+/* ---------- Agent:接入指引入口(打开设置抽屉的 AGENT 接入) ---------- */
+$('#agent-btn').onclick = () => { syncDrawerFolder(); $('#drawer').classList.add('on'); };
 
 /* ---------- 新建地图:直接进空白画布(不再有中央输入态) ---------- */
 function newBlankMap(){
@@ -1761,6 +1709,7 @@ function syncBadge(){
   }
   dot.style.background = !IO.mapFile ? 'var(--border)' : (IO.saveTimer ? 'var(--note-border)' : 'var(--success)');
   dot.title = !IO.mapFile ? '未连接项目文件夹(演示模式)' : (IO.saveTimer ? '保存中…' : '已与 map.json 同步');
+  syncDrawerFolder();
 }
 /* ---- IndexedDB:记住上次项目文件夹句柄 ---- */
 function idbOpen(){ return new Promise((res, rej) => { const r = indexedDB.open('live-dot-map', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
@@ -1773,13 +1722,13 @@ async function openProjectFolder(){
     const dir = await showDirectoryPicker({ mode:'readwrite' });
     await attachDir(dir);
     try{ await idbSet('dotmap-dir', dir); }catch{}
-  }catch(e){ if (e.name !== 'AbortError') toast('打开失败:' + e.message); }
+  }catch(e){ if (e.name !== 'AbortError') toast('没能打开文件夹:' + e.message); }
 }
 async function attachDir(dir){
   let fh = null;
   try{ fh = await dir.getFileHandle('map.json'); }
   catch{
-    if (confirm(`文件夹「${dir.name}」里没有 map.json,要把当前画布保存进去吗?`)){
+    if (confirm(`文件夹「${dir.name}」里还没有 map.json。把当前画布存进去,让它成为活点地图项目吗?`)){
       fh = await dir.getFileHandle('map.json', { create:true });
       IO.dir = dir; IO.mapFile = fh;
       await writeMapNow(); startWatch(); syncBadge();
@@ -1794,8 +1743,8 @@ async function attachDir(dir){
 async function readMap(){
   const f = await IO.mapFile.getFile();
   const text = await f.text();
-  let d; try{ d = JSON.parse(text); }catch{ toast('map.json 解析失败,未加载'); return; }
-  if (d.version !== 1){ toast('不支持的 map.json 版本:' + d.version); return; }
+  let d; try{ d = JSON.parse(text); }catch{ toast('map.json 读不懂(文件可能损坏),画布保持原样未改动'); return; }
+  if (d.version !== 1){ toast('这个 map.json 由更新版本生成,当前画布读不了(版本 ' + d.version + ')'); return; }
   IO.lastMod = f.lastModified;
   IO.silent = true;
   deserialize(d);
@@ -1817,9 +1766,13 @@ async function writeMapNow(){
 /* 任何编辑后防抖落盘(pushHistory 调用) */
 function scheduleSave(){
   if (IO.silent) return;
-  if (!IO.mapFile){ syncBadge(); return; }
+  if (!IO.mapFile){
+    // 演示模式:首次编辑提醒改动不落盘,连文件夹或导出才能保存
+    if (!IO.demoHinted){ IO.demoHinted = true; toast('演示模式:改动只在本页,连接文件夹或导出 map.json 才能保存'); }
+    syncBadge(); return;
+  }
   clearTimeout(IO.saveTimer);
-  IO.saveTimer = setTimeout(() => { writeMapNow().catch(e => { IO.saveTimer = null; syncBadge(); toast('保存失败:' + e.message); }); }, 800);
+  IO.saveTimer = setTimeout(() => { writeMapNow().catch(e => { IO.saveTimer = null; syncBadge(); toast('保存失败:文件夹可能被移动或权限被收回(' + e.message + ')'); }); }, 800);
   syncBadge();
 }
 /* 轮询:外部(Agent)改 map.json 后自动重载;有自己未落盘修改时跳过 */
@@ -1909,7 +1862,57 @@ async function boot(){
   }catch{ /* 句柄失效,忽略 */ }
 }
 
+/* ---------- 新手引导与三分钟教程 ---------- */
+function overlayCard(html, width){
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:rgba(27,27,31,.36);display:flex;align-items:center;justify-content:center';
+  const card = document.createElement('div');
+  card.style.cssText = `background:var(--bg);border-radius:14px;box-shadow:var(--shadow);width:min(${width||520}px,92vw);max-height:84vh;overflow:auto;padding:26px 28px`;
+  card.innerHTML = html;
+  ov.appendChild(card);
+  ov.addEventListener('pointerdown', e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+  return ov;
+}
+const GUIDE_BTN = 'display:block;width:100%;padding:11px 14px;margin-top:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--fg);font:inherit;font-size:14px;text-align:left;cursor:pointer';
+function showGuide(manual){
+  const ov = overlayCard(`
+    <div style="font-size:20px;font-weight:700;letter-spacing:.5px">活点地图</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:6px;line-height:1.7">
+      一张人和 Agent 共享的探索地图：节点写目的与结果，方案线记每次尝试，<br>
+      Agent 每次会话先读地图汇报全局，你只做判断。
+    </div>
+    ${hasFS ? `<button data-g="open" style="${GUIDE_BTN};border-color:var(--accent);font-weight:600">📁 连接项目文件夹<span style="display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:3px">地图自动存进文件夹的 map.json，Agent 读写同一份文件</span></button>` : ''}
+    <button data-g="demo" style="${GUIDE_BTN}">🗺️ 先看看演示地图<span style="display:block;font-size:12px;color:var(--muted);margin-top:3px">内置示例，随便点随便改，不碰你的文件</span></button>
+    <button data-g="tut" style="${GUIDE_BTN}">🎓 三分钟上手<span style="display:block;font-size:12px;color:var(--muted);margin-top:3px">画布操作、状态规则、Agent 接入各一句话</span></button>
+    <div style="color:var(--muted);font-size:12px;margin-top:16px;line-height:1.6">本地优先：文件都在你自己的文件夹里，不上传任何服务器。</div>
+  `, 480);
+  const seen = () => { try{ localStorage.setItem('dotmap-guide-seen','1'); }catch{} };
+  ov.querySelector('[data-g="demo"]').onclick = () => { seen(); ov.remove(); };
+  ov.querySelector('[data-g="tut"]').onclick = () => { seen(); ov.remove(); showTutorial(); };
+  const b = ov.querySelector('[data-g="open"]');
+  if (b) b.onclick = () => { seen(); ov.remove(); openProjectFolder(); };
+  if (manual) seen();
+}
+function showTutorial(){
+  const ov = overlayCard(`
+    <div style="font-size:16px;font-weight:700">三分钟上手</div>
+    <ol style="margin:14px 0 0;padding-left:20px;font-size:13px;line-height:1.9;color:var(--fg)">
+      <li><b>画布</b>：滚轮缩放，空格或中键拖拽平移。快捷键 V 选择、N 建节点、L 拉方案线、M 加便签。</li>
+      <li><b>节点与方案</b>：节点只写目的/问题/结果；每一次尝试是一条方案线——绿=走通，红=失败，灰=待验证。走通了顺手打个分（0–100），以后一眼看出哪条最值。</li>
+      <li><b>文件夹即存档</b>：连上项目文件夹后，所有改动自动写进 map.json；详情写在节点/方案挂的 Markdown 分片里。失败的、不再碰的方案可以归档——不删数据，只是淡出。</li>
+      <li><b>Agent 接入</b>：把 <span class="mono">agent-kit/AGENTS.snippet.md</span> 的内容追加到项目 AGENTS.md，Agent 每次会话开始就会先读地图、主动汇报「等你判断的清单」。</li>
+    </ol>
+    <button data-g="done" style="${GUIDE_BTN};text-align:center;font-weight:600;border-color:var(--accent)">开始用</button>
+  `, 520);
+  ov.querySelector('[data-g="done"]').onclick = () => ov.remove();
+}
+
 /* ---------- 启动 ---------- */
+// PWA:注册 service worker(file:// 双击打开时自动跳过)
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 const q = new URLSearchParams(location.search);
 if (q.get('blank') === '1' || q.get('empty') === '1'){
   // 空画布:工具可用,无中央输入
@@ -1942,7 +1945,11 @@ if (q.get('from') === 'agent'){
   agentWork('正在建立地图…', () => { render(); }, 1400);
 }
 pushHistory();
-boot(); // 异步:恢复上次项目文件夹并读 map.json
+boot().then(() => { // 首次使用且未自动连上项目文件夹时,显示新手引导
+  if (!IO.mapFile && !q.get('blank') && !q.get('stress') && q.get('from') !== 'agent'){
+    try{ if (!localStorage.getItem('dotmap-guide-seen')) showGuide(); }catch{ showGuide(); }
+  }
+});
 </script>
 </body>
 </html>

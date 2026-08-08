@@ -1,0 +1,7 @@
+# 活点地图静态托管（Cloudflare Workers Static Assets）
+# 部署目录 .deploy/ 由 implement.md「阶段 5」流程生成，内容即站点本体。
+name = "app"
+compatibility_date = "2026-08-08"
+
+[assets]
+directory = "./.deploy"

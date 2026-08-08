@@ -1,0 +1,15 @@
+{
+  "name": "活点地图",
+  "short_name": "活点地图",
+  "description": "人和 Agent 共享的探索地图：节点写目的与结果，方案线记每次尝试",
+  "start_url": "./app.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f2ec",
+  "theme_color": "#26262e",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

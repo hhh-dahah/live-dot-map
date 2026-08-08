@@ -142,3 +142,22 @@
 - **走查（Playwright，截图 走查截图/阶段4-*）**：评分输入 → 徽标渲染 → 归档弱化/悬停跳过 → serialize 含 score/archived → 恢复演示状态，逐项通过；console 零报错（仅 favicon 404）。
 - **壁纸狗粮**：`E:/壁纸制作/map.json` 补 19 条绿线 score（v17 底座 95、S3 overlap16 90、一键18秒 90 等，按验收记录定分）；归档 8 条 failed+shelved 死方案（规划器落选模型 3 条 + 已排除发布平台 5 条），供 Codex 新会事实测投影读取与整理例程。
 - **未做**：路线级归档暂无画布入口（路线不是可选中对象），由 Agent 按协议置 `routes[].archived`，画布渲染已支持。
+
+
+## 阶段 5：分发与上手工程（2026-08-08，Kimi）
+
+- **红线解除**：用户明确「单文件零依赖」不再硬约束，允许为分发/上手增加外挂工程文件。AGENTS.md 红线与 PRD §11.1 已同步改为「本体保持单文件零依赖（双击即用），新增第三方依赖前需在 implement.md 记录理由」。
+- **A 首次引导**：app.html 首访弹引导卡（三步说明 + 三分钟教程 + 加载演示地图）；演示模式首次编辑弹一次性 toast「改动只在本页，连接文件夹或导出才能保存」（S5-1）；人话报错。
+- **B agent-kit 接入包**：`agent-kit/`（AGENTS.snippet.md 协议段 / map.template.json 空模板 / README→index.html 说明页），用户让 Agent「读 agent-kit 接入」即可一次性配好。
+- **C Cloudflare 部署**：Pages 令牌无权限走不通，改 Workers Static Assets——`wrangler.toml`（name=app、assets=./.deploy、workers.dev 子域 live-dot-map），部署到 `https://app.live-dot-map.workers.dev`；OAuth 设备码四次超时，最终用户注册后直接给 API Token 打通。凭证存仓库外 `~/.live-dot-map/cloudflare.env`，.gitignore 加 `*.env` 兜底。按 Cloudflare 官方 agent-setup 接入（mcp.json 加 5 个远程 MCP 服务器、.agents/skills 装 skills）。
+- **D PWA**：manifest.webmanifest + sw.js v2（HTML 网络优先 + 静态资源缓存优先，修掉 v1 缓存不更新 S5-2）+ icons/ + favicon.ico（由 icon-192 生成）。
+- **走查修复清单**（截图 走查截图/阶段5-公网-*）：标题残留「动态壁纸」→「活点地图」；favicon 404；设置抽屉演戏内容→诚实接入指引（S5-6）；删「交给 Agent」假模拟器（S5-7）；「自动整理」菜单文案改指向整理例程；agent-kit md 公网乱码→_headers 按扩展名分流 + agent-kit/index.html 说明页（S5-8，公网待下次部署生效）。
+- **用户决策**：公网部署暂停（产品本地优先，本地问题未走查完）；landing page 重写为下一阶段。
+
+## 阶段 5.5：landing page 重写（2026-08-08，Kimi）
+
+- **目标**：Excalidraw Plus 式简洁落地页——产品图 + GIF 演示位（留空）+ 一键复制接入协议/口令，帮助用户一次性配好 Agent 接入。用户明确：先不部署，landing 本地用（双击即开）。
+- **结构**：导航 → Hero（标题「给 YES 工程师与 TA 的 Agent 的行车记录仪」为用户指定文案，副标题「人机共享的探索地图：人看画布，Agent 读 map.json」，产品图 `assets/landing-hero.png` 为 app.html 演示地图实拍）→ #join 三步接入卡（①复制协议段 ②一键复制口令「把 agent-kit/AGENTS.snippet.md 的内容追加到我的 AGENTS.md 末尾」③打开画布连文件夹）→ 功能演示三张 GIF 虚线占位卡（建节点拉方案线/便签评分归档/与 Agent 共享一张图，待用户自录）→ 本地优先说明 → 底部 CTA → 页脚。
+- **复制双通道**：`getSnippet()` 先 fetch `agent-kit/AGENTS.snippet.md`，file:// 失败回退页内 `<script type="text/plain">` 内嵌副本（83 行逐字同步，页内有注释提醒改协议时手动同步）；统一 CRLF→LF 归一；clipboard API + execCommand 兜底。实测 http 剪贴板内容与源文件逐字相等（归一后 2586 字符），file:// 回退路径比对一致。
+- **过时内容修正**：底部 CTA 由 canvas.html（冻结样板）改指 app.html；目录树旧设计改 map.json 现行契约（map.json/nodes/routes/AGENTS.md）；页脚删「由 Excalidraw 改造」声明；去掉空 GitHub 链接（仓库暂无远程）。
+- **验证（Playwright，截图 走查截图/阶段5-landing-*）**：桌面 1440px 与手机 390px 渲染正常无横向溢出；复制/口令复制精确；agent-kit 三个下载链接与 app.html 均 200；hero 图加载成功；node --check 通过。
