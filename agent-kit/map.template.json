@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "未命名地图",
+  "updatedAt": "2026-01-01",
+  "view": { "x": 0, "y": 0, "k": 1 },
+  "ui": { "showAnns": true, "showRoutes": true, "showNums": false, "showFailed": true },
+  "counters": { "num": 1, "edge": 1, "ann": 1, "nodeName": 1, "edgeName": 1, "routeName": 1 },
+  "routes": [
+    { "id": "r1", "name": "主路线", "source": null, "main": true, "createdAt": "2026-01-01", "updatedAt": "2026-01-01" }
+  ],
+  "nodes": [
+    {
+      "id": "n1", "num": "01", "name": "开始", "type": "目的", "route": "r1",
+      "x": 0, "y": 0, "md": null, "createdAt": "2026-01-01", "updatedAt": "2026-01-01"
+    }
+  ],
+  "edges": [],
+  "anns": []
+}
