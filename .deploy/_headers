@@ -1,0 +1,9 @@
+# Cloudflare 静态资产响应头(语法同 Pages _headers)
+# agent-kit 下的 md/json 以纯文本+UTF-8 下发,避免浏览器按 GBK 猜编码出现乱码;
+# index.html 必须保持 text/html,否则浏览器会把源码当文本显示
+/agent-kit/index.html
+  Content-Type: text/html; charset=utf-8
+/agent-kit/*.md
+  Content-Type: text/plain; charset=utf-8
+/agent-kit/*.json
+  Content-Type: application/json; charset=utf-8
