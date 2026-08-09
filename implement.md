@@ -173,3 +173,11 @@
 - **双点走查（T10，Playwright）**：CF 全绿——landing 渲染、口令逐字正确、5 个下载链接、app.html/agent-kit 三件套/assets/favicon 全 200、桌面与 390px 无横溢、hero 图加载。CloudBase：全部文件 curl/fetch 200 且字节正确（Agent 下载源职责达标），但浏览器直接导航 HTML 会被腾讯默认域名拦截返回 404「风险提醒」——CB 只作 Agent/口令的下载兜底，人访问一律用 CF 网址。
 - **端到端新用户模拟（T11）**：建临时项目照 setup.md 真跑——本机两个源 curl 均 200（Clash 未拦这两个域名）；画布装进 `~/.live-dot-map/`（app.html 108530 字节 + favicon.ico）；桌面快捷方式真实落盘 `D:/桌面/活点地图.lnk`；项目侧 `.live-dot-map/map.json`（模板改名+当日日期）与 AGENTS.md 协议注入完成并校验；画布已通过 `start ""` 真实拉起。唯一未自动化项：「打开项目文件夹」需用户手势（浏览器安全限制，设计如此），待用户在壁纸项目实测。
 - **收尾（T12）**：设计细节.md 销 S5-3（裸跳转页 → landing 双点首页）；PRD §15 新增「远期构想（已讨论，明确暂缓）」（E2E 加密/分享协作/网页内嵌 AI/skill 包装与商店/自有域名，含 E2E 与内嵌 AI 的矛盾提示与重启条件）；旧文档 `docs/活点地图-AGENTS指针段.md`、`docs/活点地图-SKILL.md` 经查已不存在于仓库（无 git 记录），无需标记。
+
+## 阶段 6.5：国内直连推进（EdgeOne + 域名，2026-08-09，Kimi）
+
+- **GitHub 仓库**：`.deploy/` 从 .gitignore 放出入库（提交 e25d74b）→ 建私有仓库 `hhh-dahah/live-dot-map` 并 push（gh CLI，token 含 repo scope）。此后 push master 即触发 EdgeOne 自动部署；CF/CB 仍需手动重部署，此不对称须留意。
+- **EdgeOne Makers（ Pages 国内版）**：控制台建项目 live-dot-map（ID makers-1tej2m1r9pnc），连 GitHub 仓库 master、输出目录 `.deploy`、无构建命令，首次部署 22s 成功。**但默认域名 `*.edgeone.cool` 不可用**：官方文档实锤——含大陆区域的默认域名只有 3 小时临时预览（过期 401），「全球不含大陆」的默认域名中国大陆一律 401。结论：必须绑自定义域名；绑「全球（不含中国大陆）」区域的自定义域名**免备案**。
+- **域名决策记录**：候选 dotmap.site/.top、livedotmap.com/site 均被否。先尝试 Cloudflare 买 livedotmap.com（$10.46/年，注册续费同价，Playwright 已登录推进到结账页），因用户外币卡支付反复失败放弃。改腾讯云：livedotmap.xyz 15 元首年但续费 450（坑）、.shop 15/328（坑）排除；**选定 livedotmap.top（首年 14 元、续费 32 元，可注册）**。域名主体选个人（薅羊毛看账号认证不看域名主体；个人审核快；以后可过户公司）。
+- **当前阻塞**：腾讯云要求先建实名信息模板（个人身份证），审核 1–3 天——后台等待，不阻塞其他工作。审核通过后：付 14 元 → EdgeOne 加速区域改「全球（不含中国大陆）」→ 绑 livedotmap.top → DNS 加 CNAME → 国内关代理直连实测（核心验收点，不通过则退回讨论）。
+- **双源口令定稿核验（E7）**：现有双源（CF 主 + CB 备）逐字节核验——本地 landing.html==.deploy/index.html，CF 与 CB 的 index.html/app.html/agent-kit/setup.md 均与本地 .deploy 一致，无需重部署。一句口令与 setup.md 双源兜底已是最终形态，等域名就绪后再把 EdgeOne 加成第三源。
