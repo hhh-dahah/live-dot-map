@@ -1,0 +1,1983 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<!-- PWA:可安装到桌面、离线可用(sw.js 只缓存应用壳,地图数据仍走本地文件夹) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#26262e">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>活点地图</title>
+<style>
+/* ============ 设计令牌(见 brand-spec.md) ============ */
+:root{
+  --bg: oklch(100% 0 0);
+  --surface: oklch(98.6% 0.004 286);
+  --surface-hover: oklch(96% 0.008 286);
+  --fg: oklch(27% 0.015 285);
+  --muted: oklch(55% 0.02 285);
+  --border: oklch(91% 0.008 285);
+  --accent: oklch(54% 0.16 286);
+  --accent-soft: oklch(91% 0.035 288);
+  --ink: oklch(24% 0.01 285);
+  --success: oklch(58% 0.15 145);
+  --danger: oklch(56% 0.19 27);
+  --pending: oklch(68% 0.012 285);
+  /* 便签黄 — 仅用于标注(人与 Agent 统一),不作他用 */
+  --note: oklch(96% 0.09 90);
+  --note-border: oklch(88% 0.1 85);
+  --note-shadow: 0 1px 3px rgba(27,27,31,.12);
+  --font-body: 'Söhne','Avenir Next',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+  --font-mono: 'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  --shadow: 0 1px 5px rgba(27,27,31,.10), 0 0 0 1px var(--border);
+  --r: 8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font-body);font-size:13px;color:var(--fg);background:var(--bg);
+  -webkit-font-smoothing:antialiased;user-select:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit;color:inherit}
+
+/* ============ 画布与世界 ============ */
+#viewport{position:fixed;inset:0;overflow:hidden;background:var(--bg);cursor:default}
+#viewport.panning{cursor:grabbing}
+#viewport.tool-place{cursor:crosshair}
+/* 拖入 map.json 时的画布高亮 */
+#viewport.drop-hint{outline:3px dashed var(--accent);outline-offset:-8px}
+#world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+#edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+#edges .hit{pointer-events:stroke;cursor:pointer}
+/* 方案线手柄:悬空端点 / 弯曲控制点 */
+#edges .handle{pointer-events:all;cursor:grab}
+/* 箭头/新建节点等工具下统一 crosshair:避免拖线时节点/线/手柄光标频繁切换造成"光标闪烁消失"观感 */
+#viewport.tool-place .node,
+#viewport.tool-place #edges .hit,
+#viewport.tool-place #edges .handle{cursor:crosshair}
+
+/* 节点:圆形,名称直接写在圆内(半径按文字自适应,见 nodeTextLayout) */
+.node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;
+  align-items:center;gap:6px;cursor:grab;pointer-events:auto}
+.node .dot{border-radius:50%;background:var(--bg);border:1.5px solid var(--fg);
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  font-size:12.5px;font-weight:500;line-height:16px;color:var(--fg);
+  transition:box-shadow .15s,border-color .15s}
+.node[data-type="问题"] .dot{border-style:dashed}
+.node:hover .dot{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.node.sel .dot{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.node.snap .dot{border-color:var(--accent);box-shadow:0 0 0 6px var(--accent-soft)}
+.node.pulse .dot{animation:pulse 1.1s ease-out 3}
+@keyframes pulse{0%{box-shadow:0 0 0 0 var(--accent-soft)}60%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+
+/* 路线名称:低强调,双击可编辑 */
+.route-label{position:absolute;font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;
+  letter-spacing:.04em;transform:translate(-50%,0);cursor:text}
+
+/* 标注:黄色小便签(人与 Agent 统一),归属由细引导线表明 */
+.ann{position:absolute;font-size:12px;line-height:1.3;color:var(--fg);white-space:nowrap;
+  background:var(--note);border:1px solid var(--note-border);border-radius:6px;
+  padding:4px 9px;box-shadow:var(--note-shadow);pointer-events:auto;cursor:grab;
+  transition:box-shadow .15s,border-color .15s}
+.ann:hover{border-color:var(--accent)}
+.ann.sel{border-color:var(--accent);box-shadow:var(--note-shadow),0 0 0 3px var(--accent-soft)}
+.ann.editing{cursor:text;white-space:pre}
+.ann.editing:empty::before{content:'输入标注';color:var(--muted)}
+.ann:active{cursor:grabbing}
+
+/* 框选后的悬浮删除按钮 */
+#del-float{position:fixed;z-index:31;display:none;width:34px;height:34px;align-items:center;
+  justify-content:center;border-radius:var(--r);background:var(--bg);box-shadow:var(--shadow);
+  color:var(--danger)}
+#del-float.on{display:flex}
+#del-float:hover{background:oklch(96% 0.03 27)}
+#del-float svg{width:16px;height:16px}
+
+/* ============ 悬浮控件(Excalidraw 式) ============ */
+.chrome{position:fixed;z-index:20;background:var(--bg);border-radius:var(--r);
+  box-shadow:var(--shadow);display:flex;align-items:center}
+.chrome .icb{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+  border-radius:6px;color:var(--fg);position:relative}
+.chrome .icb:hover{background:var(--surface-hover)}
+.chrome .icb.active{background:var(--accent-soft);color:var(--accent)}
+.chrome .icb svg{width:18px;height:18px}
+.chrome .sep{width:1px;height:20px;background:var(--border);margin:0 4px;flex:none}
+
+#project-pill{left:12px;top:12px;padding:0 4px 0 12px;height:44px;gap:8px}
+#project-pill .pname{font-weight:600;font-size:13px;max-width:180px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+#toolbar{left:50%;top:12px;transform:translateX(-50%);padding:4px;gap:2px}
+#toolbar .icb kbd{position:absolute;right:3px;bottom:2px;font-size:9px;color:var(--muted);
+  font-family:var(--font-mono);pointer-events:none}
+#zoombar{left:12px;bottom:12px;padding:4px;gap:2px}
+#zoombar .zoomv{min-width:48px;text-align:center;font-variant-numeric:tabular-nums;
+  color:var(--muted);border-radius:6px;height:28px;line-height:28px;font-size:12px}
+#zoombar .zoomv:hover{background:var(--surface-hover);color:var(--fg)}
+
+/* Agent 入口:缩小到边角 */
+#agent-dock{right:12px;bottom:12px;display:flex;flex-direction:column;align-items:flex-end;gap:8px;z-index:20;position:fixed}
+#agent-btn{height:40px;padding:0 16px;border-radius:var(--r);background:var(--bg);
+  box-shadow:var(--shadow);font-weight:500;display:flex;align-items:center;gap:8px}
+#agent-btn:hover{background:var(--surface-hover)}
+#agent-btn svg{width:16px;height:16px}
+
+/* 框选矩形与多选包围框(Excalidraw 式) */
+#marquee{position:fixed;z-index:30;border:1.5px dashed var(--accent);
+  background:oklch(91% 0.035 288 / .3);display:none;pointer-events:none}
+#selbox{position:absolute;border:1.5px solid var(--accent);pointer-events:none}
+#selbox .h{position:absolute;width:8px;height:8px;background:var(--bg);border:1.5px solid var(--accent)}
+
+/* ============ 属性面板(按需,右侧) ============ */
+#panel{position:fixed;top:64px;right:12px;bottom:64px;width:280px;z-index:18;
+  background:var(--bg);border-radius:12px;box-shadow:var(--shadow);
+  display:none;flex-direction:column;overflow:hidden}
+#panel.on{display:flex}
+#panel header{display:flex;align-items:center;justify-content:space-between;
+  padding:12px 14px;border-bottom:1px solid var(--border)}
+#panel header .t{font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px}
+#panel header .t .swatch{width:10px;height:10px;border-radius:50%;flex:none}
+#panel .body{overflow-y:auto;padding:6px 0;flex:1}
+.field{padding:7px 14px}
+.field .k{font-size:11px;color:var(--muted);margin-bottom:2px}
+.field .v{font-size:13px;border-radius:6px;padding:3px 6px;margin-left:-6px;min-height:22px}
+.field .v:hover{background:var(--surface-hover);cursor:text}
+.field .v.pick{cursor:pointer}
+.field .v[contenteditable="true"]{background:var(--accent-soft);outline:none;cursor:text}
+.field .v.mono{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.field .v.link{color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer}
+.field .v.link:hover{color:var(--fg)}
+.field .v.link svg{width:13px;height:13px;flex:none}
+/* 状态三段选择 */
+.seg{display:flex;gap:4px;padding:3px 6px;margin-left:-6px}
+.seg button{flex:1;height:28px;border-radius:6px;font-size:12px;color:var(--muted);
+  display:flex;align-items:center;justify-content:center;gap:5px}
+.seg button:hover{background:var(--surface-hover)}
+.seg button.on{color:var(--fg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--border);font-weight:500}
+.seg .pip{width:8px;height:8px;border-radius:50%;flex:none}
+.pip.s{background:var(--success)}.pip.f{background:var(--danger)}.pip.p{background:var(--pending)}
+/* 面板内标注列表 */
+.annitem{display:flex;align-items:baseline;gap:8px;padding:4px 6px;margin:0 -6px;border-radius:6px;font-size:13px}
+.annitem:hover{background:var(--surface-hover)}
+.annitem .txt{flex:1;min-width:0}
+.annitem .mini{opacity:0;display:flex;gap:2px;flex:none}
+.annitem:hover .mini{opacity:1}
+.annitem .mini button{width:22px;height:22px;border-radius:5px;color:var(--muted);
+  display:flex;align-items:center;justify-content:center}
+.annitem .mini button:hover{background:var(--surface);color:var(--fg)}
+.annitem .mini svg{width:13px;height:13px}
+.addline{padding:6px 14px;color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px}
+.addline:hover{color:var(--fg)}
+.addline svg{width:13px;height:13px}
+#panel footer{border-top:1px solid var(--border);padding:6px 8px;display:flex;justify-content:flex-end}
+
+/* ============ 菜单 ============ */
+.menu{position:fixed;z-index:40;min-width:180px;background:var(--bg);border-radius:10px;
+  box-shadow:var(--shadow);padding:4px;display:none;flex-direction:column}
+.menu.on{display:flex}
+.menu button{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;
+  font-size:13px;text-align:left;color:var(--fg)}
+.menu button:hover{background:var(--surface-hover)}
+.menu button.danger:hover{background:oklch(96% 0.03 27);color:var(--danger)}
+.menu button svg{width:15px;height:15px;color:var(--muted);flex:none}
+.menu button.danger svg{color:inherit}
+.menu .msep{height:1px;background:var(--border);margin:4px 6px}
+.menu .mhead{font-size:11px;color:var(--muted);padding:6px 10px 2px}
+.menu .check{margin-left:auto;width:14px;height:14px;color:var(--accent)}
+.menu .mkbd{margin-left:auto;padding-left:18px;font-size:11px;color:var(--muted);
+  font-family:var(--font-mono)}
+
+/* ============ 设置抽屉(Agent 连接) ============ */
+#drawer{position:fixed;top:0;right:0;bottom:0;width:340px;max-width:92vw;z-index:30;
+  background:var(--bg);box-shadow:-8px 0 24px rgba(27,27,31,.08),0 0 0 1px var(--border);
+  transform:translateX(105%);transition:transform .22s ease;display:flex;flex-direction:column}
+#drawer.on{transform:none}
+#drawer header{display:flex;align-items:center;justify-content:space-between;
+  padding:16px 18px;border-bottom:1px solid var(--border);font-weight:600}
+#drawer .dbody{overflow-y:auto;padding:8px 18px 24px;flex:1}
+#drawer h3{font-size:11px;color:var(--muted);font-weight:500;margin:20px 0 8px;
+  letter-spacing:.04em}
+.drow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;
+  background:var(--surface);margin-bottom:6px}
+.drow .ic{width:30px;height:30px;border-radius:7px;background:var(--bg);flex:none;
+  display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px var(--border)}
+.drow .ic svg{width:15px;height:15px;color:var(--fg)}
+.drow .tt{flex:1;min-width:0}
+.drow .tt .a{font-size:13px;font-weight:500}
+.drow .tt .b{font-size:11px;color:var(--muted);font-family:var(--font-mono)}
+.dstate{font-size:11px;color:var(--muted);flex:none;display:flex;align-items:center;gap:5px}
+.dstate .live{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+/* 开关 */
+.switch{width:34px;height:20px;border-radius:10px;background:var(--border);position:relative;
+  transition:background .15s;flex:none}
+.switch::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;
+  border-radius:50%;background:var(--bg);transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.switch.on{background:var(--ink)}
+.switch.on::after{transform:translateX(14px)}
+.dnote{font-size:12px;color:var(--muted);line-height:1.6;margin-top:6px}
+
+/* ============ 提示 toast ============ */
+#toast{position:fixed;top:64px;left:50%;transform:translate(-50%,-8px);z-index:50;
+  background:var(--ink);color:var(--bg);font-size:12px;padding:8px 14px;border-radius:8px;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* 行内输入(标注/名称) */
+.inline-edit{background:var(--bg);border:1px solid var(--accent);border-radius:6px;
+  padding:4px 8px;font:inherit;font-size:12px;outline:none;box-shadow:var(--shadow)}
+
+/* 面板底部内部编号:极小标注,可在设置中隐藏 */
+.pnum{font-size:10px;color:var(--muted);text-align:center;padding:10px 0 2px}
+
+/* 工具提示:底部居中,切换工具时短暂显示 */
+#tool-hint{position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:40;
+  background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 16px;
+  font-size:12px;color:var(--muted);box-shadow:var(--shadow);pointer-events:none;
+  opacity:0;transition:opacity .3s}
+#tool-hint.on{opacity:1}
+
+/* ============ 响应式 ============ */
+@media (max-width:760px){
+  #toolbar{max-width:calc(100vw - 24px);overflow-x:auto}
+  #project-pill .pname{max-width:96px}
+  #panel{top:auto;left:12px;right:12px;bottom:76px;width:auto;max-height:52vh}
+  #drawer{width:100vw;max-width:100vw}
+}
+</style>
+</head>
+<body>
+
+<!-- 画布 -->
+<div id="viewport">
+  <div id="world">
+    <svg id="edges" width="10" height="10"></svg>
+    <!-- 节点/路线名/标注由 JS 渲染 -->
+  </div>
+</div>
+
+<!-- 左上:项目 -->
+<div class="chrome" id="project-pill">
+  <span class="pname" id="proj-name">动态壁纸</span>
+  <button class="icb" id="proj-menu-btn" title="项目">
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h12M3 9h12M3 13h12"/></svg>
+  </button>
+</div>
+
+<!-- 顶部中央:核心工具 -->
+<div class="chrome" id="toolbar">
+  <button class="icb" data-tool="hand" title="平移画布">
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7.5 15.5c-2 0-3.4-1.2-4.1-3.2l-.9-2.6c-.2-.5.1-1.1.6-1.3.5-.1 1 .1 1.2.6l.5 1.3V5.2a.9.9 0 0 1 1.8 0V4a.9.9 0 0 1 1.8 0v.8a.9.9 0 0 1 1.8 0v5c0 .4.5.5.7.2l.8-1.1c.3-.4.9-.5 1.3-.2.4.3.5.8.3 1.2l-1.6 2.9c-.8 1.6-2.2 2.7-4.2 2.7Z" stroke-linejoin="round"/></svg><kbd>H</kbd>
+  </button>
+  <button class="icb active" data-tool="select" title="选择和移动">
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 2.5 13.5 9l-5 .8L6 14.5 4 2.5Z" stroke-linejoin="round"/></svg><kbd>V</kbd>
+  </button>
+  <button class="icb" data-tool="node" title="新建节点">
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="9" r="5.5"/><path d="M9 6.5v5M6.5 9h5"/></svg><kbd>N</kbd>
+  </button>
+  <button class="icb" data-tool="edge" title="新建方案线">
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 14 13 4.5M10.5 4h3v3"/></svg><kbd>L</kbd>
+  </button>
+  <button class="icb" data-tool="ann" title="添加标注">
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3.5h12v8H8l-3.5 3v-3H3v-8Z" stroke-linejoin="round"/></svg><kbd>M</kbd>
+  </button>
+  <div class="sep"></div>
+  <button class="icb" id="more-btn" title="更多">
+    <svg viewBox="0 0 18 18" fill="currentColor"><circle cx="4" cy="9" r="1.4"/><circle cx="9" cy="9" r="1.4"/><circle cx="14" cy="9" r="1.4"/></svg>
+  </button>
+</div>
+
+<!-- 左下:缩放 / 撤销 -->
+<div class="chrome" id="zoombar">
+  <button class="icb" id="zoom-out" title="缩小"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h10"/></svg></button>
+  <button class="zoomv" id="zoom-val" title="适应视图">100%</button>
+  <button class="icb" id="zoom-in" title="放大"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h10M9 4v10"/></svg></button>
+  <div class="sep"></div>
+  <button class="icb" id="undo" title="撤销"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 4 3 7l3 3M3 7h7a5 5 0 0 1 0 10h-1" stroke-linejoin="round"/></svg></button>
+  <button class="icb" id="redo" title="重做"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m12 4 3 3-3 3M15 7H8a5 5 0 0 0 0 10h1" stroke-linejoin="round"/></svg></button>
+</div>
+
+<!-- 右下:Agent 接入指引(真实接入走项目文件夹+协议,见设置抽屉) -->
+<div id="agent-dock">
+  <button id="agent-btn">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5 9.8 6l4.7.3-3.6 3 1.1 4.6L8 11.4l-4 2.5L5.1 9.3l-3.6-3L6.2 6 8 1.5Z" stroke-linejoin="round"/></svg>
+    接入 Agent
+  </button>
+</div>
+
+<!-- 属性面板 -->
+<aside id="panel">
+  <header>
+    <span class="t" id="panel-title"></span>
+    <button class="icb" id="panel-close" style="width:28px;height:28px">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+    </button>
+  </header>
+  <div class="body" id="panel-body"></div>
+  <footer><button class="icb" id="panel-more" title="更多" style="width:30px;height:30px">
+    <svg viewBox="0 0 18 18" fill="currentColor"><circle cx="4" cy="9" r="1.4"/><circle cx="9" cy="9" r="1.4"/><circle cx="14" cy="9" r="1.4"/></svg>
+  </button></footer>
+</aside>
+
+<!-- 设置抽屉 -->
+<div id="drawer">
+  <header>设置
+    <button class="icb" id="drawer-close" style="width:30px;height:30px">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+    </button>
+  </header>
+  <div class="dbody">
+    <h3>AGENT 接入</h3>
+    <div class="drow">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/></svg></span>
+      <span class="tt"><div class="a">① 连接项目文件夹</div><div class="b">地图自动存为文件夹里的 map.json,Agent 读写同一份</div></span>
+      <button class="icb drawer-folder-open" style="width:30px;height:30px" title="打开项目文件夹">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3h7v7M13 3 7 9M5 5H3v8h8v-2" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="drow">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2.5h7l3 3v8H3v-11Z"/><path d="M10 2.5v3h3"/></svg></span>
+      <span class="tt"><div class="a">② 给 Agent 贴协议</div><div class="b">把 agent-kit/AGENTS.snippet.md 追加进项目的 AGENTS.md</div></span>
+      <button class="icb" id="drawer-open-kit" style="width:30px;height:30px" title="查看接入说明">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3h7v7M13 3 7 9M5 5H3v8h8v-2" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="dnote">接入后,Agent 每次会话先读 map.json,主动汇报「等你判断的清单」。不能直连文件夹时,导出的 map.json 也一样能用。</div>
+    <h3>安全边界</h3>
+    <div class="drow">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5 13.5 4v4c0 3.5-2.5 5.8-5.5 6.5C5 13.8 2.5 11.5 2.5 8V4L8 1.5Z" stroke-linejoin="round"/></svg></span>
+      <span class="tt"><div class="a">仅限当前项目目录</div><div class="b">删除节点与路线前需确认</div></span>
+    </div>
+    <h3>数据</h3>
+    <div class="drow">
+      <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/></svg></span>
+      <span class="tt"><div class="a">项目文件夹</div><div class="b" id="drawer-folder-state">未连接(演示模式)</div></span>
+      <button class="icb drawer-folder-open" style="width:30px;height:30px" title="打开项目文件夹">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3h7v7M13 3 7 9M5 5H3v8h8v-2" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="menu" id="menu"></div>
+<div id="marquee"></div>
+<button id="del-float" title="删除"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h12M7 5V3.5h4V5M5 5l.8 9.5h6.4L13 5" stroke-linejoin="round"/></svg></button>
+<div id="toast"></div>
+<div id="tool-hint"></div>
+
+<script>
+/* =====================================================================
+   活点地图 canvas.html — 高保真交互原型
+   数据 → 渲染:state(S) 是唯一事实源;render() 全量重建世界层。
+   ===================================================================== */
+
+/* ---------- 图标 ---------- */
+const I = {
+  hand:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7.5 15.5c-2 0-3.4-1.2-4.1-3.2l-.9-2.6c-.2-.5.1-1.1.6-1.3.5-.1 1 .1 1.2.6l.5 1.3V5.2a.9.9 0 0 1 1.8 0V4a.9.9 0 0 1 1.8 0v.8a.9.9 0 0 1 1.8 0v5c0 .4.5.5.7.2l.8-1.1c.3-.4.9-.5 1.3-.2.4.3.5.8.3 1.2l-1.6 2.9c-.8 1.6-2.2 2.7-4.2 2.7Z" stroke-linejoin="round"/></svg>',
+  node:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="9" r="5.5"/></svg>',
+  edge:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 14 13 4.5M10.5 4h3v3"/></svg>',
+  ann:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3.5h12v8H8l-3.5 3v-3H3v-8Z" stroke-linejoin="round"/></svg>',
+  md:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2.5h7l3 3v8H3v-11Z"/><path d="M10 2.5v3h3"/></svg>',
+  trash:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h12M7 5V3.5h4V5M5 5l.8 9.5h6.4L13 5" stroke-linejoin="round"/></svg>',
+  route:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 15c4-1 2-8 6-9s3-2 6-3" stroke-linecap="round"/><circle cx="3" cy="15" r="1.6"/><circle cx="15" cy="3" r="1.6"/></svg>',
+  paste:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4.5" y="4.5" width="10" height="11" rx="1.5"/><path d="M7 4.5V3h4v1.5" stroke-linejoin="round"/></svg>',
+  eye:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.5 8S4 4 8 4s6.5 4 6.5 4-2.5 4-6.5 4S1.5 8 1.5 8Z"/><circle cx="8" cy="8" r="1.8"/></svg>',
+  eyeoff:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 2.5l11 11M6.5 4.6A6.8 6.8 0 0 1 8 4.5c4 0 6.5 3.5 6.5 3.5a13 13 0 0 1-2.3 2.4M9.6 11.3A6.4 6.4 0 0 1 8 11.5C4 11.5 1.5 8 1.5 8a13 13 0 0 1 2.9-2.8"/></svg>',
+  check:'<svg class="check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 8.5 3.5 3.5L13 4.5"/></svg>',
+  x:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 4 8 8M12 4l-8 8"/></svg>',
+  ext:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3h7v7M13 3 7 9M5 5H3v8h8v-2" stroke-linejoin="round"/></svg>',
+  folder:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/></svg>',
+  gear:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="9" cy="9" r="2.4"/><path d="M9 1.8v2.2M9 14v2.2M1.8 9H4M14 9h2.2M3.9 3.9l1.6 1.6M12.5 12.5l1.6 1.6M14.1 3.9l-1.6 1.6M5.5 12.5l-1.6 1.6"/></svg>',
+  fit:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4"/></svg>',
+  tidy:'<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h12M5 9h8M7 14h4" stroke-linecap="round"/></svg>',
+  imp:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13.5h10" stroke-linejoin="round"/></svg>',
+  exp:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 10V2M4.5 5.5 8 2l3.5 3.5M3 13.5h10" stroke-linejoin="round"/></svg>',
+  plus:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></svg>',
+  save:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2.5h7l3 3v8H3v-11Z"/><path d="M5.5 2.5V6h4V2.5M5 13.5v-4h6v4" stroke-linejoin="round"/></svg>',
+  img:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="5.5" cy="6.5" r="1.2"/><path d="m2.5 11.5 3-3 2.5 2.5 2-2 3 3" stroke-linejoin="round"/></svg>'
+};
+
+/* ---------- 种子数据:PRD §13 案例 ---------- */
+const STATUS = {
+  success:{label:'成功', color:'var(--success)', dash:'',      arrow:true},
+  failed: {label:'失败', color:'var(--danger)',  dash:'8 6',   arrow:true},
+  pending:{label:'待验证',color:'var(--pending)',dash:'2 6',   arrow:true}
+};
+const seed = () => ({
+  view:{x:0,y:0,k:1},
+  routes:[
+    {id:'r1', name:'动态壁纸',   source:null},
+    {id:'r2', name:'幽灵脸问题', source:'n2'},
+    {id:'r3', name:'性能优化',   source:'n3'}
+  ],
+  nodes:[
+    {id:'n1', num:'01', name:'开始',         type:'目的', route:'r1', x:0,   y:0,   r:34, md:'nodes/01-开始.md'},
+    {id:'n2', num:'02', name:'生成图片',     type:'结果', route:'r1', x:260, y:0,   r:34, md:'nodes/02-生成图片.md'},
+    {id:'n3', num:'03', name:'完成放大',     type:'结果', route:'r1', x:520, y:0,   r:34, md:'nodes/03-完成放大.md'},
+    {id:'n4', num:'04', name:'动态壁纸完成', type:'目的', route:'r1', x:780, y:0,   r:34, md:'nodes/04-动态壁纸完成.md'},
+    {id:'n5', num:'05', name:'幽灵脸问题',   type:'问题', route:'r2', x:260, y:220, r:34, md:'nodes/05-幽灵脸问题.md'},
+    {id:'n6', num:'06', name:'幽灵脸问题解决',type:'结果', route:'r2', x:620, y:220, r:34, md:'nodes/06-幽灵脸问题解决.md'},
+    {id:'n7', num:'07', name:'渲染耗时过长', type:'问题', route:'r3', x:520, y:-220,r:34, md:'nodes/07-渲染耗时过长.md'}
+  ],
+  edges:[
+    {id:'e1', from:'n1', to:'n2', name:'生成基础图片', status:'success', route:'r1', md:'routes/e1-生成基础图片.md'},
+    {id:'e2', from:'n2', to:'n3', name:'实现放大',     status:'success', route:'r1', md:'routes/e2-实现放大.md'},
+    {id:'e3', from:'n3', to:'n4', name:'生成动画',     status:'success', route:'r1', md:'routes/e3-生成动画.md'},
+    {id:'e4', from:'n3', to:null, name:'补帧插值',     status:'pending', route:'r1', md:'routes/e4-补帧插值.md', dx:170, dy:90},
+    {id:'e5', from:'n5', to:null, name:'修改提示词',   status:'failed',  route:'r2', md:'routes/e5-修改提示词.md', dx:150, dy:110},
+    {id:'e6', from:'n5', to:null, name:'更换模型',     status:'pending', route:'r2', md:'routes/e6-更换模型.md', dx:60,  dy:150},
+    {id:'e7', from:'n5', to:'n6', name:'引入遮罩检测', status:'success', route:'r2', md:'routes/e7-引入遮罩检测.md'},
+    {id:'e8', from:'n7', to:null, name:'瓦片缓存',     status:'pending', route:'r3', md:'routes/e8-瓦片缓存.md', dx:170, dy:-40},
+    {id:'e9', from:'n7', to:null, name:'降低采样率',   status:'failed',  route:'r3', md:'routes/e9-降低采样率.md', dx:150, dy:-130}
+  ],
+  anns:[
+    {id:'a1', target:{kind:'node', id:'n2'}, text:'人脸在多毛动物上失真最明显', hidden:false},
+    {id:'a2', target:{kind:'edge', id:'e6'}, text:'等 SD3 本地部署完成再试', hidden:false},
+    {id:'a3', target:{kind:'edge', id:'e4'}, text:'先验证 24fps 是否够用', hidden:true}
+  ],
+  showAnns:true, showRoutes:true, showNums:false, showFailed:true,
+  sel:null, multi:[], selAnn:null, hoverEdge:null, snapTo:null,
+  tool:'select',
+  nextNum:8, nextEdge:10, nextAnn:4, nextNodeName:1, nextEdgeName:1, nextRouteName:1,
+  /* 瞬时交互态:不随快照进撤销历史 */
+  hoverEdge:null, snapTo:null, selAnn:null, pendingEdgeFrom:null, drawingEdge:null
+});
+let S = seed();
+let undoStack = [], redoStack = []; // 双栈撤销:pushHistory 存前态,undo 时把当前态压入 redoStack(修复最新一步无法重做)
+let lastClick = null; // 双击检测(标签行内编辑):{key, t}
+
+/* ---------- 工具 ---------- */
+const $ = s => document.querySelector(s);
+const viewport = $('#viewport'), world = $('#world'), svg = $('#edges');
+const nodeById = id => S.nodes.find(n => n.id === id);
+const edgeById = id => S.edges.find(e => e.id === id);
+const routeById = id => S.routes.find(r => r.id === id);
+/* 归档=自身归档或所属路线归档:画布弱化、不参与悬停,数据保留 */
+const isEdgeArchived = e => !!(e.archived || (e.route && routeById(e.route)?.archived));
+const esc = t => String(t).replace(/[&<>]"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+/* 选中判断:单选或多选命中 */
+const isSelObj = (kind,id) => (S.sel && S.sel.kind===kind && S.sel.id===id) || S.multi.some(m => m.kind===kind && m.id===id);
+/* 吸附命中检测:指针附近(半径+容差)的节点 */
+function nodeAt(wx, wy, excludeId){
+  return S.nodes.find(n => n.id !== excludeId && Math.hypot(n.x-wx, n.y-wy) < n.r + 12) || null;
+}
+
+function snapshot(){ return JSON.stringify({routes:S.routes,nodes:S.nodes,edges:S.edges,anns:S.anns,nextNum:S.nextNum,nextEdge:S.nextEdge,nextAnn:S.nextAnn,nextNodeName:S.nextNodeName,nextEdgeName:S.nextEdgeName,nextRouteName:S.nextRouteName}); }
+function pushHistory(){
+  undoStack.push(snapshot());
+  if (undoStack.length > 200) undoStack.shift();
+  redoStack = [];
+  scheduleSave();
+}
+function restore(json){
+  const d = JSON.parse(json);
+  Object.assign(S, d); S.sel = null;
+  render(); renderPanel();
+}
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2000);
+}
+
+/* ---------- 视图 ---------- */
+function applyView(){
+  world.style.transform = `translate(${S.view.x}px,${S.view.y}px) scale(${S.view.k})`;
+  $('#zoom-val').textContent = Math.round(S.view.k * 100) + '%';
+}
+function toWorld(cx, cy){
+  return { x:(cx - S.view.x) / S.view.k, y:(cy - S.view.y) / S.view.k };
+}
+function fitView(){
+  if (!S.nodes.length){ S.view = {x:innerWidth/2, y:innerHeight/2, k:1}; applyView(); return; }
+  let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+  for (const n of S.nodes){ minX=Math.min(minX,n.x-n.r); maxX=Math.max(maxX,n.x+n.r); minY=Math.min(minY,n.y-n.r-40); maxY=Math.max(maxY,n.y+n.r+40); }
+  for (const e of S.edges) if (!e.to){ const p=dangleEnd(e); minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minY=Math.min(minY,p.y);maxY=Math.max(maxY,p.y); }
+  const pad=90, w=maxX-minX+pad*2, h=maxY-minY+pad*2;
+  const k=Math.min(innerWidth/w, innerHeight/h, 1.15);
+  S.view = { k, x:(innerWidth-w*k)/2 - (minX-pad)*k, y:(innerHeight-h*k)/2 - (minY-pad)*k };
+  applyView();
+}
+function zoomAt(cx, cy, f){
+  const k2 = Math.min(2.5, Math.max(.2, S.view.k * f));
+  S.view.x = cx - (cx - S.view.x) * (k2 / S.view.k);
+  S.view.y = cy - (cy - S.view.y) * (k2 / S.view.k);
+  S.view.k = k2; applyView();
+}
+
+/* ---------- 几何 ---------- */
+function dangleEnd(e){ const n = nodeById(e.from); return { x:n.x + e.dx, y:n.y + e.dy }; }
+function edgeEnds(e){
+  const a = nodeById(e.from);
+  if (e.to){
+    const b = nodeById(e.to);
+    const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||1;
+    return { x1:a.x+dx/d*a.r, y1:a.y+dy/d*a.r, x2:b.x-dx/d*(b.r+3), y2:b.y-dy/d*(b.r+3), mx:(a.x+b.x)/2, my:(a.y+b.y)/2 };
+  }
+  const p = dangleEnd(e);
+  const dx=p.x-a.x, dy=p.y-a.y, d=Math.hypot(dx,dy)||1;
+  return { x1:a.x+dx/d*a.r, y1:a.y+dy/d*a.r, x2:p.x, y2:p.y, mx:(a.x+p.x)/2, my:(a.y+p.y)/2 };
+}
+
+/* 二次贝塞尔曲线:控制点 = 直线中点 + (e.cx, e.cy),缺省为直线 */
+function edgeCurve(e){
+  const g = edgeEnds(e);
+  const cpx = (g.x1+g.x2)/2 + (e.cx||0), cpy = (g.y1+g.y2)/2 + (e.cy||0);
+  // 曲线上 t=0.5 的实际点,以及该点的单位法线(正法线指向行进方向右上方,即直线场景朝上)
+  const bx = .25*g.x1 + .5*cpx + .25*g.x2, by = .25*g.y1 + .5*cpy + .25*g.y2;
+  let nx = g.y2-g.y1, ny = -(g.x2-g.x1);
+  const nl = Math.hypot(nx,ny)||1; nx/=nl; ny/=nl;
+  return { ...g, cpx, cpy, bx, by, nx, ny, d:`M ${g.x1} ${g.y1} Q ${cpx} ${cpy} ${g.x2} ${g.y2}` };
+}
+
+/* 同 from 节点的其它方案线方向角(度):悬空线取悬空端方向,已连接线取对端方向 */
+function otherEdgeAngles(e){
+  const a = nodeById(e.from);
+  const angs = [];
+  for (const o of S.edges){
+    if (o.id === e.id || o.from !== e.from) continue;
+    let dx, dy;
+    if (o.to){ const b = nodeById(o.to); dx = b.x-a.x; dy = b.y-a.y; }
+    else { dx = o.dx||0; dy = o.dy||0; }
+    if (Math.hypot(dx,dy) > 1) angs.push(Math.atan2(dy,dx)*180/Math.PI);
+  }
+  return angs;
+}
+/* 从 baseDeg 出发,找与同节点已有线夹角 ≥ 30° 的最近角度(新建/重布线自动避让) */
+function avoidAngleDeg(baseDeg, e, minDeg = 30){
+  const angs = otherEdgeAngles(e);
+  if (!angs.length) return baseDeg;
+  const diff = (a,b) => { let d = Math.abs(a-b)%360; return d>180 ? 360-d : d; };
+  if (angs.every(a => diff(baseDeg, a) >= minDeg)) return baseDeg;
+  let best = null, bestD = 1e9;
+  for (const a of angs){
+    for (const off of [minDeg, -minDeg]){
+      const cand = a + off;
+      if (angs.every(b => diff(cand, b) >= minDeg - .01)){
+        const d = diff(cand, baseDeg);
+        if (d < bestD){ bestD = d; best = cand; }
+      }
+    }
+  }
+  if (best === null){ // 角度被占满:取与所有已有线最近距离最大的方向
+    let far = baseDeg, fD = -1;
+    for (let a = 0; a < 360; a += 2){
+      const m = Math.min(...angs.map(b => diff(a,b)));
+      if (m > fD){ fD = m; far = a; }
+    }
+    best = far;
+  }
+  return best;
+}
+/* 同 from→to 的已连接线重叠:按线在组内索引沿法线对称展开,46px 间隔(渲染时调用,自动排开) */
+function staggerParallel(e){
+  if (!e.to) return;
+  const group = S.edges.filter(o => o.from === e.from && o.to === e.to);
+  if (group.length < 2) return; // 无平行线时不动,保留用户手动弯折
+  const n = group.length;
+  const off = (group.indexOf(e) - (n - 1) / 2) * 46;
+  const a = nodeById(e.from), b = nodeById(e.to);
+  const dx = b.x-a.x, dy = b.y-a.y, d = Math.hypot(dx,dy)||1;
+  e.cx = -dy/d*off; e.cy = dx/d*off;
+}
+
+/* 节点圆内文字:每行最多 4 字,按文字量自动计算半径(离屏 canvas 测宽) */
+const measCtx = document.createElement('canvas').getContext('2d');
+let measFont = '';
+function nodeTextLayout(name){
+  const fs = 12.5, lh = 16;
+  const chars = [...String(name)];
+  const lines = [];
+  for (let i = 0; i < chars.length; i += 4) lines.push(chars.slice(i, i+4).join(''));
+  if (!lines.length) lines.push('');
+  if (!measFont) measFont = `500 ${fs}px ${getComputedStyle(document.body).fontFamily}`;
+  measCtx.font = measFont;
+  let maxW = 0;
+  for (const l of lines) maxW = Math.max(maxW, measCtx.measureText(l).width);
+  const r = Math.max(34, maxW/2 + 14, lines.length*lh/2 + 14);
+  return { lines, r };
+}
+/* 标注便签文本测宽(12px) */
+function measureText12(t){
+  measCtx.font = `400 12px ${getComputedStyle(document.body).fontFamily}`;
+  return measCtx.measureText(t).width;
+}
+
+/* ---------- 渲染 ---------- */
+function render(){
+  // 先重算所有节点半径(文字进圆圈,edgeEnds 依赖 n.r,必须在画边之前)
+  const layout = new Map();
+  for (const n of S.nodes){ const L = nodeTextLayout(n.name); n.r = L.r; layout.set(n.id, L); }
+  // 同一 from 节点的多条方案线:标签法向偏移方向交替,天然错开
+  const visEdges = S.showFailed ? S.edges : S.edges.filter(e => e.status !== 'failed'); // 隐藏失败方案时仅渲染其余
+  const signOf = {}, fromCnt = {};
+  for (const e of visEdges){ const i = fromCnt[e.from]||0; fromCnt[e.from] = i+1; signOf[e.id] = i%2===0 ? 1 : -1; }
+
+  // 三种状态各一个箭头 marker,用各自状态色填充
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v);
+  const defs = `<defs>${[['ar-s','--success'],['ar-f','--danger'],['ar-p','--pending']].map(([id, c]) =>
+    `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="${css(c)}"/></marker>`).join('')}</defs>`;
+  const markerOf = { success:'ar-s', failed:'ar-f', pending:'ar-p' };
+
+  // 边:透明宽命中 path + 选中高亮 path + 可见 path(二次贝塞尔)
+  let lines = '', labels = '', leaders = '';
+  const labelBoxes = []; // 方案名标签包围盒,供标注避让
+  for (const e of visEdges){
+    staggerParallel(e); // 同 from→to 的平行线自动错开
+    const st = STATUS[e.status], g = edgeCurve(e);
+    const arch = isEdgeArchived(e); // 归档线弱化渲染
+    const isSel = isSelObj('edge', e.id);
+    const singleSel = S.sel && S.sel.kind==='edge' && S.sel.id===e.id;
+    const drawing = S.drawingEdge === e.id; // 正在从节点拉出:隐藏标签与端点手柄
+    const sign = signOf[e.id];
+    lines += `<path class="hit" data-edge="${e.id}" d="${g.d}" fill="none" stroke="transparent" stroke-width="16"/>`;
+    // 悬停发光 / 选中高亮
+    if (isSel) lines += `<path d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="5" opacity=".28" stroke-linecap="round" ${e.status!=='success'?`stroke-dasharray="${st.dash}"`:''}/>`;
+    else if (S.hoverEdge === e.id) lines += `<path d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="6" opacity=".16" stroke-linecap="round"/>`;
+    // 悬空线的可见端缩短 6px,给末端手柄让位,箭头画在悬空末端
+    let dv = g.d;
+    if (!e.to){
+      let tx = g.x2-g.cpx, ty = g.y2-g.cpy;
+      const tl = Math.hypot(tx,ty)||1; tx/=tl; ty/=tl;
+      dv = `M ${g.x1} ${g.y1} Q ${g.cpx} ${g.cpy} ${g.x2-tx*6} ${g.y2-ty*6}`;
+    }
+    lines += `<path data-edge="${e.id}" class="hit" d="${dv}" fill="none"
+      stroke="${st.color}" stroke-width="2" ${st.dash?`stroke-dasharray="${st.dash}"`:''} ${arch?'opacity=".28"':''}
+      marker-end="url(#${markerOf[e.status]})" stroke-linecap="round"/>`;
+    // 悬空端点手柄:常显,视觉轻(select 工具下可拖动)
+    if (!e.to && !drawing) lines += `<circle class="handle" data-handle="end" data-edge="${e.id}" cx="${g.x2}" cy="${g.y2}" r="4.5"
+      fill="var(--bg)" stroke="${st.color}" stroke-width="1.5"/>`;
+    // 已连接线:选中或悬停时显示末端手柄(可拖下脱钩重新布线),位置向外偏移便于抓取
+    if (e.to && (singleSel || S.hoverEdge === e.id)){
+      const b = nodeById(e.to);
+      const hdx = g.x2-b.x, hdy = g.y2-b.y, hl = Math.hypot(hdx,hdy)||1;
+      const hx = b.x + hdx/hl*(b.r+16), hy = b.y + hdy/hl*(b.r+16);
+      lines += `<circle class="handle" data-handle="end" data-edge="${e.id}" cx="${hx}" cy="${hy}" r="6"
+        fill="var(--bg)" stroke="${st.color}" stroke-width="1.5"/>`;
+    }
+    // 弯曲手柄:仅单选该边时显示在曲线中点(Excalidraw 式:抓取点固定弯折)
+    if (singleSel) lines += `<circle class="handle" data-handle="bend" data-edge="${e.id}" cx="${g.bx}" cy="${g.by}" r="4.5"
+      fill="var(--accent)" stroke="var(--bg)" stroke-width="1.5"/>`;
+    if (drawing) continue; // 拉出中的临时线不画标签
+    if (inlineEdgeEdit === e.id) continue; // 方案名行内编辑中,不重建标签避免重影
+    // 方案名:贝塞尔 t=0.5 的实际点,沿法线偏移约 14px 避免压线
+    const lcx = g.bx + g.nx*sign*15, lcy = g.by + g.ny*sign*15 + 4;
+    const lw = measureText12(e.name);
+    const hasScore = e.score != null && e.score !== ''; // 评分徽标(0-100,人打/Agent建议)
+    const bw = hasScore ? 20 : 0;
+    labelBoxes.push({ x: lcx - lw/2 - 3, y: lcy - 13, w: lw + 6 + bw, h: 17 });
+    labels += `<g class="hit" data-edge="${e.id}" style="pointer-events:all;cursor:pointer" ${arch?'opacity=".45"':''}>
+      <text x="${lcx}" y="${lcy}" text-anchor="middle" font-size="12.5" font-weight="500"
+        fill="var(--fg)" stroke="var(--bg)" stroke-width="5" paint-order="stroke">${esc(e.name)}</text>${
+      hasScore ? `<text x="${lcx + lw/2 + 11}" y="${lcy}" text-anchor="middle" font-size="10" font-weight="600"
+        fill="var(--muted)" stroke="var(--bg)" stroke-width="4" paint-order="stroke">${esc(String(e.score))}</text>` : ''}</g>`;
+  }
+
+  /* ---- 标注避让布局:便签位置候选打分,引导线表明归属 ---- */
+  const ANN_H = 24;
+  // 障碍物:方案线曲线采样点 + 方案名/路线名标签包围盒 + 节点圆
+  const obsPts = [], obsBoxes = [...labelBoxes];
+  for (const e of visEdges){
+    const g = edgeCurve(e);
+    for (let t = 0; t <= 1.001; t += .05){
+      const it = 1 - t;
+      obsPts.push({ x: it*it*g.x1 + 2*it*t*g.cpx + t*t*g.x2, y: it*it*g.y1 + 2*it*t*g.cpy + t*t*g.y2 });
+    }
+  }
+  if (S.showRoutes) for (const r of S.routes){
+    const first = S.nodes.find(n => n.route === r.id); if (!first) continue;
+    const w = measureText12(r.name);
+    obsBoxes.push({ x: first.x - w/2, y: first.y - first.r - 30, w, h: 16 });
+  }
+  // 罚分:压方案线最重,其次标签与节点,已摆放的便签重叠最重
+  const annScore = (ax, ay, w, placed) => {
+    let s = 0;
+    for (const p of obsPts)
+      if (p.x > ax-5 && p.x < ax+w+5 && p.y > ay-5 && p.y < ay+ANN_H+5) s += 10;
+    for (const b of obsBoxes)
+      if (!(ax > b.x+b.w+4 || b.x > ax+w+4 || ay > b.y+b.h+4 || b.y > ay+ANN_H+4)) s += 8;
+    for (const c of S.nodes){
+      const nx = Math.min(Math.max(c.x, ax), ax+w), ny = Math.min(Math.max(c.y, ay), ay+ANN_H);
+      if (Math.hypot(c.x-nx, c.y-ny) < c.r + 6) s += 8;
+    }
+    for (const b of placed)
+      if (!(ax > b.x+b.w+6 || b.x > ax+w+6 || ay > b.y+b.h+8 || b.y > ay+ANN_H+8)) s += 20;
+    return s;
+  };
+  // 手绘感:按 id 哈希取固定微旋转(确定性,不随机抖动)
+  const rotOf = id => { let h = 0; for (const c of id) h = (h*31 + c.charCodeAt(0))|0;
+    return (Math.abs(h) % 25) / 10 * 2.4 - 1.2; };
+  const annPos = [], placed = [], edgeAnnIdx = {};
+  if (S.showAnns) for (const a of S.anns){
+    if (a.hidden) continue;
+    const w = measureText12(a.text);
+    let ax, ay, tx, ty;
+    if (a.target.kind === 'node'){
+      const n = nodeById(a.target.id); if (!n) continue;
+      // 8 方向候选(右侧优先),取罚分最小
+      const d = n.r + 26, o = n.r*0.71 + 18;
+      const cand = [
+        { x: n.x + d,         y: n.y - ANN_H/2 },          // 右
+        { x: n.x + o,         y: n.y - o - ANN_H },        // 右上
+        { x: n.x + o,         y: n.y + o },                // 右下
+        { x: n.x - d - w,     y: n.y - ANN_H/2 },          // 左
+        { x: n.x - o - w,     y: n.y - o - ANN_H },        // 左上
+        { x: n.x - o - w,     y: n.y + o },                // 左下
+        { x: n.x - w/2,       y: n.y - d - ANN_H },        // 上
+        { x: n.x - w/2,       y: n.y + d }                 // 下
+      ];
+      let best = cand[0], bs = 1e9;
+      for (const c of cand){ const s = annScore(c.x, c.y, w, placed); if (s < bs){ bs = s; best = c; } }
+      ax = best.x; ay = best.y; tx = n.x; ty = n.y;
+    } else {
+      const e = edgeById(a.target.id); if (!e) continue;
+      const g = edgeCurve(e), sign = signOf[e.id];
+      const idx = edgeAnnIdx[e.id] = (edgeAnnIdx[e.id]||0) + 1;
+      // 锚点曲线 t=0.5、方案名另一侧;压线则沿法向外移(最多两步)
+      let best = null, bs = 1e9;
+      for (let step = 0; step < 3; step++){
+        const dist = 28 + (idx-1)*20 + step*20;
+        const cx0 = g.bx - g.nx*sign*dist, cy0 = g.by - g.ny*sign*dist;
+        const s = annScore(cx0 - w/2, cy0 - ANN_H/2, w, placed);
+        if (s < bs){ bs = s; best = { x: cx0 - w/2, y: cy0 - ANN_H/2 }; }
+        if (s === 0) break;
+      }
+      ax = best.x; ay = best.y; tx = g.bx; ty = g.by;
+    }
+    ax += a.dx||0; ay += a.dy||0; // 手动微调偏移
+    // 尾巴式连接:取便签距锚点最近的一角,小角拉伸连向所属对象(替代细引导线)
+    if (a.target.kind === 'node'){
+      const n = nodeById(a.target.id);
+      let c0 = [ax,ay], cd0 = 1e9;
+      for (const c of [[ax,ay],[ax+w,ay],[ax,ay+ANN_H],[ax+w,ay+ANN_H]]){
+        const dd = Math.hypot(c[0]-n.x, c[1]-n.y); if (dd < cd0){ cd0 = dd; c0 = c; }
+      }
+      const ddx = c0[0]-n.x, ddy = c0[1]-n.y, dl = Math.hypot(ddx,ddy)||1;
+      tx = n.x + ddx/dl*(n.r+2); ty = n.y + ddy/dl*(n.r+2);
+    }
+    let C = [ax,ay], cd = 1e9;
+    for (const c of [[ax,ay],[ax+w,ay],[ax,ay+ANN_H],[ax+w,ay+ANN_H]]){
+      const dd = Math.hypot(c[0]-tx, c[1]-ty); if (dd < cd){ cd = dd; C = c; }
+    }
+    if (cd > 8){
+      const ex = C[0] === ax ? 9 : -9, ey = C[1] === ay ? 9 : -9;
+      leaders += `<path d="M ${C[0]+ex} ${C[1]} L ${tx} ${ty} L ${C[0]} ${C[1]+ey} Z" fill="var(--note)" stroke="var(--note-border)" stroke-width="1" stroke-linejoin="round"/>`;
+    }
+    annPos.push({ a, ax, ay, rot: rotOf(a.id) });
+    placed.push({ x: ax, y: ay, w, h: ANN_H });
+  }
+  svg.innerHTML = defs + lines + leaders + labels;
+
+  // 节点 / 路线名 / 标注
+  world.querySelectorAll('.node,.route-label,.ann,#selbox').forEach(el => el.remove());
+  if (S.showRoutes) for (const r of S.routes){
+    if (inlineRouteEdit === r.id) continue; // 路线名行内编辑中,不重建标签避免重影
+    const first = S.nodes.find(n => n.route === r.id); if (!first) continue;
+    const el = document.createElement('div');
+    el.className = 'route-label'; el.dataset.route = r.id;
+    el.style.left = first.x + 'px'; el.style.top = (first.y - first.r - 30) + 'px';
+    el.textContent = r.name;
+    world.appendChild(el);
+  }
+  for (const n of S.nodes){
+    if (inlineNodeEdit === n.id) continue; // 节点名行内编辑中,不重建节点避免重影
+    const L = layout.get(n.id);
+    const el = document.createElement('div');
+    el.className = 'node' + (isSelObj('node', n.id) ? ' sel':'') + (S.snapTo === n.id ? ' snap':'');
+    el.dataset.type = n.type; el.dataset.id = n.id;
+    el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+    el.innerHTML = `<div class="dot" style="width:${n.r*2}px;height:${n.r*2}px"><span>${L.lines.map(esc).join('<br>')}</span></div>`;
+    world.appendChild(el);
+  }
+  for (const { a, ax, ay, rot } of annPos){
+    if (inlineEditing && inlineEditing.annId === a.id) continue; // 编辑中的便签由输入框占位,不重建(避免重影)
+    const el = document.createElement('div');
+    el.className = 'ann' + (S.selAnn === a.id ? ' sel':''); el.dataset.ann = a.id;
+    el.style.left = ax + 'px'; el.style.top = ay + 'px';
+    el.style.transform = `rotate(${rot}deg)`;
+    el.textContent = a.text;
+    world.appendChild(el);
+  }
+  // 多选包围框:紫蓝实线 + 四角手柄(Excalidraw 式)
+  if (S.multi.length){
+    let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+    const grow = (x,y) => { minX=Math.min(minX,x); maxX=Math.max(maxX,x); minY=Math.min(minY,y); maxY=Math.max(maxY,y); };
+    for (const m of S.multi){
+      if (m.kind==='node'){ const n=nodeById(m.id); if (n){ grow(n.x-n.r,n.y-n.r); grow(n.x+n.r,n.y+n.r); } }
+      else { const e=edgeById(m.id); if (e){ const g=edgeCurve(e); grow(g.x1,g.y1); grow(g.x2,g.y2); grow(g.cpx,g.cpy); } }
+    }
+    const pad=14, box=document.createElement('div');
+    box.id='selbox';
+    box.style.left=(minX-pad)+'px'; box.style.top=(minY-pad)+'px';
+    box.style.width=(maxX-minX+pad*2)+'px'; box.style.height=(maxY-minY+pad*2)+'px';
+    for (const [hx,hy] of [[0,0],[100,0],[0,100],[100,100]]){
+      const h=document.createElement('div'); h.className='h';
+      h.style.left=`calc(${hx}% - 5px)`; h.style.top=`calc(${hy}% - 5px)`;
+      box.appendChild(h);
+    }
+    world.appendChild(box);
+  }
+  applyView();
+}
+
+/* ---------- 选择 + 属性面板 ---------- */
+function select(kind, id){
+  S.sel = kind ? {kind, id} : null;
+  render(); renderPanel();
+}
+function field(k, vHTML){ return `<div class="field"><div class="k">${k}</div>${vHTML}</div>`; }
+/* 所属路线显示:有关联显示路线名,否则显示"无";点击弹出下拉选择已有路线 */
+const routeNameOf = o => o.route ? (routeById(o.route)?.name || '无') : '无';
+function routePickHTML(o){
+  return `<div class="v pick" data-pick="route" title="点击选择所属路线">${esc(routeNameOf(o))}</div>`;
+}
+
+function renderPanel(){
+  const p = $('#panel'), body = $('#panel-body'), title = $('#panel-title');
+  if (!S.sel){ p.classList.remove('on'); return; }
+  p.classList.add('on');
+  const annsOf = (kind,id) => S.anns.filter(a => a.target.kind===kind && a.target.id===id);
+  const annBlock = (kind,id) => {
+    const list = annsOf(kind,id).map(a => `
+      <div class="annitem" data-ann="${a.id}">
+        <span class="txt" style="${a.hidden?'opacity:.45':''}">${esc(a.text)}</span>
+        <span class="mini">
+          <button data-act="toggle-ann" title="${a.hidden?'显示':'隐藏'}">${a.hidden?I.eyeoff:I.eye}</button>
+          <button data-act="del-ann" title="删除">${I.x}</button>
+        </span>
+      </div>`).join('');
+    return field('标注', list || '<div class="v" style="color:var(--muted);cursor:default">—</div>')
+      + `<button class="addline" data-act="add-ann" data-kind="${kind}" data-id="${id}">${I.ann} 添加标注</button>`;
+  };
+
+  if (S.sel.kind === 'node'){
+    const n = nodeById(S.sel.id); if (!n){ S.sel=null; p.classList.remove('on'); return; }
+    title.innerHTML = `<span class="swatch" style="background:var(--fg)"></span>节点`;
+    body.innerHTML =
+      field('所属路线', routePickHTML(n)) +
+      field('名称', `<div class="v" data-edit="name">${esc(n.name)}</div>`) +
+      field('类型', `<div class="v" data-edit="type" title="点击自定义类型">${esc(n.type)}</div>`) +
+      field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(n.md)}</span>${I.ext}</div>`) +
+      annBlock('node', n.id) +
+      (!S.routes.some(r => r.source === n.id)
+        ? `<button class="addline" data-act="promote">${I.route} 升级成问题路线</button>` : '') +
+      (S.showNums ? `<div class="pnum">编号 #${n.num}</div>` : '');
+  } else {
+    const e = edgeById(S.sel.id); if (!e){ S.sel=null; p.classList.remove('on'); return; }
+    const st = STATUS[e.status];
+    title.innerHTML = `<span class="swatch" style="background:${st.color}"></span>方案`;
+    const seg = `<div class="seg" data-edge="${e.id}">
+      ${['success','failed','pending'].map(s =>
+        `<button class="${e.status===s?'on':''}" data-status="${s}">
+          <span class="pip ${s==='success'?'s':s==='failed'?'f':'p'}"></span>${STATUS[s].label}</button>`).join('')}
+    </div>`;
+    body.innerHTML =
+      field('所属路线', routePickHTML(e)) +
+      field('方案名称', `<div class="v" data-edit="name">${esc(e.name)}</div>`) +
+      field('状态', seg) +
+      field('评分', `<div class="v" style="cursor:default;display:flex;align-items:center;gap:8px">
+        <input type="number" min="0" max="100" data-score value="${e.score ?? ''}" placeholder="—"
+          style="width:64px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit">
+        <span style="color:var(--muted);font-size:12px">0–100，留空即未评</span></div>`) +
+      field('起点', `<div class="v" style="cursor:default">${esc(nodeById(e.from)?.name || '—')}</div>`) +
+      (e.status === 'success'
+        ? field('目标节点', `<div class="v" style="cursor:default">${esc(nodeById(e.to)?.name || '—')}</div>`)
+        : '') +
+      field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(e.md)}</span>${I.ext}</div>`) +
+      annBlock('edge', e.id) +
+      `<button class="addline" data-act="toggle-archive">${e.archived ? '取消归档（恢复显示）' : '归档此方案（弱化显示，不删数据）'}</button>` +
+      (S.showNums ? `<div class="pnum">编号 #${e.id.slice(1)}</div>` : '');
+  }
+}
+
+/* ---------- 状态:只改颜色,与连接关系解耦 ---------- */
+function setEdgeStatus(e, s){
+  if (e.status === s) return;
+  pushHistory();
+  e.status = s; // 连不连节点由用户自己定(拖拽/「新建连接节点」),不随状态强制
+  render(); renderPanel();
+}
+/* 为悬空方案线自动创建目标节点并连接(右键菜单「新建连接节点」) */
+function createTargetNode(e){
+  pushHistory();
+  const from = nodeById(e.from);
+  const end = { x: from.x + (e.dx||220), y: from.y + (e.dy||0) };
+  const name = `新节点${S.nextNodeName++}`;
+  const n = { id:'n'+(++S.nextNum+100), num:String(S.nextNum).padStart(2,'0'),
+    name, type:'结果', route:e.route, x:end.x, y:end.y, r:34,
+    md:`nodes/${String(S.nextNum).padStart(2,'0')}-${name}.md` };
+  delete e.dx; delete e.dy;
+  S.nodes.push(n); e.to = n.id;
+  render(); renderPanel();
+}
+
+/* ---------- 菜单 ---------- */
+const menu = $('#menu');
+function openMenu(items, x, y){
+  menu.innerHTML = items.map(it => it.sep ? '<div class="msep"></div>' :
+    it.head ? `<div class="mhead">${it.head}</div>` :
+    `<button data-mi="${it.id}" class="${it.danger?'danger':''}">${it.icon||''}<span>${it.label}</span>${it.checked?I.check:''}${it.kbd?`<kbd class="mkbd">${it.kbd}</kbd>`:''}</button>`
+  ).join('');
+  menu.classList.add('on');
+  const mw = 210, mh = items.length * 36 + 16;
+  menu.style.left = Math.min(x, innerWidth - mw - 8) + 'px';
+  menu.style.top = Math.min(y, innerHeight - mh - 8) + 'px';
+  menu._items = items;
+}
+function closeMenu(){ menu.classList.remove('on'); }
+menu.addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-mi]'); if (!b) return;
+  const it = menu._items.find(i => i.id === b.dataset.mi);
+  closeMenu(); it && it.fn && it.fn();
+});
+document.addEventListener('pointerdown', ev => {
+  if (!menu.contains(ev.target) && !ev.target.closest('[data-menu-src]')) closeMenu();
+}, true);
+
+function nodeMenu(n, x, y){
+  openMenu([
+    {id:'issue', icon:I.route, label:'升级为问题路线', fn(){ promoteToIssueRoute(n); }},
+    {id:'ann', icon:I.ann, label:'添加标注', fn(){ addAnnotation('node', n.id); }},
+    {id:'md', icon:I.md, label:'打开 Markdown', fn(){ openMd(n); }},
+    {sep:true},
+    {id:'del', icon:I.trash, label:'删除', danger:true, fn(){ pushHistory();
+      // 删除节点时保留方案线:目标节点边变灰色悬空,起点边删除
+      for (const e of S.edges){
+        if (e.to === n.id){ e.to = null; e.status = 'pending';
+          const a = nodeById(e.from), d = Math.hypot(n.x-a.x, n.y-a.y)||1;
+          e.dx = (n.x-a.x)/d*(d+50); e.dy = (n.y-a.y)/d*(d+50);
+        }
+      }
+      S.edges = S.edges.filter(e => e.from !== n.id);
+      S.nodes = S.nodes.filter(m => m.id!==n.id); select(null); render(); }}
+  ], x, y);
+}
+function edgeMenu(e, x, y){
+  openMenu([
+    {id:'s', label:'标记成功', icon:'<span class="pip s" style="width:9px;height:9px;border-radius:50%;background:var(--success)"></span>', fn(){ setEdgeStatus(e,'success'); }},
+    {id:'f', label:'标记失败', icon:'<span class="pip f" style="width:9px;height:9px;border-radius:50%;background:var(--danger)"></span>', fn(){ setEdgeStatus(e,'failed'); }},
+    {id:'p', label:'标记待验证', icon:'<span class="pip p" style="width:9px;height:9px;border-radius:50%;background:var(--pending)"></span>', fn(){ setEdgeStatus(e,'pending'); }},
+    ...(e.to ? [] : [{id:'link', icon:I.node, label:'新建连接节点', fn(){ createTargetNode(e); }}]),
+    {sep:true},
+    {id:'ann', icon:I.ann, label:'添加标注', fn(){ addAnnotation('edge', e.id); }},
+    {id:'md', icon:I.md, label:'打开 Markdown', fn(){ openMd(e); }},
+    {sep:true},
+    {id:'del', icon:I.trash, label:'删除', danger:true, fn(){ pushHistory();
+      S.edges = S.edges.filter(m => m.id!==e.id); select(null); render(); }}
+  ], x, y);
+}
+function canvasMenu(x, y){
+  const w = toWorld(x, y);
+  openMenu([
+    {id:'new', icon:I.node, label:'新建节点', fn(){ pushHistory(); addNodeAt(w.x, w.y); }},
+    {id:'paste', icon:I.paste, label:'粘贴', fn(){ toast('剪贴板为空'); }}
+  ], x, y);
+}
+/* 普通节点就地升级为问题路线起点:直连方案线与对端节点并入新路线 */
+function promoteToIssueRoute(n){
+  if (S.routes.some(r => r.source === n.id)){ toast('该节点已是问题路线起点'); return; }
+  pushHistory();
+  const rid = 'r' + Date.now();
+  S.routes.push({ id:rid, name:`分支路线${S.nextRouteName++}`, source:n.id });
+  n.type = '问题'; n.route = rid;
+  for (const e of S.edges){
+    if (e.from === n.id || e.to === n.id){
+      e.route = rid;
+      const other = nodeById(e.from === n.id ? e.to : e.from);
+      if (other) other.route = rid;
+    }
+  }
+  render(); renderPanel();
+  toast('已升级为问题路线');
+}
+function addNodeAt(x, y){
+  const name = `新节点${S.nextNodeName++}`;
+  const n = { id:'n'+(++S.nextNum+100), num:String(S.nextNum).padStart(2,'0'),
+    name, type:'目的', route:null, x, y, r:34, // 新建节点默认不属于任何路线(显示"无")
+    md:`nodes/${String(S.nextNum).padStart(2,'0')}-${name}.md` };
+  S.nodes.push(n); select('node', n.id); render();
+}
+
+/* ---------- 标注 ---------- */
+function addAnnotation(kind, id){
+  const a = { id:'a'+(S.nextAnn++), target:{kind, id}, text:'新标注', hidden:false };
+  pushHistory(); S.anns.push(a); render(); renderPanel();
+  // 行内编辑面板里的新标注
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.annitem[data-ann="${a.id}"] .txt`);
+    if (el) inlineEdit(el, a.text, v => { a.text = v || a.text; render(); renderPanel(); });
+  });
+}
+let inlineEditing = null; // 正在行内编辑的便签 {annId, input}
+let inlineEdgeEdit = null; // 正在行内编辑方案名的边 id
+let inlineNodeEdit = null; // 正在行内编辑名称的节点 id
+let inlineRouteEdit = null; // 正在行内编辑名称的路线 id
+/* 在目标元素位置弹固定定位行内输入框:Enter 提交、Escape 取消、blur 提交 */
+function popInlineEdit(rect, initial, onCommit){
+  const input = document.createElement('input');
+  input.className = 'inline-edit'; input.value = initial;
+  input.style.position = 'fixed';
+  input.style.left = (rect.left + rect.width/2) + 'px'; input.style.top = (rect.top + rect.height/2) + 'px';
+  input.style.transform = 'translate(-50%,-50%)';
+  input.style.width = Math.max(120, rect.width + 40) + 'px'; input.style.zIndex = 60;
+  document.body.appendChild(input); input.focus(); input.select();
+  let finished = false;
+  const commit = () => {
+    if (finished) return; finished = true;
+    const v = input.value.trim();
+    if (input.isConnected) input.remove(); // render() 不清理输入框,必须自己移除
+    onCommit(v);
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev => {
+    if (ev.isComposing || ev.keyCode === 229) return; // 中文输入法组词中不拦截按键
+    if (ev.key === 'Enter') commit();
+    if (ev.key === 'Escape'){ input.value = initial; commit(); }
+  });
+}
+/* 节点名双击行内编辑:保存后同步 Markdown 文件名,半径随文字自动重算 */
+function editNodeName(n, nodeEl){
+  inlineNodeEdit = n.id;
+  popInlineEdit(nodeEl.getBoundingClientRect(), n.name, v => {
+    inlineNodeEdit = null;
+    if (v && v !== n.name){ pushHistory(); n.name = v; n.md = `nodes/${n.num}-${v}.md`; }
+    render(); renderPanel();
+  });
+}
+/* 路线名双击行内编辑 */
+function editRouteName(r, labelEl){
+  inlineRouteEdit = r.id;
+  popInlineEdit(labelEl.getBoundingClientRect(), r.name, v => {
+    inlineRouteEdit = null;
+    if (v && v !== r.name){ pushHistory(); r.name = v; }
+    render(); renderPanel();
+  });
+}
+/* 方案名双击行内编辑:在标签位置弹输入框,Enter 保存 */
+function editEdgeName(e, textEl){
+  const r = textEl.getBoundingClientRect();
+  const input = document.createElement('input');
+  input.className = 'inline-edit'; input.value = e.name;
+  input.style.position = 'fixed';
+  input.style.left = (r.left + r.width/2) + 'px'; input.style.top = (r.top + r.height/2) + 'px';
+  input.style.transform = 'translate(-50%,-50%)';
+  input.style.width = Math.max(120, r.width + 40) + 'px'; input.style.zIndex = 60;
+  document.body.appendChild(input); input.focus(); input.select();
+  inlineEdgeEdit = e.id;
+  let finished = false;
+  const commit = () => {
+    if (finished) return; finished = true;
+    inlineEdgeEdit = null;
+    const v = input.value.trim();
+    if (input.isConnected) input.remove(); // render() 不清理输入框,必须自己移除
+    if (v && v !== e.name){ pushHistory(); e.name = v; e.md = `routes/${e.id}-${v}.md`; }
+    render(); renderPanel();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev => {
+    if (ev.isComposing || ev.keyCode === 229) return; // 中文输入法组词中不拦截按键
+    if (ev.key === 'Enter') commit();
+    if (ev.key === 'Escape'){ input.value = e.name; commit(); }
+  });
+}
+function inlineEdit(el, initial, done){
+  const input = document.createElement('input');
+  input.className = 'inline-edit'; input.value = initial;
+  input.style.width = Math.max(120, el.offsetWidth + 24) + 'px';
+  el.replaceWith(input); input.focus(); input.select();
+  let finished = false;
+  const commit = () => {
+    if (finished) return; finished = true;
+    const v = input.value.trim();
+    if (input.isConnected) input.replaceWith(el);
+    done(v);
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev => {
+    if (ev.isComposing || ev.keyCode === 229) return; // 中文输入法组词中不拦截按键
+    if (ev.key === 'Enter') commit();
+    if (ev.key === 'Escape'){ input.value = initial; commit(); }
+  });
+}
+/* 便签行内编辑:点击已选中的便签直接在原位置改字 */
+function editAnn(a){
+  const el = document.querySelector(`.ann[data-ann="${a.id}"]`); if (!el) return;
+  const input = document.createElement('input');
+  input.className = 'inline-edit'; input.value = a.text;
+  input.style.position = 'absolute'; input.style.left = el.style.left; input.style.top = el.style.top;
+  input.style.width = Math.max(120, el.offsetWidth + 24) + 'px'; input.style.zIndex = 5;
+  el.replaceWith(input); input.focus(); input.select();
+  inlineEditing = { annId: a.id, input };
+  let finished = false;
+  const commit = () => {
+    if (finished) return; finished = true;
+    inlineEditing = null;
+    const v = input.value.trim();
+    if (input.isConnected) input.remove(); // render() 不清理输入框,必须自己移除
+    if (v && v !== a.text){ pushHistory(); a.text = v; }
+    render(); renderPanel();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev => {
+    if (ev.isComposing || ev.keyCode === 229) return; // 中文输入法组词中不拦截按键
+    if (ev.key === 'Enter') commit();
+    if (ev.key === 'Escape'){ input.value = a.text; commit(); }
+  });
+}
+
+/* ---------- 面板事件 ---------- */
+$('#panel-close').onclick = () => select(null);
+$('#panel-body').addEventListener('click', ev => {
+  const edit = ev.target.closest('[data-edit]');
+  if (edit && edit.contentEditable !== 'true'){
+    const obj = S.sel.kind === 'node' ? nodeById(S.sel.id) : edgeById(S.sel.id);
+    const key = edit.dataset.edit === 'type' ? 'type' : 'name'; // 名称与类型均可点击行内编辑
+    inlineEdit(edit, obj[key], v => { if (v){ pushHistory(); obj[key] = v;
+      if (key === 'name'){
+        if (S.sel.kind === 'edge') obj.md = `routes/${obj.id}-${v}.md`;
+        else obj.md = `nodes/${obj.num}-${v}.md`; } } render(); renderPanel(); });
+    return;
+  }
+  // 所属路线:点击弹出下拉,选择已有路线或"无",或重命名当前路线
+  const pk = ev.target.closest('[data-pick="route"]');
+  if (pk){
+    const obj = S.sel.kind === 'node' ? nodeById(S.sel.id) : edgeById(S.sel.id);
+    const rect = pk.getBoundingClientRect();
+    openMenu([
+      {id:'none', label:'无', checked: !obj.route, fn(){ pushHistory(); obj.route = null; render(); renderPanel(); }},
+      ...S.routes.map(r => ({ id:'r:'+r.id, label:r.name, checked: obj.route === r.id, fn(){ pushHistory(); obj.route = r.id; render(); renderPanel(); }})),
+      ...(obj.route ? [{sep:true},{id:'ren', label:'重命名当前路线…', fn(){
+        const r = routeById(obj.route); if (!r) return;
+        const el = document.querySelector('#panel-body [data-pick="route"]');
+        if (el) inlineEdit(el, r.name, v => { if (v && v !== r.name){ pushHistory(); r.name = v; } render(); renderPanel(); });
+      }}] : [])
+    ], rect.left, rect.bottom + 4);
+    return;
+  }
+  const act = ev.target.closest('[data-act]'); if (!act) return;
+  const a = act.dataset;
+  if (a.act === 'open-md'){ const o = S.sel.kind==='node'?nodeById(S.sel.id):edgeById(S.sel.id); openMd(o); }
+  if (a.act === 'promote') promoteToIssueRoute(nodeById(S.sel.id));
+  if (a.act === 'add-ann') addAnnotation(a.kind === 'node' ? 'node' : 'edge', a.id);
+  if (a.act === 'toggle-ann'){ const an = S.anns.find(x => x.id === act.closest('.annitem').dataset.ann); pushHistory(); an.hidden = !an.hidden; render(); renderPanel(); }
+  if (a.act === 'del-ann'){ const item = act.closest('.annitem'); pushHistory(); S.anns = S.anns.filter(x => x.id !== item.dataset.ann); render(); renderPanel(); }
+  if (a.act === 'toggle-archive'){ const eo = edgeById(S.sel.id); if (eo){ pushHistory(); eo.archived = !eo.archived; eo.updatedAt = today(); render(); renderPanel(); } }
+});
+// 评分输入:change 时落盘,0-100 之外或留空视为未评
+$('#panel-body').addEventListener('change', ev => {
+  const si = ev.target.closest('[data-score]'); if (!si || !S.sel || S.sel.kind !== 'edge') return;
+  const eo = edgeById(S.sel.id); if (!eo) return;
+  const v = si.value.trim();
+  pushHistory();
+  if (v === '') delete eo.score;
+  else { const num = Math.round(Number(v)); if (Number.isFinite(num)) eo.score = Math.max(0, Math.min(100, num)); }
+  eo.updatedAt = today(); render(); renderPanel();
+});
+$('#panel-body').addEventListener('click', ev => {
+  const sb = ev.target.closest('.seg button'); if (!sb) return;
+  setEdgeStatus(edgeById(sb.closest('.seg').dataset.edge), sb.dataset.status);
+});
+$('#panel-more').onclick = ev => {
+  ev.stopPropagation();
+  if (!S.sel) return;
+  if (S.sel.kind === 'node') nodeMenu(nodeById(S.sel.id), innerWidth - 240, innerHeight - 200);
+  else edgeMenu(edgeById(S.sel.id), innerWidth - 240, innerHeight - 200);
+};
+
+/* ---------- 工具栏 ---------- */
+const TOOL_HINTS = {
+  hand:'按住拖拽移动画布，或滚轮/中键平移',
+  select:'点击选择对象，空白处拖拽框选',
+  node:'点击画布新建节点',
+  edge:'在节点上按住拖拽拉出方案线 · 空格/中键拖拽平移画布',
+  ann:'点击节点或方案线添加标注'
+};
+function showToolHint(t){
+  const h = $('#tool-hint');
+  h.textContent = TOOL_HINTS[t] || '';
+  if (!h.textContent) return;
+  h.classList.add('on');
+  clearTimeout(h._timer);
+  h._timer = setTimeout(() => h.classList.remove('on'), 2500);
+}
+function setTool(t){
+  S.tool = t; S.drawingEdge = null;
+  viewport.classList.toggle('tool-place', t !== 'select' && t !== 'hand');
+  viewport.style.cursor = t === 'hand' ? 'grab' : '';
+  document.querySelectorAll('#toolbar [data-tool]').forEach(b =>
+    b.classList.toggle('active', b.dataset.tool === t));
+  showToolHint(t);
+}
+document.querySelectorAll('#toolbar [data-tool]').forEach(b =>
+  b.onclick = () => setTool(b.dataset.tool));
+$('#more-btn').onclick = ev => {
+  ev.stopPropagation();
+  openMenu([
+    {id:'anns', icon:I.eye, label:'显示标注', checked:S.showAnns, fn(){ S.showAnns = !S.showAnns; render(); }},
+    {id:'routes', icon:I.route, label:'显示路线名称', checked:S.showRoutes, fn(){ S.showRoutes = !S.showRoutes; render(); }},
+    {id:'failed', icon:I.eye, label:'显示失败方案', checked:S.showFailed, fn(){ S.showFailed = !S.showFailed; render(); }},
+    {id:'nums', icon:I.eye, label:'显示内部编号', checked:S.showNums, fn(){ S.showNums = !S.showNums; renderPanel(); }},
+    {sep:true},
+    {id:'tidy', icon:I.tidy, label:'自动整理', fn(){ toast('自动整理:后续版本提供;可先让 Agent 按整理例程整理 map.json'); }},
+    {id:'fit', icon:I.fit, label:'适应视图', fn(){ fitView(); }}
+  ], innerWidth/2 - 90, 64);
+};
+
+/* ---------- 项目菜单 / 设置 ---------- */
+$('#proj-menu-btn').onclick = ev => {
+  ev.stopPropagation();
+  openMenu([
+    ...(hasFS ? [{id:'open', icon:I.folder, label:'打开项目文件夹…', fn(){ openProjectFolder(); }}] : []),
+    {id:'new', icon:I.plus, label:'新建空白地图', fn(){ newBlankMap(); }},
+    {id:'imp', icon:I.imp, label:'导入 map.json…', fn(){ importMap(); }},
+    {sep:true},
+    {id:'exp', icon:I.save, label:'导出 map.json', kbd:'Ctrl+S', fn(){ exportMap(); }},
+    {id:'img', icon:I.img, label:'导出图片…', fn(){ toast('导出图片:后续版本提供'); }},
+    {sep:true},
+    {id:'guide', icon:'？', label:'新手引导', fn(){ showGuide(true); }},
+    {id:'set', icon:I.gear, label:'设置', fn(){ $('#drawer').classList.add('on'); }}
+  ], 12, 64);
+};
+$('#drawer-close').onclick = () => $('#drawer').classList.remove('on');
+/* 抽屉按钮:打开项目文件夹(两处共用) / 打开 agent-kit 接入说明 */
+document.querySelectorAll('.drawer-folder-open').forEach(b => b.onclick = () => {
+  if (hasFS) openProjectFolder();
+  else toast('文件夹直连需要 Chrome 或 Edge;也可以导出 map.json 交给 Agent');
+});
+$('#drawer-open-kit').onclick = () => window.open('agent-kit/index.html', '_blank');
+/* 抽屉「项目文件夹」状态跟随真实连接状态(在 syncBadge 里同步) */
+function syncDrawerFolder(){
+  const el = $('#drawer-folder-state');
+  if (el) el.textContent = IO.dir ? '已连接:' + IO.dir.name : '未连接(演示模式)';
+}
+
+/* ---------- 画布交互:平移 / 缩放 / 拖拽 / 框选 / 拉出方案线 ---------- */
+let drag = null, spaceDown = false;
+const marqueeEl = $('#marquee'), delFloat = $('#del-float');
+delFloat.innerHTML = I.trash;
+/* 二次贝塞尔取点:弯折命中检测用 */
+function bezPt(t, g){ const it = 1-t;
+  return { x: it*it*g.x1 + 2*it*t*g.cpx + t*t*g.x2, y: it*it*g.y1 + 2*it*t*g.cpy + t*t*g.y2 }; }
+function clearMulti(){ S.multi = []; delFloat.classList.remove('on'); }
+viewport.addEventListener('pointerdown', ev => {
+  closeMenu();
+  if (ev.button !== 0 && ev.button !== 1) return;
+  if (ev.target.closest('.chrome,#panel,#drawer,#agent-dock,.menu')) return;
+  if (ev.target.closest('.inline-edit')) return; // 点击行内输入框不触发画布交互
+  // 手掌工具:拖任何位置都是平移(Excalidraw 式),对象不可拖
+  if (S.tool === 'hand'){
+    drag = { type:'pan', sx:ev.clientX, sy:ev.clientY, ox:S.view.x, oy:S.view.y };
+    viewport.classList.add('panning');
+    return;
+  }
+  // 空格/中键:任何工具模式下都优先平移
+  if (spaceDown || ev.button === 1){
+    drag = { type:'pan', sx:ev.clientX, sy:ev.clientY, ox:S.view.x, oy:S.view.y };
+    viewport.classList.add('panning');
+    return;
+  }
+  const nodeEl = ev.target.closest('.node');
+  const edgeEl = ev.target.closest('[data-edge]');
+  const annEl = ev.target.closest('.ann');
+  const w = toWorld(ev.clientX, ev.clientY);
+
+  if (S.tool === 'node' && !nodeEl){ pushHistory(); addNodeAt(w.x, w.y); setTool('select'); return; }
+  // 方案线工具:在节点上按住直接拉出,起点自动吸附该节点;终点松手时命中节点则吸附并变绿
+  if (S.tool === 'edge'){
+    if (nodeEl){
+      pushHistory();
+      const fromId = nodeEl.dataset.id, from = nodeById(fromId);
+      // 方案名从起点节点自己的 1 开始数,区分靠内部编号
+      const eName = `方案${S.edges.filter(o => o.from === fromId).length + 1}`;
+      const e = { id:'e'+(S.nextEdge++), from:fromId, to:null, name:eName,
+        status:'pending', route:from.route, md:`routes/e${S.nextEdge-1}-${eName}.md` };
+      S.edges.push(e);
+      e.dx = w.x - from.x; e.dy = w.y - from.y; // 方向跟随指针:拖拽时自由自定义
+      S.drawingEdge = e.id; S.sel = {kind:'edge', id:e.id}; S.selAnn = null; clearMulti();
+      // 新建边拉出中保持直线,不用前段锚点算法(锚点仅用于已存在边重布线)
+      drag = { type:'end', e, moved:false };
+      render(); renderPanel();
+    }
+    return;
+  }
+  if (S.tool === 'ann'){
+    if (nodeEl) addAnnotation('node', nodeEl.dataset.id);
+    else if (edgeEl) addAnnotation('edge', edgeEl.dataset.edge);
+    else { pushHistory(); toast('请点击节点或方案线添加标注'); }
+    setTool('select'); return;
+  }
+
+  // 方案线手柄优先:悬空端点 / 弯曲控制点(手柄本身也带 data-edge,必须先判断)
+  const handleEl = ev.target.closest('[data-handle]');
+  if (handleEl){
+    const e = edgeById(handleEl.dataset.edge);
+    if (e){
+      const t = handleEl.dataset.handle === 'bend' ? .5 : 0; // 弯曲手柄在曲线中点
+      // 拖动已连接端点即重新布线:先脱钩悬空变灰,拖到别的节点松手则吸附变绿
+      if (handleEl.dataset.handle === 'end' && e.to){
+        const a = nodeById(e.from), b = nodeById(e.to);
+        e.dx = b.x - a.x; e.dy = b.y - a.y; e.to = null;
+        e.status = 'pending';
+        drag = { type:'end', e, t, moved:false, wasConnected:true, anchor: bezPt(.25, edgeCurve(e)) };
+      } else {
+        drag = { type:handleEl.dataset.handle, e, t, moved:false };
+        if (handleEl.dataset.handle === 'end') drag.anchor = bezPt(.25, edgeCurve(e));
+      }
+    }
+    return;
+  }
+  // 便签:选中态紫色;已选中再点直接行内编辑;拖动微调位置
+  if (annEl){
+    const a = S.anns.find(x => x.id === annEl.dataset.ann);
+    if (a){
+      drag = { type:'ann', a, moved:false, sx:ev.clientX, sy:ev.clientY, odx:a.dx||0, ody:a.dy||0,
+        wasSel: S.selAnn === a.id };
+      return;
+    }
+  }
+  if (nodeEl){
+    const n = nodeById(nodeEl.dataset.id);
+    drag = { type:'node', n, moved:false, sx:ev.clientX, sy:ev.clientY, ox:n.x, oy:n.y };
+  } else if (edgeEl){
+    // 选中后可直接按住线身弯折:抓取点固定在指针下,其余部分随之变形(Excalidraw 式)
+    const eid = edgeEl.dataset.edge, e = edgeById(eid);
+    if (!(S.sel && S.sel.kind === 'edge' && S.sel.id === eid)) select('edge', eid);
+    if (e){
+      let t = .5, bd = 1e9; const g = edgeCurve(e);
+      for (let tt = .05; tt < .951; tt += .05){
+        const p = bezPt(tt, g), dd = Math.hypot(p.x-w.x, p.y-w.y);
+        if (dd < bd){ bd = dd; t = tt; }
+      }
+      drag = { type:'bend', e, t, moved:false };
+    }
+  } else if (ev.button === 1 || spaceDown){
+    drag = { type:'pan', sx:ev.clientX, sy:ev.clientY, ox:S.view.x, oy:S.view.y };
+    viewport.classList.add('panning');
+  } else {
+    // 空白处拖拽 = 紫色框选(Excalidraw 式);平移用滚轮/中键/空格
+    S.sel = null; S.selAnn = null; clearMulti(); renderPanel(); render();
+    drag = { type:'marquee', sx:ev.clientX, sy:ev.clientY };
+    marqueeEl.style.display = 'block';
+  }
+});
+function addEdge(fromId, toId, w){
+  const from = nodeById(fromId);
+  const eName = `方案${S.edges.filter(o => o.from === fromId).length + 1}`;
+  const e = { id:'e'+(S.nextEdge++), from:fromId, to:toId, name:eName,
+    status: toId ? 'success' : 'pending', route:from.route,
+    md:`routes/e${S.nextEdge-1}-${eName}.md` };
+  if (!toId){ e.dx = w.x - from.x; e.dy = w.y - from.y; }
+  S.edges.push(e); select('edge', e.id); render();
+}
+addEventListener('pointermove', ev => {
+  // 无拖拽时:方案线悬停紫色发光
+  if (!drag){
+    if (S.tool !== 'select') { if (S.hoverEdge){ S.hoverEdge = null; render(); } return; }
+    const w = toWorld(ev.clientX, ev.clientY);
+    let hov = null;
+    for (const e of S.edges){
+      if (isEdgeArchived(e)) continue; // 归档线不参与悬停命中
+      const g = edgeCurve(e);
+      for (let t = 0; t <= 1.001; t += .04){
+        const p = bezPt(t, g);
+        if (Math.hypot(p.x-w.x, p.y-w.y) < 8/S.view.k){ hov = e.id; break; }
+      }
+      if (hov) break;
+    }
+    if (hov !== S.hoverEdge){ S.hoverEdge = hov; render(); }
+    return;
+  }
+  if (drag.type === 'pan'){
+    S.view.x = drag.ox + ev.clientX - drag.sx;
+    S.view.y = drag.oy + ev.clientY - drag.sy;
+    applyView();
+  } else if (drag.type === 'marquee'){
+    const x = Math.min(drag.sx, ev.clientX), y = Math.min(drag.sy, ev.clientY);
+    marqueeEl.style.left = x+'px'; marqueeEl.style.top = y+'px';
+    marqueeEl.style.width = Math.abs(ev.clientX-drag.sx)+'px';
+    marqueeEl.style.height = Math.abs(ev.clientY-drag.sy)+'px';
+    drag.ex = ev.clientX; drag.ey = ev.clientY;
+  } else if (drag.type === 'end' || drag.type === 'bend'){
+    const w = toWorld(ev.clientX, ev.clientY);
+    drag.moved = true;
+    if (drag.type === 'end'){
+      // 端点吸附:命中节点时高亮并吸到其边缘,松手未命中则保持悬空灰色
+      // 已连接边拖拽时使用更小吸附半径,便于脱离
+      const snapRadius = drag.wasConnected ? (n) => n.r * 0.6 : (n) => n.r + 12;
+      const snap = S.nodes.find(n => n.id !== drag.e.from && Math.hypot(n.x-w.x, n.y-w.y) < snapRadius(n)) || null;
+      const a = nodeById(drag.e.from);
+      let px = w.x, py = w.y;
+      if (snap !== null){
+        if (S.snapTo !== snap.id){ S.snapTo = snap.id; }
+        const dx = snap.x-a.x, dy = snap.y-a.y, d = Math.hypot(dx,dy)||1;
+        const len = Math.max(10, d - snap.r);
+        px = a.x + dx/d*len; py = a.y + dy/d*len;
+      } else {
+        if (S.snapTo){ S.snapTo = null; }
+      }
+      drag.e.dx = px - a.x; drag.e.dy = py - a.y; // 拖拽完全跟随指针:方向自由自定义
+      // 钉住前段锚点 B(0.25):曲线前半段基本固定,后半段自由弯折,保持平滑
+      if (drag.anchor){
+        const g = edgeEnds(drag.e), t = .25, it = .75;
+        drag.e.cx = (drag.anchor.x - it*it*g.x1 - t*t*g.x2) / (2*it*t) - (g.x1+g.x2)/2;
+        drag.e.cy = (drag.anchor.y - it*it*g.y1 - t*t*g.y2) / (2*it*t) - (g.y1+g.y2)/2;
+      }
+    } else {
+      // 弯折:抓取点(参数 t 处)固定在指针下,反推控制点,其余部分随之变形
+      const g = edgeEnds(drag.e), t = drag.t || .5, it = 1-t;
+      drag.e.cx = (w.x - it*it*g.x1 - t*t*g.x2) / (2*it*t) - (g.x1+g.x2)/2;
+      drag.e.cy = (w.y - it*it*g.y1 - t*t*g.y2) / (2*it*t) - (g.y1+g.y2)/2;
+    }
+    render();
+  } else if (drag.type === 'ann'){
+    if (Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) > 4) drag.moved = true;
+    if (drag.moved){
+      drag.a.dx = drag.odx + (ev.clientX - drag.sx) / S.view.k;
+      drag.a.dy = drag.ody + (ev.clientY - drag.sy) / S.view.k;
+      render();
+    }
+  } else {
+    if (Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) > 4) drag.moved = true;
+    if (drag.moved){
+      drag.n.x = drag.ox + (ev.clientX - drag.sx) / S.view.k;
+      drag.n.y = drag.oy + (ev.clientY - drag.sy) / S.view.k;
+      render();
+    }
+  }
+});
+addEventListener('pointerup', ev => {
+  if (drag && drag.type === 'marquee'){
+    marqueeEl.style.display = 'none';
+    const x1 = Math.min(drag.sx, drag.ex ?? drag.sx), y1 = Math.min(drag.sy, drag.ey ?? drag.sy);
+    const x2 = Math.max(drag.sx, drag.ex ?? drag.sx), y2 = Math.max(drag.sy, drag.ey ?? drag.sy);
+    if (x2 - x1 > 6 || y2 - y1 > 6){
+      const p1 = toWorld(x1, y1), p2 = toWorld(x2, y2);
+      const inRect = (x, y) => x >= p1.x && x <= p2.x && y >= p1.y && y <= p2.y;
+      for (const n of S.nodes) if (inRect(n.x, n.y)) S.multi.push({kind:'node', id:n.id});
+      for (const e of S.edges){
+        if (!S.showFailed && e.status === 'failed') continue; // 隐藏的失败线不参与框选
+        const g = edgeCurve(e); let hit = inRect(g.x1, g.y1) && inRect(g.x2, g.y2);
+        if (!hit) for (let t = 0; t <= 1.001 && !hit; t += .1) hit = inRect(bezPt(t, g).x, bezPt(t, g).y);
+        if (hit) S.multi.push({kind:'edge', id:e.id});
+      }
+      render();
+      if (S.multi.length){
+        // 一键删除按钮:悬浮在选区右上角
+        let mX = -1e9, mY = 1e9;
+        for (const m of S.multi){
+          if (m.kind==='node'){ const n=nodeById(m.id); if (n){ mX=Math.max(mX,n.x+n.r); mY=Math.min(mY,n.y-n.r); } }
+          else { const e2=edgeById(m.id); if (e2){ const g=edgeCurve(e2); mX=Math.max(mX,g.x1,g.x2); mY=Math.min(mY,g.y1,g.y2); } }
+        }
+        delFloat.style.left = (mX*S.view.k + S.view.x + 12) + 'px';
+        delFloat.style.top = (mY*S.view.k + S.view.y - 44) + 'px';
+        delFloat.classList.add('on');
+      }
+    } else {
+      // 框选距离太小视为点击:清空选择(延迟渲染)
+      S.selAnn = null; clearMulti(); S.sel = null;
+      // 路线名/方案名标签双击行内编辑:浏览器 dblclick 会因渲染重建 DOM 而丢失,这里手动识别(按对象 key,元素实例会随渲染重建)
+      const dblTarget = ev.target.closest('.route-label') || ev.target.closest('#edges text');
+      if (dblTarget){
+        const isRoute = dblTarget.classList.contains('route-label');
+        const key = isRoute ? 'r:' + dblTarget.dataset.route : 'e:' + (dblTarget.closest('[data-edge]')?.dataset.edge || '');
+        const now = Date.now();
+        if (lastClick && lastClick.key === key && now - lastClick.t < 400){
+          lastClick = null;
+          if (isRoute){
+            const r = S.routes.find(x => x.id === dblTarget.dataset.route);
+            if (r) editRouteName(r, dblTarget);
+          } else {
+            const g = dblTarget.closest('[data-edge]');
+            if (g){ const e = edgeById(g.dataset.edge); if (e) editEdgeName(e, dblTarget); }
+          }
+        } else {
+          lastClick = { key, t: now };
+        }
+      }
+      requestAnimationFrame(() => { render(); renderPanel(); });
+    }
+  }
+  if (drag && drag.type === 'node' && !drag.moved){
+    S.sel = {kind:'node', id:drag.n.id}; S.selAnn = null;
+    // 延迟渲染保持 DOM 稳定:同步重建会销毁事件目标,浏览器不再派发 click/dblclick(双击编辑依赖它)
+    requestAnimationFrame(() => { render(); renderPanel(); });
+  }
+  if (drag && drag.type === 'node' && drag.moved) pushHistory();
+  // 手柄拖拽结束:端点命中节点则吸附连接并标为成功(变绿);未命中保持悬空灰色
+  if (drag && drag.type === 'end'){
+    if (drag.moved){
+      if (S.snapTo){
+        const snap = nodeById(S.snapTo);
+        if (snap && snap.id !== drag.e.from){
+          delete drag.e.dx; delete drag.e.dy;
+          drag.e.to = snap.id; drag.e.status = 'success';
+        }
+        S.snapTo = null;
+      }
+      pushHistory();
+    } else if (S.drawingEdge === drag.e.id){
+      // 点击节点未拖动:自动生成一条默认长度悬空线,方向与同节点已有线 ≥30° 自动错开
+      const len = Math.hypot(150, 40);
+      const ang = avoidAngleDeg(Math.atan2(40, 150) * 180 / Math.PI, drag.e) * Math.PI / 180;
+      drag.e.dx = len * Math.cos(ang); drag.e.dy = len * Math.sin(ang);
+    }
+    if (S.drawingEdge === drag.e.id) S.drawingEdge = null; // 保持箭头工具,可连续拉线
+    render(); renderPanel();
+  }
+  if (drag && drag.type === 'bend'){
+    if (drag.moved) pushHistory();
+    else {
+      // 方案名标签双击:先编辑再选中(编辑依赖旧元素 rect,选中会渲染重建)
+      const tx = ev.target.closest('#edges text');
+      const eid = tx ? tx.closest('[data-edge]')?.dataset.edge : null;
+      if (tx && eid && lastClick && lastClick.key === 'e:'+eid && Date.now() - lastClick.t < 400){
+        lastClick = null;
+        const e = edgeById(eid);
+        if (e) editEdgeName(e, tx);
+      } else {
+        if (tx) lastClick = { key:'e:'+eid, t: Date.now() };
+      }
+      select('edge', drag.e.id);
+    }
+  }
+  if (drag && drag.type === 'ann'){
+    if (drag.moved) pushHistory();
+    else if (drag.wasSel) editAnn(drag.a);          // 已选中再点:行内编辑
+    else if (S.selAnn !== drag.a.id){ S.selAnn = drag.a.id; render(); } // 首次点击:紫色选中
+  }
+  if (drag && drag.type === 'pan' && Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) < 4
+      && ev.target === viewport){ S.selAnn = null; select(null); clearMulti(); render(); }
+  drag = null; viewport.classList.remove('panning');
+});
+/* 框选后一键删除 */
+delFloat.onclick = () => {
+  if (!S.multi.length) return;
+  pushHistory();
+  const nodeIds = new Set(S.multi.filter(m => m.kind==='node').map(m => m.id));
+  const edgeIds = new Set(S.multi.filter(m => m.kind==='edge').map(m => m.id));
+  S.edges = S.edges.filter(e => {
+    if (edgeIds.has(e.id)) return false;
+    if (nodeIds.has(e.from)) return false;
+    if (nodeIds.has(e.to)){
+      const origTo = e.to; e.to = null; e.status = 'pending';
+      const a = nodeById(e.from), b = S.nodes.find(n => n.id === origTo) || {x:a.x+200,y:a.y};
+      const d = Math.hypot(b.x-a.x, b.y-a.y)||1;
+      e.dx = (b.x-a.x)/d*(d+50); e.dy = (b.y-a.y)/d*(d+50);
+    }
+    return true;
+  });
+  S.nodes = S.nodes.filter(n => !nodeIds.has(n.id));
+  S.anns = S.anns.filter(a => (a.target.kind==='node' ? !nodeIds.has(a.target.id) : !edgeIds.has(a.target.id)));
+  clearMulti(); select(null); render();
+};
+viewport.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  if (ev.ctrlKey || ev.metaKey) zoomAt(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1.09 : 1/1.09);
+  else { S.view.x -= ev.deltaX; S.view.y -= ev.deltaY; applyView(); }
+}, { passive:false });
+viewport.addEventListener('contextmenu', ev => {
+  ev.preventDefault();
+  if (ev.target.closest('.chrome,#panel,#drawer,#agent-dock,.menu')) return;
+  const nodeEl = ev.target.closest('.node'), edgeEl = ev.target.closest('[data-edge]');
+  if (nodeEl) nodeMenu(nodeById(nodeEl.dataset.id), ev.clientX, ev.clientY);
+  else if (edgeEl) edgeMenu(edgeById(edgeEl.dataset.edge), ev.clientX, ev.clientY);
+  else canvasMenu(ev.clientX, ev.clientY);
+});
+world.addEventListener('dblclick', ev => {
+  // 双击方案名标签:行内编辑并保存
+  if (ev.target.tagName === 'text'){
+    const gEl = ev.target.closest('[data-edge]');
+    if (gEl){ const e = edgeById(gEl.dataset.edge); if (e){ editEdgeName(e, ev.target); return; } }
+  }
+  // 双击节点:行内编辑节点名
+  const nodeEl = ev.target.closest('.node');
+  if (nodeEl){ const n = nodeById(nodeEl.dataset.id); if (n){ editNodeName(n, nodeEl); return; } }
+  // 双击路线名:行内编辑路线名
+  const rl = ev.target.closest('.route-label');
+  if (rl){ const r = S.routes.find(x => x.id === rl.dataset.route); if (r){ editRouteName(r, rl); return; } }
+  // 双击便签:重置手动偏移,回到自动避让位置
+  const el = ev.target.closest('.ann'); if (!el) return;
+  const a = S.anns.find(x => x.id === el.dataset.ann);
+  if (a && (a.dx || a.dy)){ pushHistory(); delete a.dx; delete a.dy; render(); }
+});
+$('#zoom-in').onclick = () => zoomAt(innerWidth/2, innerHeight/2, 1.25);
+$('#zoom-out').onclick = () => zoomAt(innerWidth/2, innerHeight/2, .8);
+$('#zoom-val').onclick = () => fitView();
+$('#undo').onclick = () => { if (undoStack.length){ redoStack.push(snapshot()); restore(undoStack.pop()); } };
+$('#redo').onclick = () => { if (redoStack.length){ undoStack.push(snapshot()); restore(redoStack.pop()); } };
+
+/* ---------- 快捷键 ---------- */
+addEventListener('keydown', ev => {
+  if (ev.target.matches('input,textarea,[contenteditable="true"]')) return;
+  const k = ev.key.toLowerCase();
+  if (ev.code === 'Space'){ spaceDown = true; viewport.style.cursor = 'grab'; }
+  if (k === 'v') setTool('select');
+  if (k === 'h') setTool('hand');
+  if (k === 'n') setTool('node');
+  if (k === 'l') setTool('edge');
+  if (k === 'm') setTool('ann');
+  if (k === 'escape'){ setTool('select'); S.selAnn = null; clearMulti(); select(null); closeMenu(); $('#drawer').classList.remove('on'); render(); }
+  if (k === 'delete' || k === 'backspace'){
+    // 框选一键删除 > 便签 > 单选对象
+    if (S.multi.length){ delFloat.click(); return; }
+    if (S.selAnn){ pushHistory(); S.anns = S.anns.filter(x => x.id !== S.selAnn); S.selAnn = null; render(); renderPanel(); return; }
+    if (S.sel){
+      pushHistory();
+      if (S.sel.kind === 'node'){ const id = S.sel.id;
+        S.edges = S.edges.filter(e => e.from!==id && e.to!==id);
+        S.nodes = S.nodes.filter(n => n.id!==id);
+      } else S.edges = S.edges.filter(e => e.id !== S.sel.id);
+      select(null); render();
+    }
+  }
+  if ((ev.ctrlKey || ev.metaKey) && k === 'z' && !ev.shiftKey){ ev.preventDefault(); $('#undo').click(); }
+  if ((ev.ctrlKey || ev.metaKey) && (k === 'y' || (k === 'z' && ev.shiftKey))){ ev.preventDefault(); $('#redo').click(); }
+  if ((ev.ctrlKey || ev.metaKey) && k === 's'){ ev.preventDefault(); exportMap(); }
+});
+addEventListener('keyup', ev => {
+  if (ev.code === 'Space'){ spaceDown = false; viewport.style.cursor = ''; }
+});
+
+/* ---------- Agent:接入指引入口(打开设置抽屉的 AGENT 接入) ---------- */
+$('#agent-btn').onclick = () => { syncDrawerFolder(); $('#drawer').classList.add('on'); };
+
+/* ---------- 新建地图:直接进空白画布(不再有中央输入态) ---------- */
+function newBlankMap(){
+  if (IO.mapFile && S.nodes.length && !confirm('新建空白地图并覆盖当前 map.json?')) return;
+  pushHistory();
+  S.nodes = []; S.edges = []; S.anns = [];
+  S.routes = [{id:'r1', name:'主路线', source:null, main:true, createdAt:today(), updatedAt:today()}];
+  S.name = '未命名地图'; applyName();
+  S.sel = null; S.selAnn = null; clearMulti();
+  S.view = { x:innerWidth/2, y:innerHeight/2, k:1 };
+  setTool('select'); render();
+  scheduleSave();
+  toast('已新建地图');
+}
+
+/* ---------- 文件 IO:map.json ↔ S(格式见 docs/map-json-v1.md) ---------- */
+const IO = { dir:null, mapFile:null, lastMod:0, lastWrite:0, saveTimer:null, watching:false, silent:false };
+const hasFS = 'showDirectoryPicker' in window;
+const today = () => new Date().toISOString().slice(0, 10);
+
+/* S → map.json 对象;节点半径 r 不存(按文字重算) */
+function serialize(){
+  const cp = o => JSON.parse(JSON.stringify(o));
+  return {
+    version:1, name:S.name || $('#proj-name').textContent, updatedAt:today(),
+    view:{ x:S.view.x, y:S.view.y, k:S.view.k },
+    ui:{ showAnns:S.showAnns, showRoutes:S.showRoutes, showNums:S.showNums, showFailed:S.showFailed },
+    counters:{ num:S.nextNum, edge:S.nextEdge, ann:S.nextAnn, nodeName:S.nextNodeName, edgeName:S.nextEdgeName, routeName:S.nextRouteName },
+    routes:cp(S.routes),
+    nodes:S.nodes.map(n => { const c = cp(n); delete c.r; return c; }),
+    edges:cp(S.edges), anns:cp(S.anns)
+  };
+}
+/* map.json 对象 → S;缺失字段补默认值,重置选择与撤销栈 */
+function deserialize(d){
+  const td = today();
+  S.name = d.name || '未命名地图';
+  S.view = d.view || { x:0, y:0, k:1 };
+  const ui = d.ui || {};
+  S.showAnns = ui.showAnns !== false; S.showRoutes = ui.showRoutes !== false;
+  S.showNums = !!ui.showNums; S.showFailed = ui.showFailed !== false;
+  const c = d.counters || {};
+  S.routes = d.routes || [];
+  S.nodes = (d.nodes || []).map(n => ({ r:34, createdAt:td, updatedAt:td, ...n }));
+  S.edges = (d.edges || []).map(e => ({ createdAt:td, updatedAt:td, ...e }));
+  S.anns  = (d.anns  || []).map(a => ({ hidden:false, createdAt:td, updatedAt:td, ...a }));
+  const maxId = arr => Math.max(0, ...arr.map(o => parseInt(String(o.id).slice(1)) || 0));
+  S.nextNum = c.num ?? (Math.max(0, ...S.nodes.map(n => parseInt(n.num) || 0)) + 1);
+  S.nextEdge = c.edge ?? (maxId(S.edges) + 1);
+  S.nextAnn = c.ann ?? (maxId(S.anns) + 1);
+  S.nextNodeName = c.nodeName ?? 1; S.nextEdgeName = c.edgeName ?? 1; S.nextRouteName = c.routeName ?? 1;
+  S.sel = null; S.selAnn = null; S.multi = [];
+  S.hoverEdge = null; S.snapTo = null; S.drawingEdge = null; S.pendingEdgeFrom = null;
+  undoStack = []; redoStack = []; // 加载新地图后清空撤销栈
+}
+/* 项目名同步到标题与左上 pill */
+function applyName(){
+  $('#proj-name').textContent = S.name;
+  document.title = '活点地图 — ' + S.name;
+}
+/* 同步状态点:灰=演示模式,黄=保存中,绿=已同步 */
+function syncBadge(){
+  let dot = $('#sync-dot');
+  if (!dot){
+    dot = document.createElement('span'); dot.id = 'sync-dot';
+    dot.style.cssText = 'width:8px;height:8px;border-radius:50%;flex:none';
+    $('#project-pill').insertBefore(dot, $('#proj-menu-btn'));
+  }
+  dot.style.background = !IO.mapFile ? 'var(--border)' : (IO.saveTimer ? 'var(--note-border)' : 'var(--success)');
+  dot.title = !IO.mapFile ? '未连接项目文件夹(演示模式)' : (IO.saveTimer ? '保存中…' : '已与 map.json 同步');
+  syncDrawerFolder();
+}
+/* ---- IndexedDB:记住上次项目文件夹句柄 ---- */
+function idbOpen(){ return new Promise((res, rej) => { const r = indexedDB.open('live-dot-map', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function idbSet(k, v){ const db = await idbOpen(); return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+async function idbGet(k){ const db = await idbOpen(); return new Promise((res, rej) => { const r = db.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+/* ---- 文件夹连接与读写 ---- */
+async function openProjectFolder(){
+  if (!hasFS){ toast('当前浏览器不支持直读文件夹,请用导入/导出'); return; }
+  try{
+    const dir = await showDirectoryPicker({ mode:'readwrite' });
+    await attachDir(dir);
+    try{ await idbSet('dotmap-dir', dir); }catch{}
+  }catch(e){ if (e.name !== 'AbortError') toast('没能打开文件夹:' + e.message); }
+}
+async function attachDir(dir){
+  let fh = null;
+  try{ fh = await (await dir.getDirectoryHandle('.live-dot-map')).getFileHandle('map.json'); }
+  catch{
+    try{ fh = await dir.getFileHandle('map.json'); }  // 兼容旧版:根目录 map.json
+    catch{
+      if (confirm(`文件夹「${dir.name}」里还没有活点地图。在里面创建 .live-dot-map/map.json,让它成为活点地图项目吗?`)){
+        const sub = await dir.getDirectoryHandle('.live-dot-map', { create:true });
+        fh = await sub.getFileHandle('map.json', { create:true });
+        IO.dir = dir; IO.mapFile = fh;
+        await writeMapNow(); startWatch(); syncBadge();
+        toast('已创建 .live-dot-map/map.json 并连接:' + dir.name);
+      }
+      return;
+    }
+  }
+  IO.dir = dir; IO.mapFile = fh;
+  await readMap(); startWatch(); syncBadge();
+  toast('已连接项目文件夹:' + dir.name);
+}
+async function readMap(){
+  const f = await IO.mapFile.getFile();
+  const text = await f.text();
+  let d; try{ d = JSON.parse(text); }catch{ toast('map.json 读不懂(文件可能损坏),画布保持原样未改动'); return; }
+  if (d.version !== 1){ toast('这个 map.json 由更新版本生成,当前画布读不了(版本 ' + d.version + ')'); return; }
+  IO.lastMod = f.lastModified;
+  IO.silent = true;
+  deserialize(d);
+  IO.silent = false;
+  applyName();
+  render(); renderPanel();
+  if (d.view) applyView(); else fitView();
+}
+/* Chromium 的 createWritable 先写交换文件、close 才替换原文件,天然原子 */
+async function writeMapNow(){
+  if (!IO.mapFile) return;
+  const w = await IO.mapFile.createWritable();
+  await w.write(JSON.stringify(serialize(), null, 2));
+  await w.close();
+  IO.lastWrite = Date.now();
+  IO.lastMod = (await IO.mapFile.getFile()).lastModified;
+  IO.saveTimer = null; syncBadge();
+}
+/* 任何编辑后防抖落盘(pushHistory 调用) */
+function scheduleSave(){
+  if (IO.silent) return;
+  if (!IO.mapFile){
+    // 演示模式:首次编辑提醒改动不落盘,连文件夹或导出才能保存
+    if (!IO.demoHinted){ IO.demoHinted = true; toast('演示模式:改动只在本页,连接文件夹或导出 map.json 才能保存'); }
+    syncBadge(); return;
+  }
+  clearTimeout(IO.saveTimer);
+  IO.saveTimer = setTimeout(() => { writeMapNow().catch(e => { IO.saveTimer = null; syncBadge(); toast('保存失败:文件夹可能被移动或权限被收回(' + e.message + ')'); }); }, 800);
+  syncBadge();
+}
+/* 轮询:外部(Agent)改 map.json 后自动重载;有自己未落盘修改时跳过 */
+function startWatch(){
+  if (IO.watching) return; IO.watching = true;
+  setInterval(async () => {
+    if (!IO.mapFile || IO.saveTimer) return;
+    try{
+      const f = await IO.mapFile.getFile();
+      if (f.lastModified !== IO.lastMod && Date.now() - IO.lastWrite > 1500){
+        await readMap();
+        toast('地图已更新(外部修改)');
+      }
+    }catch{ /* 文件被占用等,下轮再试 */ }
+  }, 2000);
+}
+/* ---- 非 Chromium 降级:导入/导出 map.json ---- */
+function exportMap(){
+  const blob = new Blob([JSON.stringify(serialize(), null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'map.json'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('已导出 map.json');
+}
+function importMap(){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json,application/json';
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    try{
+      const d = JSON.parse(await f.text());
+      if (d.version !== 1) throw new Error('不支持的版本 ' + d.version);
+      IO.silent = true; deserialize(d); IO.silent = false;
+      applyName(); render(); renderPanel(); fitView();
+      toast('已导入 map.json');
+    }catch(e){ toast('导入失败:' + e.message); }
+  };
+  inp.click();
+}
+/* ---- 拖拽导入:把 map.json 文件拖进画布即加载(对齐 ComfyUI 拖 workflow 的体验) ---- */
+function setupDrop(){
+  const vp = $('#viewport');
+  let depth = 0;  // dragenter/dragleave 在子元素间会成对触发,用计数防高亮闪烁
+  vp.addEventListener('dragenter', e => { e.preventDefault(); depth++; vp.classList.add('drop-hint'); });
+  vp.addEventListener('dragover', e => { e.preventDefault(); });
+  vp.addEventListener('dragleave', e => { e.preventDefault(); if (--depth <= 0){ depth = 0; vp.classList.remove('drop-hint'); } });
+  vp.addEventListener('drop', async e => {
+    e.preventDefault(); depth = 0; vp.classList.remove('drop-hint');
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    if (!/\.json$/i.test(f.name)){ toast('只认 .json 地图文件'); return; }
+    try{
+      const d = JSON.parse(await f.text());
+      if (d.version !== 1) throw new Error('不支持的版本 ' + d.version);
+      IO.silent = true; deserialize(d); IO.silent = false;
+      applyName(); render(); renderPanel(); fitView();
+      toast('已导入:' + f.name);
+    }catch(err){ toast('导入失败:' + err.message); }
+  });
+}
+setupDrop();
+/* ---- Markdown 查看/创建(直连文件夹时) ---- */
+async function openMd(o){
+  if (!o.md){ toast('暂无关联 Markdown'); return; }
+  if (!IO.dir){ toast('未连接项目文件夹:' + o.md); return; }
+  const parts = o.md.split('/');
+  try{
+    let dir = IO.dir;
+    for (let i = 0; i < parts.length - 1; i++) dir = await dir.getDirectoryHandle(parts[i]);
+    const fh = await dir.getFileHandle(parts[parts.length - 1]);
+    showMdViewer(o.md, await (await fh.getFile()).text());
+  }catch{
+    if (!confirm(`「${o.md}」不存在,创建它吗?`)) return;
+    try{
+      let dir = IO.dir;
+      for (let i = 0; i < parts.length - 1; i++) dir = await dir.getDirectoryHandle(parts[i], { create:true });
+      const fh = await dir.getFileHandle(parts[parts.length - 1], { create:true });
+      const w = await fh.createWritable();
+      await w.write(`# ${o.name || ''}\n\n`); await w.close();
+      toast('已创建 ' + o.md);
+    }catch(e){ toast('创建失败:' + e.message); }
+  }
+}
+function showMdViewer(path, text){
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:70;background:rgba(27,27,31,.32);display:flex;align-items:center;justify-content:center';
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg);border-radius:12px;box-shadow:var(--shadow);width:min(640px,92vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden';
+  card.innerHTML = `<header style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);font-weight:600;font-size:13px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(path)}</span><button class="icb" style="width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center">${I.x}</button></header>`;
+  const pre = document.createElement('pre');
+  pre.style.cssText = 'padding:14px 16px;overflow:auto;font-family:var(--font-mono);font-size:12px;line-height:1.6;white-space:pre-wrap;user-select:text;margin:0';
+  pre.textContent = text;
+  card.appendChild(pre); ov.appendChild(card);
+  ov.addEventListener('pointerdown', e => { if (e.target === ov) ov.remove(); });
+  card.querySelector('button').onclick = () => ov.remove();
+  document.body.appendChild(ov);
+}
+/* 启动时尝试恢复上次项目文件夹(requestPermission 需用户手势,只探测已授权的) */
+async function boot(){
+  syncBadge();
+  if (!hasFS) return;
+  let dir = null;
+  try{ dir = await idbGet('dotmap-dir'); }catch{}
+  if (!dir) return;
+  try{
+    const p = await dir.queryPermission({ mode:'readwrite' });
+    if (p === 'granted') await attachDir(dir);
+    else toast('点左上项目菜单「打开项目文件夹」继续上次项目');
+  }catch{ /* 句柄失效,忽略 */ }
+}
+
+/* ---------- 新手引导与三分钟教程 ---------- */
+function overlayCard(html, width){
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:80;background:rgba(27,27,31,.36);display:flex;align-items:center;justify-content:center';
+  const card = document.createElement('div');
+  card.style.cssText = `background:var(--bg);border-radius:14px;box-shadow:var(--shadow);width:min(${width||520}px,92vw);max-height:84vh;overflow:auto;padding:26px 28px`;
+  card.innerHTML = html;
+  ov.appendChild(card);
+  ov.addEventListener('pointerdown', e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+  return ov;
+}
+const GUIDE_BTN = 'display:block;width:100%;padding:11px 14px;margin-top:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--fg);font:inherit;font-size:14px;text-align:left;cursor:pointer';
+function showGuide(manual){
+  const ov = overlayCard(`
+    <div style="font-size:20px;font-weight:700;letter-spacing:.5px">活点地图</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:6px;line-height:1.7">
+      一张人和 Agent 共享的探索地图：节点写目的与结果，方案线记每次尝试，<br>
+      Agent 每次会话先读地图汇报全局，你只做判断。
+    </div>
+    ${hasFS ? `<button data-g="open" style="${GUIDE_BTN};border-color:var(--accent);font-weight:600">📁 连接项目文件夹<span style="display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:3px">地图自动存进文件夹的 map.json，Agent 读写同一份文件</span></button>` : ''}
+    <button data-g="demo" style="${GUIDE_BTN}">🗺️ 先看看演示地图<span style="display:block;font-size:12px;color:var(--muted);margin-top:3px">内置示例，随便点随便改，不碰你的文件</span></button>
+    <button data-g="tut" style="${GUIDE_BTN}">🎓 三分钟上手<span style="display:block;font-size:12px;color:var(--muted);margin-top:3px">画布操作、状态规则、Agent 接入各一句话</span></button>
+    <div style="color:var(--muted);font-size:12px;margin-top:16px;line-height:1.6">本地优先：文件都在你自己的文件夹里，不上传任何服务器。</div>
+  `, 480);
+  const seen = () => { try{ localStorage.setItem('dotmap-guide-seen','1'); }catch{} };
+  ov.querySelector('[data-g="demo"]').onclick = () => { seen(); ov.remove(); };
+  ov.querySelector('[data-g="tut"]').onclick = () => { seen(); ov.remove(); showTutorial(); };
+  const b = ov.querySelector('[data-g="open"]');
+  if (b) b.onclick = () => { seen(); ov.remove(); openProjectFolder(); };
+  if (manual) seen();
+}
+function showTutorial(){
+  const ov = overlayCard(`
+    <div style="font-size:16px;font-weight:700">三分钟上手</div>
+    <ol style="margin:14px 0 0;padding-left:20px;font-size:13px;line-height:1.9;color:var(--fg)">
+      <li><b>画布</b>：滚轮缩放，空格或中键拖拽平移。快捷键 V 选择、N 建节点、L 拉方案线、M 加便签。</li>
+      <li><b>节点与方案</b>：节点只写目的/问题/结果；每一次尝试是一条方案线——绿=走通，红=失败，灰=待验证。走通了顺手打个分（0–100），以后一眼看出哪条最值。</li>
+      <li><b>文件夹即存档</b>：连上项目文件夹后，所有改动自动写进 map.json；详情写在节点/方案挂的 Markdown 分片里。失败的、不再碰的方案可以归档——不删数据，只是淡出。</li>
+      <li><b>Agent 接入</b>：把 <span class="mono">agent-kit/AGENTS.snippet.md</span> 的内容追加到项目 AGENTS.md，Agent 每次会话开始就会先读地图、主动汇报「等你判断的清单」。</li>
+    </ol>
+    <button data-g="done" style="${GUIDE_BTN};text-align:center;font-weight:600;border-color:var(--accent)">开始用</button>
+  `, 520);
+  ov.querySelector('[data-g="done"]').onclick = () => ov.remove();
+}
+
+/* ---------- 启动 ---------- */
+// PWA:注册 service worker(file:// 双击打开时自动跳过)
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+const q = new URLSearchParams(location.search);
+if (q.get('blank') === '1' || q.get('empty') === '1'){
+  // 空画布:工具可用,无中央输入
+  S.nodes = []; S.edges = []; S.anns = []; S.routes = [{id:'r1', name:'主路线', source:null, main:true, createdAt:today(), updatedAt:today()}];
+}
+if (q.get('stress')){
+  // 性能压测:?stress=N 生成 N 节点 + 2N 方案线(只在内存,不写文件)
+  const N = Math.max(10, +q.get('stress') || 200);
+  S.nodes = []; S.edges = []; S.anns = [];
+  S.routes = [{id:'r1', name:'压测路线', source:null, main:true, createdAt:today(), updatedAt:today()}];
+  for (let i = 0; i < N; i++){
+    const col = i % 20, row = (i / 20) | 0;
+    S.nodes.push({ id:'n'+(i+1), num:String(i+1).padStart(2,'0'), name:'节点'+(i+1),
+      type: i%7===0 ? '问题' : (i%3===0 ? '结果' : '目的'), route:'r1',
+      x:col*260, y:row*220, r:34, md:null, createdAt:today(), updatedAt:today() });
+  }
+  for (let i = 0; i < N*2; i++){
+    const f = (i % N) + 1, t = ((i*7+3) % N) + 1;
+    const e = { id:'e'+(i+1), from:'n'+f, to: i%4===0 ? null : 'n'+t,
+      name:'方案'+(i+1), status:['success','failed','pending'][i%3], route:'r1',
+      md:null, createdAt:today(), updatedAt:today() };
+    if (!e.to){ e.dx = 120 + (i%5)*30; e.dy = 90 - (i%3)*60; }
+    S.edges.push(e);
+  }
+  S.nextNum = N+1; S.nextEdge = N*2+1;
+}
+render();
+fitView();
+if (q.get('from') === 'agent'){
+  agentWork('正在建立地图…', () => { render(); }, 1400);
+}
+pushHistory();
+boot().then(() => { // 首次使用且未自动连上项目文件夹时,显示新手引导
+  if (!IO.mapFile && !q.get('blank') && !q.get('stress') && q.get('from') !== 'agent'){
+    try{ if (!localStorage.getItem('dotmap-guide-seen')) showGuide(); }catch{ showGuide(); }
+  }
+});
+</script>
+</body>
+</html>
