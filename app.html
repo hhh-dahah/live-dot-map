@@ -47,6 +47,8 @@ input{font:inherit;color:inherit}
 #viewport{position:fixed;inset:0;overflow:hidden;background:var(--bg);cursor:default}
 #viewport.panning{cursor:grabbing}
 #viewport.tool-place{cursor:crosshair}
+/* 拖入 map.json 时的画布高亮 */
+#viewport.drop-hint{outline:3px dashed var(--accent);outline-offset:-8px}
 #world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
 #edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 #edges .hit{pointer-events:stroke;cursor:pointer}
@@ -1726,15 +1728,19 @@ async function openProjectFolder(){
 }
 async function attachDir(dir){
   let fh = null;
-  try{ fh = await dir.getFileHandle('map.json'); }
+  try{ fh = await (await dir.getDirectoryHandle('.live-dot-map')).getFileHandle('map.json'); }
   catch{
-    if (confirm(`文件夹「${dir.name}」里还没有 map.json。把当前画布存进去,让它成为活点地图项目吗?`)){
-      fh = await dir.getFileHandle('map.json', { create:true });
-      IO.dir = dir; IO.mapFile = fh;
-      await writeMapNow(); startWatch(); syncBadge();
-      toast('已创建 map.json 并连接:' + dir.name);
+    try{ fh = await dir.getFileHandle('map.json'); }  // 兼容旧版:根目录 map.json
+    catch{
+      if (confirm(`文件夹「${dir.name}」里还没有活点地图。在里面创建 .live-dot-map/map.json,让它成为活点地图项目吗?`)){
+        const sub = await dir.getDirectoryHandle('.live-dot-map', { create:true });
+        fh = await sub.getFileHandle('map.json', { create:true });
+        IO.dir = dir; IO.mapFile = fh;
+        await writeMapNow(); startWatch(); syncBadge();
+        toast('已创建 .live-dot-map/map.json 并连接:' + dir.name);
+      }
+      return;
     }
-    return;
   }
   IO.dir = dir; IO.mapFile = fh;
   await readMap(); startWatch(); syncBadge();
@@ -1812,6 +1818,28 @@ function importMap(){
   };
   inp.click();
 }
+/* ---- 拖拽导入:把 map.json 文件拖进画布即加载(对齐 ComfyUI 拖 workflow 的体验) ---- */
+function setupDrop(){
+  const vp = $('#viewport');
+  let depth = 0;  // dragenter/dragleave 在子元素间会成对触发,用计数防高亮闪烁
+  vp.addEventListener('dragenter', e => { e.preventDefault(); depth++; vp.classList.add('drop-hint'); });
+  vp.addEventListener('dragover', e => { e.preventDefault(); });
+  vp.addEventListener('dragleave', e => { e.preventDefault(); if (--depth <= 0){ depth = 0; vp.classList.remove('drop-hint'); } });
+  vp.addEventListener('drop', async e => {
+    e.preventDefault(); depth = 0; vp.classList.remove('drop-hint');
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    if (!/\.json$/i.test(f.name)){ toast('只认 .json 地图文件'); return; }
+    try{
+      const d = JSON.parse(await f.text());
+      if (d.version !== 1) throw new Error('不支持的版本 ' + d.version);
+      IO.silent = true; deserialize(d); IO.silent = false;
+      applyName(); render(); renderPanel(); fitView();
+      toast('已导入:' + f.name);
+    }catch(err){ toast('导入失败:' + err.message); }
+  });
+}
+setupDrop();
 /* ---- Markdown 查看/创建(直连文件夹时) ---- */
 async function openMd(o){
   if (!o.md){ toast('暂无关联 Markdown'); return; }

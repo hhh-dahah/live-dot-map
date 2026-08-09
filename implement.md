@@ -161,3 +161,15 @@
 - **复制双通道**：`getSnippet()` 先 fetch `agent-kit/AGENTS.snippet.md`，file:// 失败回退页内 `<script type="text/plain">` 内嵌副本（83 行逐字同步，页内有注释提醒改协议时手动同步）；统一 CRLF→LF 归一；clipboard API + execCommand 兜底。实测 http 剪贴板内容与源文件逐字相等（归一后 2586 字符），file:// 回退路径比对一致。
 - **过时内容修正**：底部 CTA 由 canvas.html（冻结样板）改指 app.html；目录树旧设计改 map.json 现行契约（map.json/nodes/routes/AGENTS.md）；页脚删「由 Excalidraw 改造」声明；去掉空 GitHub 链接（仓库暂无远程）。
 - **验证（Playwright，截图 走查截图/阶段5-landing-*）**：桌面 1440px 与手机 390px 渲染正常无横向溢出；复制/口令复制精确；agent-kit 三个下载链接与 app.html 均 200；hero 图加载成功；node --check 通过。
+
+## 阶段 6：公网部署与一句口令接入（2026-08-09，Kimi）
+
+- **计划**：`docs/plans/2026-08-08-阶段6-公网部署与一句口令接入.md`（用户确认后执行）。核心形态：双点部署（Cloudflare 主 + CloudBase 国内备用）+ 多源下载兜底 + 数据目录收进 `.live-dot-map/` + 一句口令全自动接入。skill 包装/插件商店/自有域名/E2E 加密等明确暂缓，理由与重启条件记入 PRD §15「远期构想」。
+- **数据目录约定（T1）**：`map.json` 与 Markdown 分片从项目根迁入 `.live-dot-map/`（项目根只留 AGENTS.md 等自有文件）。`docs/map-json-v1.md` 头部加目录约定说明、示例与改名规则全部加前缀；`docs/agent-protocol.md` 同步并新增「画布程序位置」一节（`~/.live-dot-map/app.html`，用户说「打开画布」时 Agent 直接拉起）；`agent-kit/AGENTS.snippet.md` 整文件重新生成；landing.html 页内内嵌回退副本逐字同步。app.html `attachDir` 改三级逻辑：优先 `.live-dot-map/map.json` → 兼容根目录旧 map.json → 都没有则在 `.live-dot-map/` 新建。壁纸狗粮项目已迁移（`E:/壁纸制作/.live-dot-map/map.json`；md 字段全指向项目现有 docs/，不动），其 AGENTS.md 协议段换新（保留「md 挂现有文档」变体）。
+- **拖拽导入（T2）**：app.html 画布支持把 map.json 文件直接拖入加载（对齐 ComfyUI 拖 workflow 体验）：dragenter 深度计数防高亮闪烁、`.json` 扩展名与 version 校验、失败 toast 不动原图、成功走 importMap 同款流程。Playwright 实测：高亮正常、导入后标题变「活点地图 — tmp-e2e」、节点正确渲染。
+- **setup.md 全自动接入（T3）**：新增 `agent-kit/setup.md`——给 Agent 看的接入指引：双源下载兜底（CF → CloudBase → PowerShell/wget → 报告）、装到 `~/.live-dot-map/`（下载后校验 doctype 防代理错误页）、PowerShell COM 建桌面快捷方式（`[Environment]::GetFolderPath('Desktop')` 防 OneDrive/自定义重定向——实测本机桌面在 `D:\桌面`，验证了这一防护的必要性）、项目侧建 `.live-dot-map/`、AGENTS.md 无「活点地图」标记才注入协议、初始化地图（有记录走迁移四步/没有用模板）、拉起画布、交代用户点「打开项目文件夹」（唯一手动步）。铁律：每步失败停下报告，不静默跳过。
+- **landing/说明页/README 同步（T4/T5）**：landing 加「下载画布」按钮（Hero + .dls 区）；接入口令改双源版（`curl -sL …/agent-kit/setup.md`，失败换 CloudBase 源）；卡 2 说明改「Agent 全自动完成」清单；本地优先目录树改 `.live-dot-map/` 结构；agent-kit/index.html 与 README.md 同步新流程。
+- **双点部署（T8/T9）**：`.deploy/` 重建（landing 为 index.html，新增 assets/）→ CF Workers 部署成功（`https://app.live-dot-map.workers.dev`，env 文件需 `set -a` 导出，纯 source 不会导出变量给子进程）；同内容（除 `_headers`）13 个文件上传 CloudBase 静态托管（test 环境，ap-shanghai）。
+- **双点走查（T10，Playwright）**：CF 全绿——landing 渲染、口令逐字正确、5 个下载链接、app.html/agent-kit 三件套/assets/favicon 全 200、桌面与 390px 无横溢、hero 图加载。CloudBase：全部文件 curl/fetch 200 且字节正确（Agent 下载源职责达标），但浏览器直接导航 HTML 会被腾讯默认域名拦截返回 404「风险提醒」——CB 只作 Agent/口令的下载兜底，人访问一律用 CF 网址。
+- **端到端新用户模拟（T11）**：建临时项目照 setup.md 真跑——本机两个源 curl 均 200（Clash 未拦这两个域名）；画布装进 `~/.live-dot-map/`（app.html 108530 字节 + favicon.ico）；桌面快捷方式真实落盘 `D:/桌面/活点地图.lnk`；项目侧 `.live-dot-map/map.json`（模板改名+当日日期）与 AGENTS.md 协议注入完成并校验；画布已通过 `start ""` 真实拉起。唯一未自动化项：「打开项目文件夹」需用户手势（浏览器安全限制，设计如此），待用户在壁纸项目实测。
+- **收尾（T12）**：设计细节.md 销 S5-3（裸跳转页 → landing 双点首页）；PRD §15 新增「远期构想（已讨论，明确暂缓）」（E2E 加密/分享协作/网页内嵌 AI/skill 包装与商店/自有域名，含 E2E 与内嵌 AI 的矛盾提示与重启条件）；旧文档 `docs/活点地图-AGENTS指针段.md`、`docs/活点地图-SKILL.md` 经查已不存在于仓库（无 git 记录），无需标记。

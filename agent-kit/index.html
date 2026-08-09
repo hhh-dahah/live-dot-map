@@ -45,25 +45,28 @@
   <p class="sub">给使用 AI 编程助手(Codex / Kimi Code / Claude Code 等)的人。接入后,Agent 每次会话开始会主动汇报项目全局:当前进展、等你判断的方案、停滞的路线。</p>
 
   <section>
-    <h2><span class="n">1</span>让 Agent 自己接(推荐)</h2>
+    <h2><span class="n">1</span>让 Agent 全自动接(推荐)</h2>
     <p>在项目目录里对你的 Agent 说一句:</p>
-    <div class="cmd" id="cmd1">把 agent-kit/AGENTS.snippet.md 的内容追加到我的 AGENTS.md 末尾,以后按里面的活点地图协议工作。<button onclick="copyCmd()">复制</button></div>
-    <p class="note">前提是这两个文件在项目目录里——本页下方可下载。</p>
+    <div class="cmd" id="cmd1">运行 curl -sL https://app.live-dot-map.workers.dev/agent-kit/setup.md 查看接入指引,按它在我的项目目录完成活点地图接入;如果拉取失败,把网址换成 https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com/agent-kit/setup.md 再试。<button onclick="copyCmd()">复制</button></div>
+    <p class="note">剩下全自动:下载画布到 ~/.live-dot-map/、建桌面快捷方式、注入协议、初始化地图、拉起画布。已有的记录文件也会一并迁移成地图草稿,你在画布上审核。</p>
   </section>
 
   <section>
     <h2><span class="n">2</span>或者手动接</h2>
-    <p>① 打开 <code>AGENTS.snippet.md</code>,把全部内容追加到你项目根目录 <code>AGENTS.md</code> 的末尾(没有就新建一个)。</p>
-    <p>② 可选:把 <code>map.template.json</code> 复制为项目根目录的 <code>map.json</code>。不复制也行——下次会话对 Agent 说「初始化活点地图」,它会读你的现有记录生成草稿。</p>
+    <p>① 画布:下载 <code>app.html</code> 放到 <code>~/.live-dot-map/</code>(Windows 即 <code>C:\Users\&lt;用户&gt;\.live-dot-map\</code>),双击即开。</p>
+    <p>② 协议:打开 <code>AGENTS.snippet.md</code>,把全部内容追加到你项目根目录 <code>AGENTS.md</code> 的末尾(没有就新建一个)。</p>
+    <p>③ 地图:在项目根新建 <code>.live-dot-map/</code> 目录,把 <code>map.template.json</code> 复制进去改名 <code>map.json</code>。不复制也行——下次会话对 Agent 说「初始化活点地图」,它会读你的现有记录生成草稿。</p>
     <div class="files">
+      <a href="../app.html" download><b>app.html</b><span>画布程序本体,零依赖单文件</span></a>
       <a href="AGENTS.snippet.md" download><b>AGENTS.snippet.md</b><span>协议段,贴入项目 AGENTS.md</span></a>
       <a href="map.template.json" download><b>map.template.json</b><span>空白地图模板:一条主路线 + 一个「开始」节点</span></a>
+      <a href="setup.md" download><b>setup.md</b><span>Agent 全自动接入指引(口令引用的就是这份)</span></a>
     </div>
   </section>
 
   <section>
     <h2><span class="n">3</span>打开画布,连上项目文件夹</h2>
-    <p><a class="plain" href="../app.html">打开活点地图画布</a>,菜单里选「打开项目文件夹」。之后你在画布上的改动会自动存进文件夹的 map.json,Agent 读写同一份文件;Agent 改了,画布两秒内自己刷新。</p>
+    <p><a class="plain" href="../app.html">打开活点地图画布</a>,菜单里选「打开项目文件夹」。之后你在画布上的改动会自动存进项目 <code>.live-dot-map/map.json</code>,Agent 读写同一份文件;Agent 改了,画布两秒内自己刷新。</p>
     <p class="note">判断权永远在你:评分你打、归档你确认、画布上随便改,Agent 下次读到的就是你的版本。</p>
   </section>
 
