@@ -8,10 +8,11 @@
 
 | 源 | 地址前缀 | 说明 |
 |---|---|---|
-| 源 A | `https://app.live-dot-map.workers.dev` | Cloudflare，全球可访问 |
-| 源 B | `https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com` | CloudBase 国内节点，国内网络更快 |
+| 源 A | `https://livedotmap.top` | 自有域名（EdgeOne），国内不开代理可直连，海外也可访问，**首选** |
+| 源 B | `https://app.live-dot-map.workers.dev` | Cloudflare，海外/挂代理时更稳 |
+| 源 C | `https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com` | CloudBase 国内节点兜底 |
 
-要下载的文件（两个源路径相同）：
+要下载的文件（三个源路径相同）：
 
 - `/app.html` —— 画布程序本体（零依赖单文件）
 - `/favicon.ico` —— 图标（快捷方式用）
@@ -27,9 +28,11 @@
 ```bash
 # macOS / Linux / Windows 的 Git Bash 通用：
 mkdir -p ~/.live-dot-map
-curl -fsSL -o ~/.live-dot-map/app.html   "https://app.live-dot-map.workers.dev/app.html" \
+curl -fsSL -o ~/.live-dot-map/app.html   "https://livedotmap.top/app.html" \
+  || curl -fsSL -o ~/.live-dot-map/app.html "https://app.live-dot-map.workers.dev/app.html" \
   || curl -fsSL -o ~/.live-dot-map/app.html "https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com/app.html"
-curl -fsSL -o ~/.live-dot-map/favicon.ico "https://app.live-dot-map.workers.dev/favicon.ico" \
+curl -fsSL -o ~/.live-dot-map/favicon.ico "https://livedotmap.top/favicon.ico" \
+  || curl -fsSL -o ~/.live-dot-map/favicon.ico "https://app.live-dot-map.workers.dev/favicon.ico" \
   || curl -fsSL -o ~/.live-dot-map/favicon.ico "https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com/favicon.ico"
 ```
 
@@ -37,8 +40,8 @@ curl 不可用或全被拦时，Windows 换 PowerShell：
 
 ```powershell
 mkdir "$env:USERPROFILE\.live-dot-map" -Force
-Invoke-WebRequest "https://app.live-dot-map.workers.dev/app.html" -OutFile "$env:USERPROFILE\.live-dot-map\app.html"
-# 失败则把网址换成源 B 再试；favicon.ico 同理
+Invoke-WebRequest "https://livedotmap.top/app.html" -OutFile "$env:USERPROFILE\.live-dot-map\app.html"
+# 失败则把网址依次换成源 B、源 C 再试；favicon.ico 同理
 ```
 
 **验证**：确认 `app.html` 非空且开头是 `<!DOCTYPE html`（防止代理返回错误页当成下载成功）。不是就换源重下。
