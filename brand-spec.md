@@ -35,6 +35,23 @@
 - 便签黄（--note）仅用于标注背景（人与 Agent 统一），不挪用至其它元素。
 - 节点本身不使用红绿灰状态色。
 
+## Landing 补充令牌
+
+落地页按 `docs/真实用户实测记录.md` 对标 plus.excalidraw.com，使用独立的浅绿背景与深蓝排版；这些颜色不承载方案状态语义。
+
+```css
+:root {
+  --landing-bg: #f9fff9;
+  --landing-ink: #030064;
+  --landing-star: #ffe599;
+  --landing-star-border: #705400;
+  --landing-dark: #171642;
+}
+```
+
+- `--landing-star` 仅用于 GitHub 星标 CTA，hover 时回退为白底。
+- 上述令牌只作用于 `landing/`，画布仍遵循本文件的 OKLch 主令牌和状态色预算。
+
 ## 字体
 
 ```css

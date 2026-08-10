@@ -186,3 +186,11 @@
 - **绑域名与 DNS（E5）**：添加自定义域名 livedotmap.top（关联生产环境）→ 归属权验证：DNSPod 加 TXT `edgeonereclaim` = `reclaim-c3snp6d1tebekodo2mfeu9t33qrp8did`，验证通过 → 拿到 CNAME `livedotmap.top.pages.dnsoe6.com`，DNSPod 加 `@` CNAME → 域名状态「已生效」→ HTTPS 配置选「申请免费证书」，几分钟内签发完成。注意：DNSPod 独立控制台（console.dnspod.cn）在本机渲染空白，从腾讯云域名控制台「解析」入口进 `console.cloud.tencent.com/cns/detail/<域名>/records` 正常。
 - **验收（E6）**：DoH 验证 DNS 全链路生效（CNAME → 43.174.247.110/246.110）；11 个关键路径（`/`、`/app.html`、agent-kit 四件、assets、PWA 三件、favicon）HTTPS 全 200；`app.html`/`setup.md`/`AGENTS.snippet.md` 与本地 `.deploy` 逐字节一致；Playwright 开 landing 渲染正常无中间页。**用户关代理实测：1 秒打开，速度可接受——国内直连目标达成**。两个本地坑记录：①本机 Clash fake-ip 会污染 nslookup（workers.dev 被 GFW DNS 投毒解析到 facebook IP），验证须用 DoH（223.5.5.5/resolve）+ `curl --resolve --noproxy '*'`；②curl schannel 报 CRYPT_E_REVOCATION_OFFLINE 是吊销检查走不通，加 `--ssl-no-revoke` 即可，非证书问题。另实测：workers.dev 在国内裸连完全不可达（TCP 超时）——印证了 livedotmap.top 作首选源的必要性。
 - **三源定稿（E7b）**：源表升级为 **A `https://livedotmap.top`（首选，国内直连+海外）→ B `https://app.live-dot-map.workers.dev`（海外/代理）→ C `https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com`（国内兜底）**。`agent-kit/setup.md`（源表 + curl 三级兜底链 + PowerShell 注释）、landing `#prompt-text` 口令、`agent-kit/index.html`、`agent-kit/README.md` 同步三源版；`.deploy/` 同步后 CF（wrangler deploy，4 个变更文件）与 CB（manageHosting 上传 4 文件，登录态过期走了一次设备码重授权）重部署完成。CB 新版已核验（含 livedotmap.top）；CF 国内裸连不可达无法本机核验，以 wrangler 上传清单为准（用户挂代理时可自行抽查）。
+
+## 阶段 7：Landing 重写与验收（2026-08-10，Codex）
+
+- **实现**：新增 `landing/`（Next.js App Router + TypeScript + Motion + 静态导出），将 `.deploy/index.html` 改为由 `npm run build:deploy` 生成。新页面采用用户定稿 Hero「人机协作 变得简单 / 探索 记录 回忆 · 一切尽在 livedotmap」，按 plus.excalidraw.com 的留白、字号和大图节奏重组，保留活点地图内容与既有 `app.html` 入口。
+- **内容决策**：主 CTA 采用「一键接入 Agent」，点击复制 `agent-kit/setup.md` 的安装提示词；第 4 张功能卡采用「打开项目文件夹，自动同步」。接入区移除面向用户的大段 curl、JSON、文件结构说明，改为单一复制动作。
+- **发布边界**：`sync-deploy.mjs` 只覆盖 `.deploy/` 中由 landing 导出的文件；已核对保留 `.deploy/app.html`（108530 bytes）、`.deploy/agent-kit/setup.md`（5304 bytes）和 `sw.js`，Service Worker 缓存名升至 v3。
+- **验证**：`npm run typecheck` 与 `npm run build:deploy` 均通过；本地静态服务下 `/`、`/app.html`、`/agent-kit/setup.md`、`/media/landing-hero.png` 均为 HTTP 200。浏览器在 1280 / 768 / 375 三个断点实测无横向滚动、均有 4 张功能卡，复制按钮点击后显示「已复制 ✓」。截图记录见 `docs/plans/2026-08-10-landing重写.md`。
+- **未做**：未推送 GitHub，未触发 EdgeOne / Workers / CloudBase 三源部署；此步骤按计划等待用户确认。

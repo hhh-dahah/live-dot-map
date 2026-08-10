@@ -1,6 +1,6 @@
 /* 活点地图 PWA service worker:离线可用;地图数据不经此处(走 File System Access)
    HTML 走「网络优先」(拿最新版,离线回落缓存),静态资源走「缓存优先」 */
-const CACHE = 'live-dot-map-v2';
+const CACHE = 'live-dot-map-v3';
 const SHELL = [
   './',
   './app.html',
