@@ -2,6 +2,11 @@
 走查截图/
 # Playwright MCP 快照与截图产物
 .playwright-mcp/
+# landing 构建缓存与导出目录（发布内容由 .deploy/ 承接）
+landing/node_modules/
+landing/.next/
+landing/out/
+landing/tsconfig.tsbuildinfo
 # .deploy/ 是 EdgeOne Pages Git 部署的发布目录，需要进仓库（wrangler 也读它）
 # 任何误放进仓库的密钥/环境文件都不进 git（真凭证存仓库外 ~/.live-dot-map/）
 *.env
