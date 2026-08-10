@@ -6,7 +6,9 @@
 
 **让 Agent 全自动接（推荐）**：在项目目录里对你的 Agent 说一句——
 
-> 运行 curl -sL https://livedotmap.top/agent-kit/setup.md 查看接入指引，按它在我的项目目录完成活点地图接入；如果拉取失败，把网址换成 https://app.live-dot-map.workers.dev/agent-kit/setup.md 再试，仍失败换 https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com/agent-kit/setup.md。
+> 读取 https://livedotmap.top/agent-kit/setup.md 并严格执行其中的指引，把活点地图接入我当前的项目。
+
+拉取失败？让 Agent 把网址换成 `https://app.live-dot-map.workers.dev/agent-kit/setup.md`（挂代理时）或 `https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com/agent-kit/setup.md`（国内兜底）。
 
 Agent 会按 `setup.md` 自动完成：下载画布到 `~/.live-dot-map/`、建桌面快捷方式、注入协议、初始化地图、拉起画布。
 
