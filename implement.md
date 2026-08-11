@@ -187,6 +187,12 @@
 - **验收（E6）**：DoH 验证 DNS 全链路生效（CNAME → 43.174.247.110/246.110）；11 个关键路径（`/`、`/app.html`、agent-kit 四件、assets、PWA 三件、favicon）HTTPS 全 200；`app.html`/`setup.md`/`AGENTS.snippet.md` 与本地 `.deploy` 逐字节一致；Playwright 开 landing 渲染正常无中间页。**用户关代理实测：1 秒打开，速度可接受——国内直连目标达成**。两个本地坑记录：①本机 Clash fake-ip 会污染 nslookup（workers.dev 被 GFW DNS 投毒解析到 facebook IP），验证须用 DoH（223.5.5.5/resolve）+ `curl --resolve --noproxy '*'`；②curl schannel 报 CRYPT_E_REVOCATION_OFFLINE 是吊销检查走不通，加 `--ssl-no-revoke` 即可，非证书问题。另实测：workers.dev 在国内裸连完全不可达（TCP 超时）——印证了 livedotmap.top 作首选源的必要性。
 - **三源定稿（E7b）**：源表升级为 **A `https://livedotmap.top`（首选，国内直连+海外）→ B `https://app.live-dot-map.workers.dev`（海外/代理）→ C `https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com`（国内兜底）**。`agent-kit/setup.md`（源表 + curl 三级兜底链 + PowerShell 注释）、landing `#prompt-text` 口令、`agent-kit/index.html`、`agent-kit/README.md` 同步三源版；`.deploy/` 同步后 CF（wrangler deploy，4 个变更文件）与 CB（manageHosting 上传 4 文件，登录态过期走了一次设备码重授权）重部署完成。CB 新版已核验（含 livedotmap.top）；CF 国内裸连不可达无法本机核验，以 wrangler 上传清单为准（用户挂代理时可自行抽查）。
 
+## 文档分层整理（2026-08-10）
+
+- `AGENTS.md` 重写为约 20 行的路由入口，仅保留文档索引、产品文件边界和长期红线；移除阶段流水账、部署细节及 DeepSeek/Kimi/opencode/ShareX 等工具专属要求。
+- `goal.md` 将阶段 3–6.5 收敛为里程碑结论，并把当前工作指向真实用户实测与落地页演进。
+- 后续重大方向与阶段状态更新 `goal.md`；具体执行、验证和历史事实追加到本文件；不再向 `AGENTS.md` 堆积项目日志。
+
 ## 阶段 7：Landing 重写与验收（2026-08-10，Codex）
 
 - **实现**：新增 `landing/`（Next.js App Router + TypeScript + Motion + 静态导出），将 `.deploy/index.html` 改为由 `npm run build:deploy` 生成。新页面采用用户定稿 Hero「人机协作 变得简单 / 探索 记录 回忆 · 一切尽在 livedotmap」，按 plus.excalidraw.com 的留白、字号和大图节奏重组，保留活点地图内容与既有 `app.html` 入口。
@@ -194,3 +200,32 @@
 - **发布边界**：`sync-deploy.mjs` 只覆盖 `.deploy/` 中由 landing 导出的文件；已核对保留 `.deploy/app.html`（108530 bytes）、`.deploy/agent-kit/setup.md`（5304 bytes）和 `sw.js`，Service Worker 缓存名升至 v3。
 - **验证**：`npm run typecheck` 与 `npm run build:deploy` 均通过；本地静态服务下 `/`、`/app.html`、`/agent-kit/setup.md`、`/media/landing-hero.png` 均为 HTTP 200。浏览器在 1280 / 768 / 375 三个断点实测无横向滚动、均有 4 张功能卡，复制按钮点击后显示「已复制 ✓」。截图记录见 `docs/plans/2026-08-10-landing重写.md`。
 - **未做**：未推送 GitHub，未触发 EdgeOne / Workers / CloudBase 三源部署；此步骤按计划等待用户确认。
+
+## 阶段 8：Landing 视觉重做（2026-08-10，Kimi）
+
+- **起因**：用户走查阶段 7 页面后判定「配色眼前一黑、没有交互、文字多余」，并给出对标站 plus.excalidraw.com。逐条诉求：hero 的 eyebrow、「打开画布」副按钮、「本地优先·免费开源·不需要账号」条全删；顶部要有真 logo；GIF 占位不许留空（用产品截图替代）。
+- **配色修正（实测纠偏）**：Playwright 实截 plus.excalidraw.com，其 landing 实为**白底**，阶段 7 的淡绿 `#F9FFF9` 系误采样。新令牌：`--landing-bg:#FDFDFB`、`--landing-accent:#6965DB`（Excalidraw 紫蓝，与画布 accent 同族）+ `--landing-accent-soft:#E0DFFF`；深蓝墨 `#030064` 与星标黄保留；绿色系令牌删除；全页唯一强调色 = 紫蓝。已同步 `brand-spec.md`。
+- **结构**：hero 只剩定稿主副标题 + 主 CTA「一键接入 Agent」（紫）+ 星标黄钮 + 超大产品截图（两侧小截图扇形展开 + 手绘箭头光标 + 涂鸦/手写小注）；接入区单按钮居中条；功能区 4 张**细节裁切版**真实截图（PIL 从既有 5 张素材裁出 `*-crop.png`，16:10），版式按 居中宽图 / 左图右文 / 居中宽图 / 右图左文 交替；「本地优先/免费开源/不需要账号」改为本地优先区的勾选小药丸；底部 CTA 改整宽紫带；页脚深藏青保留。
+- **Logo**：新增 `components/Logo.tsx`——两个圆节点 + 一条斜连线的 SVG 标记（提炼自 `icons/icon-192.png`，连线用紫蓝），nav 与页脚统一使用。
+- **交互**（全部 reduced-motion 降级，只动 transform/opacity）：hero 文案 stagger 入场、「协作」高亮块 scaleX 画出、截图组合鼠标视差（Motion useMotionValue+spring，非 useState）、涂鸦慢浮动、箭头光标 bob、星标钮 hover 黄→白+摇摆、功能截图 hover 放大、复制成功弹跳（「已复制」+对勾）、nav 滚动态（useScroll，无 window listener）。
+- **字体**：next/font 自托管 Outfit（拉丁正文/显示）+ Caveat（拉丁手写小注），替换此前名义声明却从未加载的 "Assistant"；中文仍走系统回退栈。
+- **图标**：新增 `@phosphor-icons/react`（全项目唯一图标族）；服务端组件从 `@phosphor-icons/react/dist/ssr` 引入。
+- **验证**：`npm run typecheck`、`npm run build:deploy` 通过；`/`、`/app.html`、`/agent-kit/setup.md`、媒体图、PWA 文件均 200；1280/768/375 三断点无横向溢出，hero 首屏完整；复制按钮点击显示「已复制」；走查截图存 `走查截图/阶段8-landing-*`。修复记录：join 区手写注箭头 SVG 缺尺寸以致撑满默认 300px（已钉死 34×38）；1280 下两侧迷你截图会盖住手写贴纸（贴纸抬高至 y248；右贴纸删除，其位置与小图必撞）；768 下右贴纸与产品图重叠（≤900 隐藏）。
+- **sw.js**：CACHE 升至 v4。
+- **未做**：未推送 GitHub，未触发 EdgeOne / Workers / CloudBase 三源部署；按计划等用户确认。
+
+## 阶段 8 补丁：协作光标替换与缓存根治（2026-08-11，Kimi）
+
+- **用户反馈**：①hero 两侧小截图「看着很怪」，要求换 Excalidraw 式手绘小元素；②页面在用户的浏览器里出现右缘残留圆点、布局左偏，随后整页空白。
+- **空白根因**：服务器直查正常（`/` 200、新文案与新 chunk 均在、`.deploy` 完整），判定为用户浏览器残留旧缓存——`.deploy/sw.js` 此前滞留 v3（sync-deploy 不同步 sw.js），且静态服务未发 Cache-Control。用户浏览器里的旧 SW 以缓存优先喂老 HTML，其引用的带哈希 JS 已随构建删除 → 页面脚本永不执行 → 所有 Reveal 区块（SSR 即 opacity:0）永不显示，只剩未包 Reveal 的区标题可见。普通刷新无效（旧 SW 继续拦 HTML）。
+- **处置（根治）**：根 `sw.js` 与 `.deploy/sw.js` 改为**自毁版（v6）**——被浏览器更新检查拉到后清空全部 Cache Storage、注销自身、自动刷新受控页面，之后请求直连网络；不挂 fetch 监听。已在 Playwright 实测完整生命周期：注册 → 自清缓存 → 注销（regs 0 / caches 空）→ 自动重载 → 功能区正常渲染。代价：PWA 离线能力暂时关闭，下次正式发布时以新 CACHE 名重新引入正式 SW（自毁版已注销，可干净安装）。
+- **协作光标**：删除 hero 两张小截图（`.hero-mini`），改为 Excalidraw 协作者名牌风：左紫光标+「你」、右橙粉光标+「Agent」（新色仅涂鸦族：`#e2a18d/#fdeee7/#b25a3e`），Caveat 体系外的名牌用加粗无衬线（对齐 Excalidraw 名牌做法）；保留原鼠标视差（driftMini motion value 复用）并叠加 CSS floaty 慢浮动；≤1100px 隐藏，reduced-motion 全静止。右光标初版压在媒体顶栏文字上，`top` 由 26px 调至 -2px 后错开。
+- **验证**：typecheck、build:deploy 通过；`.deploy/sw.js` 自毁版实测生效；清缓存强刷后 1280/1164/375 渲染正确，375 无横向溢出（327<341）、光标按规隐藏；走查图存 `走查截图/阶段8-landing-协作光标-*`。
+- **搁置**：功能区营销文案重写（人机协作/仿生架构方向）由用户自行定稿后再落。
+
+## 阶段 8 补丁 2：内容去 JS 依赖（2026-08-11，Kimi）
+
+- **转折**：新端口 4174（全新源、零缓存）下用户仍只见区标题、不见 Reveal 区块。查 4174 服务器日志实锤：用户浏览器把全部 JS chunk（200）都下载了，但页面脚本始终未执行 → 确认根因不是缓存，而是**用户浏览器环境不执行页面 JS**（具体因子未明，疑扩展拦截），叠加 `Reveal` 用 Motion `whileInView`（SSR 即内联 opacity:0），JS 不跑内容就永远透明——这是设计缺陷。
+- **修复**：`Reveal` 重写为服务端组件 + 纯 CSS scroll-driven animation（`.reveal`：`animation-timeline: view()`，`entry 0% 40%` 完成显现）；`@supports not (animation-timeline: view())` 回退常显；reduced-motion 下 `animation: none`。三条路径兜底：JS 死了、浏览器不支持滚动时间线、系统减动效，内容全部照常显示。page.tsx 移除 `delay` 属性。
+- **验证**：禁 JS 全新 context 全页截图，所有区块（hero/接入/4 功能卡/本地优先/CTA/页脚）无脚本完整可见；正常模式滚动显现动效完好（feature-row opacity=1），无横向溢出。
+- **运维教训**：后台 `serve` 默认 600s 超时会杀服务，4174 已用不限时方式重启（任务 bash-vtxk18po）。

@@ -1,6 +1,8 @@
 /* 活点地图 PWA service worker:离线可用;地图数据不经此处(走 File System Access)
-   HTML 走「网络优先」(拿最新版,离线回落缓存),静态资源走「缓存优先」 */
-const CACHE = 'live-dot-map-v3';
+   HTML 走「网络优先」(拿最新版,离线回落缓存),静态资源走「缓存优先」。
+   v7:activate 时清空全部旧缓存,可治愈更老版本(缓存优先 HTML 时代)留下的脏缓存;
+   且页面内容已改为纯 CSS 滚动显现,即使脚本异常也不再出现下半截空白。 */
+const CACHE = 'live-dot-map-v7';
 const SHELL = [
   './',
   './app.html',
