@@ -37,19 +37,25 @@
 
 ## Landing 补充令牌
 
-落地页按 `docs/真实用户实测记录.md` 对标 plus.excalidraw.com，使用独立的浅绿背景与深蓝排版；这些颜色不承载方案状态语义。
+落地页按 `docs/真实用户实测记录.md` 对标 plus.excalidraw.com。2026-08-10 阶段 8 实测修正：plus.excalidraw.com 实际为白底（此前淡绿 `#F9FFF9` 系误采样），现行为微暖白底 + 深蓝墨 + Excalidraw 紫蓝唯一强调色；这些颜色不承载方案状态语义。
 
 ```css
 :root {
-  --landing-bg: #f9fff9;
-  --landing-ink: #030064;
-  --landing-star: #ffe599;
+  --landing-bg: #FDFDFB;          /* 微暖白,非纯白 */
+  --landing-ink: #030064;         /* 标题/正文深蓝墨(对标实测) */
+  --landing-accent: #6965DB;      /* Excalidraw 紫蓝,与画布 --accent 同族:主按钮/高亮/勾选 */
+  --landing-accent-deep: #5753C8; /* 主按钮 hover */
+  --landing-accent-soft: #E0DFFF; /* 标题高亮块/浅紫底 */
+  --landing-star: #FFE599;        /* GitHub 星标钮黄 */
   --landing-star-border: #705400;
-  --landing-dark: #171642;
+  --landing-dark: #171642;        /* 页脚深藏青 */
 }
 ```
 
 - `--landing-star` 仅用于 GitHub 星标 CTA，hover 时回退为白底。
+- 全页唯一强调色是紫蓝；黄色只属于星标钮；landing 不出现绿/红（产品截图内的状态色除外）。
+- 圆角规则：按钮 8px；媒体/卡片 18–20px；小徽标全圆角。
+- 字体：拉丁用 Outfit（next/font 自托管），手写小注用 Caveat（仅拉丁），中文走 PingFang/雅黑回退栈。
 - 上述令牌只作用于 `landing/`，画布仍遵循本文件的 OKLch 主令牌和状态色预算。
 
 ## 字体

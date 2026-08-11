@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, Copy } from "@phosphor-icons/react";
 import { useState } from "react";
 
 type CopyPromptButtonProps = {
@@ -40,7 +41,17 @@ export function CopyPromptButton({ label, prompt, className = "" }: CopyPromptBu
       onClick={copyPrompt}
       aria-live="polite"
     >
-      {copied ? "已复制 ✓" : label}
+      {copied ? (
+        <span className="copy-pop">
+          <Check size={17} weight="bold" />
+          已复制
+        </span>
+      ) : (
+        <>
+          <Copy size={16} weight="bold" />
+          {label}
+        </>
+      )}
     </button>
   );
 }

@@ -1,48 +1,22 @@
-# AGENTS.md — 活点地图 UI 原型
+# AGENTS.md — 活点地图
+> 本文件只做项目路由；按任务读取对应文档，不在这里记录阶段历史。
 
-> 本文件面向 AI 编码 Agent，是路由式索引：细节读对应文档，不要把内容复制进本文件。
+## 先读什么
+- 方向、阶段与边界：`goal.md`
+- 产品定义与功能规则：`产品需求文档-PRD.md`
+- 执行历史与验证方法：`implement.md`
+- 界面与品牌：`UI设计需求文档.md`、`brand-spec.md`
+- 走查问题与当前计划：`设计细节.md`、`docs/真实用户实测记录.md`、`docs/plans/`
+- 数据与 Agent 协议：`docs/map-json-v1.md`、`docs/agent-protocol.md`
 
-## 项目概述
+## 项目边界
+- `canvas.html` 是冻结的验收样板；正式产品在 `app.html` 演进。
+- `landing/` 是落地页源代码（Next.js 静态导出）；`landing.html` 仅保留为旧版参考，不再作为发布入口。
+- 发布 landing 时在 `landing/` 执行 `npm run build:deploy`，只更新 `.deploy/` 的静态导出文件；不得覆盖其中的 `app.html`、`agent-kit/` 与 PWA 文件。
+- 界面文案、代码注释和文档使用简体中文。
+- 颜色使用 `:root` 的 OKLch 令牌并同步 `brand-spec.md`；绿、红、灰只表达方案状态。
+- 数据读写遵守 `docs/map-json-v1.md`；协议改动同步 `docs/agent-protocol.md` 与 `agent-kit/`。
+- Excalidraw fork 仅作参考；复制其代码须保留 MIT 版权与许可。
 
-这是「活点地图」的**原型 + 单文件正式版**目录。活点地图是面向人机协作的探索状态画布：用少量节点、路线、方案线和标注表达项目探索过程，详情存本地 Markdown，人和本地 Agent 读写同一组文件。本地优先、免费开源、轻量无限画布。`canvas.html` 是冻结的验收样板，`app.html` 是在其上演进的正式版（数据契约见 `docs/map-json-v1.md`）。
-
-**当前阶段**：HTML 原型经 11 轮走查已定稿为验收样板（`canvas.html`，保持冻结）。阶段 2（基于 `D:/桌面/活点地图/excalidraw` fork 复刻画布）已完成并被否决——底层数据格式改为自研，fork 存档于 GitHub 私有仓库 `hhh-dahah/live-dot-map-canvas` 与本地 `wip-stage2` 分支，仅作交互参考。阶段 3 已完成：`app.html` 正式版（map.json 读写/文件夹直连/轮询同步）+ 协议层（`docs/map-json-v1.md`、`docs/agent-protocol.md`）+ 壁纸项目迁移狗粮（`E:/壁纸制作/map.json`），计划与日志见 `docs/plans/2026-08-06-阶段3-协议层与HTML正式化.md` 与 `implement.md`。阶段 4 已完成：记忆生命周期（路径 A）——schema 与协议升至 v1.1（`score`/`archived`/投影读取/整理例程/创新循环），研究与决策记录见 `docs/plans/2026-08-07-记忆系统演化路径研究.md`。阶段 5 已完成：分发与上手工程——首次引导+演示地图、agent-kit 接入包、PWA、Cloudflare Workers 部署（`https://app.live-dot-map.workers.dev`，用户明确暂不追求公网）。阶段 5.5 已完成：`landing.html` 重写为本地落地页（一键复制接入协议 + 三步上手 + GIF 占位）。阶段 6 已完成：公网双点部署与一句口令接入——数据目录约定升级为项目 `.live-dot-map/`（画布兼容根目录旧 map.json）、画布拖拽导入 map.json、`agent-kit/setup.md` 全自动接入（多源下载兜底 + 装 `~/.live-dot-map/` + 桌面快捷方式）、landing 双源口令、Cloudflare（主，`https://app.live-dot-map.workers.dev`）+ CloudBase（备用下载源 `test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com`，浏览器导航被腾讯拦截仅作 Agent 下载用）双点上线、壁纸狗粮项目已迁入 `.live-dot-map/`；计划见 `docs/plans/2026-08-08-阶段6-公网部署与一句口令接入.md`，日志均见 `implement.md`。阶段 6.5 已完成：国内直连——GitHub 私有仓库 `hhh-dahah/live-dot-map`（push master 触发 EdgeOne 自动部署；CF/CB 仍需手动重部署，此不对称须留意）；域名 `livedotmap.top`（腾讯云个人实名，首年 14 元/续费 32，自动续费，到期 2027-08-10，DNS 在 DNSPod）；EdgeOne Makers 项目 `makers-ugpb5ho04k2s`（加速区域「全球不含中国大陆」免备案——旧项目因选错含大陆区域且无法改区已删除重建），绑自定义域名 + 免费证书完成，**用户关代理实测 1 秒打开**；分发升级为三源兜底：A `https://livedotmap.top`（首选）→ B `https://app.live-dot-map.workers.dev`（海外/代理）→ C CloudBase（国内下载兜底，浏览器导航被拦仅作 Agent 下载用），口令与 setup.md 均已三源化；详见 implement.md 阶段 6.5。
-
-## 图片读取
-
-- 本机 Codex 会话默认不直接接收图片内容；用户贴图或引用本地图片时，优先用 `see` 技能读取图片文件，不要直接回复“看不到”。
-- 先确认图片路径存在，再运行技能入口脚本（Windows：`C:/Users/Thomas/.codex/skills/see/scripts/see.ps1 <图片路径>`），然后读取输出中 `output_path=<路径>` 指向的识别结果 Markdown。
-- 只运行技能自带脚本，不自行调用模型 API；识别结果以脚本返回为准。
-- **用户贴图工作流（ShareX 通道）**：用户在 opencode 粘贴的图片由 ShareX 自动保存，固定目录 `C:/Users/Thomas/Documents/ShareX/Screenshots/<YYYY-MM>/`；报错信息里出现的文件名（如 `Weixin_*.png`）即指向该目录。用户贴图后**直接按时间排序取该目录最新文件**，不要全盘搜索。
-
-## 目录结构与技术栈
-
-本体 `app.html` 是零依赖单文件静态 HTML（内联 CSS + 原生 JS），双击或任意静态服务器即可打开；根目录另有少量外挂工程文件（PWA `manifest.webmanifest`/`sw.js`、`agent-kit/` 接入包、部署配置 `wrangler.toml`/`.deploy/`）。无构建系统、无自动化测试，按 `index (2).html` 中的审核顺序在浏览器人工走查；视觉自验可用 Playwright 或 headless Chrome 截图到 `走查截图/`（已 gitignore），方法见 `implement.md`「走查工具链」。
-
-```
-├── index (2).html   # 原型导航页（注意文件名带空格和括号）
-├── canvas.html      # 核心原型：无限画布（验收样板，已冻结）
-├── app.html         # 正式版：自 canvas.html 演进，map.json 读写 + 项目文件夹直连（FS Access）+ 轮询同步
-├── landing.html     # 产品落地页（本地用：一键复制接入协议 + 三步上手 + 功能 GIF 占位）
-├── assets/          # landing 用图（landing-hero.png 为 app.html 实拍）
-├── agent-kit/       # Agent 接入包：AGENTS.snippet.md 协议段 + map.template.json + index.html 说明页
-├── wrangler.toml    # Cloudflare Workers 部署配置（静态资产目录 ./.deploy，仅部署时用）
-├── goal.md          # 重大方案：阶段路线、最终形态、边界、完成标准
-├── implement.md     # 执行与修改过程日志 + canvas.html 实现要点（改原型前先读）
-├── 设计细节.md       # 走查问题记录：问题描述/涉及位置/正式版期望行为/状态
-├── 产品需求文档-PRD.md   # PRD：产品定义、数据模型、状态与连接规则、开发优先级
-├── UI设计需求文档.md     # 界面方向、逐条界面需求与文案要求
-├── brand-spec.md    # 设计规范：色彩令牌（OKLch）、字体栈、布局姿态、文案基调
-├── docs/map-json-v1.md   # map.json v1 schema（数据契约，读写以此为准）
-├── docs/agent-protocol.md # Agent 协议段（贴入项目 AGENTS.md：会话开始铁律/同步/迁移四步）
-├── docs/plans/      # 阶段计划（explore-plan 产出，含阶段 3 计划）
-└── 参考ui/          # Excalidraw 界面截图（布局姿态参考，非视觉验收标准）
-```
-
-## 红线（必须遵守）
-
-- 界面文案、代码注释、文档一律使用简体中文。
-- 色彩一律用 `:root` 中的 OKLch CSS 变量，改令牌必须同步 `brand-spec.md`。
-- 绿/红/灰只用于方案线与状态徽标；节点圆形、名称写圆内；方案名附着在线上。
-- 工程形态不设硬约束：以「最大范围完成产品目标」为唯一标准。本体 `app.html` 目前保持单文件零依赖（双击即用），允许为分发/上手增加少量外挂工程文件（PWA manifest/sw、部署配置、agent-kit），但新增第三方依赖前需在 implement.md 记录理由。
-- 存档的 Excalidraw fork 仅作交互参考；如复制其代码片段，须遵守 MIT License 保留版权与许可声明（PRD §11.2）。
+## 工作约定
+- 修改前读相关文档；完成后把重大方向更新到 `goal.md`，执行与验证追加到 `implement.md`。
