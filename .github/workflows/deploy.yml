@@ -1,0 +1,50 @@
+name: 部署到 Cloudflare 与 CloudBase
+
+# .deploy/ 是构建产物并已入库；push 改动它时才需要重部署。
+# EdgeOne（livedotmap.top）由平台侧连仓库自动构建，不在本流水线内。
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.deploy/**'
+      - 'wrangler.toml'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  cloudflare:
+    name: Cloudflare Workers（app.live-dot-map.workers.dev）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: wrangler deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+  cloudbase:
+    name: CloudBase 静态托管（国内兜底源）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 检查 CloudBase 凭证是否已配置
+        id: cb
+        env:
+          TCB_SECRET_ID: ${{ secrets.TCB_SECRET_ID }}
+          TCB_SECRET_KEY: ${{ secrets.TCB_SECRET_KEY }}
+        run: |
+          if [ -z "$TCB_SECRET_ID" ] || [ -z "$TCB_SECRET_KEY" ]; then
+            echo "未配置 TCB_SECRET_ID / TCB_SECRET_KEY，本次跳过 CloudBase 部署"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: 安装 CloudBase CLI
+        if: steps.cb.outputs.skip != 'true'
+        run: npm install -g @cloudbase/cli
+      - name: 部署静态托管
+        if: steps.cb.outputs.skip != 'true'
+        env:
+          TCB_SECRET_ID: ${{ secrets.TCB_SECRET_ID }}
+          TCB_SECRET_KEY: ${{ secrets.TCB_SECRET_KEY }}
+        run: tcb hosting deploy ./.deploy / -e test-d0gims26n5c5ce096
