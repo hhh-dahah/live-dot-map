@@ -39,11 +39,23 @@ test('optional CodeBuddy adapter is packaged without adding an undiscovered UI a
   const settings = JSON.parse(await readFile(join(root, '.codebuddy', 'settings.json'), 'utf8'));
   assert.equal(settings.hooks.SessionStart[0].hooks[0].type, 'command');
   const mcp = JSON.parse(await readFile(join(root, '.mcp.json'), 'utf8'));
-  assert.equal(mcp.mcpServers['livedot-map'].args.at(-1), 'codebuddy');
+  const codeBuddyServer = Object.values(mcp.mcpServers).find((server) => server.args?.at(-1) === 'codebuddy');
+  assert.ok(codeBuddyServer);
+  assert.equal(codeBuddyServer.args.at(-1), 'codebuddy');
   const plugin = JSON.parse(await readFile(join(root, '.live-dot-map', 'codebuddy-plugin', '.codebuddy-plugin', 'plugin.json'), 'utf8'));
   assert.equal(plugin.name, 'livedot-map');
   assert.equal(JSON.parse(await readFile(join(root, '.live-dot-map', 'codebuddy-plugin', '.workbuddy-plugin', 'plugin.json'), 'utf8')).name, 'livedot-map');
   assert.equal((await doctorProject({ projectRoot: root, checkBridge: false })).ok, true);
+});
+
+test('Claude and CodeBuddy keep distinct MCP identities when installed together', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'livedot-mcp-identities-'));
+  await installProject({ projectRoot: root, createDesktopShortcut: false, register: false, offline: true, discoverAgents: false });
+  const mcp = JSON.parse(await readFile(join(root, '.mcp.json'), 'utf8'));
+  const identities = Object.values(mcp.mcpServers).map((server) => server.args?.at(-1));
+  assert.ok(identities.includes('claude'));
+  assert.ok(identities.includes('codebuddy'));
+  assert.equal(new Set(identities).size, identities.length);
 });
 
 test('portable Node downloader does not fetch unless explicitly enabled', async () => {

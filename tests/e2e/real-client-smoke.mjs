@@ -42,7 +42,7 @@ async function run(command, args, options = {}) {
   });
 }
 
-async function runClient(agent, project) {
+async function runClient(agent, project, mcpConfigPath) {
   const prompt = [
     '这是一次活点地图真实客户端接入验收。只做以下事情，不要修改其他文件：',
     '1. 先读取活点地图 MCP 上下文并找到人类标注 a-human-real-client。',
@@ -51,8 +51,8 @@ async function runClient(agent, project) {
     '4. 最后报告两个工具都成功的结果；如果任一工具失败，继续修正调用，不要提前结束。',
   ].join('\n');
   if (agent === 'codex') return run(clients.codex, ['exec', '--cd', project, '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust', '--ephemeral', prompt], { cwd: project, execPath: process.execPath });
-  if (agent === 'claude') return run(clients.claude, ['-p', '--dangerously-skip-permissions', '--permission-mode', 'bypassPermissions', '--mcp-config', join(project, '.mcp.json'), '--strict-mcp-config', prompt], { cwd: project });
-  if (agent === 'codebuddy') return run(clients.codebuddy, ['-p', '-y', '--permission-mode', 'bypassPermissions', '--mcp-config', join(project, '.mcp.json'), '--strict-mcp-config', prompt], { cwd: project, execPath: process.execPath });
+  if (agent === 'claude') return run(clients.claude, ['-p', '--dangerously-skip-permissions', '--permission-mode', 'bypassPermissions', '--mcp-config', mcpConfigPath, '--strict-mcp-config', prompt], { cwd: project });
+  if (agent === 'codebuddy') return run(clients.codebuddy, ['-p', '-y', '--permission-mode', 'bypassPermissions', '--mcp-config', mcpConfigPath, '--strict-mcp-config', prompt], { cwd: project, execPath: process.execPath });
   return run(clients.kimi, ['--prompt', prompt], { cwd: project });
 }
 
@@ -65,13 +65,18 @@ for (const agent of selected) {
     // receives its own --agent codebuddy MCP server instead of Claude's server.
     await installProject({ projectRoot: project, createDesktopShortcut: false, register: false, offline: true, discoverAgents: agent === 'codebuddy' ? false : true });
     const mapPath = join(project, '.live-dot-map', 'map.json');
+    const mcp = JSON.parse(await readFile(join(project, '.mcp.json'), 'utf8'));
+    const server = Object.values(mcp.mcpServers).find((candidate) => candidate.args?.at(-1) === agent);
+    assert.ok(server, `${agent} MCP server was not generated`);
+    const mcpConfigPath = join(project, `.mcp-${agent}.json`);
+    await writeFile(mcpConfigPath, `${JSON.stringify({ mcpServers: { 'livedot-map': server } }, null, 2)}\n`);
     const map = JSON.parse(await readFile(mapPath, 'utf8'));
     const now = new Date().toISOString();
     map.anns = [{ id: 'a-human-real-client', target: { kind: 'canvas' }, text: '真实客户端先验证新用户接入', source: 'human', priority: 'high', attention: 'new', acknowledgements: [], createdAt: now, updatedAt: now, updatedBy: 'human', updatedRevision: map.revision }];
     await writeFile(mapPath, `${JSON.stringify(map, null, 2)}\n`);
     let output = '';
     try {
-      output = await runClient(agent, project);
+      output = await runClient(agent, project, mcpConfigPath);
     } catch (error) {
       output = error?.clientOutput || '';
       throw new Error(`${agent} 客户端进程失败：${error?.message || error}\n--- client output ---\n${output.slice(-4000)}`, { cause: error });
