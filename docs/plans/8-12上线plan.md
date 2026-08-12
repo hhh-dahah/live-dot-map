@@ -1085,6 +1085,8 @@ Codex、Claude、Kimi 每家必须完成：
 
 > **本次分发修复（2026-08-12）**：推送 RC 后，Cloudflare Workers 部署因把 87.7MiB Windows SEA 桥当静态资产而触发 25MiB 单文件限制失败。当前 Action 回退到 Wrangler 3.90，不识别新版 `[assets].exclude`，因此改由构建脚本生成 Wrangler 3 兼容的 `.deploy/.assetsignore`；这些物料仍保留在 RC/安装器分发中，不进入网页静态资产。Cloudflare 重跑成功并完成三源 hash 核验后，才把“线上三个关键入口”改为已完成。该修复只影响分发配置，不改变开发、桥、画布或自动测试路径。
 
+> **分发实测结果（2026-08-12）**：Cloudflare Actions 已成功，`app.live-dot-map.workers.dev` 的 `app.html`、`livedot.mjs`、`agent-kit/setup.md` 均 HTTP 200 且 SHA-256 与 `.deploy` 一致；`livedotmap.top` 仍返回旧 app、setup 且 `livedot.mjs` 为 404，CloudBase 同样是旧版且 `livedot.mjs` 为 404。EdgeOne 更新延迟与 CloudBase 凭证是分发侧待办，不阻断本地开发、自动测试或受控 RC。
+
 - [x] Windows 用户双击安装即可使用，不需要 Node、终端或管理员权限。（内部 RC WinForms Setup 编译、payload hash、asInvoker、UI 自动点击“安装并开始使用”、项目 map 初始化和 SEA 桥启动均通过；签名/公开渠道另行验收）
 - [x] 桌面入口失败时有可见、可用的降级入口。（安装器门禁已验证项目内 `.cmd`）
 - [x] 启动器只配置真实发现的 Agent，并显示准确连接等级。（桥 `/api/v1/agents` + 画布设置面板显示五态；三浏览器 E2E 各返回 3 行）

@@ -235,6 +235,7 @@
 - 已在 `wrangler.toml` `[assets].exclude` 排除 Windows SEA 桥、SEA 临时文件和 `sea-manifest.json`。Windows 安装器、GitHub RC 物料和 `.deploy` 本地校验仍保留这些文件；网页部署只上传 `app.html`、`livedot.mjs`、`agent-kit/` 和 PWA 静态资源。
 - `npm run verify` 在该修复前后均通过（最新一次核心 70/70、浏览器/降级、性能、三适配器模拟、安装器 UI、SEA/release manifest 全部 `[verify] all gates passed`）。等待修复后的 Actions 成功后，再按三源 `200 + SHA-256` 结果更新上线计划，不把“流水线触发”当成上线证据。
 - 第二次 Action 证明 Wrangler 3.90 不识别 `[assets].exclude`，仍上传大文件；已撤回该字段，改为 `scripts/build-deploy-runtime.mjs` 自动生成 `.deploy/.assetsignore`，并保留同名构建产物。该路径兼容当前 Action 的 Wrangler 3 回退版本，等待第三次部署验证。
+- 第三次 Action（`31594565841`，提交 `cee1c68`）通过：Cloudflare 上传 39 个网页资产并发布成功，CloudBase 因未配置凭证按规则跳过。随后线上核验：`https://app.live-dot-map.workers.dev` 的 `app.html`、`livedot.mjs`、`agent-kit/setup.md` 全部 200，内容 hash 分别匹配当前 `.deploy`；`https://livedotmap.top` 与 CloudBase 仍为旧 app/setup，`livedot.mjs` 404。三源门禁因此保持未勾选，分发侧不阻断开发和自动测试。
 
 ### 里程碑语义修正后的复验（2026-08-12）
 
