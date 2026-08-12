@@ -264,6 +264,14 @@
 - 产品线下一步只收口 Claude 真实闭环、WorkBuddy 桌面端生命周期和普通小白独立流程；分发源失败只阻断对应公开渠道，不回滚或暂停已通过的开发/测试门禁。
 - 本次仅更新 `docs/plans/8-12上线plan.md` 与本执行记录；不修改产品代码、安装器、部署产物或用户项目数据。
 
+### 真实客户端与桌面端复核（2026-08-12，Codex）
+
+- Claude Code 2.1.223 再次执行 `node tests/e2e/real-client-smoke.mjs claude`，180 秒内无模型输出，进程由测试超时终止；没有把失败当成闭环证据，清单保持未勾选。
+- 按 `computer-use` 技能启动本机 WorkBuddy 5.2.3 图形客户端，确认窗口可见、工作区入口和提示输入区可交互；启动时出现“无法安装必要的更新”提示（安装目录包含用户项目），已关闭提示，未迁移、删除或修改用户项目。
+- 使用全新临时目录生成合法 v2 地图并尝试从 WorkBuddy 桌面入口打开。当前只能证明桌面程序启动与 GUI 交互，尚未取得“桌面会话自动加载项目级 `.mcp.json` → 引用人类标注 → ack → Agent 写回”的完整证据，因此 WorkBuddy 桌面端清单继续未勾选；此前通过的内嵌 CodeBuddy CLI 证据不替代此门禁。
+- `node scripts/verify-online.mjs` 复核：Cloudflare 三件套 HTTP 200 且 hash 与当前 `.deploy` 一致；`https://livedotmap.top` 的 app/setup 仍为旧 hash、`livedot.mjs` 为 404；CloudBase 同样为旧版且 `livedot.mjs` 为 404。线上三源清单继续未勾选。
+- 本次只追加验证记录；未修改产品代码、安装器、部署产物或用户项目数据。
+
 ### 里程碑语义修正后的复验（2026-08-12）
 
 - Agent 创建或更新里程碑为 `approved` 的单测通过，来源仍固定为 `agent_created`，且 `createdBy/updatedBy` 不可伪造。
