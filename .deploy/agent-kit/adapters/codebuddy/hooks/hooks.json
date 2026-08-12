@@ -1,0 +1,8 @@
+{
+  "description": "活点地图 SessionStart / UserPromptSubmit / Stop 适配器",
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node .live-dot-map/livedot.mjs hook --event session-start --project . --agent codebuddy", "timeout": 10 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node .live-dot-map/livedot.mjs hook --event user-prompt --project . --agent codebuddy", "timeout": 10 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node .live-dot-map/livedot.mjs hook --event stop --project . --agent codebuddy", "timeout": 10 }] }]
+  }
+}

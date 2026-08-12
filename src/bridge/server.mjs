@@ -334,7 +334,10 @@ export async function createBridgeServer({
           if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) config = parsed;
         } catch { /* 未接入项目仍返回未安装/已发现状态 */ }
         const trust = config.trust && typeof config.trust === 'object' ? config.trust : {};
-        const agents = Object.values(detected).map((item) => {
+        // Optional Tencent adapter stays hidden until the user actually has
+        // CodeBuddy/WorkBuddy or project configuration; the novice UI keeps
+        // the default list focused on the three first-party adapters.
+        const agents = Object.values(detected).filter((item) => item.id !== 'codebuddy' || item.discovered).map((item) => {
           const id = String(item.id);
           let state = 'not_installed';
           if (item.configured && !item.executable) state = 'error';

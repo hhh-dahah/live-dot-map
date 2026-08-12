@@ -42,7 +42,7 @@ async function mcp(project, agent, calls) {
 }
 
 const results = [];
-for (const agent of ['codex', 'claude', 'kimi']) {
+for (const agent of ['codex', 'claude', 'kimi', 'codebuddy']) {
   const project = await mkdtemp(join(tmpdir(), `livedot-agent-${agent}-`));
   try {
     const data = join(project, '.live-dot-map'); await mkdir(data, { recursive: true });

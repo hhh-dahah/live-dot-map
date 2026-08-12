@@ -13,6 +13,10 @@ const files = [
   '.deploy/release-manifest.json', '.deploy/sbom.cdx.json',
   'LICENSE', 'NOTICE', 'SECURITY.md', 'README.md',
 ];
+const assetsIgnore = await readFile(join(root, '.deploy/.assetsignore'), 'utf8');
+for (const excluded of ['livedot-bridge-win-x64.exe', 'livedot-bridge-win-x64.blob', 'sea-prep.exe', 'sea-manifest.json']) {
+  assert.match(assetsIgnore, new RegExp(`^${excluded.replaceAll('.', '\\.')}$`, 'm'), `${excluded} must stay out of web assets`);
+}
 for (const relative of files) {
   const path = join(root, relative);
   await access(path, constants.F_OK);

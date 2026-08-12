@@ -14,6 +14,7 @@ export function agentNameFromEnv(env = process.env, fallback = 'codex') {
   const raw = firstEnv(env, ['LIVEDOT_AGENT', 'LIVE_DOT_AGENT', 'AGENT_NAME'], fallback).toLowerCase();
   if (raw.includes('claude')) return 'claude';
   if (raw.includes('kimi')) return 'kimi';
+  if (raw.includes('codebuddy') || raw.includes('workbuddy')) return 'codebuddy';
   return 'codex';
 }
 

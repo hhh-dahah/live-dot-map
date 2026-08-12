@@ -19,6 +19,7 @@
     "verify:agents": "npm run build:core && npm run build:bridge && node --test tests/agent-kit/*.test.mjs tests/e2e/agent-cycle.mjs",
     "verify:installer": "npm run build:bridge && node scripts/verify-installer.mjs",
     "verify:release": "npm run build:deploy-runtime && npm run build:sea && npm run build:release-manifest && node scripts/verify-release.mjs",
+    "verify:online": "node scripts/verify-online.mjs",
     "verify:windows-installer": "npm run build:windows-installer && node scripts/verify-windows-installer.mjs && powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-windows-installer-ui.ps1",
     "verify": "node scripts/verify.mjs"
   },

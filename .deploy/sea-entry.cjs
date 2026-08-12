@@ -1681,10 +1681,13 @@ var map_template_default = {
 
 // agent-kit/lib/installer.mjs
 var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code"]);
+var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy"]);
+var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
 var ADAPTER_PROBES = Object.freeze({
   codex: ["codex"],
   "claude-code": ["claude", "claude-code"],
-  "kimi-code": ["kimi", "kimi-code"]
+  "kimi-code": ["kimi", "kimi-code"],
+  codebuddy: ["codebuddy", "codebuddy-code", "workbuddy"]
 });
 async function exists2(path) {
   try {
@@ -1734,7 +1737,7 @@ async function restoreCapturedFile(entry) {
     await (0, import_promises4.rm)(entry.path, { force: true }).catch(() => void 0);
   }
 }
-var adapterConfigPaths = (root, id) => id === "codex" ? [(0, import_node_path5.join)(root, ".codex", "config.toml"), (0, import_node_path5.join)(root, ".codex", "hooks.json")] : id === "claude-code" ? [(0, import_node_path5.join)(root, ".mcp.json"), (0, import_node_path5.join)(root, ".claude", "settings.json")] : [(0, import_node_path5.join)(root, ".kimi-code", "mcp.json"), (0, import_node_path5.join)(root, ".live-dot-map", "kimi-plugin", "kimi.plugin.json"), (0, import_node_path5.join)(root, ".live-dot-map", "kimi-plugin", "runtime", "livedot.mjs")];
+var adapterConfigPaths = (root, id) => id === "codex" ? [(0, import_node_path5.join)(root, ".codex", "config.toml"), (0, import_node_path5.join)(root, ".codex", "hooks.json")] : id === "claude-code" ? [(0, import_node_path5.join)(root, ".mcp.json"), (0, import_node_path5.join)(root, ".claude", "settings.json")] : id === "kimi-code" ? [(0, import_node_path5.join)(root, ".kimi-code", "mcp.json"), (0, import_node_path5.join)(root, ".live-dot-map", "kimi-plugin", "kimi.plugin.json"), (0, import_node_path5.join)(root, ".live-dot-map", "kimi-plugin", "runtime", "livedot.mjs")] : [(0, import_node_path5.join)(root, ".mcp.json"), (0, import_node_path5.join)(root, ".codebuddy", "settings.json"), (0, import_node_path5.join)(root, ".live-dot-map", "codebuddy-plugin", ".codebuddy-plugin", "plugin.json"), (0, import_node_path5.join)(root, ".live-dot-map", "codebuddy-plugin", ".workbuddy-plugin", "plugin.json")];
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === "1";
 }
@@ -1757,8 +1760,8 @@ async function commandExists(file) {
 }
 async function detectInstalledAdapters({ projectRoot = process.cwd(), platform = process.platform } = {}) {
   const root = (0, import_node_path5.resolve)(projectRoot);
-  const checks = await Promise.all(ADAPTERS.map(async (id) => {
-    const configPaths = id === "codex" ? [(0, import_node_path5.join)(root, ".codex", "config.toml"), (0, import_node_path5.join)(root, ".codex", "hooks.json")] : id === "claude-code" ? [(0, import_node_path5.join)(root, ".mcp.json"), (0, import_node_path5.join)(root, ".claude", "settings.json")] : [(0, import_node_path5.join)(root, ".kimi-code", "mcp.json"), (0, import_node_path5.join)(root, ".live-dot-map", "kimi-plugin", "kimi.plugin.json")];
+  const checks = await Promise.all(ALL_ADAPTERS.map(async (id) => {
+    const configPaths = id === "codex" ? [(0, import_node_path5.join)(root, ".codex", "config.toml"), (0, import_node_path5.join)(root, ".codex", "hooks.json")] : id === "claude-code" ? [(0, import_node_path5.join)(root, ".mcp.json"), (0, import_node_path5.join)(root, ".claude", "settings.json")] : id === "kimi-code" ? [(0, import_node_path5.join)(root, ".kimi-code", "mcp.json"), (0, import_node_path5.join)(root, ".live-dot-map", "kimi-plugin", "kimi.plugin.json")] : [(0, import_node_path5.join)(root, ".codebuddy", "settings.json"), (0, import_node_path5.join)(root, ".live-dot-map", "codebuddy-plugin", ".codebuddy-plugin", "plugin.json"), (0, import_node_path5.join)(root, ".live-dot-map", "codebuddy-plugin", ".workbuddy-plugin", "plugin.json")];
     const configured = (await Promise.all(configPaths.map(async (path) => {
       const text = await (0, import_promises4.readFile)(path, "utf8").catch(() => "");
       return text.includes("livedot-map");
@@ -1841,6 +1844,26 @@ async function writeKimiConfig(root, nodeCommand, runtime) {
   await atomicJson((0, import_node_path5.join)(plugin, "kimi.plugin.json"), manifest);
   return [mcpPath, (0, import_node_path5.join)(plugin, "kimi.plugin.json")];
 }
+async function writeCodeBuddyConfig(root, nodeCommand, runtime) {
+  const settingsPath = (0, import_node_path5.join)(root, ".codebuddy", "settings.json");
+  await atomicJson(settingsPath, mergeHooks(await readJson2(settingsPath), hooksFor(nodeCommand, runtime, root, "codebuddy")));
+  const mcpPath = (0, import_node_path5.join)(root, ".mcp.json");
+  const mcp = await readJson2(mcpPath);
+  mcp.mcpServers = { ...mcp.mcpServers || {}, "livedot-map": { type: "stdio", command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--project", root, "--agent", "codebuddy"] } };
+  await atomicJson(mcpPath, mcp);
+  const plugin = (0, import_node_path5.join)(root, ".live-dot-map", "codebuddy-plugin");
+  const manifest = {
+    name: "livedot-map",
+    version: "2.0.0",
+    description: "\u6D3B\u70B9\u5730\u56FE\u4EBA\u673A\u534F\u4F5C\u95ED\u73AF\uFF08\u817E\u8BAF\u7CFB Agent\uFF09",
+    hooks: "./hooks/hooks.json",
+    mcpServers: { "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--project", root, "--agent", "codebuddy"] } }
+  };
+  await atomicJson((0, import_node_path5.join)(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
+  await atomicJson((0, import_node_path5.join)(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
+  await atomicJson((0, import_node_path5.join)(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, root, "codebuddy") });
+  return [settingsPath, mcpPath, (0, import_node_path5.join)(plugin, ".codebuddy-plugin", "plugin.json"), (0, import_node_path5.join)(plugin, ".workbuddy-plugin", "plugin.json"), (0, import_node_path5.join)(plugin, "hooks", "hooks.json")];
+}
 async function installProject({
   projectRoot = process.cwd(),
   sourceRoot,
@@ -1871,9 +1894,9 @@ async function installProject({
   const url = bridgeUrl || old?.bridge?.url || "http://127.0.0.1:0";
   assertLoopbackUrl(url);
   const nodeCommand = process.execPath;
-  const detected = discoverAgents ? await detectInstalledAdapters({ projectRoot: root, platform }) : Object.fromEntries(ADAPTERS.map((id) => [id, { id, configured: false, executable: false, discovered: true }]));
+  const detected = discoverAgents ? await detectInstalledAdapters({ projectRoot: root, platform }) : Object.fromEntries(ALL_ADAPTERS.map((id) => [id, { id, configured: false, executable: false, discovered: true }]));
   const installed = {};
-  for (const id of ADAPTERS) if (detected[id]?.discovered) installed[id] = true;
+  for (const id of ALL_ADAPTERS) if (detected[id]?.discovered) installed[id] = true;
   const backupPath = (0, import_node_path5.join)(dataDir, "backups", "agent-kit-install.json");
   const beforeBackup = await captureFile(backupPath);
   const oldRuntime = runtime ? await captureFile(runtime) : { exists: false, kind: "missing", path: null };
@@ -1911,6 +1934,7 @@ async function installProject({
     if (installed.codex) await writeCodexConfig(root, nodeCommand, runtime);
     if (installed["claude-code"]) await writeClaudeConfig(root, nodeCommand, runtime);
     if (installed["kimi-code"]) await writeKimiConfig(root, nodeCommand, runtime);
+    if (installed.codebuddy) await writeCodeBuddyConfig(root, nodeCommand, runtime);
     const config = {
       ...old,
       version: 2,
@@ -1943,7 +1967,7 @@ async function installProject({
       detectedAgents: detected,
       bridge: { registered: true, mode: "project-config" },
       shortcut: null,
-      trustRequired: Object.fromEntries(Object.keys(installed).map((id) => [id, id === "codex" ? "\u5728 Codex /hooks \u4E2D\u4FE1\u4EFB\u9879\u76EE hooks" : id === "claude-code" ? "\u9996\u6B21\u6253\u5F00\u9879\u76EE\u65F6\u786E\u8BA4 hooks \u4E0E MCP" : `\u5728 Kimi \u6267\u884C /plugins install ${(0, import_node_path5.join)(dataDir, "kimi-plugin")}`])),
+      trustRequired: Object.fromEntries(Object.keys(installed).map((id) => [id, id === "codex" ? "\u5728 Codex /hooks \u4E2D\u4FE1\u4EFB\u9879\u76EE hooks" : id === "claude-code" ? "\u9996\u6B21\u6253\u5F00\u9879\u76EE\u65F6\u786E\u8BA4 hooks \u4E0E MCP" : id === "kimi-code" ? `\u5728 Kimi \u6267\u884C /plugins install ${(0, import_node_path5.join)(dataDir, "kimi-plugin")}` : "\u5728 WorkBuddy/CodeBuddy \u63D2\u4EF6\u9762\u677F\u5BA1\u6838\u5E76\u542F\u7528 hooks \u4E0E MCP"])),
       runtimePlan: runtimePlan({ offline })
     };
     if (register && bridgeClient) {
@@ -2037,6 +2061,7 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
   if (installed.codex) expected.push(["codex-hooks", (0, import_node_path5.join)(root, ".codex", "hooks.json")], ["codex-mcp", (0, import_node_path5.join)(root, ".codex", "config.toml")]);
   if (installed["claude-code"]) expected.push(["claude-hooks", (0, import_node_path5.join)(root, ".claude", "settings.json")], ["claude-mcp", (0, import_node_path5.join)(root, ".mcp.json")]);
   if (installed["kimi-code"]) expected.push(["kimi-mcp", (0, import_node_path5.join)(root, ".kimi-code", "mcp.json")], ["kimi-plugin", (0, import_node_path5.join)(root, ".live-dot-map", "kimi-plugin", "kimi.plugin.json")]);
+  if (installed.codebuddy) expected.push(["codebuddy-hooks", (0, import_node_path5.join)(root, ".codebuddy", "settings.json")], ["codebuddy-mcp", (0, import_node_path5.join)(root, ".mcp.json")], ["codebuddy-plugin", (0, import_node_path5.join)(root, ".live-dot-map", "codebuddy-plugin", ".codebuddy-plugin", "plugin.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
   const detectedAgents = await detectInstalledAdapters({ projectRoot: root });
@@ -2350,7 +2375,7 @@ async function createBridgeServer({
         } catch {
         }
         const trust = config.trust && typeof config.trust === "object" ? config.trust : {};
-        const agents = Object.values(detected).map((item) => {
+        const agents = Object.values(detected).filter((item) => item.id !== "codebuddy" || item.discovered).map((item) => {
           const id = String(item.id);
           let state = "not_installed";
           if (item.configured && !item.executable) state = "error";

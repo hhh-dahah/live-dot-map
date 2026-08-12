@@ -32,6 +32,20 @@ test('install copies one runtime and writes discoverable project configs for all
   assert.equal(doctor.ok, true);
 });
 
+test('optional CodeBuddy adapter is packaged without adding an undiscovered UI agent', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'livedot-codebuddy-'));
+  const result = await installProject({ projectRoot: root, createDesktopShortcut: false, register: false, offline: true, discoverAgents: false });
+  assert.equal(result.installed.codebuddy, true);
+  const settings = JSON.parse(await readFile(join(root, '.codebuddy', 'settings.json'), 'utf8'));
+  assert.equal(settings.hooks.SessionStart[0].hooks[0].type, 'command');
+  const mcp = JSON.parse(await readFile(join(root, '.mcp.json'), 'utf8'));
+  assert.equal(mcp.mcpServers['livedot-map'].args.at(-1), 'codebuddy');
+  const plugin = JSON.parse(await readFile(join(root, '.live-dot-map', 'codebuddy-plugin', '.codebuddy-plugin', 'plugin.json'), 'utf8'));
+  assert.equal(plugin.name, 'livedot-map');
+  assert.equal(JSON.parse(await readFile(join(root, '.live-dot-map', 'codebuddy-plugin', '.workbuddy-plugin', 'plugin.json'), 'utf8')).name, 'livedot-map');
+  assert.equal((await doctorProject({ projectRoot: root, checkBridge: false })).ok, true);
+});
+
 test('portable Node downloader does not fetch unless explicitly enabled', async () => {
   let fetched = false;
   const result = await downloadPortableNode({ destination: join(await mkdtemp(join(tmpdir(), 'livedot-runtime-')), 'node.zip'), allowDownload: false, fetchImpl: async () => { fetched = true; } });

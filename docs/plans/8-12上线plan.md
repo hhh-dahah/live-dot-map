@@ -665,11 +665,11 @@
 
 ### 12.5 WorkBuddy 与 CodeBuddy
 
-- WorkBuddy 已有图形化插件、MCP、项目上下文和 Hook 基础，适合普通职场用户，应作为重点适配对象。
+- WorkBuddy 已有图形化插件、MCP、项目上下文和 Hook 基础，适合普通职场用户，应作为重点适配对象；仓库现已提供 `.workbuddy-plugin` 候选包。
 - 但公开资料没有证明 WorkBuddy 的 Hook 一定提供等价 `SessionStart/UserPromptSubmit/Stop` 语义，因此先实现能力探针。
-- CodeBuddy IDE/Code 官方已经公开上述生命周期；CodeBuddy Code Hook 仍为 Beta，适配器必须锁定兼容版本并准备回归测试。
+- CodeBuddy IDE/Code 官方已经公开上述生命周期；CodeBuddy Code Hook 仍为 Beta。仓库现已提供 `.codebuddy-plugin`、项目 `.codebuddy/settings.json`、MCP 和三事件 Hook，适配器必须锁定兼容版本并准备回归测试。
 - 腾讯系插件打包 Skill、Hook、MCP 和本地桥启动入口；优先自建第三方 marketplace。
-- WorkBuddy 真机闭环通过后升级为完整支持；否则保留基础连接，不阻塞三款首发正式 Agent。
+- 当前安装器只在真实发现 `codebuddy`/`codebuddy-code`/`workbuddy` 时配置腾讯系适配器；真机闭环通过后才升级为完整支持，否则保留基础连接，不阻塞三款首发正式 Agent。
 
 ### 12.6 通用 Agent
 

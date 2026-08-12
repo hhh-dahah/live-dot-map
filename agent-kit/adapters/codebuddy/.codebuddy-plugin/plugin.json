@@ -1,0 +1,6 @@
+{
+  "name": "livedot-map",
+  "version": "2.0.0",
+  "description": "活点地图人机协作闭环（腾讯系 Agent）",
+  "hooks": "./hooks/hooks.json"
+}
