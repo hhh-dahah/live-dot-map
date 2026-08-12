@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "channel": "rc",
   "schema": 2,
-  "generatedAt": "2026-08-12T11:30:53.690Z",
+  "generatedAt": "2026-08-12T11:55:15.314Z",
   "signed": false,
   "deployed": false,
   "runtime": "node20-bundle",

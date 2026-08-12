@@ -5,3 +5,11 @@ compatibility_date = "2026-08-08"
 
 [assets]
 directory = "./.deploy"
+# Windows 桥接器由安装器/Release 分发，不作为网页静态资产上传。
+# Cloudflare Workers Static Assets 单文件上限为 25 MiB。
+exclude = [
+  "livedot-bridge-win-x64.exe",
+  "livedot-bridge-win-x64.blob",
+  "sea-prep.exe",
+  "sea-manifest.json",
+]
