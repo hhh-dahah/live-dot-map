@@ -239,6 +239,8 @@
 - 最终 RC manifest 刷新提交 `a59879f` 的 Actions（`31595079626`）再次通过 Cloudflare 与 CloudBase 分发 job；最新 `npm run verify` 仍输出 `[verify] all gates passed`，工作树保持干净。该次只刷新可追溯构建时间，不改变网页三件套 hash。
 - 复核发现 Cloudflare 直链 `/app.html` 返回 307 `/app`（跟随后内容/hash 正确），不满足计划的直返 200 门禁；根因是 Workers Static Assets 默认 HTML canonical handling。已在 `wrangler.toml` 加 `html_handling = "none"`，待下一次 Action 验证直链状态。
 - Action `31595443634`（提交 `83e6681`）通过；直链核验结果：Cloudflare `app.html`、`livedot.mjs`、`agent-kit/setup.md` 均 HTTP 200、无 Location 重定向，hash 分别匹配当前 `.deploy`。主站 EdgeOne 与 CloudBase 仍旧版，三源清单保持未勾选。
+- **腾讯系候选适配器（2026-08-12）**：依据 CodeBuddy 官方插件/Hook 文档新增 `.codebuddy-plugin` 与 `.workbuddy-plugin` 双 manifest、`.mcp.json`、`SessionStart/UserPromptSubmit/Stop` hooks、安装器可选探测和图形化信任提示；未发现腾讯系客户端时不污染普通用户的默认三行 Agent 状态。新增安装器单测与 `agent-cycle` 的 `codebuddy` 协议模拟闭环；这不是腾讯真实客户端证据，正式支持仍未勾选。
+- **Claude 真实客户端再诊断（2026-08-12）**：不输出凭据的 API 探针返回 `429 API_KEY_QUOTA_EXHAUSTED`，确认 2.1.223 的 180 秒空转来自当前自定义 API 端点额度耗尽，不是地图桥错误；未修改用户全局 Claude 配置，也不把模拟闭环当真实通过。额度恢复后应重跑 `node tests/e2e/real-client-smoke.mjs claude`。
 
 ### 里程碑语义修正后的复验（2026-08-12）
 

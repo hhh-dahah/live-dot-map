@@ -93,7 +93,9 @@ for (const [name, descriptor] of Object.entries(engines)) {
       const state = await page.evaluate(() => ({ label: document.querySelector('#sync-label')?.textContent, title: document.querySelector('#sync-dot')?.getAttribute('title'), pill: document.querySelector('#project-pill')?.innerText }));
       throw new Error(`${name}: save badge mismatch ${JSON.stringify(state)}; ${errors.join('; ')}`, { cause: error });
     }
-    await page.waitForFunction(() => document.querySelectorAll('#agent-status-list .agent-status').length === 3, undefined, { timeout: 5_000 });
+    // Agent discovery now probes an optional Tencent adapter too; WebKit can
+    // need a little longer for the loopback response on a cold process.
+    await page.waitForFunction(() => document.querySelectorAll('#agent-status-list .agent-status').length === 3, undefined, { timeout: 15_000 });
     await page.waitForFunction(() => window.LiveDotApp?.serialize()?.nodes?.[0]?.name === '<img src=x onerror=alert(1)>');
     await page.waitForFunction(() => document.querySelector('.node')?.textContent?.includes('<img'));
     assert.equal(await page.locator('.node img').count(), 0, `${name}: malicious HTML became an element`);

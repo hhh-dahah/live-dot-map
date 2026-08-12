@@ -1,6 +1,6 @@
 # agent-kit
 
-给 Codex、Claude Code、Kimi Code 的本地协作接入包。正式模式由一个 `livedot.mjs` 同时提供可靠存储、图检索、MCP 和 hooks。
+给 Codex、Claude Code、Kimi Code 的本地协作接入包，并附带 CodeBuddy/WorkBuddy 候选适配器。正式模式由一个 `livedot.mjs` 同时提供可靠存储、图检索、MCP 和 hooks。
 
 ## 一句接入
 
@@ -34,5 +34,5 @@ Agent 自动探索最多新增 5 个活跃节点、其中最多 2 个项目级�
 - `setup.md`：一键接入与无 Node 兜底。
 - `AGENTS.snippet.md`：通用协议摘要。
 - `map.template.json`：v2 空白地图。
-- `adapters/`：三家官方目录/schema 的参考适配层。
+- `adapters/`：三家首发 Agent 的官方目录/schema，以及腾讯系 CodeBuddy/WorkBuddy 候选适配层。
 - `bin/`、`lib/`：源码 checkout 的安装与测试工具；发布时功能已打进根 `livedot.mjs`。

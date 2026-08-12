@@ -20,7 +20,7 @@ assert.equal(result.shortcut?.type, 'windows-lnk');
 await stat(result.shortcut.fallback);
 const config = JSON.parse(await readFile(join(root, '.live-dot-map', 'agent-kit.json'), 'utf8'));
 assert.equal(config.version, 2);
-assert.equal(Object.keys(config.installed).length, 3);
+assert.equal(Object.keys(config.installed).length, 4);
 const doctor = await doctorProject({ projectRoot: root, checkBridge: false });
 assert.equal(doctor.ok, true, JSON.stringify(doctor));
 console.log(JSON.stringify({ ok: true, fallback: result.shortcut.fallback, doctor: doctor.ok }));

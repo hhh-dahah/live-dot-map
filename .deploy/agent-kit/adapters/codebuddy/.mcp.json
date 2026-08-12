@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "livedot-map": {
+      "type": "stdio",
+      "command": "node",
+      "args": [".live-dot-map/livedot.mjs", "mcp", "--project", ".", "--agent", "codebuddy"]
+    }
+  }
+}

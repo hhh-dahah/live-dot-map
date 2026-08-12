@@ -10,11 +10,14 @@ import { portableManifestFor, runtimePlan } from './portable-node.mjs';
 import MAP_TEMPLATE from '../map.template.json' with { type: 'json' };
 
 const ADAPTERS = Object.freeze(['codex', 'claude-code', 'kimi-code']);
+const OPTIONAL_ADAPTERS = Object.freeze(['codebuddy']);
+const ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
 
 const ADAPTER_PROBES = Object.freeze({
   codex: ['codex'],
   'claude-code': ['claude', 'claude-code'],
   'kimi-code': ['kimi', 'kimi-code'],
+  codebuddy: ['codebuddy', 'codebuddy-code', 'workbuddy'],
 });
 
 async function exists(path) {
@@ -68,7 +71,9 @@ const adapterConfigPaths = (root, id) => id === 'codex'
   ? [join(root, '.codex', 'config.toml'), join(root, '.codex', 'hooks.json')]
   : id === 'claude-code'
     ? [join(root, '.mcp.json'), join(root, '.claude', 'settings.json')]
-    : [join(root, '.kimi-code', 'mcp.json'), join(root, '.live-dot-map', 'kimi-plugin', 'kimi.plugin.json'), join(root, '.live-dot-map', 'kimi-plugin', 'runtime', 'livedot.mjs')];
+    : id === 'kimi-code'
+      ? [join(root, '.kimi-code', 'mcp.json'), join(root, '.live-dot-map', 'kimi-plugin', 'kimi.plugin.json'), join(root, '.live-dot-map', 'kimi-plugin', 'runtime', 'livedot.mjs')]
+      : [join(root, '.mcp.json'), join(root, '.codebuddy', 'settings.json'), join(root, '.live-dot-map', 'codebuddy-plugin', '.codebuddy-plugin', 'plugin.json'), join(root, '.live-dot-map', 'codebuddy-plugin', '.workbuddy-plugin', 'plugin.json')];
 
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === '1';
@@ -98,12 +103,14 @@ async function commandExists(file) {
 /** 只报告实际存在的 Agent；项目已有配置也算已发现，避免覆盖陌生平台。 */
 export async function detectInstalledAdapters({ projectRoot = process.cwd(), platform = process.platform } = {}) {
   const root = resolve(projectRoot);
-  const checks = await Promise.all(ADAPTERS.map(async (id) => {
+  const checks = await Promise.all(ALL_ADAPTERS.map(async (id) => {
     const configPaths = id === 'codex'
       ? [join(root, '.codex', 'config.toml'), join(root, '.codex', 'hooks.json')]
       : id === 'claude-code'
         ? [join(root, '.mcp.json'), join(root, '.claude', 'settings.json')]
-        : [join(root, '.kimi-code', 'mcp.json'), join(root, '.live-dot-map', 'kimi-plugin', 'kimi.plugin.json')];
+        : id === 'kimi-code'
+          ? [join(root, '.kimi-code', 'mcp.json'), join(root, '.live-dot-map', 'kimi-plugin', 'kimi.plugin.json')]
+          : [join(root, '.codebuddy', 'settings.json'), join(root, '.live-dot-map', 'codebuddy-plugin', '.codebuddy-plugin', 'plugin.json'), join(root, '.live-dot-map', 'codebuddy-plugin', '.workbuddy-plugin', 'plugin.json')];
     const configured = (await Promise.all(configPaths.map(async (path) => {
       const text = await readFile(path, 'utf8').catch(() => '');
       return text.includes('livedot-map');
@@ -186,9 +193,31 @@ async function writeKimiConfig(root, nodeCommand, runtime) {
   return [mcpPath, join(plugin, 'kimi.plugin.json')];
 }
 
+async function writeCodeBuddyConfig(root, nodeCommand, runtime) {
+  const settingsPath = join(root, '.codebuddy', 'settings.json');
+  await atomicJson(settingsPath, mergeHooks(await readJson(settingsPath), hooksFor(nodeCommand, runtime, root, 'codebuddy')));
+  const mcpPath = join(root, '.mcp.json');
+  const mcp = await readJson(mcpPath);
+  mcp.mcpServers = { ...(mcp.mcpServers || {}), 'livedot-map': { type: 'stdio', command: nodeCommand, args: [...runtimeArgs(runtime), 'mcp', '--project', root, '--agent', 'codebuddy'] } };
+  await atomicJson(mcpPath, mcp);
+
+  // CodeBuddy Code accepts Claude-compatible plugin layouts. Keep both
+  // manifest aliases so WorkBuddy and CodeBuddy can discover the same package;
+  // hooks remain fail-open until the user approves them in the product UI.
+  const plugin = join(root, '.live-dot-map', 'codebuddy-plugin');
+  const manifest = {
+    name: 'livedot-map', version: '2.0.0', description: '活点地图人机协作闭环（腾讯系 Agent）',
+    hooks: './hooks/hooks.json', mcpServers: { 'livedot-map': { command: nodeCommand, args: [...runtimeArgs(runtime), 'mcp', '--project', root, '--agent', 'codebuddy'] } },
+  };
+  await atomicJson(join(plugin, '.codebuddy-plugin', 'plugin.json'), manifest);
+  await atomicJson(join(plugin, '.workbuddy-plugin', 'plugin.json'), manifest);
+  await atomicJson(join(plugin, 'hooks', 'hooks.json'), { hooks: hooksFor(nodeCommand, runtime, root, 'codebuddy') });
+  return [settingsPath, mcpPath, join(plugin, '.codebuddy-plugin', 'plugin.json'), join(plugin, '.workbuddy-plugin', 'plugin.json'), join(plugin, 'hooks', 'hooks.json')];
+}
+
 export function adapterManifest({ sourceRoot = process.cwd() } = {}) {
   const root = resolve(sourceRoot instanceof URL ? fileURLToPath(sourceRoot) : sourceRoot);
-  return Object.fromEntries(ADAPTERS.map((id) => [id, { id, source: join(root, 'adapters', id) }]));
+  return Object.fromEntries(ALL_ADAPTERS.map((id) => [id, { id, optional: OPTIONAL_ADAPTERS.includes(id), source: join(root, 'adapters', id) }]));
 }
 
 export async function installProject({
@@ -211,9 +240,9 @@ export async function installProject({
   const url = bridgeUrl || old?.bridge?.url || 'http://127.0.0.1:0';
   assertLoopbackUrl(url);
   const nodeCommand = process.execPath;
-  const detected = discoverAgents ? await detectInstalledAdapters({ projectRoot: root, platform }) : Object.fromEntries(ADAPTERS.map((id) => [id, { id, configured: false, executable: false, discovered: true }]));
+  const detected = discoverAgents ? await detectInstalledAdapters({ projectRoot: root, platform }) : Object.fromEntries(ALL_ADAPTERS.map((id) => [id, { id, configured: false, executable: false, discovered: true }]));
   const installed = {};
-  for (const id of ADAPTERS) if (detected[id]?.discovered) installed[id] = true;
+  for (const id of ALL_ADAPTERS) if (detected[id]?.discovered) installed[id] = true;
   const backupPath = join(dataDir, 'backups', 'agent-kit-install.json');
   const beforeBackup = await captureFile(backupPath);
   const oldRuntime = runtime ? await captureFile(runtime) : { exists: false, kind: 'missing', path: null };
@@ -255,6 +284,7 @@ export async function installProject({
     if (installed.codex) await writeCodexConfig(root, nodeCommand, runtime);
     if (installed['claude-code']) await writeClaudeConfig(root, nodeCommand, runtime);
     if (installed['kimi-code']) await writeKimiConfig(root, nodeCommand, runtime);
+    if (installed.codebuddy) await writeCodeBuddyConfig(root, nodeCommand, runtime);
     const config = {
       ...old, version: 2, projectId: old.projectId || projectId, projectRoot: root, runtime, runtimeMode: seaRuntime() ? 'sea' : 'node', nodeCommand, detectedAgents: detected,
       trust: { ...(old.trust && typeof old.trust === 'object' ? old.trust : {}), ...Object.fromEntries(Object.keys(installed).map((id) => [id, { acknowledged: old.trust?.[id]?.acknowledged === true, updatedAt: old.trust?.[id]?.updatedAt || null }])) },
@@ -268,7 +298,7 @@ export async function installProject({
     await atomicJson(configPath, config);
 
     const result = { ok: true, projectRoot: root, projectId: config.projectId, configPath, runtime, installed, detectedAgents: detected, bridge: { registered: true, mode: 'project-config' }, shortcut: null,
-      trustRequired: Object.fromEntries(Object.keys(installed).map((id) => [id, id === 'codex' ? '在 Codex /hooks 中信任项目 hooks' : id === 'claude-code' ? '首次打开项目时确认 hooks 与 MCP' : `在 Kimi 执行 /plugins install ${join(dataDir, 'kimi-plugin')}`])), runtimePlan: runtimePlan({ offline }) };
+      trustRequired: Object.fromEntries(Object.keys(installed).map((id) => [id, id === 'codex' ? '在 Codex /hooks 中信任项目 hooks' : id === 'claude-code' ? '首次打开项目时确认 hooks 与 MCP' : id === 'kimi-code' ? `在 Kimi 执行 /plugins install ${join(dataDir, 'kimi-plugin')}` : '在 WorkBuddy/CodeBuddy 插件面板审核并启用 hooks 与 MCP'])), runtimePlan: runtimePlan({ offline }) };
     if (register && bridgeClient) { result.bridge.registration = await bridgeClient.openProject(root); result.bridge.mode = 'live-bridge'; }
     if (createDesktopShortcut && platform === 'win32') {
       const launcher = join(dataDir, '启动活点地图.cmd');
@@ -350,6 +380,7 @@ export async function doctorProject({ projectRoot = process.cwd(), checkBridge =
   if (installed.codex) expected.push(['codex-hooks', join(root, '.codex', 'hooks.json')], ['codex-mcp', join(root, '.codex', 'config.toml')]);
   if (installed['claude-code']) expected.push(['claude-hooks', join(root, '.claude', 'settings.json')], ['claude-mcp', join(root, '.mcp.json')]);
   if (installed['kimi-code']) expected.push(['kimi-mcp', join(root, '.kimi-code', 'mcp.json')], ['kimi-plugin', join(root, '.live-dot-map', 'kimi-plugin', 'kimi.plugin.json')]);
+  if (installed.codebuddy) expected.push(['codebuddy-hooks', join(root, '.codebuddy', 'settings.json')], ['codebuddy-mcp', join(root, '.mcp.json')], ['codebuddy-plugin', join(root, '.live-dot-map', 'codebuddy-plugin', '.codebuddy-plugin', 'plugin.json')]);
   const checks = [{ name: 'project-root', ok: await exists(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists(path), detail: path });
   const detectedAgents = await detectInstalledAdapters({ projectRoot: root });
