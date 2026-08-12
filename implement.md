@@ -342,3 +342,4 @@
 - 复核时发现 Claude 与 WorkBuddy/CodeBuddy 同时安装会共用项目 `.mcp.json`，后写入的适配器可能覆盖前一个 Agent 身份；安装器现按 Agent 保留 `livedot-map` 或生成 `livedot-map-<agent>`，并新增共存回归测试。CodeBuddy CLI 真实闭环也以独立 MCP 配置再次通过，节点来源为 `agent:codebuddy`。
 - `npm test` 72/72、Claude 与 CodeBuddy 真实客户端冒烟均通过；`npm run verify:release` 通过并重新生成 `.deploy` 运行时与 Windows SEA 产物。临时 SEA 注入文件不作为发布源文件。
 - CloudBase CLI 已确认登录态有效，本次已直接上传当前 `.deploy` 119 个文件，返回 `successCount=119`；CDN 刷新需数分钟。EdgeOne 仍由 GitHub master 自动部署，控制台页面已打开待授权/确认；浏览器自动化内核当前报系统路径错误，未伪造授权成功。
+- EdgeOne Makers 重新部署失败的实际原因已由部署日志确认：其输出目录直接扫描 `.deploy`，`livedot-bridge-win-x64.exe`（约 87 MiB）超过平台单文件 25 MiB 限制；Wrangler 使用的 `.assetsignore` 对 EdgeOne 不生效。新增 `scripts/edgeone-build.mjs` 与 `npm run build:edgeone`，仅清理 EdgeOne 输出中的 Release 专属二进制，保留网页、运行时和 Agent 接入文件。

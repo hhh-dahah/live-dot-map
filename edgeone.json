@@ -1,0 +1,5 @@
+{
+  "buildCommand": "node scripts/edgeone-build.mjs",
+  "outputDirectory": ".edgeone-deploy",
+  "nodeVersion": "22.11.0"
+}

@@ -1115,6 +1115,8 @@ Codex、Claude、Kimi 每家必须完成：
 
 > **分发实测结果（2026-08-12）**：Cloudflare Actions 已成功；`app.live-dot-map.workers.dev` 的 `app.html`、`livedot.mjs`、`agent-kit/setup.md` 现在均直返 HTTP 200，SHA-256 与 `.deploy` 完全一致。`livedotmap.top` 仍返回旧 app、setup 且 `livedot.mjs` 为 404，CloudBase 同样是旧版且 `livedot.mjs` 为 404。EdgeOne 更新延迟与 CloudBase 凭证是分发侧待办，不阻断本地开发、自动测试或受控 RC。
 
+> **EdgeOne 构建修复（2026-08-13）**：EdgeOne Makers 会直接扫描 `.deploy`，不会读取 Wrangler 的 `.assetsignore`；Windows SEA 桥约 87 MiB 超出其 25 MiB 单文件限制。新增 `npm run build:edgeone`，在 EdgeOne 构建前只移除 SEA/Release 专属二进制，保留 `app.html`、`livedot.mjs`、`agent-kit/` 和 landing 静态资源。GitHub Release 与 Windows 安装器仍保留完整桥文件，Cloudflare/CloudBase 继续按原流水线部署。
+
 > **当前 HEAD 复验（2026-08-12）**：`npm run verify` 再次通过，核心 **71/71**、三浏览器强模式、Chrome/Edge 降级、首次地图三入口、性能、四种协议模拟、安装器 UI、SEA、release manifest 和 SBOM 全部通过；本次只产生构建时间戳，已恢复工作树干净。该结果支持进入受控人工体验，但仍不替代 Claude/腾讯系真实客户端和普通小白人工验收。
 
 - [x] Windows 用户双击安装即可使用，不需要 Node、终端或管理员权限。（内部 RC WinForms Setup 编译、payload hash、asInvoker、UI 自动点击“安装并开始使用”、项目 map 初始化和 SEA 桥启动均通过；签名/公开渠道另行验收）
