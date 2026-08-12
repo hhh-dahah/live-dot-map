@@ -95,7 +95,8 @@ for (const [name, descriptor] of Object.entries(engines)) {
     }
     // Agent discovery now probes an optional Tencent adapter too; WebKit can
     // need a little longer for the loopback response on a cold process.
-    await page.waitForFunction(() => document.querySelectorAll('#agent-status-list .agent-status').length === 3, undefined, { timeout: 15_000 });
+    await page.waitForFunction(() => document.querySelectorAll('#agent-status-list .agent-status').length >= 3, undefined, { timeout: 15_000 });
+    const agentStatusRows = await page.locator('#agent-status-list .agent-status').count();
     await page.waitForFunction(() => window.LiveDotApp?.serialize()?.nodes?.[0]?.name === '<img src=x onerror=alert(1)>');
     await page.waitForFunction(() => document.querySelector('.node')?.textContent?.includes('<img'));
     assert.equal(await page.locator('.node img').count(), 0, `${name}: malicious HTML became an element`);
@@ -120,7 +121,7 @@ for (const [name, descriptor] of Object.entries(engines)) {
     await page.waitForFunction(() => document.querySelector('#sync-label')?.textContent === '已保存');
     await page.screenshot({ path: join(OUTPUT, `bridge-${name}.png`) });
     assert.deepEqual(errors, [], `${name}: page errors: ${errors.join('; ')}`);
-    results.push({ browser: name, revision: saved.revision, canvasAnnotation: true, agentStatusRows: 3, xssTextOnly: true });
+    results.push({ browser: name, revision: saved.revision, canvasAnnotation: true, agentStatusRows, xssTextOnly: true });
   } finally {
     await browser.close();
     bridge.child.kill();

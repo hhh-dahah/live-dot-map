@@ -38,7 +38,7 @@
 
 | 线路 | 当前结论 | 继续推进条件 |
 |---|---|---|
-| 产品与协作线 | 本地桥、画布、协议、检索、安装器和自动门禁已通过；Codex/Kimi 有真实 CLI 临时项目证据；Claude、腾讯系真实客户端和普通小白实测仍未闭环。 | 只需继续源码开发、自动测试和受控 RC；不得把未完成的真实闭环写成正式支持。 |
+| 产品与协作线 | 本地桥、画布、协议、检索、安装器和自动门禁已通过；Codex/Kimi 及 WorkBuddy 内嵌的 CodeBuddy Code CLI 有真实临时项目证据；Claude 和 WorkBuddy 桌面端、普通小白实测仍未闭环。 | 只需继续源码开发、自动测试和受控 RC；不得把未完成的真实闭环写成正式支持。 |
 | 分发线 | Cloudflare 预览三件套已返回 200 且 hash 一致；`livedotmap.top` 与 CloudBase 仍是旧版，EdgeOne/CloudBase 线上门禁未通过；Store、公开 GitHub Release、签名尚未提交。 | 可独立准备 RC、版本清单、SBOM、商店材料和平台同步；不作为开发、自动测试或本地人工复测的前置条件。 |
 
 因此，“上线前其他做好”不等于现在切换公开下载：产品线先完成真实客户端与小白验收，分发线并行补齐平台同步和公开渠道；任一分发源失败，只暂停该源，不暂停本地开发测试。
@@ -78,7 +78,7 @@
 | 人类标注 ack | 已有主体实现 | 已有 `new → delivered → acknowledged` 和摘要引用 ID 的校验基础。 |
 | 图检索 | 已有主体实现 | 已有图邻域、中文字符 bigram、英文词元和 BM25。 |
 | 浏览器画布 | 已有主体实现 | 强模式有草稿、保存中、已保存、冲突、错误和 SSE 同步状态。 |
-| 自动测试 | 当前可通过 | 核心、浏览器、性能、三适配器进程级闭环、安装器降级和发布检查已纳入 `npm run verify`；真实客户端仍待外部验收。 |
+| 自动测试 | 当前可通过 | 核心、浏览器、性能、四适配器进程级闭环、安装器降级和发布检查已纳入 `npm run verify`；真实客户端仍待外部验收。 |
 
 ### 3.2 当前阻止普通用户实测的问题
 
@@ -87,10 +87,10 @@
 | 发布 P0 | 尚无已签名、面向公众的 Windows 安装渠道 | 内部 RC 已有自包含 WinForms Setup：无 Node、asInvoker、图形化选项目、payload hash、SEA 桥启动和项目初始化均已实测；仍缺干净机/升级人工验收、签名与 Store/Release 发布。 |
 | P1 | 首次地图可理解性和初始化上限仍待真实用户验证 | 空白/示例/初始化入口已实现，服务端最多 15 个活跃节点，但需要确认初图不是目录树且十秒可读。 |
 | P1 | 三家首发 Agent 尚未全部完成真实客户端信任与模型闭环 | Codex/Kimi 已有真实 CLI 临时项目证据；Claude Code 2.1.223 当前自定义端点返回 `429 API_KEY_QUOTA_EXHAUSTED`，必须恢复可用配额后复跑，不能用模拟结果替代。 |
-| P1 | WorkBuddy/CodeBuddy 尚未完成真实生命周期闭环 | 在真实验证前只能标记能力探针或通用 MCP，不得宣传完整支持。 |
+| P1 | WorkBuddy 桌面端尚未完成真实生命周期闭环 | WorkBuddy 内嵌 CodeBuddy Code 2.106.4 CLI 已通过真实 MCP 写回验收；这不等同于 WorkBuddy 图形界面自动 Hook 已通过，桌面端仍只能标记候选。 |
 | 发布 | 尚未生成可追溯 tag/线上 200 与 hash 一致性证据 | 分发准备不影响开发测试，但没有这些证据就不能切换公开下载入口。 |
 
-结论：核心协作层、图形化连接状态、安装失败回滚、卸载恢复和内部 Setup 已达到本地自动验收；进入正式人工验收前仍需 Claude 真实闭环、腾讯系真实生命周期、首次地图可读性和普通小白全流程。线上发布证据只阻断公开下载入口，不暂停本地开发、自动测试或受控 RC。
+结论：核心协作层、图形化连接状态、安装失败回滚、卸载恢复和内部 Setup 已达到本地自动验收；CodeBuddy Code CLI 已有真实闭环，但进入正式公开兼容前仍需 Claude 真实闭环、WorkBuddy 桌面端生命周期、首次地图可读性和普通小白全流程。线上发布证据只阻断公开下载入口，不暂停本地开发、自动测试或受控 RC。
 
 ---
 
@@ -676,9 +676,9 @@
 
 - WorkBuddy 已有图形化插件、MCP、项目上下文和 Hook 基础，适合普通职场用户，应作为重点适配对象；仓库现已提供 `.workbuddy-plugin` 候选包。
 - 但公开资料没有证明 WorkBuddy 的 Hook 一定提供等价 `SessionStart/UserPromptSubmit/Stop` 语义，因此先实现能力探针。
-- CodeBuddy IDE/Code 官方已经公开上述生命周期；CodeBuddy Code Hook 仍为 Beta。仓库现已提供 `.codebuddy-plugin`、项目 `.codebuddy/settings.json`、MCP 和三事件 Hook，适配器必须锁定兼容版本并准备回归测试。
+- CodeBuddy IDE/Code 官方已经公开上述生命周期；CodeBuddy Code Hook 仍为 Beta。仓库现已提供 `.codebuddy-plugin`、项目 `.codebuddy/settings.json`、MCP 和三事件 Hook；WorkBuddy 内嵌 CodeBuddy Code **2.106.4** 已完成真实 CLI 的标注读取、ack 和节点写回，但仍需单独验证 WorkBuddy 桌面端是否实际执行这些 Hook。
 - 腾讯系插件打包 Skill、Hook、MCP 和本地桥启动入口；优先自建第三方 marketplace。
-- 当前安装器只在真实发现 `codebuddy`/`codebuddy-code`/`workbuddy` 时配置腾讯系适配器；真机闭环通过后才升级为完整支持，否则保留基础连接，不阻塞三款首发正式 Agent。
+- 当前安装器会探测 PATH 和 Windows WorkBuddy 卸载注册信息中的内嵌 CodeBuddy CLI；真实发现后才配置腾讯系适配器。CodeBuddy CLI 的真实闭环已记录，WorkBuddy 桌面端闭环通过后才升级为完整支持，否则保留基础连接，不阻塞三款首发正式 Agent。
 
 ### 12.6 通用 Agent
 
@@ -1103,7 +1103,7 @@ Codex、Claude、Kimi 每家必须完成：
 
 只有下列项目全部为“是”，本计划才算完成：
 
-> 2026-08-12 执行状态：**20/24** 项已由自动门禁或文档证据证明；**4 项**仍未完成。`npm run verify` 已全量通过，首次地图三入口、内部 RC 安装、修复/更新和卸载入口均已做自动化；Codex/Kimi 真实 CLI 已有临时项目闭环证据。**受控人工体验入口已具备**，分发旁路仍不影响开发和自动测试；未勾选项目是完成三家正式兼容、公开分发和普通小白验收前的剩余门禁。当前不是“全部完成”。证据已追加到 `implement.md`。
+> 2026-08-12 执行状态：**20/24** 项已由自动门禁或文档证据证明；**4 项**仍未完成。`npm run verify` 已全量通过，首次地图三入口、内部 RC 安装、修复/更新和卸载入口均已做自动化；Codex/Kimi 以及 WorkBuddy 内嵌的 CodeBuddy Code 2.106.4 CLI 已有临时项目闭环证据。**受控人工体验入口已具备**，分发旁路仍不影响开发和自动测试；未勾选项目是 Claude、WorkBuddy 桌面端、公开分发和普通小白验收前的剩余门禁。当前不是“全部完成”。证据已追加到 `implement.md`。
 
 > **本次分发修复（2026-08-12）**：推送 RC 后，Cloudflare Workers 部署因把 87.7MiB Windows SEA 桥当静态资产而触发 25MiB 单文件限制失败。当前 Action 回退到 Wrangler 3.90，不识别新版 `[assets].exclude`，因此改由构建脚本生成 Wrangler 3 兼容的 `.deploy/.assetsignore`；这些物料仍保留在 RC/安装器分发中，不进入网页静态资产。Cloudflare 重跑成功并完成三源 hash 核验后，才把“线上三个关键入口”改为已完成。该修复只影响分发配置，不改变开发、桥、画布或自动测试路径。
 
@@ -1125,7 +1125,7 @@ Codex、Claude、Kimi 每家必须完成：
 - [x] 检索返回来源、关系路径和召回原因。
 - [x] 自治规则由服务端执行，不只依赖提示词。
 - [ ] Codex、Claude、Kimi 完成真实客户端闭环。（Codex/Kimi 已通过真实 CLI 临时项目；Claude Code 2.1.223 当前无模型输出，180 秒超时，不能据此勾选）
-- [ ] WorkBuddy 只有通过真实生命周期 E2E 才升级为完整支持。
+- [ ] WorkBuddy 桌面端只有通过真实生命周期 E2E 才升级为完整支持。（内嵌 CodeBuddy Code 2.106.4 CLI 已完成真实 MCP 写回；不能替代桌面端 Hook 验收）
 - [x] Hook 失败、保存失败、冲突和 Agent 未读均不显示绿色。
 - [x] v1 迁移备份、未知字段和外部 Markdown 不丢失。
 - [x] 安全、故障注入、性能、内部安装器和本地发布检查通过。（公开签名/外部 CI/线上发布仍是分发阻断项）

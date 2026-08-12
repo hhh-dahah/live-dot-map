@@ -147,7 +147,8 @@ test('returns truthful five-state Agent discovery for the opened project', async
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.deepEqual(Object.keys(body.states).sort(), ['awaiting_trust', 'connected', 'discovered', 'error', 'not_installed'].sort());
-  assert.equal(body.agents.length, 3);
+  assert.ok(body.agents.length >= 3);
+  assert.deepEqual(new Set(body.agents.map((agent) => agent.id)), new Set(['codex', 'claude-code', 'kimi-code', ...(body.agents.some((agent) => agent.id === 'codebuddy') ? ['codebuddy'] : [])]));
   for (const agent of body.agents) {
     assert.ok(['awaiting_trust', 'connected', 'discovered', 'error', 'not_installed'].includes(agent.state));
     assert.equal(typeof agent.discovered, 'boolean');

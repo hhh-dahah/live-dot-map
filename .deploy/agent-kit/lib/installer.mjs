@@ -95,9 +95,42 @@ function execProbe(file, args = []) {
   });
 }
 
+function execText(file, args = [], timeout = 2_500) {
+  return new Promise((resolve) => {
+    execFile(file, args, { windowsHide: true, timeout, encoding: 'utf8' }, (error, stdout = '') => {
+      resolve(error ? '' : String(stdout));
+    });
+  });
+}
+
 async function commandExists(file) {
   const locator = process.platform === 'win32' ? 'where.exe' : 'which';
   return execProbe(locator, [file]);
+}
+
+async function discoverEmbeddedCodeBuddy({ platform = process.platform } = {}) {
+  if (platform !== 'win32') return null;
+  // WorkBuddy ships CodeBuddy Code inside its Electron bundle rather than
+  // putting `codebuddy` on PATH. Read only uninstall metadata; never launch
+  // the product or inspect credentials.
+  const registryRoots = [
+    'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+    'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+    'HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+  ];
+  const outputs = await Promise.all(registryRoots.map((root) => execText('reg.exe', ['query', root, '/s', '/v', 'DisplayIcon'])));
+  const iconPaths = outputs.flatMap((output) => String(output).split(/\r?\n/).flatMap((line) => {
+    if (!/workbuddy/i.test(line) || !/REG_SZ/i.test(line)) return [];
+    const match = line.match(/REG_SZ\s+(.+)$/i);
+    if (!match) return [];
+    return [match[1].trim().replace(/^"|"$/g, '').replace(/,\d+$/, '')];
+  }));
+  for (const iconPath of iconPaths) {
+    const installRoot = dirname(iconPath);
+    const candidate = join(installRoot, 'resources', 'app.asar.unpacked', 'cli', 'bin', 'codebuddy');
+    if (await exists(candidate)) return candidate;
+  }
+  return null;
 }
 
 /** 只报告实际存在的 Agent；项目已有配置也算已发现，避免覆盖陌生平台。 */
@@ -120,7 +153,8 @@ export async function detectInstalledAdapters({ projectRoot = process.cwd(), pla
     for (const probe of probes) {
       if (await commandExists(probe)) { executable = true; break; }
     }
-    return [id, { id, configured, executable, discovered: configured || executable }];
+    const embeddedPath = id === 'codebuddy' && !executable ? await discoverEmbeddedCodeBuddy({ platform }) : null;
+    return [id, { id, configured, executable: executable || Boolean(embeddedPath), executableSource: embeddedPath ? 'workbuddy-embedded' : null, discovered: configured || executable || Boolean(embeddedPath) }];
   }));
   return Object.fromEntries(checks);
 }
