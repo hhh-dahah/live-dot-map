@@ -10,9 +10,10 @@ const clients = {
   codex: process.env.LIVEDOT_CODEX_BIN || 'D:\\桌面\\nodejs\\npm_global\\node_modules\\@openai\\codex\\bin\\codex.js',
   claude: process.env.LIVEDOT_CLAUDE_BIN || 'D:\\桌面\\nodejs\\npm_global\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe',
   kimi: process.env.LIVEDOT_KIMI_BIN || 'C:\\Users\\Thomas\\.kimi-code\\bin\\kimi.exe',
+  codebuddy: process.env.LIVEDOT_CODEBUDDY_BIN || 'D:\\workbuddy\\resources\\app.asar.unpacked\\cli\\bin\\codebuddy',
 };
 const selected = process.argv.slice(2).filter((value) => value in clients);
-if (!selected.length) throw new Error('用法：node tests/e2e/real-client-smoke.mjs codex|claude|kimi');
+if (!selected.length) throw new Error('用法：node tests/e2e/real-client-smoke.mjs codex|claude|kimi|codebuddy');
 
 async function run(command, args, options = {}) {
   const executable = options.execPath || command;
@@ -51,6 +52,7 @@ async function runClient(agent, project) {
   ].join('\n');
   if (agent === 'codex') return run(clients.codex, ['exec', '--cd', project, '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust', '--ephemeral', prompt], { cwd: project, execPath: process.execPath });
   if (agent === 'claude') return run(clients.claude, ['-p', '--dangerously-skip-permissions', '--permission-mode', 'bypassPermissions', '--mcp-config', join(project, '.mcp.json'), '--strict-mcp-config', prompt], { cwd: project });
+  if (agent === 'codebuddy') return run(clients.codebuddy, ['-p', '-y', '--permission-mode', 'bypassPermissions', '--mcp-config', join(project, '.mcp.json'), '--strict-mcp-config', prompt], { cwd: project, execPath: process.execPath });
   return run(clients.kimi, ['--prompt', prompt], { cwd: project });
 }
 
@@ -58,7 +60,10 @@ const results = [];
 for (const agent of selected) {
   const project = await mkdtemp(join(tmpdir(), `livedot-real-${agent}-`));
   try {
-    await installProject({ projectRoot: project, createDesktopShortcut: false, register: false, offline: true });
+    // CodeBuddy is embedded in WorkBuddy on this machine and is not on PATH;
+    // force the optional adapter into this isolated fixture so the real CLI
+    // receives its own --agent codebuddy MCP server instead of Claude's server.
+    await installProject({ projectRoot: project, createDesktopShortcut: false, register: false, offline: true, discoverAgents: agent === 'codebuddy' ? false : true });
     const mapPath = join(project, '.live-dot-map', 'map.json');
     const map = JSON.parse(await readFile(mapPath, 'utf8'));
     const now = new Date().toISOString();

@@ -239,7 +239,7 @@
 - 最终 RC manifest 刷新提交 `a59879f` 的 Actions（`31595079626`）再次通过 Cloudflare 与 CloudBase 分发 job；最新 `npm run verify` 仍输出 `[verify] all gates passed`，工作树保持干净。该次只刷新可追溯构建时间，不改变网页三件套 hash。
 - 复核发现 Cloudflare 直链 `/app.html` 返回 307 `/app`（跟随后内容/hash 正确），不满足计划的直返 200 门禁；根因是 Workers Static Assets 默认 HTML canonical handling。已在 `wrangler.toml` 加 `html_handling = "none"`，待下一次 Action 验证直链状态。
 - Action `31595443634`（提交 `83e6681`）通过；直链核验结果：Cloudflare `app.html`、`livedot.mjs`、`agent-kit/setup.md` 均 HTTP 200、无 Location 重定向，hash 分别匹配当前 `.deploy`。主站 EdgeOne 与 CloudBase 仍旧版，三源清单保持未勾选。
-- **腾讯系候选适配器（2026-08-12）**：依据 CodeBuddy 官方插件/Hook 文档新增 `.codebuddy-plugin` 与 `.workbuddy-plugin` 双 manifest、`.mcp.json`、`SessionStart/UserPromptSubmit/Stop` hooks、安装器可选探测和图形化信任提示；未发现腾讯系客户端时不污染普通用户的默认三行 Agent 状态。新增安装器单测与 `agent-cycle` 的 `codebuddy` 协议模拟闭环；这不是腾讯真实客户端证据，正式支持仍未勾选。
+- **腾讯系适配器（2026-08-12）**：依据 CodeBuddy 官方插件/Hook 文档新增 `.codebuddy-plugin` 与 `.workbuddy-plugin` 双 manifest、`.mcp.json`、`SessionStart/UserPromptSubmit/Stop` hooks、安装器可选探测和图形化信任提示；未发现腾讯系客户端时不污染普通用户的默认三行 Agent 状态。此前只完成协议模拟，真实支持当时未勾选。
 - **Claude 真实客户端再诊断（2026-08-12）**：不输出凭据的 API 探针返回 `429 API_KEY_QUOTA_EXHAUSTED`，确认 2.1.223 的 180 秒空转来自当前自定义 API 端点额度耗尽，不是地图桥错误；未修改用户全局 Claude 配置，也不把模拟闭环当真实通过。额度恢复后应重跑 `node tests/e2e/real-client-smoke.mjs claude`。
 
 ## 上线计划分发旁路复核（2026-08-12，Codex）
@@ -253,6 +253,9 @@
 - 上线计划新增两级入口：本地自动门禁 + Codex/Kimi 任一真实闭环即可进入项目所有者的受控人工体验；Claude、WorkBuddy/CodeBuddy、三源线上一致性和普通小白流程仍属于正式兼容/公开上线门禁。分发不会阻断人工审查核心协作。
 - `后端使用修改/人工体验验收清单.md` 与 `README.md` 同步为当前状态：推荐从内部 RC 安装器开始，明确 Claude 配额、腾讯系真机生命周期、干净机/Store 等仍是外部门禁，不再把已通过的内部 WinForms/SEA 写成“尚未交付”。
 - Claude 再做一次不加载用户自定义工具的 `--safe-mode` + 官方 OAuth 试跑，90 秒仍无模型输出后终止孤儿进程；未修改全局配置，不能作为真实闭环证据。
+- **CodeBuddy 真实 CLI 闭环（2026-08-12）**：发现本机 WorkBuddy 5.2.3 的内嵌 `CodeBuddy Code 2.106.4`（Windows 注册表 `DisplayIcon` → `resources/app.asar.unpacked/cli/bin/codebuddy`），直接 `--version` 返回 2.106.4，模型最小提示词返回 `OK`。扩展 `tests/e2e/real-client-smoke.mjs codebuddy` 后，隔离临时项目完成真实 `map_get_context` → `map_apply_commands` → `map_ack_human_updates`，人类标注变为 `acknowledged`，节点 `createdBy/updatedBy=agent:codebuddy`，revision=4，测试通过。
+- **安装器自动发现修复（2026-08-12）**：`agent-kit/lib/installer.mjs` 新增 Windows WorkBuddy 卸载注册信息探测，不读取凭据、不启动客户端；当前 `detectInstalledAdapters()` 能识别内嵌 CodeBuddy（仅返回 `executableSource=workbuddy-embedded`，不向 UI 泄露本机路径）和 `discovered=true`。浏览器状态列表仍按真实发现动态显示，未安装环境保持三行。
+- **回归验证（2026-08-12）**：`npm test` **71/71** 通过；`node --test tests/e2e/bridge-browser.mjs` **1/1** 通过；CodeBuddy 真实 CLI 闭环通过。WorkBuddy 桌面 GUI 的 Hook/MCP 生命周期仍未验证，不能勾选 WorkBuddy 正式支持。
 
 ### 里程碑语义修正后的复验（2026-08-12）
 
