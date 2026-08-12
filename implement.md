@@ -248,6 +248,9 @@
 - 计划状态同步为：Codex/Kimi 已有真实 CLI 临时项目证据；Claude 因当前自定义端点 `429 API_KEY_QUOTA_EXHAUSTED` 未完成；腾讯系适配器仍为候选包，未宣称真实支持；Cloudflare 三件套已通过 200/hash，EdgeOne 与 CloudBase 仍旧版。
 - 本次只改计划与执行记录，没有修改产品代码、安装器、部署产物或用户项目数据。
 - 文档校验：`git diff --check` 通过；工作树变化仅为 `docs/plans/8-12上线plan.md` 与本条 `implement.md` 记录。
+- 当前 HEAD 复跑 `npm run verify`：核心 **71/71**，浏览器/降级/性能、Codex/Claude/Kimi/CodeBuddy 协议模拟、安装器 UI、SEA、release manifest 与 SBOM 全部通过，最终输出 `[verify] all gates passed`。构建产生的两个时间戳变更已恢复，未新增代码或部署物料差异。
+- `npm run verify:online` 复核仍只有 Cloudflare 三件套 200 且 hash 匹配；`livedotmap.top` 的 app/setup 为旧版且 `livedot.mjs` 404，CloudBase 同样旧版且 `livedot.mjs` 404，故线上清单继续不勾选。
+- 上线计划新增两级入口：本地自动门禁 + Codex/Kimi 任一真实闭环即可进入项目所有者的受控人工体验；Claude、WorkBuddy/CodeBuddy、三源线上一致性和普通小白流程仍属于正式兼容/公开上线门禁。分发不会阻断人工审查核心协作。
 
 ### 里程碑语义修正后的复验（2026-08-12）
 
