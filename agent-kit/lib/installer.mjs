@@ -177,6 +177,21 @@ function mergeHooks(existing, additions) {
   return { ...existing, hooks };
 }
 
+function mcpAgentOf(server) {
+  const args = Array.isArray(server?.args) ? server.args : [];
+  const index = args.indexOf('--agent');
+  return index >= 0 ? args[index + 1] : null;
+}
+
+// Claude Code and CodeBuddy both read the project-level .mcp.json. Keep the
+// historical `livedot-map` name for a single adapter, but never let the last
+// adapter silently replace another adapter's agent identity.
+function mcpServerKey(mcp, agent) {
+  const base = mcp?.mcpServers?.['livedot-map'];
+  if (!base || mcpAgentOf(base) === agent) return 'livedot-map';
+  return `livedot-map-${agent}`;
+}
+
 function tomlString(value) { return JSON.stringify(String(value)); }
 
 async function writeCodexConfig(root, nodeCommand, runtime) {
@@ -196,7 +211,8 @@ async function writeClaudeConfig(root, nodeCommand, runtime) {
   await atomicJson(settingsPath, mergeHooks(await readJson(settingsPath), hooksFor(nodeCommand, runtime, root, 'claude')));
   const mcpPath = join(root, '.mcp.json');
   const mcp = await readJson(mcpPath);
-  mcp.mcpServers = { ...(mcp.mcpServers || {}), 'livedot-map': { type: 'stdio', command: nodeCommand, args: [...runtimeArgs(runtime), 'mcp', '--project', root, '--agent', 'claude'] } };
+  const key = mcpServerKey(mcp, 'claude');
+  mcp.mcpServers = { ...(mcp.mcpServers || {}), [key]: { type: 'stdio', command: nodeCommand, args: [...runtimeArgs(runtime), 'mcp', '--project', root, '--agent', 'claude'] } };
   await atomicJson(mcpPath, mcp);
   return [settingsPath, mcpPath];
 }
@@ -232,7 +248,8 @@ async function writeCodeBuddyConfig(root, nodeCommand, runtime) {
   await atomicJson(settingsPath, mergeHooks(await readJson(settingsPath), hooksFor(nodeCommand, runtime, root, 'codebuddy')));
   const mcpPath = join(root, '.mcp.json');
   const mcp = await readJson(mcpPath);
-  mcp.mcpServers = { ...(mcp.mcpServers || {}), 'livedot-map': { type: 'stdio', command: nodeCommand, args: [...runtimeArgs(runtime), 'mcp', '--project', root, '--agent', 'codebuddy'] } };
+  const key = mcpServerKey(mcp, 'codebuddy');
+  mcp.mcpServers = { ...(mcp.mcpServers || {}), [key]: { type: 'stdio', command: nodeCommand, args: [...runtimeArgs(runtime), 'mcp', '--project', root, '--agent', 'codebuddy'] } };
   await atomicJson(mcpPath, mcp);
 
   // CodeBuddy Code accepts Claude-compatible plugin layouts. Keep both

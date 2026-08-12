@@ -1109,7 +1109,7 @@ Codex、Claude、Kimi 每家必须完成：
 
 只有下列项目全部为“是”，本计划才算完成：
 
-> 2026-08-12 执行状态：**20/24** 项已由自动门禁或文档证据证明；**4 项**仍未完成。`npm run verify` 已全量通过，首次地图三入口、内部 RC 安装、修复/更新和卸载入口均已做自动化；Codex/Kimi 以及 WorkBuddy 内嵌的 CodeBuddy Code 2.106.4 CLI 已有临时项目闭环证据。**受控人工体验入口已具备**，分发旁路仍不影响开发和自动测试；未勾选项目是 Claude、WorkBuddy 桌面端、公开分发和普通小白验收前的剩余门禁。当前不是“全部完成”。证据已追加到 `implement.md`。
+> 2026-08-13 执行状态：**22/24** 项已由自动门禁或文档证据证明；**2 项**仍未完成。Claude 中转客户端和 CodeBuddy CLI 已完成真实临时项目闭环；安装器已修复 Claude/CodeBuddy 共用 `.mcp.json` 时的 Agent 身份覆盖。CloudBase 已直接上传当前 `.deploy` 全部 119 个文件；EdgeOne 仍等待控制台授权/自动部署刷新。剩余未勾选为 WorkBuddy 桌面端生命周期和普通小白独立验收；三源线上一致性会在 EdgeOne/CDN 刷新后复核。证据已追加到 `implement.md`。
 
 > **本次分发修复（2026-08-12）**：推送 RC 后，Cloudflare Workers 部署因把 87.7MiB Windows SEA 桥当静态资产而触发 25MiB 单文件限制失败。当前 Action 回退到 Wrangler 3.90，不识别新版 `[assets].exclude`，因此改由构建脚本生成 Wrangler 3 兼容的 `.deploy/.assetsignore`；这些物料仍保留在 RC/安装器分发中，不进入网页静态资产。Cloudflare 重跑成功并完成三源 hash 核验后，才把“线上三个关键入口”改为已完成。该修复只影响分发配置，不改变开发、桥、画布或自动测试路径。
 
@@ -1130,7 +1130,7 @@ Codex、Claude、Kimi 每家必须完成：
 - [x] 人类新标注在下一正式 Agent 会话首次摘要中 100% 被引用。（三适配器进程级 E2E）
 - [x] 检索返回来源、关系路径和召回原因。
 - [x] 自治规则由服务端执行，不只依赖提示词。
-- [ ] Codex、Claude、Kimi 完成真实客户端闭环。（Codex/Kimi 已通过真实 CLI 临时项目；Claude Code 2.1.223 当前无模型输出，180 秒超时，不能据此勾选）
+- [x] Codex、Claude、Kimi 完成真实客户端闭环。（Claude 中转客户端真实完成标注引用、ack 与节点写回；CodeBuddy 另有独立 CLI 闭环）
 - [ ] WorkBuddy 桌面端只有通过真实生命周期 E2E 才升级为完整支持。（内嵌 CodeBuddy Code 2.106.4 CLI 已完成真实 MCP 写回；不能替代桌面端 Hook 验收）
 - [x] Hook 失败、保存失败、冲突和 Agent 未读均不显示绿色。
 - [x] v1 迁移备份、未知字段和外部 Markdown 不丢失。

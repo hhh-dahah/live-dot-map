@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "channel": "rc",
   "schema": 2,
-  "generatedAt": "2026-08-12T13:24:12.083Z",
+  "generatedAt": "2026-08-12T16:21:03.228Z",
   "signed": false,
   "deployed": false,
   "runtime": "node20-bundle",
@@ -13,8 +13,8 @@
       "sha256": "fc0faf9791a48003f60fc9dc31172d6ace6e3fcf4e1bd35cdef8d2d3eb0179bb"
     },
     "livedot.mjs": {
-      "bytes": 149837,
-      "sha256": "9a9e64eae2ab139dba3e267d8e1b178fad36f8bb796c139ff4b78bf45f1b08ef"
+      "bytes": 150277,
+      "sha256": "f486ef1180b5c7820620e79756491c39c9445fbda8a5286c5f28fb998f6dd0fc"
     },
     "agent-kit/setup.md": {
       "bytes": 4571,
@@ -29,8 +29,8 @@
       "sha256": "170f45c3da1bd889c06939104ebf5798078be93a225183dbb58d0f229d2fc2b5"
     },
     "livedot-bridge-win-x64.exe": {
-      "bytes": 91975168,
-      "sha256": "80daf05c76cf877aa6c2da960bd27d996d4270af8775d36070ab24aa59c48f5e"
+      "bytes": 91975680,
+      "sha256": "ad6bcdf8f5e692b1520b08e4bfb3bae1da9c72c45e25d13e2c834b3b30df9366"
     }
   },
   "distribution": {

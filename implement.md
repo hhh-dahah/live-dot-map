@@ -335,3 +335,10 @@
 - **降级模式补齐**：修复双击 `app.html` 仍按 v1 拒绝 v2 的缺口；现在 v1 会内存迁移为 v2，v2 可降级浏览/编辑/导出并保留未知字段，未来版本严格只读且原样导出。系统 Chrome/Edge 的真实 `file://` 冒烟通过，并确认状态始终显示“降级模式”。
 - **长期运行与安全收尾**：快照自动裁剪为最近 20 个、每日备份裁剪为最近 7 个；WAL 快照时压缩整图但保留旧 commandId 幂等回执和恢复 checkpoint。map.json 限制 64 MiB、WAL 限制 128 MiB、Markdown 读取前限制 2 MB；`.live-dot-map` 符号链接/目录联接逃逸会以 403 拒绝。对应故障与保留策略测试通过。
 - **状态边界**：实现与自动门禁完成，但 Codex、Claude Code、Kimi Code 仍需用户各确认一次本地 hooks/MCP 信任并跑真实模型会话；因此暂不把 v2 标为“可靠性实现完成”或“三 Agent 正式支持”。未部署、未推送，等待用户人工审查和明确上线确认。
+
+## 真实中转客户端与线上旁路复核（2026-08-13，Codex）
+
+- Claude Code 中转客户端真实完成 `map_get_context → map_apply_commands → map_ack_human_updates`，人类标注被引用并确认，节点写回来源为 `agent:claude`，revision=4。
+- 复核时发现 Claude 与 WorkBuddy/CodeBuddy 同时安装会共用项目 `.mcp.json`，后写入的适配器可能覆盖前一个 Agent 身份；安装器现按 Agent 保留 `livedot-map` 或生成 `livedot-map-<agent>`，并新增共存回归测试。CodeBuddy CLI 真实闭环也以独立 MCP 配置再次通过，节点来源为 `agent:codebuddy`。
+- `npm test` 72/72、Claude 与 CodeBuddy 真实客户端冒烟均通过；`npm run verify:release` 通过并重新生成 `.deploy` 运行时与 Windows SEA 产物。临时 SEA 注入文件不作为发布源文件。
+- CloudBase CLI 已确认登录态有效，本次已直接上传当前 `.deploy` 119 个文件，返回 `successCount=119`；CDN 刷新需数分钟。EdgeOne 仍由 GitHub master 自动部署，控制台页面已打开待授权/确认；浏览器自动化内核当前报系统路径错误，未伪造授权成功。

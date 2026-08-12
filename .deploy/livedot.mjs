@@ -1833,6 +1833,16 @@ function mergeHooks(existing, additions) {
   }
   return { ...existing, hooks };
 }
+function mcpAgentOf(server) {
+  const args = Array.isArray(server?.args) ? server.args : [];
+  const index = args.indexOf("--agent");
+  return index >= 0 ? args[index + 1] : null;
+}
+function mcpServerKey(mcp, agent) {
+  const base = mcp?.mcpServers?.["livedot-map"];
+  if (!base || mcpAgentOf(base) === agent) return "livedot-map";
+  return `livedot-map-${agent}`;
+}
 function tomlString(value) {
   return JSON.stringify(String(value));
 }
@@ -1855,7 +1865,8 @@ async function writeClaudeConfig(root, nodeCommand, runtime) {
   await atomicJson(settingsPath, mergeHooks(await readJson2(settingsPath), hooksFor(nodeCommand, runtime, root, "claude")));
   const mcpPath = join4(root, ".mcp.json");
   const mcp = await readJson2(mcpPath);
-  mcp.mcpServers = { ...mcp.mcpServers || {}, "livedot-map": { type: "stdio", command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--project", root, "--agent", "claude"] } };
+  const key = mcpServerKey(mcp, "claude");
+  mcp.mcpServers = { ...mcp.mcpServers || {}, [key]: { type: "stdio", command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--project", root, "--agent", "claude"] } };
   await atomicJson(mcpPath, mcp);
   return [settingsPath, mcpPath];
 }
@@ -1888,7 +1899,8 @@ async function writeCodeBuddyConfig(root, nodeCommand, runtime) {
   await atomicJson(settingsPath, mergeHooks(await readJson2(settingsPath), hooksFor(nodeCommand, runtime, root, "codebuddy")));
   const mcpPath = join4(root, ".mcp.json");
   const mcp = await readJson2(mcpPath);
-  mcp.mcpServers = { ...mcp.mcpServers || {}, "livedot-map": { type: "stdio", command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--project", root, "--agent", "codebuddy"] } };
+  const key = mcpServerKey(mcp, "codebuddy");
+  mcp.mcpServers = { ...mcp.mcpServers || {}, [key]: { type: "stdio", command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--project", root, "--agent", "codebuddy"] } };
   await atomicJson(mcpPath, mcp);
   const plugin = join4(root, ".live-dot-map", "codebuddy-plugin");
   const manifest = {
