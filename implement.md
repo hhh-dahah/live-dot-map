@@ -258,6 +258,12 @@
 - **回归验证（2026-08-12）**：`npm test` **71/71** 通过；`node --test tests/e2e/bridge-browser.mjs` **1/1** 通过；CodeBuddy 真实 CLI 闭环通过。WorkBuddy 桌面 GUI 的 Hook/MCP 生命周期仍未验证，不能勾选 WorkBuddy 正式支持。
 - 推送 `f35624e` 后 Action `31600902395` 成功；等待边缘缓存刷新后，`npm run verify:online` 确认 Cloudflare 三件套均 HTTP 200 且与当前 `.deploy` hash 一致（新 `livedot.mjs` hash=`9a9e64...`）。`livedotmap.top` 仍为旧版且 `livedot.mjs` 404，CloudBase 同样旧版且 `livedot.mjs` 404，线上总项继续不勾选。
 
+### 上线前执行顺序再确认（2026-08-12，Codex）
+
+- 计划明确：内部 RC、源码开发、自动测试和项目所有者的受控人工实测现在即可继续；Store、代码签名、EdgeOne、CloudBase 和公开 GitHub Release 属于并行分发线，不是上述工作的前置条件。
+- 产品线下一步只收口 Claude 真实闭环、WorkBuddy 桌面端生命周期和普通小白独立流程；分发源失败只阻断对应公开渠道，不回滚或暂停已通过的开发/测试门禁。
+- 本次仅更新 `docs/plans/8-12上线plan.md` 与本执行记录；不修改产品代码、安装器、部署产物或用户项目数据。
+
 ### 里程碑语义修正后的复验（2026-08-12）
 
 - Agent 创建或更新里程碑为 `approved` 的单测通过，来源仍固定为 `agent_created`，且 `createdBy/updatedBy` 不可伪造。
