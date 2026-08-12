@@ -238,6 +238,7 @@
 - 第三次 Action（`31594565841`，提交 `cee1c68`）通过：Cloudflare 上传 39 个网页资产并发布成功，CloudBase 因未配置凭证按规则跳过。随后线上核验：`https://app.live-dot-map.workers.dev` 的 `app.html`、`livedot.mjs`、`agent-kit/setup.md` 全部 200，内容 hash 分别匹配当前 `.deploy`；`https://livedotmap.top` 与 CloudBase 仍为旧 app/setup，`livedot.mjs` 404。三源门禁因此保持未勾选，分发侧不阻断开发和自动测试。
 - 最终 RC manifest 刷新提交 `a59879f` 的 Actions（`31595079626`）再次通过 Cloudflare 与 CloudBase 分发 job；最新 `npm run verify` 仍输出 `[verify] all gates passed`，工作树保持干净。该次只刷新可追溯构建时间，不改变网页三件套 hash。
 - 复核发现 Cloudflare 直链 `/app.html` 返回 307 `/app`（跟随后内容/hash 正确），不满足计划的直返 200 门禁；根因是 Workers Static Assets 默认 HTML canonical handling。已在 `wrangler.toml` 加 `html_handling = "none"`，待下一次 Action 验证直链状态。
+- Action `31595443634`（提交 `83e6681`）通过；直链核验结果：Cloudflare `app.html`、`livedot.mjs`、`agent-kit/setup.md` 均 HTTP 200、无 Location 重定向，hash 分别匹配当前 `.deploy`。主站 EdgeOne 与 CloudBase 仍旧版，三源清单保持未勾选。
 
 ### 里程碑语义修正后的复验（2026-08-12）
 
