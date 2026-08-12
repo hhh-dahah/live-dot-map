@@ -256,6 +256,7 @@
 - **CodeBuddy 真实 CLI 闭环（2026-08-12）**：发现本机 WorkBuddy 5.2.3 的内嵌 `CodeBuddy Code 2.106.4`（Windows 注册表 `DisplayIcon` → `resources/app.asar.unpacked/cli/bin/codebuddy`），直接 `--version` 返回 2.106.4，模型最小提示词返回 `OK`。扩展 `tests/e2e/real-client-smoke.mjs codebuddy` 后，隔离临时项目完成真实 `map_get_context` → `map_apply_commands` → `map_ack_human_updates`，人类标注变为 `acknowledged`，节点 `createdBy/updatedBy=agent:codebuddy`，revision=4，测试通过。
 - **安装器自动发现修复（2026-08-12）**：`agent-kit/lib/installer.mjs` 新增 Windows WorkBuddy 卸载注册信息探测，不读取凭据、不启动客户端；当前 `detectInstalledAdapters()` 能识别内嵌 CodeBuddy（仅返回 `executableSource=workbuddy-embedded`，不向 UI 泄露本机路径）和 `discovered=true`。浏览器状态列表仍按真实发现动态显示，未安装环境保持三行。
 - **回归验证（2026-08-12）**：`npm test` **71/71** 通过；`node --test tests/e2e/bridge-browser.mjs` **1/1** 通过；CodeBuddy 真实 CLI 闭环通过。WorkBuddy 桌面 GUI 的 Hook/MCP 生命周期仍未验证，不能勾选 WorkBuddy 正式支持。
+- 推送 `f35624e` 后 Action `31600902395` 成功；等待边缘缓存刷新后，`npm run verify:online` 确认 Cloudflare 三件套均 HTTP 200 且与当前 `.deploy` hash 一致（新 `livedot.mjs` hash=`9a9e64...`）。`livedotmap.top` 仍为旧版且 `livedot.mjs` 404，CloudBase 同样旧版且 `livedot.mjs` 404，线上总项继续不勾选。
 
 ### 里程碑语义修正后的复验（2026-08-12）
 

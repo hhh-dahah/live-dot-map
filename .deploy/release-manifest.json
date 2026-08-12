@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "channel": "rc",
   "schema": 2,
-  "generatedAt": "2026-08-12T13:19:31.785Z",
+  "generatedAt": "2026-08-12T13:24:12.083Z",
   "signed": false,
   "deployed": false,
   "runtime": "node20-bundle",
@@ -21,8 +21,8 @@
       "sha256": "b7c35e300ffb40303570fb08d96188e3498929085ab13b892efd9c5521dfcc3a"
     },
     "agent-kit/README.md": {
-      "bytes": 2080,
-      "sha256": "694760c97841f2de8cd5fe24f8fe60df609eb803fbe5b4e7a968ccfc54b2ee26"
+      "bytes": 2121,
+      "sha256": "1150088a36fb8bb4cb9448be604e2756cf702a8443221f78c014fbdbfa3dabe0"
     },
     "agent-kit/map.template.json": {
       "bytes": 1052,
