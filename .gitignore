@@ -15,6 +15,7 @@ landing/.next/
 landing/out/
 landing/tsconfig.tsbuildinfo
 # .deploy/ 是 EdgeOne Pages Git 部署的发布目录，需要进仓库（wrangler 也读它）
+.edgeone-deploy/
 # 任何误放进仓库的密钥/环境文件都不进 git（真凭证存仓库外 ~/.live-dot-map/）
 *.env
 *.secrets

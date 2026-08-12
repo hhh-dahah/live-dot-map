@@ -10,6 +10,7 @@
     "build:sea": "node scripts/build-sea.mjs",
     "build:deploy-runtime": "node scripts/build-deploy-runtime.mjs",
     "build:release-manifest": "node scripts/build-release-manifest.mjs",
+    "build:edgeone": "node scripts/edgeone-build.mjs",
     "build:windows-installer": "node scripts/build-windows-installer.mjs",
     "build": "npm run build:core && npm run build:app && npm run build:bridge",
     "test": "npm run build:core && node --test tests/**/*.test.mjs",
