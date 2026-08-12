@@ -46,9 +46,9 @@
 
 以下是本轮自动门禁后仍然需要外部条件的事项：
 
-1. **真实客户端信任**：Codex、Claude Code、Kimi Code 需要用户在各自客户端确认一次 Hook/MCP，并各跑一次真实模型会话。
+1. **真实客户端信任**：Codex、Kimi Code 已有临时项目真实 CLI 闭环；Claude Code 仍需恢复可用配额后完成真实模型会话和 Hook/MCP 信任复验。
 2. **WorkBuddy 生命周期**：目前只保留基础连接候选，未通过真机 SessionStart/Prompt/Stop 前不宣传完整支持。
-3. **Windows 小白安装包**：当前已有安装器核心、Node 便携运行时计划和桌面入口降级测试，但 SEA/Tauri/无 Node 双击安装包尚未交付。
+3. **Windows 小白安装包**：内部 RC 已有无 Node WinForms 安装器、SEA 桥、修复/更新和卸载保留地图入口；干净机升级/卸载、Tauri 外壳和 Microsoft Store MSIX 仍属于公开发布门禁。
 4. **公开分发**：GitHub RC、Microsoft Store MSIX、签名、审核和线上 hash/200 验证仍是发布阶段事项，不阻塞本地开发与人工走查。
 5. **浏览器权限**：正式桥模式必须通过本地桥 URL 打开；双击 `app.html` 仍是明确标记的降级模式。
 

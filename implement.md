@@ -251,6 +251,8 @@
 - 当前 HEAD 复跑 `npm run verify`：核心 **71/71**，浏览器/降级/性能、Codex/Claude/Kimi/CodeBuddy 协议模拟、安装器 UI、SEA、release manifest 与 SBOM 全部通过，最终输出 `[verify] all gates passed`。构建产生的两个时间戳变更已恢复，未新增代码或部署物料差异。
 - `npm run verify:online` 复核仍只有 Cloudflare 三件套 200 且 hash 匹配；`livedotmap.top` 的 app/setup 为旧版且 `livedot.mjs` 404，CloudBase 同样旧版且 `livedot.mjs` 404，故线上清单继续不勾选。
 - 上线计划新增两级入口：本地自动门禁 + Codex/Kimi 任一真实闭环即可进入项目所有者的受控人工体验；Claude、WorkBuddy/CodeBuddy、三源线上一致性和普通小白流程仍属于正式兼容/公开上线门禁。分发不会阻断人工审查核心协作。
+- `后端使用修改/人工体验验收清单.md` 与 `README.md` 同步为当前状态：推荐从内部 RC 安装器开始，明确 Claude 配额、腾讯系真机生命周期、干净机/Store 等仍是外部门禁，不再把已通过的内部 WinForms/SEA 写成“尚未交付”。
+- Claude 再做一次不加载用户自定义工具的 `--safe-mode` + 官方 OAuth 试跑，90 秒仍无模型输出后终止孤儿进程；未修改全局配置，不能作为真实闭环证据。
 
 ### 里程碑语义修正后的复验（2026-08-12）
 
