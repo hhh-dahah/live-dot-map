@@ -229,6 +229,12 @@
 - **首次地图真实入口自动验收（2026-08-12）**：新增 `tests/e2e/first-map-guide.mjs`，Chrome 与 Edge 均验证三个入口顺序、示例 7 个节点、不连接项目桥；点击 Agent 初始化只打开接入抽屉、桥未连接且节点数仍为 0。该项证明产品入口与安全边界，但普通小白的独立可理解性仍留给人工验收。
 - **真实客户端试跑**：新增 `tests/e2e/real-client-smoke.mjs` 作为受控手测脚本。Kimi Code 0.31.1 在临时项目完成 SessionStart 标注确认和 Agent 节点写回（revision 3）；Claude Code 2.1.223 能完成标注 ack，但没有执行要求的节点写回；Codex 0.144.1 本次调用未在超时前形成闭环并留下临时目录锁。故三 Agent 清单仍不勾选，模拟进程级 E2E 不能替代真实客户端证据。
 
+## 分发旁路修复（2026-08-12，Codex）
+
+- 推送 `a9da809` 后 GitHub Actions 的 Cloudflare job 真实失败，原因是 `.deploy/livedot-bridge-win-x64.exe` 约 87.7MiB，超过 Workers Static Assets 单文件 25MiB 限制；CloudBase job 按未配置凭证规则跳过，不影响本地 RC。
+- 已在 `wrangler.toml` `[assets].exclude` 排除 Windows SEA 桥、SEA 临时文件和 `sea-manifest.json`。Windows 安装器、GitHub RC 物料和 `.deploy` 本地校验仍保留这些文件；网页部署只上传 `app.html`、`livedot.mjs`、`agent-kit/` 和 PWA 静态资源。
+- `npm run verify` 在该修复前后均通过（最新一次核心 70/70、浏览器/降级、性能、三适配器模拟、安装器 UI、SEA/release manifest 全部 `[verify] all gates passed`）。等待修复后的 Actions 成功后，再按三源 `200 + SHA-256` 结果更新上线计划，不把“流水线触发”当成上线证据。
+
 ### 里程碑语义修正后的复验（2026-08-12）
 
 - Agent 创建或更新里程碑为 `approved` 的单测通过，来源仍固定为 `agent_created`，且 `createdBy/updatedBy` 不可伪造。
