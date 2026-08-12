@@ -1,0 +1,6 @@
+{
+  "name": "livedot-map",
+  "version": "2.0.0",
+  "description": "活点地图 Codex 生命周期适配器",
+  "hooks": "./hooks/hooks.json"
+}

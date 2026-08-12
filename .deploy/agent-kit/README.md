@@ -1,34 +1,38 @@
-# agent-kit — 一分钟把活点地图接入你的项目
+# agent-kit
 
-给使用 AI 编程助手（Codex / Kimi Code / Claude Code 等）的人。接入后，你的 Agent 每次会话开始会主动汇报项目全局：当前进展、等你判断的方案、停滞的路线。
+给 Codex、Claude Code、Kimi Code 的本地协作接入包。正式模式由一个 `livedot.mjs` 同时提供可靠存储、图检索、MCP 和 hooks。
 
-## 接入（二选一）
+## 一句接入
 
-**让 Agent 全自动接（推荐）**：在项目目录里对你的 Agent 说一句——
+在目标项目里告诉 Agent：
 
-> 读取 https://livedotmap.top/agent-kit/setup.md 并严格执行其中的指引，把活点地图接入我当前的项目。
+> 读取 https://livedotmap.top/agent-kit/setup.md 并严格执行，把活点地图接入当前项目。
 
-拉取失败？让 Agent 把网址换成 `https://app.live-dot-map.workers.dev/agent-kit/setup.md`（挂代理时）或 `https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com/agent-kit/setup.md`（国内兜底）。
+接入后运行：
 
-Agent 会按 `setup.md` 自动完成：下载画布到 `~/.live-dot-map/`、建桌面快捷方式、注入协议、初始化地图、拉起画布。
+```bash
+node ~/.live-dot-map/livedot.mjs doctor --project .
+node ~/.live-dot-map/livedot.mjs serve --project . --app ~/.live-dot-map/app.html
+```
 
-**手动接**：
+终端会给出带一次性令牌的本地 URL。Codex、Claude Code、Kimi Code 首次加载本地 MCP/hooks 时仍需各自完成一次信任确认。
 
-1. 画布：下载 `app.html` 放到 `~/.live-dot-map/`（Windows 即 `C:\Users\<用户>\.live-dot-map\`），双击即开。
-2. 协议：打开本目录的 `AGENTS.snippet.md`，把全部内容追加到你项目根目录 `AGENTS.md` 的末尾（没有 AGENTS.md 就新建一个）。
-3. 地图：在项目根新建 `.live-dot-map/` 目录，把 `map.template.json` 复制进去改名 `map.json`。不复制也行——下次会话对 Agent 说「初始化活点地图」，它会读你的现有记录生成草稿。
+直接双击 `app.html` 是降级模式，只用于浏览或导入导出，不会显示“协同正常”。
 
-## 之后
+## 首次初始化地图
 
-- 打开活点地图画布（网页版或本地 `~/.live-dot-map/app.html`），连上项目文件夹，就能在画布上看到 Agent 维护的地图。
-- 每次会话 Agent 会先输出地图摘要：主路线推进到哪、哪些方案等你判断、哪条路线停滞了。
-- 判断权永远在你：评分你打、归档你确认、画布上随便改，Agent 下次读到的就是你的版本。
+安装不会偷偷扫描项目。用户明确发送下面的请求后，Agent 才读取项目上下文并通过本地桥创建地图：
 
-## 文件说明
+> 请初始化我的活点地图：先读取 `AGENTS.md` 路由，再按顺序读取 `goal.md`、PRD、README、计划和最新执行记录；只保留一个总目标、3–7 个关键阶段和当前待判断路线，不要按文件/目录/函数或聊天轮次建节点。通过本地桥创建地图，为每个节点写入来源路径、生成理由、`createdBy` 和层级；不确定内容标为“待确认”，不要覆盖已有地图。
 
-| 文件 | 作用 |
-| --- | --- |
-| `setup.md` | Agent 全自动接入指引（上面口令引用的就是这份，含多源下载兜底） |
-| `AGENTS.snippet.md` | 协议段，贴入项目 AGENTS.md（由 `docs/agent-protocol.md` 生成，两处内容一致） |
-| `map.template.json` | 空白地图模板：一条主路线 + 一个「开始」节点，放进项目 `.live-dot-map/` 改名 `map.json` |
-| `index.html` | 本说明页的图文版（`index (2).html` 导航页也链到这里） |
+首张地图由桥强制限制为最多 15 个活跃节点；超过上限必须先合并或压缩，不得生成目录树。
+
+Agent 自动探索最多新增 5 个活跃节点、其中最多 2 个项目级或路线级里程碑；执行细节写入 Markdown，不创建 `work` 级里程碑。
+
+## 内容
+
+- `setup.md`：一键接入与无 Node 兜底。
+- `AGENTS.snippet.md`：通用协议摘要。
+- `map.template.json`：v2 空白地图。
+- `adapters/`：三家官方目录/schema 的参考适配层。
+- `bin/`、`lib/`：源码 checkout 的安装与测试工具；发布时功能已打进根 `livedot.mjs`。
