@@ -1,0 +1,13 @@
+{
+  "name": "livedot-map",
+  "version": "2.0.0",
+  "description": "活点地图 Kimi Code 本地协作插件",
+  "mcpServers": {
+    "livedot-map": { "command": "node", "args": [".live-dot-map/livedot.mjs", "mcp", "--project", ".", "--agent", "kimi"] }
+  },
+  "hooks": [
+    { "event": "SessionStart", "command": "node .live-dot-map/livedot.mjs hook --event session-start --project . --agent kimi", "timeout": 10 },
+    { "event": "UserPromptSubmit", "command": "node .live-dot-map/livedot.mjs hook --event user-prompt --project . --agent kimi", "timeout": 10 },
+    { "event": "Stop", "command": "node .live-dot-map/livedot.mjs hook --event stop --project . --agent kimi", "timeout": 10 }
+  ]
+}

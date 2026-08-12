@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "livedot-map": {
+      "command": "node",
+      "args": [".live-dot-map/livedot.mjs", "mcp", "--project", ".", "--agent", "kimi"]
+    }
+  }
+}

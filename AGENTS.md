@@ -7,7 +7,7 @@
 - 执行历史与验证方法：`implement.md`
 - 界面与品牌：`UI设计需求文档.md`、`brand-spec.md`
 - 走查问题与当前计划：`设计细节.md`、`docs/真实用户实测记录.md`、`docs/plans/`
-- 数据与 Agent 协议：`docs/map-json-v1.md`、`docs/agent-protocol.md`
+- 数据与 Agent 协议：`docs/map-json-v2.md`、`docs/agent-protocol.md`（v1 仅作迁移历史）
 
 ## 项目边界
 - `canvas.html` 是冻结的验收样板；正式产品在 `app.html` 演进。
@@ -15,7 +15,7 @@
 - 发布 landing 时在 `landing/` 执行 `npm run build:deploy`，只更新 `.deploy/` 的静态导出文件；不得覆盖其中的 `app.html`、`agent-kit/` 与 PWA 文件。
 - 界面文案、代码注释和文档使用简体中文。
 - 颜色使用 `:root` 的 OKLch 令牌并同步 `brand-spec.md`；绿、红、灰只表达方案状态。
-- 数据读写遵守 `docs/map-json-v1.md`；协议改动同步 `docs/agent-protocol.md` 与 `agent-kit/`。
+- 数据读写遵守 `docs/map-json-v2.md`；协议改动同步 `docs/agent-protocol.md` 与 `agent-kit/`。
 - Excalidraw fork 仅作参考；复制其代码须保留 MIT 版权与许可。
 
 ## 工作约定

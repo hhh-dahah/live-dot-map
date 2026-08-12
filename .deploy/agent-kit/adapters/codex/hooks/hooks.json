@@ -1,0 +1,8 @@
+{
+  "description": "运行前须由安装器展开绝对项目路径。",
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node .live-dot-map/livedot.mjs hook --event session-start --project . --agent codex", "timeout": 10 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node .live-dot-map/livedot.mjs hook --event user-prompt --project . --agent codex", "timeout": 10 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node .live-dot-map/livedot.mjs hook --event stop --project . --agent codex", "timeout": 10 }] }]
+  }
+}

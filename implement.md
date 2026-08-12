@@ -5,6 +5,8 @@
 
 ## 时间线
 
+- **Windows 图形化安装器候选（2026-08-12）**：新增独立 `installer/winforms/`。`LiveDotMapSetup.exe` 是 .NET 8 自包含 WinForms 入口，payload 复用现有 Windows x64 Node SEA 与 `app.html`，先逐文件 SHA-256 校验，再仅安装到 `%LocalAppData%\\LiveDotMap\\current`（`asInvoker`、不请求管理员权限）。用户在 GUI 选择项目文件夹后，入口调用 SEA 的既有 `install` 与 `serve`：地图和 Agent 配置仍只写所选项目。`scripts/build-windows-installer.mjs` 生成 payload/installer 两份 manifest，`verify-windows-installer.mjs` 加 UI Automation 门禁校验窗口、按钮、项目 map 初始化与桥启动。该产物明确是未签名内部 RC 候选；升级/卸载 UI、干净机与 Store/MSIX 验收仍未完成，公开交付门禁不勾选。
+
 - **ReactFlow 验证 Demo**：早期产品验证，已废弃（在 `live-dot-map/` 上级目录，不维护、不迁移代码，仅保留数据示例参考）。
 - **HTML 原型建立**：零依赖单文件静态 HTML（`canvas.html` 核心画布、`landing.html` 落地页、`index (2).html` 导航页），全部逻辑内联。
 - **走查第 1 轮**：取消独立首屏 start.html，打开/新建/导入/保存/导出收进画布左上项目菜单（Excalidraw 式）。（`设计细节.md` 第 1 条）
@@ -193,6 +195,46 @@
 - `goal.md` 将阶段 3–6.5 收敛为里程碑结论，并把当前工作指向真实用户实测与落地页演进。
 - 后续重大方向与阶段状态更新 `goal.md`；具体执行、验证和历史事实追加到本文件；不再向 `AGENTS.md` 堆积项目日志。
 
+## v2 上线候选执行记录（2026-08-12，Codex）
+
+- **P0 协作链**：本地桥的唯一 `ProjectStore` 增加外部 `map.json` revision 轮询和 SSE 通知；独立 MCP/Hook 进程写入后，已打开画布在 2 秒内刷新。断线重连会从最新 revision 恢复。`src/bridge/project-store.mjs`、`src/bridge/server.mjs`、`src/cli/livedot.ts`。
+- **画布**：撤销/重做进入同一保存路径；首次空地图提供“空白开始 / 简单示例 / 让 Agent 初始化我的项目地图”，初始化入口只有用户点击后才会触发；桥异步加载已有项目地图时自动收起引导，避免第一次标注被遮挡。Agent/人类里程碑以大卡显示来源、层级和状态。
+- **协议**：v2 对象维护创建/更新来源；Agent 批量对象、新节点和里程碑数量有服务端上限；Agent 里程碑保留 `origin`/`createdBy`，不得伪装人类创建；`map_next_candidates` 统一支持当前节点、limit、历史开关，并返回来源和关系路径。
+- **里程碑语义纠偏**：按产品规则，Agent 可以把自己创建或更新的里程碑设为 `approved`；服务端只禁止伪造 `human_created`/人类身份和 `work` 级碎片，不再把 `approved` 错当成人类专属动作。画布继续显示来源、创建者、更新者和证据。
+- **接入与小白降级**：安装器按 PATH/项目配置只发现真实 Agent；doctor 按实际安装项检查。桌面快捷方式不可写或 PowerShell 失败时，项目 `.live-dot-map/` 中生成可用 `.cmd`，结果明确标注降级。新增 `verify:installer`。
+- **发布准备**：统一 `npm run verify`、`verify:core/web/agents/installer/release`；构建 `.deploy` 并检查 CSP、运行时、协议包、版本与 hash。新增 `LICENSE`、`NOTICE`、`SECURITY.md`、`README.md`。当前只生成可审计 RC 产物，不进行生产部署、GitHub 发布或 Microsoft Store 提交。
+- **自动验证证据**：`npm test` 66/66；三浏览器强模式 bridge E2E 4/4（Chromium/Firefox/WebKit 保存与 XSS）；Chrome/Edge 降级与 undo/redo 通过；三适配器模拟闭环通过；安装器降级入口与部署产物检查通过；`node --check livedot.mjs` 通过。
+- **仍需用户完成**：在全新 Codex、Claude Code、Kimi Code 客户端各确认一次 Hook/MCP 信任并跑真实模型闭环；WorkBuddy 尚未做真机生命周期验证；干净 Windows 安装/升级、Store/MSIX 或 GitHub Release 尚未发布。因此本记录不把项目标记为正式公开版，只推进到受控人工 RC 验收准备阶段。
+- **总门禁复跑**：`npm run verify` 全部通过（核心 66 项、三浏览器强模式、Chrome/Edge 降级、性能、三适配器进程级闭环、安装器快捷方式降级、部署产物与 hash/SBOM 检查）。最新 `.deploy` 已重新生成并与源安装器同步；`canvas.html` 工作树 hash 与 `HEAD` 一致。
+
+## 上线计划旁路更新（2026-08-12，Codex）
+
+- `docs/plans/8-12上线plan.md` 已更新为“执行中”：分发准备与开发/测试并行，SEA、MSIX、Partner Center、线上 200/hash 和代码签名不再作为本地桥、画布、协议或自动测试的前置条件；未完成的真实分发门禁仍不得伪装为普通用户下载版。
+- 初始地图协议新增服务端硬上限：Agent 首次初始化最多 15 个活跃节点，超过后返回 `AGENT_INITIAL_MAP_LIMIT`，并在 `ui.initialization.status=in_progress` 记录初始化状态；`docs/agent-protocol.md`、`agent-kit/` 与 `.deploy/agent-kit/` 已同步。
+- 新增并通过初始化上限单测；当时 `npm test` 为 **67/67**，随后完整 `npm run verify` 通过（浏览器、性能、三适配器进程级闭环、安装器降级、发布 manifest/SBOM/hash）。`canvas.html` hash 仍与 `HEAD` 一致。
+- 分发当前仍是 RC 准备：无 Node WinForms Setup 已生成并完成本机 UI E2E，但没有做干净机升级/卸载、线上发布、GitHub Release 或 Microsoft Store 提交；这些只阻断公开下载，不影响继续开发和受控人工验证准备。
+
+## 上线前本地收尾复验（2026-08-12，Codex）
+
+- **图形化连接状态**：本地桥新增认证 `GET /api/v1/agents`，按实际 PATH/项目配置返回 `not_installed / discovered / awaiting_trust / connected / error` 五态；`app.html` 设置抽屉只用文本节点显示状态，并提供重新检测按钮。三浏览器强模式 E2E 均验证 3 个 Agent 状态行，未把未确认信任伪装成已连接。
+- **安装事务**：安装前逐文件保存配置/运行时快照，写入失败恢复原文件；卸载只恢复仍由安装器拥有的文件，跳过用户后续修改，始终保留 `.live-dot-map/map.json`。`tests/agent-kit/installer.test.mjs` 的失败安装回滚、原 Codex 配置恢复和地图保留均通过。
+- **Windows SEA**：新增 `scripts/build-sea.mjs`，在 Windows x64 生成无 Node 依赖的 `.deploy/livedot-bridge-win-x64.exe`；SEA 模式下 MCP、Codex/Claude/Kimi hooks 不再携带错误的 `.mjs` 参数。临时项目 install → hook → doctor 冒烟通过，doctor 正确跳过 SEA 的项目运行时文件检查。该 exe 是内部 RC 桥，不等同于普通用户 Setup/Store 安装包。
+- **门禁复跑**：`npm test` 70/70、`npm run verify:web` 21/21、`node --test tests/e2e/bridge-browser.mjs` 1/1、`npm run verify:agents` 14/14、`npm run verify:release` 通过；串行化 `scripts/verify.mjs` 的浏览器步骤后，`npm run verify` 全部通过。最新发布清单包含 app、livedot.mjs、agent-kit 三件套、SEA exe、SBOM 与 SHA-256。
+- **线上与分发边界**：本次只生成和校验本地 RC 物料，没有发布线上、创建 Release、提交 Store 或购买代码签名。此前线上关键入口仍是旧版 app，`livedot.mjs` 曾返回 404，因此线上 200/hash 门禁继续保持未勾选；分发旁路不阻断开发、自动测试或后续人工审查。
+- **WinForms Setup 实证**：新增 `installer/winforms/` 自包含 .NET 8 WinForms 安装器和 `scripts/build-windows-installer.mjs`；`npm run verify:windows-installer` 构建出 161,623,543 字节的 `dist/windows-installer/LiveDotMapSetup.exe`，payload 逐文件 SHA-256 校验通过，`app.manifest` 为 `asInvoker`。Windows UI Automation 实测窗口出现、按钮可见并点击“安装并开始使用”，临时项目生成 `.live-dot-map/map.json`，SEA bridge 进程启动成功；现已纳入 `npm run verify`。这是未签名内部 RC，不宣称已完成公开分发。
+- **WinForms 维护入口补齐**：安装器新增“修复 / 更新”和“卸载（保留地图）”。更新先复制到临时目录、重新校验后原子切换并在失败时恢复旧目录；卸载先调用 SEA 恢复安装器拥有的 Agent 配置，再安排删除程序和开始菜单入口，保留项目地图、Markdown、历史和备份。UI Automation 额外断言两个维护按钮存在；公开分发仍需干净机人工升级/卸载、签名和 Store/Release 门禁。
+- **上线计划全量复验（2026-08-12）**：`npm run verify` 通过，核心 70/70、浏览器/降级模式三浏览器、性能、三适配器进程级闭环、安装器回滚/doctor、WinForms UI Automation、SEA/release manifest 全部通过；最终输出 `[verify] all gates passed`。WinForms UI 结果包含安装、修复/更新、卸载（保留地图）按钮，临时项目生成 map 并启动 SEA 桥。真实 Codex/Claude/Kimi 客户端、WorkBuddy/CodeBuddy、线上 200/hash、干净机普通小白和公开 Store/Release 仍保持未勾选，不因本地门禁通过而宣称完成。
+- **线上入口复核（2026-08-12）**：只读 HEAD 检查 `livedotmap.top` 与 `app.live-dot-map.workers.dev` 的 `app.html`/`agent-kit/setup.md` 仍可访问，但两处 `livedot.mjs` 均为 404，且线上 app 长度仍是旧版（108530 字节，当前 `.deploy/app.html` 已变化）。未执行部署；线上 200/hash 门禁继续保持未勾选，等待明确发布动作与版本绑定。
+- **真实客户端重试与测试修复（2026-08-12）**：真实 Codex CLI 通过直接调用 `codex.js` 并显式关闭 stdin，完成 `map_get_context → map_apply_commands → map_ack_human_updates`，持久化节点 `updatedBy=agent:codex`，revision 2。Kimi Code 0.31.1 同一路径重试通过，revision 2；第一次试跑出现客户端输出已成功但文件轮询尚未稳定的瞬态，重试后持久化证据通过。Claude Code 2.1.223 直接 executable 运行仍在 180 秒内无模型输出并被测试超时终止，尚无真实闭环证据。脚本现在保留失败 stdout/stderr，并在 `LIVEDOT_KEEP_REAL_CLIENT_TMP=1` 时保留临时项目以便诊断。
+- **首次地图真实入口自动验收（2026-08-12）**：新增 `tests/e2e/first-map-guide.mjs`，Chrome 与 Edge 均验证三个入口顺序、示例 7 个节点、不连接项目桥；点击 Agent 初始化只打开接入抽屉、桥未连接且节点数仍为 0。该项证明产品入口与安全边界，但普通小白的独立可理解性仍留给人工验收。
+- **真实客户端试跑**：新增 `tests/e2e/real-client-smoke.mjs` 作为受控手测脚本。Kimi Code 0.31.1 在临时项目完成 SessionStart 标注确认和 Agent 节点写回（revision 3）；Claude Code 2.1.223 能完成标注 ack，但没有执行要求的节点写回；Codex 0.144.1 本次调用未在超时前形成闭环并留下临时目录锁。故三 Agent 清单仍不勾选，模拟进程级 E2E 不能替代真实客户端证据。
+
+### 里程碑语义修正后的复验（2026-08-12）
+
+- Agent 创建或更新里程碑为 `approved` 的单测通过，来源仍固定为 `agent_created`，且 `createdBy/updatedBy` 不可伪造。
+- 修正后分阶段门禁均通过：`npm test` 67/67、`npm run verify:web` 21/21、`node --test tests/e2e/bridge-browser.mjs` 1/1、`npm run verify:agents` 12/12、`npm run verify:installer` 通过、`npm run verify:release` 通过，`git diff --check` 无错误（仅有 Windows 换行提示）。
+- 同次 `npm run verify` 聚合进程在核心测试通过后无输出超过 3 分钟，已停止该验证进程；这不改变上述分阶段结果，也不把聚合脚本记为最新的全绿证据。
+
 ## 阶段 7：Landing 重写与验收（2026-08-10，Codex）
 
 - **实现**：新增 `landing/`（Next.js App Router + TypeScript + Motion + 静态导出），将 `.deploy/index.html` 改为由 `npm run build:deploy` 生成。新页面采用用户定稿 Hero「人机协作 变得简单 / 探索 记录 回忆 · 一切尽在 livedotmap」，按 plus.excalidraw.com 的留白、字号和大图节奏重组，保留活点地图内容与既有 `app.html` 入口。
@@ -229,3 +271,24 @@
 - **修复**：`Reveal` 重写为服务端组件 + 纯 CSS scroll-driven animation（`.reveal`：`animation-timeline: view()`，`entry 0% 40%` 完成显现）；`@supports not (animation-timeline: view())` 回退常显；reduced-motion 下 `animation: none`。三条路径兜底：JS 死了、浏览器不支持滚动时间线、系统减动效，内容全部照常显示。page.tsx 移除 `delay` 属性。
 - **验证**：禁 JS 全新 context 全页截图，所有区块（hero/接入/4 功能卡/本地优先/CTA/页脚）无脚本完整可见；正常模式滚动显现动效完好（feature-row opacity=1），无横向溢出。
 - **运维教训**：后台 `serve` 默认 600s 超时会杀服务，4174 已用不限时方式重启（任务 bash-vtxk18po）。
+- **发布（用户确认）**：sw.js 恢复为正式缓存版并升 v7（activate 清全部旧缓存，可治愈老客户端；自毁版仅本地存活过，未上线）。已 `git push origin master`（`12da64f..1abd493`，提交名「landingpage修改」），触发 EdgeOne 自动部署到 livedotmap.top。`edgeone-config.yml`（实为误存的控制台快照）与 `edgeone-login.png` 未入库。
+
+## 阶段 8 补丁 3：三源自动部署流水线（2026-08-12，Kimi）
+
+- **决策**：弃用原计划「Cloudflare Workers Builds 连 GitHub」的可选增强，改用 GitHub Actions 一条流水线覆盖 CF + CloudBase（CB 无平台侧 git 联动）。
+- **落地**：新增 `.github/workflows/deploy.yml`——push master 且 `.deploy/**`（或 wrangler.toml / 流水线本身）变更时：①CF 走 `cloudflare/wrangler-action@v3 deploy`；②CB 走 `tcb hosting deploy ./.deploy / -e test-d0gims26n5c5ce096`，未配 `TCB_SECRET_ID/TCB_SECRET_KEY` 时自动跳过不报错。`CLOUDFLARE_API_TOKEN/ACCOUNT_ID` 已用 `gh secret set` 从本地 `~/.live-dot-map/cloudflare.env` 写入（未打印明文）。
+- **验证**：推送流水线提交（`1abd493..ee89a78`）后首次运行 31s 成功；curl 核验 workers.dev 已是新版 landing（`_next/static` + 「人机协作」）且 sw.js 为 v7。
+- **遗留**：CloudBase 内容仍为旧版，需用户从腾讯云 CAM 控制台（console.cloud.tencent.com/cam/capi）拿 SecretId/SecretKey 后写入仓库 secrets；写入前 CB 源靠本地 tcb CLI 手动同步。EdgeOne 自动部署不变。
+
+## v2 可靠性候选（2026-08-11，Codex）
+
+- **架构**：保留冻结的 `canvas.html` 与单文件 `app.html`，新增模块化 TypeScript 核心及无运行时 npm 依赖的 `livedot.mjs`。正式模式统一通过本地桥提交命令，浏览器直开只作明确标记的降级模式。
+- **存储与协议**：落地 map.json v2、v1 备份迁移、未知字段往返、WAL + fsync + 原子替换、幂等 commandId、revision 合并/显式冲突、20 个快照、7 天备份、恢复与隔离；未知未来版本只读。
+- **协作闭环**：人类标注维护 new/delivered/acknowledged/resolved，Agent 摘要必须引用标注 ID 后才能 ack；图结构 + 中英文词元 + BM25 做可解释检索；自治跨里程碑或存在未确认标注时会停止等待人选。
+- **接入**：安装器定向合并 Codex、Claude Code、Kimi Code 的项目配置，统一调用同一 MCP/命令核心；安装与 doctor 在临时项目通过。三个适配器的进程级 SessionStart → 引用 ID → ack → Agent 写回 → Stop 测试均通过。
+- **安装收尾**：真实临时项目测试曾发现安装器未初始化 `map.json`；现已改为仅在缺失时从内置 v2 模板初始化，并把地图纳入 doctor。使用 `--no-shortcut` 的临时安装 + doctor 全绿，测试项目及误建的临时桌面快捷方式均已删除。
+- **便携 Node 回归**：Codex TOML 的 Windows 路径断言改为按 TOML 字符串序列化结果校验；`npm test` 49/49、`build:bridge`、`build:deploy-runtime` 及真实临时项目 `install --no-shortcut` + `doctor` 全部通过，三家配置写入执行安装器的 Node 绝对路径。
+- **浏览器与性能**：系统 Chrome、系统 Edge、Playwright Chromium、Firefox、WebKit 均通过强模式保存、恶意文本不可执行、画布标注持久化。性能门禁实测：200/400 修改 P95 0.1ms、500/1000 修改 P95 0.1ms、1000/2000 平移 P95 16.8ms。
+- **降级模式补齐**：修复双击 `app.html` 仍按 v1 拒绝 v2 的缺口；现在 v1 会内存迁移为 v2，v2 可降级浏览/编辑/导出并保留未知字段，未来版本严格只读且原样导出。系统 Chrome/Edge 的真实 `file://` 冒烟通过，并确认状态始终显示“降级模式”。
+- **长期运行与安全收尾**：快照自动裁剪为最近 20 个、每日备份裁剪为最近 7 个；WAL 快照时压缩整图但保留旧 commandId 幂等回执和恢复 checkpoint。map.json 限制 64 MiB、WAL 限制 128 MiB、Markdown 读取前限制 2 MB；`.live-dot-map` 符号链接/目录联接逃逸会以 403 拒绝。对应故障与保留策略测试通过。
+- **状态边界**：实现与自动门禁完成，但 Codex、Claude Code、Kimi Code 仍需用户各确认一次本地 hooks/MCP 信任并跑真实模型会话；因此暂不把 v2 标为“可靠性实现完成”或“三 Agent 正式支持”。未部署、未推送，等待用户人工审查和明确上线确认。

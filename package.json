@@ -1,0 +1,35 @@
+{
+  "name": "live-dot-map-v2",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:core": "node scripts/build-core.mjs",
+    "build:app": "node scripts/build-app.mjs --output app.html && node scripts/build-app.mjs --output dist/app.v2.html",
+    "build:bridge": "node scripts/build-cli.mjs",
+    "build:sea": "node scripts/build-sea.mjs",
+    "build:deploy-runtime": "node scripts/build-deploy-runtime.mjs",
+    "build:release-manifest": "node scripts/build-release-manifest.mjs",
+    "build:windows-installer": "node scripts/build-windows-installer.mjs",
+    "build": "npm run build:core && npm run build:app && npm run build:bridge",
+    "test": "npm run build:core && node --test tests/**/*.test.mjs",
+    "test:core": "npm run build:core && node --test tests/core/*.test.mjs",
+    "verify:core": "npm run test:core",
+    "verify:web": "npm run build:app && node --test tests/web/*.test.mjs tests/e2e/fallback-browser.mjs tests/e2e/performance.mjs",
+    "verify:agents": "npm run build:core && npm run build:bridge && node --test tests/agent-kit/*.test.mjs tests/e2e/agent-cycle.mjs",
+    "verify:installer": "npm run build:bridge && node scripts/verify-installer.mjs",
+    "verify:release": "npm run build:deploy-runtime && npm run build:sea && npm run build:release-manifest && node scripts/verify-release.mjs",
+    "verify:windows-installer": "npm run build:windows-installer && node scripts/verify-windows-installer.mjs && powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-windows-installer-ui.ps1",
+    "verify": "node scripts/verify.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "24.2.1",
+    "esbuild": "0.25.8",
+    "postject": "^1.0.0-alpha.6",
+    "typescript": "5.9.2"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}

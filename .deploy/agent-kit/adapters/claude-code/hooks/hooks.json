@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node .live-dot-map/livedot.mjs hook --event session-start --project . --agent claude", "timeout": 10 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node .live-dot-map/livedot.mjs hook --event user-prompt --project . --agent claude", "timeout": 10 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node .live-dot-map/livedot.mjs hook --event stop --project . --agent claude", "timeout": 10 }] }]
+  }
+}

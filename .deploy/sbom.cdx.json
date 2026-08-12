@@ -1,0 +1,230 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "live-dot-map-v2",
+      "version": "2.0.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "@esbuild/aix-ppc64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/android-arm",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/android-arm64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/android-x64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/darwin-arm64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/darwin-x64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/freebsd-arm64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/freebsd-x64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/linux-arm",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/linux-arm64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/linux-ia32",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/linux-loong64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/linux-mips64el",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/linux-ppc64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/linux-riscv64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/linux-s390x",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/linux-x64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/netbsd-arm64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/netbsd-x64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/openbsd-arm64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/openbsd-x64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/openharmony-arm64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/sunos-x64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/win32-arm64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/win32-ia32",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@esbuild/win32-x64",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@playwright/test",
+      "version": "1.62.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "@types/node",
+      "version": "24.2.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "commander",
+      "version": "9.5.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "esbuild",
+      "version": "0.25.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "fsevents",
+      "version": "2.3.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "playwright",
+      "version": "1.62.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "playwright-core",
+      "version": "1.62.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "postject",
+      "version": "1.0.0-alpha.6",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "typescript",
+      "version": "5.9.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "undici-types",
+      "version": "7.10.0",
+      "scope": "build"
+    }
+  ]
+}

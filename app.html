@@ -2,6 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'nonce-TqeVAoHaXETEE8Xg7DIaKD7S'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'self'">
+<!-- v2 状态：Agent 自动读取和并发保护未启用时降级；本地草稿可恢复 -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -50,6 +52,9 @@ input{font:inherit;color:inherit}
 /* 拖入 map.json 时的画布高亮 */
 #viewport.drop-hint{outline:3px dashed var(--accent);outline-offset:-8px}
 #world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+#overview-canvas{position:absolute;pointer-events:none;visibility:hidden}
+#world.lod-overview #edges,#world.lod-overview .node,#world.lod-overview .route-label,#world.lod-overview .ann{visibility:hidden}
+#world.lod-overview #overview-canvas{visibility:visible}
 #edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 #edges .hit{pointer-events:stroke;cursor:pointer}
 /* 方案线手柄:悬空端点 / 弯曲控制点 */
@@ -67,6 +72,11 @@ input{font:inherit;color:inherit}
   font-size:12.5px;font-weight:500;line-height:16px;color:var(--fg);
   transition:box-shadow .15s,border-color .15s}
 .node[data-type="问题"] .dot{border-style:dashed}
+.node.milestone .dot{border-radius:14px;border-width:2px;min-width:168px;min-height:88px;padding:12px 14px;position:relative;display:flex;flex-direction:column;gap:5px}
+.node.milestone[data-origin="agent_created"] .dot{border-color:var(--accent);background:var(--accent-soft)}
+.node.milestone[data-origin="human_created"] .dot{border-color:var(--fg);background:var(--surface)}
+.node.milestone .milestone-meta{font-size:10px;line-height:1.2;color:var(--muted);white-space:nowrap}
+.node.milestone .milestone-status{font-size:10px;line-height:1.2;color:var(--fg);font-weight:600}
 .node:hover .dot{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 .node.sel .dot{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 .node.snap .dot{border-color:var(--accent);box-shadow:0 0 0 6px var(--accent-soft)}
@@ -217,6 +227,17 @@ input{font:inherit;color:inherit}
 .switch.on{background:var(--ink)}
 .switch.on::after{transform:translateX(14px)}
 .dnote{font-size:12px;color:var(--muted);line-height:1.6;margin-top:6px}
+.agent-status-list{display:grid;gap:6px;margin:8px 0 4px}
+.agent-status{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
+.agent-status .agent-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+.agent-status[data-state="connected"] .agent-dot{background:var(--success)}
+.agent-status[data-state="awaiting_trust"] .agent-dot{background:var(--pending)}
+.agent-status[data-state="discovered"] .agent-dot{background:var(--accent)}
+.agent-status[data-state="error"] .agent-dot{background:var(--danger)}
+.agent-status .agent-name{font-size:12px;font-weight:600;flex:1}
+.agent-status .agent-state{font-size:11px;color:var(--muted)}
+.agent-status-note{font-size:11px;color:var(--muted);line-height:1.5;margin:6px 0 0}
+.agent-status-refresh{border:0;background:transparent;color:var(--accent);font-size:11px;padding:0;cursor:pointer;float:right}
 
 /* ============ 提示 toast ============ */
 #toast{position:fixed;top:64px;left:50%;transform:translate(-50%,-8px);z-index:50;
@@ -237,6 +258,17 @@ input{font:inherit;color:inherit}
   font-size:12px;color:var(--muted);box-shadow:var(--shadow);pointer-events:none;
   opacity:0;transition:opacity .3s}
 #tool-hint.on{opacity:1}
+
+/* 首次无地图引导：只提供选择，不触发项目扫描 */
+#first-map-guide{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;background:rgba(27,27,31,.18)}
+#first-map-guide.on{display:flex}
+#first-map-guide .card{width:min(520px,92vw);padding:28px;border-radius:16px;background:var(--bg);box-shadow:var(--shadow)}
+#first-map-guide h2{font-size:20px;margin-bottom:8px}
+#first-map-guide p{color:var(--muted);line-height:1.7;margin-bottom:16px}
+#first-map-guide .choice{display:block;width:100%;padding:12px 14px;margin-top:9px;text-align:left;border:1px solid var(--border);border-radius:10px;background:var(--bg)}
+#first-map-guide .choice:hover{background:var(--surface-hover);border-color:var(--accent)}
+#first-map-guide .choice strong{display:block;font-size:14px}
+#first-map-guide .choice span{display:block;color:var(--muted);font-size:12px;margin-top:3px}
 
 /* ============ 响应式 ============ */
 @media (max-width:760px){
@@ -344,6 +376,11 @@ input{font:inherit;color:inherit}
       </button>
     </div>
     <div class="dnote">接入后,Agent 每次会话先读 map.json,主动汇报「等你判断的清单」。不能直连文件夹时,导出的 map.json 也一样能用。</div>
+    <h3>连接状态 <button class="agent-status-refresh" id="agent-status-refresh" type="button">重新检测</button></h3>
+    <div class="agent-status-list" id="agent-status-list" aria-live="polite">
+      <div class="agent-status" data-state="not_installed"><span class="agent-dot"></span><span class="agent-name">正在检测 Agent</span><span class="agent-state">读取中</span></div>
+    </div>
+    <p class="agent-status-note">“已连接”表示本机配置和可执行程序检查通过；首次信任仍需在对应 Agent 中确认。未安装的平台不会被写入配置。</p>
     <h3>安全边界</h3>
     <div class="drow">
       <span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5 13.5 4v4c0 3.5-2.5 5.8-5.5 6.5C5 13.8 2.5 11.5 2.5 8V4L8 1.5Z" stroke-linejoin="round"/></svg></span>
@@ -361,12 +398,22 @@ input{font:inherit;color:inherit}
 </div>
 
 <div class="menu" id="menu"></div>
+<div id="first-map-guide" aria-label="首次使用地图引导">
+  <div class="card">
+    <h2>从一张地图开始</h2>
+    <p>这里还没有项目地图。你可以先画一张空白地图、看看简单示例，或让 Agent 在你明确授权后读取项目并建立初图。</p>
+    <button class="choice" data-first-choice="blank"><strong>空白开始</strong><span>自己添加目标、问题和方案线</span></button>
+    <button class="choice" data-first-choice="demo"><strong>看看简单示例</strong><span>只加载内置示例，不读取你的项目文件</span></button>
+    <button class="choice" data-first-choice="agent"><strong>让 Agent 初始化我的项目地图</strong><span>点击后打开接入入口；未点击前不会扫描项目</span></button>
+  </div>
+</div>
 <div id="marquee"></div>
 <button id="del-float" title="删除"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h12M7 5V3.5h4V5M5 5l.8 9.5h6.4L13 5" stroke-linejoin="round"/></svg></button>
 <div id="toast"></div>
 <div id="tool-hint"></div>
-
-<script>
+<script nonce="TqeVAoHaXETEE8Xg7DIaKD7S" data-dotmap-fallback="v2">"use strict";(()=>{var m=2,S=["routes","nodes","edges","anns"],C=/^[A-Za-z][A-Za-z0-9._:-]{0,127}$/,I=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,$=new Set(["__proto__","prototype","constructor"]),_=80,L=4e3;function M(e){return structuredClone(e)}function b(e){let t=e?new Date(e):new Date;if(Number.isNaN(t.getTime()))throw h("INVALID_TIME",400,"\u65F6\u95F4\u683C\u5F0F\u65E0\u6548");return t.toISOString()}function D(e,t){if(typeof e!="string")return t;let n=new Date(e.length===10?`${e}T00:00:00.000Z`:e);return Number.isNaN(n.getTime())?t:n.toISOString()}function x(e){let t=2166136261;for(let n=0;n<e.length;n+=1)t^=e.charCodeAt(n),t=Math.imul(t,16777619);return(t>>>0).toString(36)}function h(e,t,n,u){return Object.assign(new Error(n),{code:e,status:t,details:u})}function A(e,t){if(!e||typeof e!="object"||Array.isArray(e))throw h("INVALID_COMMAND",400,`${t} \u5FC5\u987B\u662F\u5BF9\u8C61`);let n={};for(let[u,i]of Object.entries(e)){if($.has(u))throw h("INVALID_KEY",400,`\u7981\u6B62\u5B57\u6BB5 ${u}`);n[u]=M(i)}return n}function w(e,t,n){let u=A(e,n),i=D(u.createdAt,t),a=D(u.updatedAt,i),r={...u,createdAt:i,updatedAt:a,createdBy:typeof u.createdBy=="string"?u.createdBy:"migration",updatedBy:"migration",updatedRevision:0};return n==="nodes"&&l(u.milestone)&&(r.milestone={...u.milestone,createdBy:typeof u.milestone.createdBy=="string"?u.milestone.createdBy:"migration",updatedBy:"migration",updatedAt:a,updatedRevision:0}),n==="anns"&&(r.source=typeof u.source=="string"?u.source:"migration",r.priority=typeof u.priority=="string"?u.priority:"normal",r.attention="new",r.acknowledgements=Array.isArray(u.acknowledgements)?M(u.acknowledgements):[],r.legacyReview=!0),r}function O(e,t={}){let n=A(e,"map.json");if(n.version!==1)throw h("UNSUPPORTED_VERSION",409,`\u53EA\u80FD\u8FC1\u79FB version 1\uFF0C\u6536\u5230 ${String(n.version)}`);let u=b(t.now),i=D(n.createdAt??n.updatedAt,u),a=D(n.updatedAt,i),r=typeof n.mapId=="string"&&C.test(n.mapId)?n.mapId:`map-${x(`${String(n.name??"\u672A\u547D\u540D\u5730\u56FE")}:${i}`)}`,o={...n,mapId:r,version:m,revision:0,lastEventId:0,name:String(n.name??"\u672A\u547D\u540D\u5730\u56FE").slice(0,_),createdAt:i,updatedAt:a,migration:{from:1,migratedAt:u,actor:"migration"},view:A(n.view??{x:0,y:0,k:1},"view"),ui:A(n.ui??{},"ui"),counters:A(n.counters??{},"counters"),routes:(Array.isArray(n.routes)?n.routes:[]).map(c=>w(c,a,"routes")),nodes:(Array.isArray(n.nodes)?n.nodes:[]).map(c=>w(c,a,"nodes")),edges:(Array.isArray(n.edges)?n.edges:[]).map(c=>w(c,a,"edges")),anns:(Array.isArray(n.anns)?n.anns:[]).map(c=>w(c,a,"anns"))},s=N(o);if(!s.ok)throw h("MIGRATION_INVALID",422,"v1 \u6570\u636E\u65E0\u6CD5\u5B89\u5168\u8FC1\u79FB",s.errors);return o}function l(e){return!!e&&typeof e=="object"&&!Array.isArray(e)}function R(e,t,n,u){return l(e)?(typeof e.id!="string"||!C.test(e.id)?u.push(`${t}.id \u65E0\u6548`):n.has(e.id)?u.push(`\u91CD\u590D id: ${e.id}`):n.add(e.id),(typeof e.createdAt!="string"||!I.test(e.createdAt))&&u.push(`${t}.createdAt \u5FC5\u987B\u662F\u6BEB\u79D2 UTC`),(typeof e.updatedAt!="string"||!I.test(e.updatedAt))&&u.push(`${t}.updatedAt \u5FC5\u987B\u662F\u6BEB\u79D2 UTC`),typeof e.updatedBy!="string"&&u.push(`${t}.updatedBy \u7F3A\u5931`),e.createdBy!==void 0&&typeof e.createdBy!="string"&&u.push(`${t}.createdBy \u65E0\u6548`),(!Number.isInteger(e.updatedRevision)||Number(e.updatedRevision)<0)&&u.push(`${t}.updatedRevision \u65E0\u6548`),!0):(u.push(`${t} \u5FC5\u987B\u662F\u5BF9\u8C61`),!1)}function N(e){let t=[];if(!l(e))return{ok:!1,errors:["map.json \u5FC5\u987B\u662F\u5BF9\u8C61"]};if(e.version!==m)return{ok:!1,readOnly:!0,errors:[`\u4E0D\u652F\u6301 schema version ${String(e.version)}`]};(typeof e.mapId!="string"||!C.test(e.mapId))&&t.push("mapId \u65E0\u6548"),(!Number.isInteger(e.revision)||Number(e.revision)<0)&&t.push("revision \u65E0\u6548"),(!Number.isInteger(e.lastEventId)||Number(e.lastEventId)<0)&&t.push("lastEventId \u65E0\u6548"),(typeof e.name!="string"||e.name.length>_)&&t.push("name \u65E0\u6548\u6216\u8FC7\u957F"),(typeof e.createdAt!="string"||!I.test(e.createdAt))&&t.push("createdAt \u5FC5\u987B\u662F\u6BEB\u79D2 UTC"),(typeof e.updatedAt!="string"||!I.test(e.updatedAt))&&t.push("updatedAt \u5FC5\u987B\u662F\u6BEB\u79D2 UTC"),l(e.view)||t.push("view \u5FC5\u987B\u662F\u5BF9\u8C61"),l(e.ui)||t.push("ui \u5FC5\u987B\u662F\u5BF9\u8C61"),l(e.counters)||t.push("counters \u5FC5\u987B\u662F\u5BF9\u8C61");let n=new Set,u={routes:[],nodes:[],edges:[],anns:[]};for(let r of S){let o=e[r];if(!Array.isArray(o)){t.push(`${r} \u5FC5\u987B\u662F\u6570\u7EC4`);continue}if(o.length>1e5){t.push(`${r} \u8D85\u8FC7\u5BF9\u8C61\u4E0A\u9650`);continue}for(let s=0;s<o.length;s+=1)R(o[s],`${r}[${s}]`,n,t)&&u[r].push(o[s])}let i=new Set(u.nodes.map(r=>String(r.id))),a=new Set(u.routes.map(r=>String(r.id)));for(let[r,o]of u.edges.entries())i.has(String(o.from))||t.push(`edges[${r}].from \u5F15\u7528\u4E0D\u5B58\u5728`),o.to!==null&&!i.has(String(o.to))&&t.push(`edges[${r}].to \u5F15\u7528\u4E0D\u5B58\u5728`),["success","failed","pending"].includes(String(o.status))||t.push(`edges[${r}].status \u65E0\u6548`),o.route!==null&&o.route!==void 0&&!a.has(String(o.route))&&t.push(`edges[${r}].route \u5F15\u7528\u4E0D\u5B58\u5728`),o.score!==void 0&&(!Number.isInteger(o.score)||Number(o.score)<0||Number(o.score)>100)&&t.push(`edges[${r}].score \u65E0\u6548`);for(let[r,o]of u.nodes.entries())if(o.route!==null&&o.route!==void 0&&!a.has(String(o.route))&&t.push(`nodes[${r}].route \u5F15\u7528\u4E0D\u5B58\u5728`),o.milestone!==void 0){let s=o.milestone;!l(s)||!["pending","approved","changes_requested"].includes(String(s.status))?t.push(`nodes[${r}].milestone \u65E0\u6548`):(s.origin!==void 0&&!["human_created","agent_created"].includes(String(s.origin))&&t.push(`nodes[${r}].milestone.origin \u65E0\u6548`),s.level!==void 0&&!["project","route","work"].includes(String(s.level))&&t.push(`nodes[${r}].milestone.level \u65E0\u6548`),s.createdBy!==void 0&&typeof s.createdBy!="string"&&t.push(`nodes[${r}].milestone.createdBy \u65E0\u6548`),s.updatedBy!==void 0&&typeof s.updatedBy!="string"&&t.push(`nodes[${r}].milestone.updatedBy \u65E0\u6548`))}for(let[r,o]of u.anns.entries()){(typeof o.text!="string"||o.text.length>L)&&t.push(`anns[${r}].text \u65E0\u6548\u6216\u8FC7\u957F`),["new","delivered","acknowledged","resolved"].includes(String(o.attention))||t.push(`anns[${r}].attention \u65E0\u6548`);let s=o.target;!l(s)||!["node","edge","canvas"].includes(String(s.kind))?t.push(`anns[${r}].target \u65E0\u6548`):s.kind==="node"&&!i.has(String(s.id))?t.push(`anns[${r}] \u8282\u70B9\u76EE\u6807\u4E0D\u5B58\u5728`):s.kind==="edge"&&!u.edges.some(c=>c.id===s.id)&&t.push(`anns[${r}] \u65B9\u6848\u76EE\u6807\u4E0D\u5B58\u5728`)}return{ok:t.length===0,errors:t}}var y=m;var v=N,T=O;var K=Object.freeze({BRIDGE:"bridge",FILESYSTEM:"filesystem",DRAFT:"draft",EXPORT:"export"}),q=Object.freeze({IDLE:"idle",DRAFT:"draft",DIRTY:"dirty",SAVING:"saving",SYNCED:"synced",CONFLICT:"conflict",ERROR:"error",DEGRADED:"degraded",CLOSED:"closed"});var V=["routes","nodes","edges","anns"],P=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,E=e=>typeof structuredClone=="function"?structuredClone(e):JSON.parse(JSON.stringify(e));function B(e,t){if(typeof e!="string")return t;let n=new Date(e.length===10?`${e}T00:00:00.000Z`:e);return Number.isNaN(n.getTime())?t:n.toISOString()}function z(e,t){if(!e||!t)return!1;let n=u=>{let i={...u};return delete i.createdAt,delete i.updatedAt,delete i.updatedBy,delete i.updatedRevision,i};return JSON.stringify(n(e))===JSON.stringify(n(t))}function G(e,t={}){if(!e||typeof e!="object"||Array.isArray(e))throw new TypeError("map.json \u5FC5\u987B\u662F\u5BF9\u8C61");let n=E(e),u=Number(n.version);if(!Number.isInteger(u)||u<1)throw new Error(`\u4E0D\u652F\u6301\u7684\u7248\u672C ${String(n.version)}`);if(u===1)return{document:T(n,{now:t.now}),sourceVersion:1,migrated:!0,readOnly:!1};if(u===y){let i=v(n);if(!i.ok)throw new Error(`v2 \u5730\u56FE\u6821\u9A8C\u5931\u8D25\uFF1A${i.errors.join("\uFF1B")}`);return{document:n,sourceVersion:u,migrated:!1,readOnly:!1}}return{document:n,sourceVersion:u,migrated:!1,readOnly:!0}}function U(e,t,n={}){if(!e||typeof e!="object")return E(t);let u=E(e);if(Number(u.version)!==y)return u;let i=t&&typeof t=="object"?E(t):{},a=new Date(n.now??Date.now()).toISOString(),r=Number.isInteger(u.revision)?u.revision:0,o=n.commit?r+1:r,s={...u,name:String(i.name??u.name??"\u672A\u547D\u540D\u5730\u56FE"),version:y,revision:o,lastEventId:Number.isInteger(u.lastEventId)?u.lastEventId:0,createdAt:P.test(String(u.createdAt??""))?u.createdAt:a,updatedAt:n.commit?a:B(i.updatedAt,u.updatedAt??a),view:{...u.view??{},...i.view??{}},ui:{...u.ui??{},...i.ui??{}},counters:{...u.counters??{},...i.counters??{}}};for(let p of V){let k=new Map((u[p]??[]).map(d=>[String(d?.id),d]));s[p]=(Array.isArray(i[p])?i[p]:u[p]??[]).map(d=>{let f=k.get(String(d?.id)),F=!z(d,f),g={...f??{},...d,createdAt:B(d?.createdAt,B(f?.createdAt,a)),updatedAt:F?a:B(d?.updatedAt,B(f?.updatedAt,a)),updatedBy:F?"human":String(d?.updatedBy??f?.updatedBy??"human"),updatedRevision:F?o:Number.isInteger(d?.updatedRevision)?d.updatedRevision:Number.isInteger(f?.updatedRevision)?f.updatedRevision:o};return p==="anns"&&(g.source="human",g.priority=String(d?.priority??f?.priority??"normal"),g.attention=F?"new":String(d?.attention??f?.attention??"new"),g.acknowledgements=Array.isArray(d?.acknowledgements)?E(d.acknowledgements):Array.isArray(f?.acknowledgements)?E(f.acknowledgements):[]),g})}let c=v(s);if(!c.ok)throw new Error(`\u964D\u7EA7\u6A21\u5F0F\u4E0D\u80FD\u5B89\u5168\u5BFC\u51FA\u6B64\u5730\u56FE\uFF1A${c.errors.join("\uFF1B")}`);return s}function W(e=globalThis){let t={MAP_VERSION:y,prepareFallbackDocument:G,composeFallbackDocument:U};return e.LiveDotFallback=t,t}typeof window<"u"&&W(window);})();
+</script>
+<script nonce="TqeVAoHaXETEE8Xg7DIaKD7S">
 /* =====================================================================
    活点地图 canvas.html — 高保真交互原型
    数据 → 渲染:state(S) 是唯一事实源;render() 全量重建世界层。
@@ -404,6 +451,11 @@ const STATUS = {
   failed: {label:'失败', color:'var(--danger)',  dash:'8 6',   arrow:true},
   pending:{label:'待验证',color:'var(--pending)',dash:'2 6',   arrow:true}
 };
+const MILESTONE_LEVEL = { project:'项目级', route:'路线级', work:'工作级' };
+const MILESTONE_STATUS = { pending:'待审核', approved:'已通过', changes_requested:'需修改' };
+const milestoneOrigin = m => m?.origin === 'agent_created' ? 'agent_created' : 'human_created';
+const milestoneSourceLabel = m => milestoneOrigin(m) === 'agent_created' ? 'Agent 探索' : '人创建';
+const milestoneLevelLabel = m => MILESTONE_LEVEL[m?.level] || '项目级';
 const seed = () => ({
   view:{x:0,y:0,k:1},
   routes:[
@@ -412,24 +464,24 @@ const seed = () => ({
     {id:'r3', name:'性能优化',   source:'n3'}
   ],
   nodes:[
-    {id:'n1', num:'01', name:'开始',         type:'目的', route:'r1', x:0,   y:0,   r:34, md:'nodes/01-开始.md'},
-    {id:'n2', num:'02', name:'生成图片',     type:'结果', route:'r1', x:260, y:0,   r:34, md:'nodes/02-生成图片.md'},
-    {id:'n3', num:'03', name:'完成放大',     type:'结果', route:'r1', x:520, y:0,   r:34, md:'nodes/03-完成放大.md'},
-    {id:'n4', num:'04', name:'动态壁纸完成', type:'目的', route:'r1', x:780, y:0,   r:34, md:'nodes/04-动态壁纸完成.md'},
-    {id:'n5', num:'05', name:'幽灵脸问题',   type:'问题', route:'r2', x:260, y:220, r:34, md:'nodes/05-幽灵脸问题.md'},
-    {id:'n6', num:'06', name:'幽灵脸问题解决',type:'结果', route:'r2', x:620, y:220, r:34, md:'nodes/06-幽灵脸问题解决.md'},
-    {id:'n7', num:'07', name:'渲染耗时过长', type:'问题', route:'r3', x:520, y:-220,r:34, md:'nodes/07-渲染耗时过长.md'}
+    {id:'n1', num:'01', name:'开始',         type:'目的', route:'r1', x:0,   y:0,   r:34, md:'.live-dot-map/nodes/01-开始.md'},
+    {id:'n2', num:'02', name:'生成图片',     type:'结果', route:'r1', x:260, y:0,   r:34, md:'.live-dot-map/nodes/02-生成图片.md'},
+    {id:'n3', num:'03', name:'完成放大',     type:'结果', route:'r1', x:520, y:0,   r:34, md:'.live-dot-map/nodes/03-完成放大.md'},
+    {id:'n4', num:'04', name:'动态壁纸完成', type:'目的', route:'r1', x:780, y:0,   r:34, md:'.live-dot-map/nodes/04-动态壁纸完成.md'},
+    {id:'n5', num:'05', name:'幽灵脸问题',   type:'问题', route:'r2', x:260, y:220, r:34, md:'.live-dot-map/nodes/05-幽灵脸问题.md'},
+    {id:'n6', num:'06', name:'幽灵脸问题解决',type:'结果', route:'r2', x:620, y:220, r:34, md:'.live-dot-map/nodes/06-幽灵脸问题解决.md'},
+    {id:'n7', num:'07', name:'渲染耗时过长', type:'问题', route:'r3', x:520, y:-220,r:34, md:'.live-dot-map/nodes/07-渲染耗时过长.md'}
   ],
   edges:[
-    {id:'e1', from:'n1', to:'n2', name:'生成基础图片', status:'success', route:'r1', md:'routes/e1-生成基础图片.md'},
-    {id:'e2', from:'n2', to:'n3', name:'实现放大',     status:'success', route:'r1', md:'routes/e2-实现放大.md'},
-    {id:'e3', from:'n3', to:'n4', name:'生成动画',     status:'success', route:'r1', md:'routes/e3-生成动画.md'},
-    {id:'e4', from:'n3', to:null, name:'补帧插值',     status:'pending', route:'r1', md:'routes/e4-补帧插值.md', dx:170, dy:90},
-    {id:'e5', from:'n5', to:null, name:'修改提示词',   status:'failed',  route:'r2', md:'routes/e5-修改提示词.md', dx:150, dy:110},
-    {id:'e6', from:'n5', to:null, name:'更换模型',     status:'pending', route:'r2', md:'routes/e6-更换模型.md', dx:60,  dy:150},
-    {id:'e7', from:'n5', to:'n6', name:'引入遮罩检测', status:'success', route:'r2', md:'routes/e7-引入遮罩检测.md'},
-    {id:'e8', from:'n7', to:null, name:'瓦片缓存',     status:'pending', route:'r3', md:'routes/e8-瓦片缓存.md', dx:170, dy:-40},
-    {id:'e9', from:'n7', to:null, name:'降低采样率',   status:'failed',  route:'r3', md:'routes/e9-降低采样率.md', dx:150, dy:-130}
+    {id:'e1', from:'n1', to:'n2', name:'生成基础图片', status:'success', route:'r1', md:'.live-dot-map/routes/e1-生成基础图片.md'},
+    {id:'e2', from:'n2', to:'n3', name:'实现放大',     status:'success', route:'r1', md:'.live-dot-map/routes/e2-实现放大.md'},
+    {id:'e3', from:'n3', to:'n4', name:'生成动画',     status:'success', route:'r1', md:'.live-dot-map/routes/e3-生成动画.md'},
+    {id:'e4', from:'n3', to:null, name:'补帧插值',     status:'pending', route:'r1', md:'.live-dot-map/routes/e4-补帧插值.md', dx:170, dy:90},
+    {id:'e5', from:'n5', to:null, name:'修改提示词',   status:'failed',  route:'r2', md:'.live-dot-map/routes/e5-修改提示词.md', dx:150, dy:110},
+    {id:'e6', from:'n5', to:null, name:'更换模型',     status:'pending', route:'r2', md:'.live-dot-map/routes/e6-更换模型.md', dx:60,  dy:150},
+    {id:'e7', from:'n5', to:'n6', name:'引入遮罩检测', status:'success', route:'r2', md:'.live-dot-map/routes/e7-引入遮罩检测.md'},
+    {id:'e8', from:'n7', to:null, name:'瓦片缓存',     status:'pending', route:'r3', md:'.live-dot-map/routes/e8-瓦片缓存.md', dx:170, dy:-40},
+    {id:'e9', from:'n7', to:null, name:'降低采样率',   status:'failed',  route:'r3', md:'.live-dot-map/routes/e9-降低采样率.md', dx:150, dy:-130}
   ],
   anns:[
     {id:'a1', target:{kind:'node', id:'n2'}, text:'人脸在多毛动物上失真最明显', hidden:false},
@@ -443,19 +495,29 @@ const seed = () => ({
   /* 瞬时交互态:不随快照进撤销历史 */
   hoverEdge:null, snapTo:null, selAnn:null, pendingEdgeFrom:null, drawingEdge:null
 });
-let S = seed();
+const blankMapState = () => {
+  const base = seed();
+  return { ...base, name:'未命名地图', nodes:[], edges:[], anns:[], routes:[{id:'r1', name:'主路线', source:null, main:true, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()}], nextNum:1, nextEdge:1, nextAnn:1, nextNodeName:1, nextEdgeName:1, nextRouteName:1 };
+};
+let S = blankMapState();
 let undoStack = [], redoStack = []; // 双栈撤销:pushHistory 存前态,undo 时把当前态压入 redoStack(修复最新一步无法重做)
 let lastClick = null; // 双击检测(标签行内编辑):{key, t}
 
 /* ---------- 工具 ---------- */
 const $ = s => document.querySelector(s);
 const viewport = $('#viewport'), world = $('#world'), svg = $('#edges');
-const nodeById = id => S.nodes.find(n => n.id === id);
-const edgeById = id => S.edges.find(e => e.id === id);
-const routeById = id => S.routes.find(r => r.id === id);
+let nodeIndex = new Map(), edgeIndex = new Map(), routeIndex = new Map();
+const rebuildObjectIndexes = () => {
+  nodeIndex = new Map(S.nodes.map(n => [n.id, n]));
+  edgeIndex = new Map(S.edges.map(e => [e.id, e]));
+  routeIndex = new Map(S.routes.map(r => [r.id, r]));
+};
+const nodeById = id => nodeIndex.get(id) || S.nodes.find(n => n.id === id);
+const edgeById = id => edgeIndex.get(id) || S.edges.find(e => e.id === id);
+const routeById = id => routeIndex.get(id) || S.routes.find(r => r.id === id);
 /* 归档=自身归档或所属路线归档:画布弱化、不参与悬停,数据保留 */
 const isEdgeArchived = e => !!(e.archived || (e.route && routeById(e.route)?.archived));
-const esc = t => String(t).replace(/[&<>]"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 /* 选中判断:单选或多选命中 */
 const isSelObj = (kind,id) => (S.sel && S.sel.kind===kind && S.sel.id===id) || S.multi.some(m => m.kind===kind && m.id===id);
 /* 吸附命中检测:指针附近(半径+容差)的节点 */
@@ -463,8 +525,9 @@ function nodeAt(wx, wy, excludeId){
   return S.nodes.find(n => n.id !== excludeId && Math.hypot(n.x-wx, n.y-wy) < n.r + 12) || null;
 }
 
-function snapshot(){ return JSON.stringify({routes:S.routes,nodes:S.nodes,edges:S.edges,anns:S.anns,nextNum:S.nextNum,nextEdge:S.nextEdge,nextAnn:S.nextAnn,nextNodeName:S.nextNodeName,nextEdgeName:S.nextEdgeName,nextRouteName:S.nextRouteName}); }
+function snapshot(){ return JSON.stringify({name:S.name,view:S.view,showAnns:S.showAnns,showRoutes:S.showRoutes,showNums:S.showNums,showFailed:S.showFailed,routes:S.routes,nodes:S.nodes,edges:S.edges,anns:S.anns,nextNum:S.nextNum,nextEdge:S.nextEdge,nextAnn:S.nextAnn,nextNodeName:S.nextNodeName,nextEdgeName:S.nextEdgeName,nextRouteName:S.nextRouteName}); }
 function pushHistory(){
+  if (IO.readOnly){ warnReadOnly(); queueReadOnlyRestore(); return; }
   undoStack.push(snapshot());
   if (undoStack.length > 200) undoStack.shift();
   redoStack = [];
@@ -473,7 +536,25 @@ function pushHistory(){
 function restore(json){
   const d = JSON.parse(json);
   Object.assign(S, d); S.sel = null;
-  render(); renderPanel();
+  applyName(); render(); renderPanel(); applyView();
+}
+// 对外公开的撤销/重做动作：运行时会包裹这两个函数并把恢复后的状态
+// 写入本地草稿或提交到桥，确保刷新/重启后不会回到旧版本。
+function undo(){
+  if (IO.readOnly){ warnReadOnly(); queueReadOnlyRestore(); return false; }
+  if (!undoStack.length) return false;
+  redoStack.push(snapshot());
+  restore(undoStack.pop());
+  scheduleSave();
+  return true;
+}
+function redo(){
+  if (IO.readOnly){ warnReadOnly(); queueReadOnlyRestore(); return false; }
+  if (!redoStack.length) return false;
+  undoStack.push(snapshot());
+  restore(redoStack.pop());
+  scheduleSave();
+  return true;
 }
 function toast(msg){
   const t = $('#toast'); t.textContent = msg; t.classList.add('on');
@@ -482,6 +563,7 @@ function toast(msg){
 
 /* ---------- 视图 ---------- */
 function applyView(){
+  world.classList.toggle('lod-overview', S.nodes.length >= 500 && S.view.k < .2 && !!document.querySelector('#overview-canvas'));
   world.style.transform = `translate(${S.view.x}px,${S.view.y}px) scale(${S.view.k})`;
   $('#zoom-val').textContent = Math.round(S.view.k * 100) + '%';
 }
@@ -570,9 +652,8 @@ function avoidAngleDeg(baseDeg, e, minDeg = 30){
   return best;
 }
 /* 同 from→to 的已连接线重叠:按线在组内索引沿法线对称展开,46px 间隔(渲染时调用,自动排开) */
-function staggerParallel(e){
+function staggerParallel(e, group){
   if (!e.to) return;
-  const group = S.edges.filter(o => o.from === e.from && o.to === e.to);
   if (group.length < 2) return; // 无平行线时不动,保留用户手动弯折
   const n = group.length;
   const off = (group.indexOf(e) - (n - 1) / 2) * 46;
@@ -583,15 +664,19 @@ function staggerParallel(e){
 
 /* 节点圆内文字:每行最多 4 字,按文字量自动计算半径(离屏 canvas 测宽) */
 const measCtx = document.createElement('canvas').getContext('2d');
-let measFont = '';
+let measFont = '', measFont12 = '', measFamily = '';
+function canvasFontFamily(){
+  if (!measFamily) measFamily = getComputedStyle(document.body).fontFamily;
+  return measFamily;
+}
 function nodeTextLayout(name){
   const fs = 12.5, lh = 16;
   const chars = [...String(name)];
   const lines = [];
   for (let i = 0; i < chars.length; i += 4) lines.push(chars.slice(i, i+4).join(''));
   if (!lines.length) lines.push('');
-  if (!measFont) measFont = `500 ${fs}px ${getComputedStyle(document.body).fontFamily}`;
-  measCtx.font = measFont;
+  if (!measFont) measFont = `500 ${fs}px ${canvasFontFamily()}`;
+  if (measCtx.font !== measFont) measCtx.font = measFont;
   let maxW = 0;
   for (const l of lines) maxW = Math.max(maxW, measCtx.measureText(l).width);
   const r = Math.max(34, maxW/2 + 14, lines.length*lh/2 + 14);
@@ -599,17 +684,96 @@ function nodeTextLayout(name){
 }
 /* 标注便签文本测宽(12px) */
 function measureText12(t){
-  measCtx.font = `400 12px ${getComputedStyle(document.body).fontFamily}`;
+  if (!measFont12) measFont12 = `400 12px ${canvasFontFamily()}`;
+  if (measCtx.font !== measFont12) measCtx.font = measFont12;
   return measCtx.measureText(t).width;
 }
 
 /* ---------- 渲染 ---------- */
+let renderCache = null;
+function updateOverviewCanvas(){
+  let canvas=document.querySelector('#overview-canvas');
+  if (S.nodes.length < 500){ canvas?.remove(); return; }
+  if (!canvas){ canvas=document.createElement('canvas');canvas.id='overview-canvas';world.appendChild(canvas); }
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for (const n of S.nodes){ minX=Math.min(minX,n.x-n.r);minY=Math.min(minY,n.y-n.r);maxX=Math.max(maxX,n.x+n.r);maxY=Math.max(maxY,n.y+n.r); }
+  for (const e of S.edges) if (!e.to){ const p=dangleEnd(e);minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y); }
+  const pad=60,w=Math.max(1,maxX-minX+pad*2),h=Math.max(1,maxY-minY+pad*2),scale=Math.min(1,1600/Math.max(w,h));
+  canvas.width=Math.max(1,Math.ceil(w*scale));canvas.height=Math.max(1,Math.ceil(h*scale));
+  canvas.style.left=(minX-pad)+'px';canvas.style.top=(minY-pad)+'px';canvas.style.width=w+'px';canvas.style.height=h+'px';
+  const c=canvas.getContext('2d');c.setTransform(scale,0,0,scale,(-minX+pad)*scale,(-minY+pad)*scale);c.lineWidth=2/Math.max(scale,.1);c.globalAlpha=.72;
+  const colors={success:getComputedStyle(document.documentElement).getPropertyValue('--success'),failed:getComputedStyle(document.documentElement).getPropertyValue('--danger'),pending:getComputedStyle(document.documentElement).getPropertyValue('--pending')};
+  for (const e of S.edges){ if (!S.showFailed&&e.status==='failed')continue;const g=edgeCurve(e);c.beginPath();c.moveTo(g.x1,g.y1);c.quadraticCurveTo(g.cpx,g.cpy,g.x2,g.y2);c.strokeStyle=colors[e.status]||colors.pending;c.stroke(); }
+  c.globalAlpha=.9;c.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--fg');
+  for (const n of S.nodes){ c.beginPath();c.arc(n.x,n.y,Math.max(12,n.r*.55),0,Math.PI*2);c.fill(); }
+}
+function renderStructureKey(){
+  return JSON.stringify({
+    nodes:S.nodes.map(n => [n.id,n.name,n.type,n.route,n.r,n.md,n.num,n.milestone,n.milestoneSuggestion,n.createdBy,n.updatedBy]),
+    edges:S.edges, anns:S.anns, routes:S.routes,
+    flags:[S.showFailed,S.showRoutes,S.showAnns,S.showNums,S.hoverEdge,S.drawingEdge,inlineEdgeEdit,inlineNodeEdit,inlineRouteEdit],
+    sel:S.sel, multi:S.multi, snapTo:S.snapTo
+  });
+}
+function rememberRender(structure){
+  renderCache = { structure, positions:new Map(S.nodes.map(n => [n.id,{x:n.x,y:n.y}])) };
+}
+function tryFastPositionRender(structure){
+  if (!renderCache || renderCache.structure !== structure || renderCache.positions.size !== S.nodes.length) return false;
+  const moved = [];
+  for (const n of S.nodes){
+    const old = renderCache.positions.get(n.id);
+    if (!old) return false;
+    if (old.x !== n.x || old.y !== n.y) moved.push(n);
+  }
+  if (!moved.length || moved.length > 12) return false;
+  const movedIds = new Set(moved.map(n => n.id));
+  const touchedEdges = S.edges.filter(e => movedIds.has(e.from) || movedIds.has(e.to));
+  if (touchedEdges.some(e => S.hoverEdge===e.id || S.drawingEdge===e.id || (S.sel?.kind==='edge' && S.sel.id===e.id))) return false;
+  if (S.anns.some(a => movedIds.has(a.target?.id) || (a.target?.kind==='edge' && touchedEdges.some(e=>e.id===a.target.id)))) return false;
+  for (const n of moved){
+    const el = world.querySelector(`.node[data-id="${CSS.escape(n.id)}"]`); if (!el) return false;
+    el.style.left=n.x+'px'; el.style.top=n.y+'px';
+    for (const r of S.routes){
+      if (S.nodes.find(x=>x.route===r.id)?.id !== n.id) continue;
+      const label=world.querySelector(`.route-label[data-route="${CSS.escape(r.id)}"]`);
+      if (label){ label.style.left=n.x+'px'; label.style.top=(n.y-n.r-30)+'px'; }
+    }
+  }
+  const fromCnt={}, signOf={};
+  for (const e of (S.showFailed?S.edges:S.edges.filter(e=>e.status!=='failed'))){ const i=fromCnt[e.from]||0;fromCnt[e.from]=i+1;signOf[e.id]=i%2===0?1:-1; }
+  for (const e of touchedEdges){
+    const g=edgeCurve(e); let dv=g.d;
+    if (!e.to){ let tx=g.x2-g.cpx,ty=g.y2-g.cpy;const tl=Math.hypot(tx,ty)||1;tx/=tl;ty/=tl;dv=`M ${g.x1} ${g.y1} Q ${g.cpx} ${g.cpy} ${g.x2-tx*6} ${g.y2-ty*6}`; }
+    const selector=`[data-edge="${CSS.escape(e.id)}"]`;
+    for (const path of svg.querySelectorAll(`path${selector}`)) path.setAttribute('d',path.hasAttribute('marker-end')?dv:g.d);
+    for (const circle of svg.querySelectorAll(`circle${selector}`)){
+      if (circle.dataset.handle==='bend'){ circle.setAttribute('cx',g.bx);circle.setAttribute('cy',g.by); }
+      else if (!e.to){ circle.setAttribute('cx',g.x2);circle.setAttribute('cy',g.y2); }
+      else { const b=nodeById(e.to),dx=g.x2-b.x,dy=g.y2-b.y,dl=Math.hypot(dx,dy)||1;circle.setAttribute('cx',b.x+dx/dl*(b.r+16));circle.setAttribute('cy',b.y+dy/dl*(b.r+16)); }
+    }
+    const group=svg.querySelector(`g${selector}`), sign=signOf[e.id]||1;
+    if (group){ const x=g.bx+g.nx*sign*15,y=g.by+g.ny*sign*15+4,lw=measureText12(e.name),texts=group.querySelectorAll('text');if(texts[0]){texts[0].setAttribute('x',x);texts[0].setAttribute('y',y);}if(texts[1]){texts[1].setAttribute('x',x+lw/2+11);texts[1].setAttribute('y',y);} }
+  }
+  for (const n of moved) renderCache.positions.set(n.id,{x:n.x,y:n.y});
+  return true;
+}
 function render(){
+  rebuildObjectIndexes();
+  const structure = renderStructureKey();
+  if (tryFastPositionRender(structure)) return;
   // 先重算所有节点半径(文字进圆圈,edgeEnds 依赖 n.r,必须在画边之前)
   const layout = new Map();
-  for (const n of S.nodes){ const L = nodeTextLayout(n.name); n.r = L.r; layout.set(n.id, L); }
+  for (const n of S.nodes){ const L = nodeTextLayout(n.name); n.r = n.milestone ? Math.max(84, L.r) : L.r; layout.set(n.id, L); }
   // 同一 from 节点的多条方案线:标签法向偏移方向交替,天然错开
   const visEdges = S.showFailed ? S.edges : S.edges.filter(e => e.status !== 'failed'); // 隐藏失败方案时仅渲染其余
+  const parallel = new Map();
+  for (const e of visEdges){
+    if (!e.to) continue;
+    const key = `${e.from}\u0000${e.to}`;
+    if (!parallel.has(key)) parallel.set(key, []);
+    parallel.get(key).push(e);
+  }
   const signOf = {}, fromCnt = {};
   for (const e of visEdges){ const i = fromCnt[e.from]||0; fromCnt[e.from] = i+1; signOf[e.id] = i%2===0 ? 1 : -1; }
 
@@ -624,8 +788,8 @@ function render(){
   let lines = '', labels = '', leaders = '';
   const labelBoxes = []; // 方案名标签包围盒,供标注避让
   for (const e of visEdges){
-    staggerParallel(e); // 同 from→to 的平行线自动错开
-    const st = STATUS[e.status], g = edgeCurve(e);
+    staggerParallel(e, e.to ? parallel.get(`${e.from}\u0000${e.to}`) : []); // 同 from→to 的平行线自动错开
+    const st = STATUS[e.status] || STATUS.pending, g = edgeCurve(e);
     const arch = isEdgeArchived(e); // 归档线弱化渲染
     const isSel = isSelObj('edge', e.id);
     const singleSel = S.sel && S.sel.kind==='edge' && S.sel.id===e.id;
@@ -633,8 +797,8 @@ function render(){
     const sign = signOf[e.id];
     lines += `<path class="hit" data-edge="${e.id}" d="${g.d}" fill="none" stroke="transparent" stroke-width="16"/>`;
     // 悬停发光 / 选中高亮
-    if (isSel) lines += `<path d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="5" opacity=".28" stroke-linecap="round" ${e.status!=='success'?`stroke-dasharray="${st.dash}"`:''}/>`;
-    else if (S.hoverEdge === e.id) lines += `<path d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="6" opacity=".16" stroke-linecap="round"/>`;
+    if (isSel) lines += `<path data-edge="${e.id}" d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="5" opacity=".28" stroke-linecap="round" ${e.status!=='success'?`stroke-dasharray="${st.dash}"`:''}/>`;
+    else if (S.hoverEdge === e.id) lines += `<path data-edge="${e.id}" d="${g.d}" fill="none" stroke="var(--accent)" stroke-width="6" opacity=".16" stroke-linecap="round"/>`;
     // 悬空线的可见端缩短 6px,给末端手柄让位,箭头画在悬空末端
     let dv = g.d;
     if (!e.to){
@@ -712,7 +876,7 @@ function render(){
   if (S.showAnns) for (const a of S.anns){
     if (a.hidden) continue;
     const w = measureText12(a.text);
-    let ax, ay, tx, ty;
+    let ax, ay, tx, ty, noLeader = false;
     if (a.target.kind === 'node'){
       const n = nodeById(a.target.id); if (!n) continue;
       // 8 方向候选(右侧优先),取罚分最小
@@ -730,6 +894,10 @@ function render(){
       let best = cand[0], bs = 1e9;
       for (const c of cand){ const s = annScore(c.x, c.y, w, placed); if (s < bs){ bs = s; best = c; } }
       ax = best.x; ay = best.y; tx = n.x; ty = n.y;
+    } else if (a.target.kind === 'canvas') {
+      ax = Number.isFinite(a.x) ? a.x : 0;
+      ay = Number.isFinite(a.y) ? a.y : 0;
+      tx = ax; ty = ay; noLeader = true;
     } else {
       const e = edgeById(a.target.id); if (!e) continue;
       const g = edgeCurve(e), sign = signOf[e.id];
@@ -760,7 +928,7 @@ function render(){
     for (const c of [[ax,ay],[ax+w,ay],[ax,ay+ANN_H],[ax+w,ay+ANN_H]]){
       const dd = Math.hypot(c[0]-tx, c[1]-ty); if (dd < cd){ cd = dd; C = c; }
     }
-    if (cd > 8){
+    if (!noLeader && cd > 8){
       const ex = C[0] === ax ? 9 : -9, ey = C[1] === ay ? 9 : -9;
       leaders += `<path d="M ${C[0]+ex} ${C[1]} L ${tx} ${ty} L ${C[0]} ${C[1]+ey} Z" fill="var(--note)" stroke="var(--note-border)" stroke-width="1" stroke-linejoin="round"/>`;
     }
@@ -784,10 +952,15 @@ function render(){
     if (inlineNodeEdit === n.id) continue; // 节点名行内编辑中,不重建节点避免重影
     const L = layout.get(n.id);
     const el = document.createElement('div');
-    el.className = 'node' + (isSelObj('node', n.id) ? ' sel':'') + (S.snapTo === n.id ? ' snap':'');
+    const milestone = n.milestone && typeof n.milestone === 'object' ? n.milestone : null;
+    el.className = 'node' + (isSelObj('node', n.id) ? ' sel':'') + (S.snapTo === n.id ? ' snap':'') + (milestone ? ' milestone':'');
     el.dataset.type = n.type; el.dataset.id = n.id;
+    if (milestone) { el.dataset.origin = milestoneOrigin(milestone); el.dataset.level = milestone.level || 'project'; }
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
-    el.innerHTML = `<div class="dot" style="width:${n.r*2}px;height:${n.r*2}px"><span>${L.lines.map(esc).join('<br>')}</span></div>`;
+    const milestoneMeta = milestone
+      ? `<span class="milestone-meta">${esc(milestoneSourceLabel(milestone))} · ${esc(milestoneLevelLabel(milestone))}</span><span class="milestone-status">${esc(MILESTONE_STATUS[milestone.status] || '待审核')}</span>`
+      : '';
+    el.innerHTML = `<div class="dot" style="width:${milestone ? Math.max(168,n.r*2) : n.r*2}px;height:${milestone ? Math.max(88,n.r*1.25) : n.r*2}px"><span>${L.lines.map(esc).join('<br>')}</span>${milestoneMeta}</div>`;
     world.appendChild(el);
   }
   for (const { a, ax, ay, rot } of annPos){
@@ -818,7 +991,9 @@ function render(){
     }
     world.appendChild(box);
   }
+  updateOverviewCanvas();
   applyView();
+  rememberRender(renderStructureKey());
 }
 
 /* ---------- 选择 + 属性面板 ---------- */
@@ -831,6 +1006,19 @@ function field(k, vHTML){ return `<div class="field"><div class="k">${k}</div>${
 const routeNameOf = o => o.route ? (routeById(o.route)?.name || '无') : '无';
 function routePickHTML(o){
   return `<div class="v pick" data-pick="route" title="点击选择所属路线">${esc(routeNameOf(o))}</div>`;
+}
+function milestoneBlock(n){
+  const m = n.milestone && typeof n.milestone === 'object' ? n.milestone : null;
+  if (!m) return `<button class="addline" data-act="milestone-create">${I.route} 设为里程碑</button>`;
+  const suggestion = n.milestoneSuggestion;
+  return field('里程碑', `<div class="v" style="cursor:default"><b>${esc(milestoneSourceLabel(m))}</b> · ${esc(milestoneLevelLabel(m))} · ${esc(MILESTONE_STATUS[m.status] || '待审核')}</div>`)
+    + (m.reason ? field('创建理由', `<div class="v" style="cursor:default;white-space:normal;line-height:1.5">${esc(m.reason)}</div>`) : '')
+    + (m.updatedBy ? field('最近变更', `<div class="v" style="cursor:default">${esc(m.updatedBy)}${m.updatedAt ? ` · ${esc(String(m.updatedAt).slice(0,16).replace('T',' '))}` : ''}</div>`) : '')
+    + (suggestion ? field('Agent 建议', `<div class="v" style="cursor:default;white-space:normal;line-height:1.5">${esc(suggestion.status || '')}${suggestion.reviewNote ? `：${esc(suggestion.reviewNote)}` : ''}</div>`) : '')
+    + `<div class="milestone-actions" style="display:flex;gap:6px;padding:4px 14px 8px">`
+    + `<button class="addline" data-act="milestone-status" data-status="approved" style="margin:0;padding:6px 8px">通过</button>`
+    + `<button class="addline" data-act="milestone-status" data-status="changes_requested" style="margin:0;padding:6px 8px">退回修改</button>`
+    + `<button class="addline" data-act="milestone-remove" style="margin:0;padding:6px 8px">取消里程碑</button></div>`;
 }
 
 function renderPanel(){
@@ -858,6 +1046,7 @@ function renderPanel(){
       field('所属路线', routePickHTML(n)) +
       field('名称', `<div class="v" data-edit="name">${esc(n.name)}</div>`) +
       field('类型', `<div class="v" data-edit="type" title="点击自定义类型">${esc(n.type)}</div>`) +
+      milestoneBlock(n) +
       field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(n.md)}</span>${I.ext}</div>`) +
       annBlock('node', n.id) +
       (!S.routes.some(r => r.source === n.id)
@@ -904,9 +1093,10 @@ function createTargetNode(e){
   const from = nodeById(e.from);
   const end = { x: from.x + (e.dx||220), y: from.y + (e.dy||0) };
   const name = `新节点${S.nextNodeName++}`;
-  const n = { id:'n'+(++S.nextNum+100), num:String(S.nextNum).padStart(2,'0'),
+  const nodeId = 'n' + S.nextNum, nodeNum = String(S.nextNum++).padStart(2,'0');
+  const n = { id:nodeId, num:nodeNum,
     name, type:'结果', route:e.route, x:end.x, y:end.y, r:34,
-    md:`nodes/${String(S.nextNum).padStart(2,'0')}-${name}.md` };
+    md:`.live-dot-map/nodes/${nodeId}.md`, createdBy:'human' };
   delete e.dx; delete e.dy;
   S.nodes.push(n); e.to = n.id;
   render(); renderPanel();
@@ -916,8 +1106,8 @@ function createTargetNode(e){
 const menu = $('#menu');
 function openMenu(items, x, y){
   menu.innerHTML = items.map(it => it.sep ? '<div class="msep"></div>' :
-    it.head ? `<div class="mhead">${it.head}</div>` :
-    `<button data-mi="${it.id}" class="${it.danger?'danger':''}">${it.icon||''}<span>${it.label}</span>${it.checked?I.check:''}${it.kbd?`<kbd class="mkbd">${it.kbd}</kbd>`:''}</button>`
+    it.head ? `<div class="mhead">${esc(it.head)}</div>` :
+    `<button data-mi="${esc(it.id)}" class="${it.danger?'danger':''}">${it.icon||''}<span>${esc(it.label)}</span>${it.checked?I.check:''}${it.kbd?`<kbd class="mkbd">${esc(it.kbd)}</kbd>`:''}</button>`
   ).join('');
   menu.classList.add('on');
   const mw = 210, mh = items.length * 36 + 16;
@@ -993,15 +1183,17 @@ function promoteToIssueRoute(n){
 }
 function addNodeAt(x, y){
   const name = `新节点${S.nextNodeName++}`;
-  const n = { id:'n'+(++S.nextNum+100), num:String(S.nextNum).padStart(2,'0'),
+  const nodeId = 'n' + S.nextNum, nodeNum = String(S.nextNum++).padStart(2,'0');
+  const n = { id:nodeId, num:nodeNum,
     name, type:'目的', route:null, x, y, r:34, // 新建节点默认不属于任何路线(显示"无")
-    md:`nodes/${String(S.nextNum).padStart(2,'0')}-${name}.md` };
+    md:`.live-dot-map/nodes/${nodeId}.md`, createdBy:'human' };
   S.nodes.push(n); select('node', n.id); render();
 }
 
 /* ---------- 标注 ---------- */
-function addAnnotation(kind, id){
-  const a = { id:'a'+(S.nextAnn++), target:{kind, id}, text:'新标注', hidden:false };
+function addAnnotation(kind, id, point){
+  const a = { id:'a'+(S.nextAnn++), target:kind==='canvas'?{kind}:{kind, id}, text:'新标注', hidden:false };
+  if (kind === 'canvas' && point){ a.x = point.x; a.y = point.y; }
   pushHistory(); S.anns.push(a); render(); renderPanel();
   // 行内编辑面板里的新标注
   requestAnimationFrame(() => {
@@ -1041,7 +1233,7 @@ function editNodeName(n, nodeEl){
   inlineNodeEdit = n.id;
   popInlineEdit(nodeEl.getBoundingClientRect(), n.name, v => {
     inlineNodeEdit = null;
-    if (v && v !== n.name){ pushHistory(); n.name = v; n.md = `nodes/${n.num}-${v}.md`; }
+    if (v && v !== n.name){ pushHistory(); n.name = v; n.md ||= `.live-dot-map/nodes/${n.id}.md`; }
     render(); renderPanel();
   });
 }
@@ -1071,7 +1263,7 @@ function editEdgeName(e, textEl){
     inlineEdgeEdit = null;
     const v = input.value.trim();
     if (input.isConnected) input.remove(); // render() 不清理输入框,必须自己移除
-    if (v && v !== e.name){ pushHistory(); e.name = v; e.md = `routes/${e.id}-${v}.md`; }
+    if (v && v !== e.name){ pushHistory(); e.name = v; e.md ||= `.live-dot-map/routes/${e.id}.md`; }
     render(); renderPanel();
   };
   input.addEventListener('blur', commit);
@@ -1125,6 +1317,23 @@ function editAnn(a){
     if (ev.key === 'Escape'){ input.value = a.text; commit(); }
   });
 }
+function createHumanMilestone(n){
+  if (!n || n.milestone) return;
+  pushHistory();
+  n.milestone = { status:'pending', origin:'human_created', level:'project', createdBy:'human', updatedBy:'human', createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() };
+  render(); renderPanel();
+}
+function setHumanMilestoneStatus(n, status){
+  if (!n?.milestone || !['approved','changes_requested','pending'].includes(status)) return;
+  pushHistory();
+  n.milestone.status = status; n.milestone.updatedBy = 'human'; n.milestone.updatedAt = new Date().toISOString();
+  render(); renderPanel();
+}
+function removeMilestone(n){
+  if (!n?.milestone) return;
+  pushHistory(); delete n.milestone; delete n.milestoneSuggestion;
+  render(); renderPanel();
+}
 
 /* ---------- 面板事件 ---------- */
 $('#panel-close').onclick = () => select(null);
@@ -1135,8 +1344,8 @@ $('#panel-body').addEventListener('click', ev => {
     const key = edit.dataset.edit === 'type' ? 'type' : 'name'; // 名称与类型均可点击行内编辑
     inlineEdit(edit, obj[key], v => { if (v){ pushHistory(); obj[key] = v;
       if (key === 'name'){
-        if (S.sel.kind === 'edge') obj.md = `routes/${obj.id}-${v}.md`;
-        else obj.md = `nodes/${obj.num}-${v}.md`; } } render(); renderPanel(); });
+        if (S.sel.kind === 'edge') obj.md ||= `.live-dot-map/routes/${obj.id}.md`;
+        else obj.md ||= `.live-dot-map/nodes/${obj.id}.md`; } } render(); renderPanel(); });
     return;
   }
   // 所属路线:点击弹出下拉,选择已有路线或"无",或重命名当前路线
@@ -1163,6 +1372,9 @@ $('#panel-body').addEventListener('click', ev => {
   if (a.act === 'toggle-ann'){ const an = S.anns.find(x => x.id === act.closest('.annitem').dataset.ann); pushHistory(); an.hidden = !an.hidden; render(); renderPanel(); }
   if (a.act === 'del-ann'){ const item = act.closest('.annitem'); pushHistory(); S.anns = S.anns.filter(x => x.id !== item.dataset.ann); render(); renderPanel(); }
   if (a.act === 'toggle-archive'){ const eo = edgeById(S.sel.id); if (eo){ pushHistory(); eo.archived = !eo.archived; eo.updatedAt = today(); render(); renderPanel(); } }
+  if (a.act === 'milestone-create' && S.sel.kind === 'node') createHumanMilestone(nodeById(S.sel.id));
+  if (a.act === 'milestone-status' && S.sel.kind === 'node') setHumanMilestoneStatus(nodeById(S.sel.id), a.status);
+  if (a.act === 'milestone-remove' && S.sel.kind === 'node') removeMilestone(nodeById(S.sel.id));
 });
 // 评分输入:change 时落盘,0-100 之外或留空视为未评
 $('#panel-body').addEventListener('change', ev => {
@@ -1291,7 +1503,7 @@ viewport.addEventListener('pointerdown', ev => {
       // 方案名从起点节点自己的 1 开始数,区分靠内部编号
       const eName = `方案${S.edges.filter(o => o.from === fromId).length + 1}`;
       const e = { id:'e'+(S.nextEdge++), from:fromId, to:null, name:eName,
-        status:'pending', route:from.route, md:`routes/e${S.nextEdge-1}-${eName}.md` };
+        status:'pending', route:from.route, md:`.live-dot-map/routes/e${S.nextEdge-1}.md` };
       S.edges.push(e);
       e.dx = w.x - from.x; e.dy = w.y - from.y; // 方向跟随指针:拖拽时自由自定义
       S.drawingEdge = e.id; S.sel = {kind:'edge', id:e.id}; S.selAnn = null; clearMulti();
@@ -1304,7 +1516,7 @@ viewport.addEventListener('pointerdown', ev => {
   if (S.tool === 'ann'){
     if (nodeEl) addAnnotation('node', nodeEl.dataset.id);
     else if (edgeEl) addAnnotation('edge', edgeEl.dataset.edge);
-    else { pushHistory(); toast('请点击节点或方案线添加标注'); }
+    else addAnnotation('canvas', null, w);
     setTool('select'); return;
   }
 
@@ -1366,9 +1578,14 @@ function addEdge(fromId, toId, w){
   const eName = `方案${S.edges.filter(o => o.from === fromId).length + 1}`;
   const e = { id:'e'+(S.nextEdge++), from:fromId, to:toId, name:eName,
     status: toId ? 'success' : 'pending', route:from.route,
-    md:`routes/e${S.nextEdge-1}-${eName}.md` };
+    md:`.live-dot-map/routes/e${S.nextEdge-1}.md` };
   if (!toId){ e.dx = w.x - from.x; e.dy = w.y - from.y; }
   S.edges.push(e); select('edge', e.id); render();
+}
+let renderFrame = 0;
+function scheduleRender(){
+  if (renderFrame) return;
+  renderFrame = requestAnimationFrame(() => { renderFrame = 0; render(); });
 }
 addEventListener('pointermove', ev => {
   // 无拖拽时:方案线悬停紫色发光
@@ -1385,7 +1602,7 @@ addEventListener('pointermove', ev => {
       }
       if (hov) break;
     }
-    if (hov !== S.hoverEdge){ S.hoverEdge = hov; render(); }
+    if (hov !== S.hoverEdge){ S.hoverEdge = hov; scheduleRender(); }
     return;
   }
   if (drag.type === 'pan'){
@@ -1429,20 +1646,20 @@ addEventListener('pointermove', ev => {
       drag.e.cx = (w.x - it*it*g.x1 - t*t*g.x2) / (2*it*t) - (g.x1+g.x2)/2;
       drag.e.cy = (w.y - it*it*g.y1 - t*t*g.y2) / (2*it*t) - (g.y1+g.y2)/2;
     }
-    render();
+    scheduleRender();
   } else if (drag.type === 'ann'){
     if (Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) > 4) drag.moved = true;
     if (drag.moved){
       drag.a.dx = drag.odx + (ev.clientX - drag.sx) / S.view.k;
       drag.a.dy = drag.ody + (ev.clientY - drag.sy) / S.view.k;
-      render();
+      scheduleRender();
     }
   } else {
     if (Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) > 4) drag.moved = true;
     if (drag.moved){
       drag.n.x = drag.ox + (ev.clientX - drag.sx) / S.view.k;
       drag.n.y = drag.oy + (ev.clientY - drag.sy) / S.view.k;
-      render();
+      scheduleRender();
     }
   }
 });
@@ -1604,8 +1821,8 @@ world.addEventListener('dblclick', ev => {
 $('#zoom-in').onclick = () => zoomAt(innerWidth/2, innerHeight/2, 1.25);
 $('#zoom-out').onclick = () => zoomAt(innerWidth/2, innerHeight/2, .8);
 $('#zoom-val').onclick = () => fitView();
-$('#undo').onclick = () => { if (undoStack.length){ redoStack.push(snapshot()); restore(undoStack.pop()); } };
-$('#redo').onclick = () => { if (redoStack.length){ undoStack.push(snapshot()); restore(redoStack.pop()); } };
+$('#undo').onclick = () => undo();
+$('#redo').onclick = () => redo();
 
 /* ---------- 快捷键 ---------- */
 addEventListener('keydown', ev => {
@@ -1644,8 +1861,10 @@ $('#agent-btn').onclick = () => { syncDrawerFolder(); $('#drawer').classList.add
 
 /* ---------- 新建地图:直接进空白画布(不再有中央输入态) ---------- */
 function newBlankMap(){
+  if (IO.readOnly){ warnReadOnly(); return; }
   if (IO.mapFile && S.nodes.length && !confirm('新建空白地图并覆盖当前 map.json?')) return;
   pushHistory();
+  IO.sourceDocument = null; IO.sourceVersion = null;
   S.nodes = []; S.edges = []; S.anns = [];
   S.routes = [{id:'r1', name:'主路线', source:null, main:true, createdAt:today(), updatedAt:today()}];
   S.name = '未命名地图'; applyName();
@@ -1656,15 +1875,15 @@ function newBlankMap(){
   toast('已新建地图');
 }
 
-/* ---------- 文件 IO:map.json ↔ S(格式见 docs/map-json-v1.md) ---------- */
-const IO = { dir:null, mapFile:null, lastMod:0, lastWrite:0, saveTimer:null, watching:false, silent:false };
+/* ---------- 文件 IO:map.json ↔ S（正式协同遵守 docs/map-json-v2.md） ---------- */
+const IO = { dir:null, mapFile:null, lastMod:0, lastWrite:0, saveTimer:null, watching:false, silent:false, sourceDocument:null, sourceVersion:null, readOnly:false, restorePending:false };
 const hasFS = 'showDirectoryPicker' in window;
 const today = () => new Date().toISOString().slice(0, 10);
 
 /* S → map.json 对象;节点半径 r 不存(按文字重算) */
 function serialize(){
   const cp = o => JSON.parse(JSON.stringify(o));
-  return {
+  const legacy = {
     version:1, name:S.name || $('#proj-name').textContent, updatedAt:today(),
     view:{ x:S.view.x, y:S.view.y, k:S.view.k },
     ui:{ showAnns:S.showAnns, showRoutes:S.showRoutes, showNums:S.showNums, showFailed:S.showFailed },
@@ -1673,6 +1892,18 @@ function serialize(){
     nodes:S.nodes.map(n => { const c = cp(n); delete c.r; return c; }),
     edges:cp(S.edges), anns:cp(S.anns)
   };
+  return IO.sourceDocument && window.LiveDotFallback
+    ? window.LiveDotFallback.composeFallbackDocument(IO.sourceDocument, legacy)
+    : legacy;
+}
+function serializeForSave(){
+  const legacy = { ...serialize(), version:IO.sourceDocument?.version ?? 1 };
+  if (!window.LiveDotFallback) return legacy;
+  if (!IO.sourceDocument){
+    const migrated = window.LiveDotFallback.prepareFallbackDocument(legacy);
+    IO.sourceDocument = migrated.document; IO.sourceVersion = migrated.sourceVersion;
+  }
+  return window.LiveDotFallback.composeFallbackDocument(IO.sourceDocument, legacy, { commit:!IO.readOnly });
 }
 /* map.json 对象 → S;缺失字段补默认值,重置选择与撤销栈 */
 function deserialize(d){
@@ -1701,6 +1932,35 @@ function applyName(){
   $('#proj-name').textContent = S.name;
   document.title = '活点地图 — ' + S.name;
 }
+function warnReadOnly(){
+  toast(`schema version ${IO.sourceVersion} 只能只读浏览，未写入任何改动`);
+  window.LiveDotApp?.setStatus('fallback', `未知 schema version ${IO.sourceVersion} · 只读`);
+}
+function queueReadOnlyRestore(){
+  if (!IO.readOnly || IO.restorePending) return;
+  IO.restorePending = true;
+  queueMicrotask(() => {
+    IO.restorePending = false;
+    if (!IO.readOnly || !IO.sourceDocument) return;
+    const view = { ...S.view };
+    IO.silent = true; deserialize(IO.sourceDocument); IO.silent = false;
+    S.view = view; applyName(); render(); renderPanel(); applyView(); syncBadge();
+  });
+}
+function acceptMapDocument(document, source='import'){
+  if (!window.LiveDotFallback) throw new Error('地图兼容层尚未就绪');
+  const prepared = window.LiveDotFallback.prepareFallbackDocument(document);
+  IO.sourceDocument = JSON.parse(JSON.stringify(prepared.document));
+  IO.sourceVersion = prepared.sourceVersion;
+  IO.readOnly = prepared.readOnly;
+  IO.silent = true; deserialize(prepared.document); IO.silent = false;
+  applyName(); render(); renderPanel();
+  if (prepared.document.view) applyView(); else fitView();
+  syncBadge();
+  if (prepared.readOnly) queueMicrotask(() => window.LiveDotApp?.setStatus('fallback', `未知 schema version ${prepared.sourceVersion} · 只读`));
+  else if (source !== 'bridge') queueMicrotask(() => window.LiveDotApp?.setStatus('fallback', prepared.migrated ? 'v1 已迁移为 v2 · 无协同保护' : 'v2 降级模式 · 无协同保护'));
+  return prepared;
+}
 /* 同步状态点:灰=演示模式,黄=保存中,绿=已同步 */
 function syncBadge(){
   let dot = $('#sync-dot');
@@ -1709,8 +1969,8 @@ function syncBadge(){
     dot.style.cssText = 'width:8px;height:8px;border-radius:50%;flex:none';
     $('#project-pill').insertBefore(dot, $('#proj-menu-btn'));
   }
-  dot.style.background = !IO.mapFile ? 'var(--border)' : (IO.saveTimer ? 'var(--note-border)' : 'var(--success)');
-  dot.title = !IO.mapFile ? '未连接项目文件夹(演示模式)' : (IO.saveTimer ? '保存中…' : '已与 map.json 同步');
+  dot.style.background = IO.readOnly ? 'var(--pending)' : (!IO.mapFile ? 'var(--border)' : (IO.saveTimer ? 'var(--note-border)' : 'var(--success)'));
+  dot.title = IO.readOnly ? `未知 schema version ${IO.sourceVersion}，只读浏览` : (!IO.mapFile ? '未连接项目文件夹(演示模式)' : (IO.saveTimer ? '保存中…' : '已与 map.json 同步'));
   syncDrawerFolder();
 }
 /* ---- IndexedDB:记住上次项目文件夹句柄 ---- */
@@ -1735,7 +1995,7 @@ async function attachDir(dir){
       if (confirm(`文件夹「${dir.name}」里还没有活点地图。在里面创建 .live-dot-map/map.json,让它成为活点地图项目吗?`)){
         const sub = await dir.getDirectoryHandle('.live-dot-map', { create:true });
         fh = await sub.getFileHandle('map.json', { create:true });
-        IO.dir = dir; IO.mapFile = fh;
+        IO.dir = dir; IO.mapFile = fh; IO.sourceDocument = null; IO.sourceVersion = null; IO.readOnly = false;
         await writeMapNow(); startWatch(); syncBadge();
         toast('已创建 .live-dot-map/map.json 并连接:' + dir.name);
       }
@@ -1750,21 +2010,21 @@ async function readMap(){
   const f = await IO.mapFile.getFile();
   const text = await f.text();
   let d; try{ d = JSON.parse(text); }catch{ toast('map.json 读不懂(文件可能损坏),画布保持原样未改动'); return; }
-  if (d.version !== 1){ toast('这个 map.json 由更新版本生成,当前画布读不了(版本 ' + d.version + ')'); return; }
+  let prepared; try{ prepared = acceptMapDocument(d, 'filesystem'); }catch(e){ toast('map.json 无法安全加载:' + e.message); return false; }
   IO.lastMod = f.lastModified;
-  IO.silent = true;
-  deserialize(d);
-  IO.silent = false;
-  applyName();
-  render(); renderPanel();
-  if (d.view) applyView(); else fitView();
+  if (prepared.migrated) toast('已兼容读取 v1，保存或导出时会迁移为 v2');
+  else if (prepared.readOnly) toast(`schema version ${prepared.sourceVersion} 已只读打开`);
+  return true;
 }
 /* Chromium 的 createWritable 先写交换文件、close 才替换原文件,天然原子 */
 async function writeMapNow(){
   if (!IO.mapFile) return;
+  if (IO.readOnly){ warnReadOnly(); return; }
+  const document = serializeForSave();
   const w = await IO.mapFile.createWritable();
-  await w.write(JSON.stringify(serialize(), null, 2));
+  await w.write(JSON.stringify(document, null, 2));
   await w.close();
+  IO.sourceDocument = JSON.parse(JSON.stringify(document)); IO.sourceVersion = document.version;
   IO.lastWrite = Date.now();
   IO.lastMod = (await IO.mapFile.getFile()).lastModified;
   IO.saveTimer = null; syncBadge();
@@ -1772,6 +2032,7 @@ async function writeMapNow(){
 /* 任何编辑后防抖落盘(pushHistory 调用) */
 function scheduleSave(){
   if (IO.silent) return;
+  if (IO.readOnly){ warnReadOnly(); queueReadOnlyRestore(); return; }
   if (!IO.mapFile){
     // 演示模式:首次编辑提醒改动不落盘,连文件夹或导出才能保存
     if (!IO.demoHinted){ IO.demoHinted = true; toast('演示模式:改动只在本页,连接文件夹或导出 map.json 才能保存'); }
@@ -1789,19 +2050,21 @@ function startWatch(){
     try{
       const f = await IO.mapFile.getFile();
       if (f.lastModified !== IO.lastMod && Date.now() - IO.lastWrite > 1500){
-        await readMap();
-        toast('地图已更新(外部修改)');
+        if (await readMap()) toast('地图已更新(外部修改)');
       }
     }catch{ /* 文件被占用等,下轮再试 */ }
   }, 2000);
 }
 /* ---- 非 Chromium 降级:导入/导出 map.json ---- */
 function exportMap(){
-  const blob = new Blob([JSON.stringify(serialize(), null, 2)], { type:'application/json' });
+  let mapDocument;
+  try{ mapDocument = serializeForSave(); }catch(e){ toast('导出失败:' + e.message); return; }
+  const blob = new Blob([JSON.stringify(mapDocument, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = 'map.json'; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  toast('已导出 map.json');
+  if (!IO.readOnly){ IO.sourceDocument = JSON.parse(JSON.stringify(mapDocument)); IO.sourceVersion = mapDocument.version; }
+  toast(IO.readOnly ? '已原样导出只读 map.json' : '已导出 map.json（降级模式，无协同保护）');
 }
 function importMap(){
   const inp = document.createElement('input');
@@ -1810,10 +2073,8 @@ function importMap(){
     const f = inp.files[0]; if (!f) return;
     try{
       const d = JSON.parse(await f.text());
-      if (d.version !== 1) throw new Error('不支持的版本 ' + d.version);
-      IO.silent = true; deserialize(d); IO.silent = false;
-      applyName(); render(); renderPanel(); fitView();
-      toast('已导入 map.json');
+      const prepared = acceptMapDocument(d);
+      toast(prepared.readOnly ? `已只读导入 schema version ${prepared.sourceVersion}` : (prepared.migrated ? '已导入 v1，并在内存中迁移为 v2' : '已导入 v2（降级模式，无协同保护）'));
     }catch(e){ toast('导入失败:' + e.message); }
   };
   inp.click();
@@ -1832,10 +2093,8 @@ function setupDrop(){
     if (!/\.json$/i.test(f.name)){ toast('只认 .json 地图文件'); return; }
     try{
       const d = JSON.parse(await f.text());
-      if (d.version !== 1) throw new Error('不支持的版本 ' + d.version);
-      IO.silent = true; deserialize(d); IO.silent = false;
-      applyName(); render(); renderPanel(); fitView();
-      toast('已导入:' + f.name);
+      const prepared = acceptMapDocument(d);
+      toast(prepared.readOnly ? `已只读导入 ${f.name}（schema ${prepared.sourceVersion}）` : `已导入:${f.name}${prepared.migrated ? '（v1 → v2）' : '（v2 降级模式）'}`);
     }catch(err){ toast('导入失败:' + err.message); }
   });
 }
@@ -1851,6 +2110,7 @@ async function openMd(o){
     const fh = await dir.getFileHandle(parts[parts.length - 1]);
     showMdViewer(o.md, await (await fh.getFile()).text());
   }catch{
+    if (IO.readOnly){ warnReadOnly(); return; }
     if (!confirm(`「${o.md}」不存在,创建它吗?`)) return;
     try{
       let dir = IO.dir;
@@ -1922,6 +2182,30 @@ function showGuide(manual){
   if (b) b.onclick = () => { seen(); ov.remove(); openProjectFolder(); };
   if (manual) seen();
 }
+function showFirstMapGuide(){
+  const ov = $('#first-map-guide'); if (!ov) return;
+  ov.classList.add('on');
+  const close = () => ov.classList.remove('on');
+  ov.querySelectorAll('[data-first-choice]').forEach(button => {
+    button.onclick = () => {
+      const choice = button.dataset.firstChoice;
+      if (choice === 'blank') { close(); newBlankMap(); return; }
+      if (choice === 'demo') {
+        close();
+        IO.sourceDocument = null; IO.sourceVersion = null; IO.readOnly = false; IO.mapFile = null;
+        S = seed(); undoStack = []; redoStack = [];
+        applyName(); render(); fitView(); toast('已加载简单示例（不会读取项目文件）');
+        return;
+      }
+      if (choice === 'agent') {
+        close();
+        $('#drawer').classList.add('on');
+        toast('已打开 Agent 接入入口；请明确发送“初始化我的项目地图”后再读取项目');
+        window.dispatchEvent(new CustomEvent('dotmap:init-requested'));
+      }
+    };
+  });
+}
 function showTutorial(){
   const ov = overlayCard(`
     <div style="font-size:16px;font-weight:700">三分钟上手</div>
@@ -1945,6 +2229,9 @@ const q = new URLSearchParams(location.search);
 if (q.get('blank') === '1' || q.get('empty') === '1'){
   // 空画布:工具可用,无中央输入
   S.nodes = []; S.edges = []; S.anns = []; S.routes = [{id:'r1', name:'主路线', source:null, main:true, createdAt:today(), updatedAt:today()}];
+}
+if (q.get('demo') === '1'){
+  S = seed();
 }
 if (q.get('stress')){
   // 性能压测:?stress=N 生成 N 节点 + 2N 方案线(只在内存,不写文件)
@@ -1972,12 +2259,51 @@ fitView();
 if (q.get('from') === 'agent'){
   agentWork('正在建立地图…', () => { render(); }, 1400);
 }
-pushHistory();
 boot().then(() => { // 首次使用且未自动连上项目文件夹时,显示新手引导
-  if (!IO.mapFile && !q.get('blank') && !q.get('stress') && q.get('from') !== 'agent'){
-    try{ if (!localStorage.getItem('dotmap-guide-seen')) showGuide(); }catch{ showGuide(); }
+  // 没有地图时只显示三个明确入口；未点击“让 Agent 初始化”前不读取项目。
+  if (!window.LiveDotBridge?.active && !IO.mapFile && !q.get('blank') && !q.get('empty') && !q.get('demo') && !q.get('stress') && q.get('from') !== 'agent' && S.nodes.length === 0){
+    showFirstMapGuide();
   }
 });
+
+
+/* live-dot-map-v2:integration:start */
+/* v2 本地桥集成：强模式的保存统一走命令处理器。 */
+const __legacyScheduleSave = scheduleSave;
+let __bridgeSaveTimer = 0;
+scheduleSave = function(){
+  if (window.LiveDotBridge?.active){
+    clearTimeout(__bridgeSaveTimer);
+    __bridgeSaveTimer = setTimeout(() => window.LiveDotBridge.schedule(serialize()), 0);
+    return;
+  }
+  return __legacyScheduleSave();
+};
+window.LiveDotApp = {
+  serialize,
+  load(document){
+    acceptMapDocument(document, 'bridge');
+    // 桥接加载是异步的；如果空白引导先出现，已有项目地图到达后必须自动让位。
+    if (Array.isArray(document?.nodes) && document.nodes.length > 0){
+      globalThis.document?.querySelector('#first-map-guide')?.classList.remove('on');
+    }
+    if (document.ui?.collaboration?.status === 'incomplete') queueMicrotask(() => window.LiveDotApp.setStatus('error', document.ui.collaboration.reason || '本次协作未闭环'));
+  },
+  setStatus(state, detail=''){
+    let dot = document.querySelector('#sync-dot');
+    if (!dot){ syncBadge(); dot = document.querySelector('#sync-dot'); }
+    let label = document.querySelector('#sync-label');
+    if (!label){ label = document.createElement('span'); label.id='sync-label'; label.style.cssText='font-size:11px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; document.querySelector('#project-pill').insertBefore(label, document.querySelector('#proj-menu-btn')); }
+    const states = {draft:['var(--note-border)','本地草稿'],saving:['var(--note-border)','保存中'],saved:['var(--success)','已保存'],offline:['var(--pending)','离线'],conflict:['var(--danger)','冲突'],error:['var(--danger)','错误'],fallback:['var(--pending)','降级模式']};
+    const current = states[state] || states.error; dot.style.background=current[0]; dot.title=detail || current[1]; label.textContent=current[1];
+  }
+};
+/* live-dot-map-v2:integration:end */
+
+</script>
+<script nonce="TqeVAoHaXETEE8Xg7DIaKD7S" data-dotmap-bridge="v2">"use strict";(()=>{var m=["routes","nodes","edges","anns"],v=new Set(["createdAt","updatedAt","updatedBy","updatedRevision"]);function f(r){return`${r}-${crypto.randomUUID()}`}function p(r,e){return JSON.stringify(r)===JSON.stringify(e)}function g(r,e){let t={};for(let[s,n]of Object.entries(r))s==="id"||v.has(s)||p(n,e[s])||(t[s]=n);for(let s of Object.keys(e))s==="id"||v.has(s)||s in r||(t[s]=null);return t}function w(r,e){let t=[];for(let s of m){let n=new Map((r[s]??[]).map(o=>[String(o.id),o])),i=new Map((e[s]??[]).map(o=>[String(o.id),o]));for(let[o,c]of i){let a=n.get(o);if(!a)t.push({op:"create",collection:s,value:c});else{let h=g(c,a);Object.keys(h).length&&t.push({op:"update",collection:s,id:o,patch:h})}}for(let o of n.keys())i.has(o)||t.push({op:"delete",collection:s,id:o})}return p(r.view,e.view)||t.push({op:"set_view",patch:e.view??{}}),p(r.ui,e.ui)||t.push({op:"set_ui",patch:e.ui??{}}),t}function S(){return new Promise((r,e)=>{let t=indexedDB.open("live-dot-map-v2",1);t.onupgradeneeded=()=>t.result.createObjectStore("drafts"),t.onsuccess=()=>r(t.result),t.onerror=()=>e(t.error)})}async function u(r,e){let t=await S();await new Promise((s,n)=>{let i=t.transaction("drafts","readwrite"),o=i.objectStore("drafts");e===null?o.delete(r):o.put({value:e,savedAt:new Date().toISOString()},r),i.oncomplete=()=>s(),i.onerror=()=>n(i.error)}),t.close()}var l=class{origin="";csrf="";projectId="";sessionId=f("session");revision=0;lastDocument=null;pending=null;timer=0;retry=0;inFlight=!1;dirty=!1;events;get active(){return!!(this.origin&&this.csrf&&this.lastDocument)}async initialize(){if(!window.LiveDotApp)return;let e=new URL(location.href),t=["127.0.0.1","localhost","::1","[::1]"].includes(e.hostname),s=e.searchParams.get("token"),n=e.searchParams.get("project");if(!t||!s||!n){window.LiveDotApp.setStatus("fallback","Agent \u81EA\u52A8\u8BFB\u53D6\u548C\u5E76\u53D1\u4FDD\u62A4\u672A\u542F\u7528");return}this.origin=e.origin;try{let i=await this.request("/api/v1/session",{method:"POST",token:s});this.csrf=String(i.csrfToken??"");let o=await this.request("/api/v1/projects/open",{method:"POST",body:{projectRoot:n}}),c=o.snapshot&&typeof o.snapshot=="object"?o.snapshot:void 0,a=o.document??o.map??c?.document;if(!a||Number(a.version)!==2)throw new Error("\u672C\u5730\u6865\u6CA1\u6709\u8FD4\u56DE\u53EF\u5199\u7684 v2 \u5730\u56FE");this.projectId=String(o.projectId??a.mapId),this.revision=Number(o.revision??a.revision),this.lastDocument=structuredClone(a),window.LiveDotApp.load(a),window.LiveDotApp.setStatus("saved",`revision ${this.revision}`),this.refreshAgentStatus(),this.startEvents(),history.replaceState(null,"",`${e.pathname}?project=${encodeURIComponent(n)}`)}catch(i){window.LiveDotApp.setStatus("error",i instanceof Error?i.message:"\u672C\u5730\u6865\u8FDE\u63A5\u5931\u8D25")}}async refreshAgentStatus(){if(!this.active)return null;try{let e=await this.request("/api/v1/agents"),t=document.querySelector("#agent-status-list");if(t&&Array.isArray(e.agents)){let s=e.states&&typeof e.states=="object"?e.states:{};t.textContent="";for(let n of e.agents){let i=document.createElement("div");i.className="agent-status",i.dataset.state=String(n.state??"error");let o=document.createElement("span");o.className="agent-dot";let c=document.createElement("span");c.className="agent-name",c.textContent=String(n.id??"\u672A\u77E5 Agent");let a=document.createElement("span");a.className="agent-state",a.textContent=String(s[String(n.state)]??n.state??"\u5F02\u5E38"),i.append(o,c,a),t.append(i)}}return e}catch{let t=document.querySelector("#agent-status-list");return t&&(t.textContent="\u6682\u65F6\u65E0\u6CD5\u8BFB\u53D6 Agent \u72B6\u6001"),null}}schedule(e){this.active&&(this.pending=structuredClone(e),this.dirty=!0,u(this.projectId,this.pending).catch(()=>{}),window.LiveDotApp?.setStatus("draft","\u672C\u5730\u8349\u7A3F"),clearTimeout(this.timer),this.timer=window.setTimeout(()=>void this.flush(),350))}async flush(){if(!this.active||!this.pending||!this.lastDocument||this.inFlight)return;let e=this.pending,t=w(this.lastDocument,e);if(!t.length){this.pending=null,this.dirty=!1,await u(this.projectId,null).catch(()=>{}),window.LiveDotApp?.setStatus("saved",`revision ${this.revision}`);return}this.inFlight=!0,window.LiveDotApp?.setStatus("saving",`${t.length} \u6761\u4FEE\u6539`);try{let s=await this.request("/api/v1/commands",{method:"POST",body:{projectId:this.projectId,baseRevision:this.revision,commandId:f("cmd"),actor:"human",sessionId:this.sessionId,commands:t}}),n=s.snapshot&&typeof s.snapshot=="object"?s.snapshot:void 0,i=s.document??s.map??n?.document;this.revision=Number(s.revision??i?.revision??this.revision+1),this.lastDocument=i?structuredClone(i):{...structuredClone(e),revision:this.revision,version:2},this.pending=null,this.dirty=!1,this.retry=0,await u(this.projectId,null).catch(()=>{}),window.LiveDotApp?.setStatus("saved",`revision ${this.revision}`)}catch(s){Number(s.status)===409?window.LiveDotApp?.setStatus("conflict",s instanceof Error?s.message:"\u53D1\u751F\u5E76\u53D1\u51B2\u7A81"):(this.retry+=1,window.LiveDotApp?.setStatus(navigator.onLine?"error":"offline",s instanceof Error?s.message:"\u4FDD\u5B58\u5931\u8D25"),clearTimeout(this.timer),this.timer=window.setTimeout(()=>void this.flush(),Math.min(3e4,500*2**this.retry)))}finally{this.inFlight=!1}}startEvents(){this.events?.close(),this.events=new EventSource(`${this.origin}/api/v1/events`,{withCredentials:!0}),this.events.addEventListener("revision",e=>void this.onRevision(e)),this.events.addEventListener("commit",e=>void this.onRevision(e)),this.events.addEventListener("command",e=>void this.onRevision(e)),this.events.addEventListener("conflict",()=>window.LiveDotApp?.setStatus("conflict","\u68C0\u6D4B\u5230\u5E76\u53D1\u51B2\u7A81")),this.events.onerror=()=>{this.dirty||window.LiveDotApp?.setStatus("offline","\u4E8B\u4EF6\u8FDE\u63A5\u5DF2\u65AD\u5F00\uFF0C\u6B63\u5728\u91CD\u8FDE")}}async onRevision(e){let t={};try{t=JSON.parse(String(e.data))}catch{return}if(String(t.sessionId??"")===this.sessionId)return;let s=Number(t.revision??0);if(!(!s||s<=this.revision)){if(this.dirty){window.LiveDotApp?.setStatus("conflict","\u5916\u90E8\u4FEE\u6539\u4E0E\u672C\u5730\u8349\u7A3F\u540C\u65F6\u5B58\u5728");return}try{let n=await this.request("/api/v1/snapshot"),i=n.document??n.map;if(!i)return;this.revision=Number(n.revision??i.revision),this.lastDocument=structuredClone(i),window.LiveDotApp?.load(i),window.LiveDotApp?.setStatus("saved",`revision ${this.revision}\uFF0C\u5DF2\u540C\u6B65 Agent \u4FEE\u6539`)}catch(n){window.LiveDotApp?.setStatus("error",n instanceof Error?n.message:"\u540C\u6B65 Agent \u4FEE\u6539\u5931\u8D25")}}}async request(e,t={}){let s={};t.body!==void 0&&(s["Content-Type"]="application/json"),this.csrf&&t.method&&t.method!=="GET"&&(s["X-CSRF-Token"]=this.csrf),t.token&&(s.Authorization=`Bearer ${t.token}`);let n=await fetch(`${this.origin}${e}`,{method:t.method??"GET",headers:s,credentials:"include",body:t.body===void 0?void 0:JSON.stringify(t.body)}),i=await n.json().catch(()=>({}));if(!n.ok){let o=i.error;throw Object.assign(new Error(String(o?.message??`HTTP ${n.status}`)),{status:n.status,code:o?.code,details:o?.details})}return i}},d=new l;window.LiveDotBridge=d;document.querySelector("#agent-status-refresh")?.addEventListener("click",()=>void d.refreshAgentStatus());window.addEventListener("beforeunload",r=>{!d.active||!d.dirty||(r.preventDefault(),r.returnValue="")});d.initialize();})();
+</script>
+<script nonce="TqeVAoHaXETEE8Xg7DIaKD7S" data-dotmap-runtime="v2">"use strict";(()=>{var L=2,Y=["routes","nodes","edges","anns"],k=/^[A-Za-z][A-Za-z0-9._:-]{0,127}$/,R=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,ie=new Set(["__proto__","prototype","constructor"]),H=80,ae=4e3;function X(e){return structuredClone(e)}function ce(e){let t=e?new Date(e):new Date;if(Number.isNaN(t.getTime()))throw w("INVALID_TIME",400,"\u65F6\u95F4\u683C\u5F0F\u65E0\u6548");return t.toISOString()}function O(e,t){if(typeof e!="string")return t;let r=new Date(e.length===10?`${e}T00:00:00.000Z`:e);return Number.isNaN(r.getTime())?t:r.toISOString()}function le(e){let t=2166136261;for(let r=0;r<e.length;r+=1)t^=e.charCodeAt(r),t=Math.imul(t,16777619);return(t>>>0).toString(36)}function w(e,t,r,n){return Object.assign(new Error(r),{code:e,status:t,details:n})}function b(e,t){if(!e||typeof e!="object"||Array.isArray(e))throw w("INVALID_COMMAND",400,`${t} \u5FC5\u987B\u662F\u5BF9\u8C61`);let r={};for(let[n,s]of Object.entries(e)){if(ie.has(n))throw w("INVALID_KEY",400,`\u7981\u6B62\u5B57\u6BB5 ${n}`);r[n]=X(s)}return r}function J(e,t){if(!k.test(t))throw w("INVALID_ID",400,"\u5BF9\u8C61 ID \u65E0\u6548");return e==="nodes"?`.live-dot-map/nodes/${t}.md`:`.live-dot-map/routes/${t}.md`}function _(e,t,r){let n=b(e,r),s=O(n.createdAt,t),u=O(n.updatedAt,s),o={...n,createdAt:s,updatedAt:u,createdBy:typeof n.createdBy=="string"?n.createdBy:"migration",updatedBy:"migration",updatedRevision:0};return r==="nodes"&&F(n.milestone)&&(o.milestone={...n.milestone,createdBy:typeof n.milestone.createdBy=="string"?n.milestone.createdBy:"migration",updatedBy:"migration",updatedAt:u,updatedRevision:0}),r==="anns"&&(o.source=typeof n.source=="string"?n.source:"migration",o.priority=typeof n.priority=="string"?n.priority:"normal",o.attention="new",o.acknowledgements=Array.isArray(n.acknowledgements)?X(n.acknowledgements):[],o.legacyReview=!0),o}function K(e,t={}){let r=b(e,"map.json");if(r.version!==1)throw w("UNSUPPORTED_VERSION",409,`\u53EA\u80FD\u8FC1\u79FB version 1\uFF0C\u6536\u5230 ${String(r.version)}`);let n=ce(t.now),s=O(r.createdAt??r.updatedAt,n),u=O(r.updatedAt,s),o=typeof r.mapId=="string"&&k.test(r.mapId)?r.mapId:`map-${le(`${String(r.name??"\u672A\u547D\u540D\u5730\u56FE")}:${s}`)}`,i={...r,mapId:o,version:L,revision:0,lastEventId:0,name:String(r.name??"\u672A\u547D\u540D\u5730\u56FE").slice(0,H),createdAt:s,updatedAt:u,migration:{from:1,migratedAt:n,actor:"migration"},view:b(r.view??{x:0,y:0,k:1},"view"),ui:b(r.ui??{},"ui"),counters:b(r.counters??{},"counters"),routes:(Array.isArray(r.routes)?r.routes:[]).map(c=>_(c,u,"routes")),nodes:(Array.isArray(r.nodes)?r.nodes:[]).map(c=>_(c,u,"nodes")),edges:(Array.isArray(r.edges)?r.edges:[]).map(c=>_(c,u,"edges")),anns:(Array.isArray(r.anns)?r.anns:[]).map(c=>_(c,u,"anns"))},a=V(i);if(!a.ok)throw w("MIGRATION_INVALID",422,"v1 \u6570\u636E\u65E0\u6CD5\u5B89\u5168\u8FC1\u79FB",a.errors);return i}function F(e){return!!e&&typeof e=="object"&&!Array.isArray(e)}function de(e,t,r,n){return F(e)?(typeof e.id!="string"||!k.test(e.id)?n.push(`${t}.id \u65E0\u6548`):r.has(e.id)?n.push(`\u91CD\u590D id: ${e.id}`):r.add(e.id),(typeof e.createdAt!="string"||!R.test(e.createdAt))&&n.push(`${t}.createdAt \u5FC5\u987B\u662F\u6BEB\u79D2 UTC`),(typeof e.updatedAt!="string"||!R.test(e.updatedAt))&&n.push(`${t}.updatedAt \u5FC5\u987B\u662F\u6BEB\u79D2 UTC`),typeof e.updatedBy!="string"&&n.push(`${t}.updatedBy \u7F3A\u5931`),e.createdBy!==void 0&&typeof e.createdBy!="string"&&n.push(`${t}.createdBy \u65E0\u6548`),(!Number.isInteger(e.updatedRevision)||Number(e.updatedRevision)<0)&&n.push(`${t}.updatedRevision \u65E0\u6548`),!0):(n.push(`${t} \u5FC5\u987B\u662F\u5BF9\u8C61`),!1)}function V(e){let t=[];if(!F(e))return{ok:!1,errors:["map.json \u5FC5\u987B\u662F\u5BF9\u8C61"]};if(e.version!==L)return{ok:!1,readOnly:!0,errors:[`\u4E0D\u652F\u6301 schema version ${String(e.version)}`]};(typeof e.mapId!="string"||!k.test(e.mapId))&&t.push("mapId \u65E0\u6548"),(!Number.isInteger(e.revision)||Number(e.revision)<0)&&t.push("revision \u65E0\u6548"),(!Number.isInteger(e.lastEventId)||Number(e.lastEventId)<0)&&t.push("lastEventId \u65E0\u6548"),(typeof e.name!="string"||e.name.length>H)&&t.push("name \u65E0\u6548\u6216\u8FC7\u957F"),(typeof e.createdAt!="string"||!R.test(e.createdAt))&&t.push("createdAt \u5FC5\u987B\u662F\u6BEB\u79D2 UTC"),(typeof e.updatedAt!="string"||!R.test(e.updatedAt))&&t.push("updatedAt \u5FC5\u987B\u662F\u6BEB\u79D2 UTC"),F(e.view)||t.push("view \u5FC5\u987B\u662F\u5BF9\u8C61"),F(e.ui)||t.push("ui \u5FC5\u987B\u662F\u5BF9\u8C61"),F(e.counters)||t.push("counters \u5FC5\u987B\u662F\u5BF9\u8C61");let r=new Set,n={routes:[],nodes:[],edges:[],anns:[]};for(let o of Y){let i=e[o];if(!Array.isArray(i)){t.push(`${o} \u5FC5\u987B\u662F\u6570\u7EC4`);continue}if(i.length>1e5){t.push(`${o} \u8D85\u8FC7\u5BF9\u8C61\u4E0A\u9650`);continue}for(let a=0;a<i.length;a+=1)de(i[a],`${o}[${a}]`,r,t)&&n[o].push(i[a])}let s=new Set(n.nodes.map(o=>String(o.id))),u=new Set(n.routes.map(o=>String(o.id)));for(let[o,i]of n.edges.entries())s.has(String(i.from))||t.push(`edges[${o}].from \u5F15\u7528\u4E0D\u5B58\u5728`),i.to!==null&&!s.has(String(i.to))&&t.push(`edges[${o}].to \u5F15\u7528\u4E0D\u5B58\u5728`),["success","failed","pending"].includes(String(i.status))||t.push(`edges[${o}].status \u65E0\u6548`),i.route!==null&&i.route!==void 0&&!u.has(String(i.route))&&t.push(`edges[${o}].route \u5F15\u7528\u4E0D\u5B58\u5728`),i.score!==void 0&&(!Number.isInteger(i.score)||Number(i.score)<0||Number(i.score)>100)&&t.push(`edges[${o}].score \u65E0\u6548`);for(let[o,i]of n.nodes.entries())if(i.route!==null&&i.route!==void 0&&!u.has(String(i.route))&&t.push(`nodes[${o}].route \u5F15\u7528\u4E0D\u5B58\u5728`),i.milestone!==void 0){let a=i.milestone;!F(a)||!["pending","approved","changes_requested"].includes(String(a.status))?t.push(`nodes[${o}].milestone \u65E0\u6548`):(a.origin!==void 0&&!["human_created","agent_created"].includes(String(a.origin))&&t.push(`nodes[${o}].milestone.origin \u65E0\u6548`),a.level!==void 0&&!["project","route","work"].includes(String(a.level))&&t.push(`nodes[${o}].milestone.level \u65E0\u6548`),a.createdBy!==void 0&&typeof a.createdBy!="string"&&t.push(`nodes[${o}].milestone.createdBy \u65E0\u6548`),a.updatedBy!==void 0&&typeof a.updatedBy!="string"&&t.push(`nodes[${o}].milestone.updatedBy \u65E0\u6548`))}for(let[o,i]of n.anns.entries()){(typeof i.text!="string"||i.text.length>ae)&&t.push(`anns[${o}].text \u65E0\u6548\u6216\u8FC7\u957F`),["new","delivered","acknowledged","resolved"].includes(String(i.attention))||t.push(`anns[${o}].attention \u65E0\u6548`);let a=i.target;!F(a)||!["node","edge","canvas"].includes(String(a.kind))?t.push(`anns[${o}].target \u65E0\u6548`):a.kind==="node"&&!s.has(String(a.id))?t.push(`anns[${o}] \u8282\u70B9\u76EE\u6807\u4E0D\u5B58\u5728`):a.kind==="edge"&&!n.edges.some(c=>c.id===a.id)&&t.push(`anns[${o}] \u65B9\u6848\u76EE\u6807\u4E0D\u5B58\u5728`)}return{ok:t.length===0,errors:t}}var he=L;var x=J,ge=V,Ee=K;var S=Object.freeze({BRIDGE:"bridge",FILESYSTEM:"filesystem",DRAFT:"draft",EXPORT:"export"}),h=Object.freeze({IDLE:"idle",DRAFT:"draft",DIRTY:"dirty",SAVING:"saving",SYNCED:"synced",CONFLICT:"conflict",ERROR:"error",DEGRADED:"degraded",CLOSED:"closed"}),pe=/[<>:"/\\|?*\u0000-\u001f]/;function me(e,t={}){let{collection:r,id:n,preferStable:s=!1}=t;if(s&&(r==="nodes"||r==="edges")&&typeof n=="string")try{return x(r,n)}catch{}if(e==null||e==="")return(r==="nodes"||r==="edges")&&typeof n=="string"?x(r,n):null;if(typeof e!="string")throw new TypeError("Markdown \u8DEF\u5F84\u5FC5\u987B\u662F\u5B57\u7B26\u4E32");let u=e.replace(/\\/g,"/");if(u.startsWith("./live-dot-map/")?u=`.live-dot-map/${u.slice(15)}`:u=u.replace(/^\.\//,""),u.includes("\0"))throw new Error("Markdown \u8DEF\u5F84\u5305\u542B\u975E\u6CD5\u5B57\u7B26");if(!u||u.startsWith("/")||/^[A-Za-z]:\//.test(u))throw new Error("Markdown \u8DEF\u5F84\u5FC5\u987B\u4F4D\u4E8E\u9879\u76EE\u76EE\u5F55\u5185");let o=u.split("/").filter(Boolean);if(o.some(i=>i===".."||i==="."))throw new Error("Markdown \u8DEF\u5F84\u4E0D\u80FD\u5305\u542B . \u6216 ..");if(o.some(i=>pe.test(i)))throw new Error("Markdown \u8DEF\u5F84\u5305\u542B\u975E\u6CD5\u5B57\u7B26");return u.startsWith("nodes/")?u=`.live-dot-map/${u}`:u.startsWith("routes/")?u=`.live-dot-map/${u}`:u.startsWith("live-dot-map/")?u=`.${u}`:!u.startsWith(".live-dot-map/")&&!u.startsWith("docs/")&&(u=`docs/${u}`),u}function M(e){if(!e||typeof e!="object")return e;let t=typeof structuredClone=="function"?structuredClone(e):JSON.parse(JSON.stringify(e));for(let r of["nodes","edges"])if(Array.isArray(t[r])){for(let n of t[r])if(!(!n||typeof n!="object"))try{n.md=me(n.md,{collection:r,id:n.id,preferStable:!0})}catch{try{n.md=x(r,String(n.id))}catch{delete n.md}}}return t}function P(e){let t=new WeakSet,r=n=>{if(n===null||typeof n!="object")return n;if(t.has(n))throw new TypeError("\u65E0\u6CD5\u5BF9\u5FAA\u73AF\u6570\u636E\u8BA1\u7B97\u6458\u8981");t.add(n);let s;return Array.isArray(n)?s=n.map(r):s=Object.keys(n).sort().reduce((u,o)=>(u[o]=r(n[o]),u),{}),t.delete(n),s};return JSON.stringify(r(e))}function C(e){let t=typeof e=="string"?e:P(e),r=2166136261;for(let n=0;n<t.length;n+=1)r^=t.charCodeAt(n),r=Math.imul(r,16777619);return(r>>>0).toString(16).padStart(8,"0")}function z(e){if(!e||typeof e!="object")throw new TypeError("\u5730\u56FE\u5FC5\u987B\u662F\u5BF9\u8C61");let t=M(e);if(t.version===he)return t;if(t.version===1)try{return Ee(t)}catch{return t}return t}function q(e){let t=z(e);return{...ge(t),document:t}}var U=()=>{};function ye(e){let t=new Map,r=e??globalThis.localStorage;return{get(n){try{return r?.getItem?.(n)??t.get(n)??null}catch{return t.get(n)??null}},set(n,s){t.set(n,s);try{r?.setItem?.(n,s)}catch{}},remove(n){t.delete(n);try{r?.removeItem?.(n)}catch{}}}}function Ae(e={}){let t=`${e.namespace??"live-dot-map"}:${e.key??"draft"}`,r=ye(e.storage);return{key:t,load(){let n=r.get(t);if(!n)return null;try{return JSON.parse(n)}catch{return r.remove(t),null}},save(n,s={}){let u={schema:1,savedAt:new Date().toISOString(),hash:C(n),metadata:{...s},document:n};return r.set(t,P(u)),u},clear(){r.remove(t)}}}function Se(e,t){let r=t&&typeof t.message=="string"?t.message:`\u8BF7\u6C42\u5931\u8D25 (${e.status})`,n=new Error(r.slice(0,240));return n.status=e.status,n.code=typeof t?.code=="string"?t.code:"HTTP_ERROR",n.details=t?.details,n}function De(e={}){let t=String(e.baseUrl??"").replace(/\/$/,""),r=e.fetchImpl??globalThis.fetch,n=Math.max(1e3,Number(e.timeoutMs)||15e3),s=e.endpoint??"/api/map/commands";return r?{async send(u,o={}){let i=new AbortController,a=o.signal,c=setTimeout(()=>i.abort("timeout"),o.timeoutMs??n);a&&(a.aborted?i.abort(a.reason):a.addEventListener("abort",()=>i.abort(a.reason),{once:!0}));try{let m=await r(`${t}${s}`,{method:"POST",headers:{"content-type":"application/json",accept:"application/json"},body:JSON.stringify(u),signal:i.signal,credentials:o.credentials??"same-origin"}),g=null;try{g=await m.json()}catch{}if(!m.ok)throw Se(m,g);return g??{ok:!0}}catch(m){if(m?.name==="AbortError"||i.signal.aborted){let g=new Error("\u6865\u63A5\u8BF7\u6C42\u8D85\u65F6");throw g.code="BRIDGE_TIMEOUT",g.cause=m,g}throw m}finally{clearTimeout(c)}}}:{send:async()=>{throw new Error("\u5F53\u524D\u6D4F\u89C8\u5668\u6CA1\u6709 fetch\uFF0C\u6865\u63A5\u4E0D\u53EF\u7528")}}}function Ie(e={}){let t=e.eventSourceFactory??globalThis.EventSource,r=e.url,n=null,s=!1,u=null,o=e.lastEventId??null,i=e.onCommand??U,a=e.onError??U,c=Math.max(500,Number(e.retryMs)||3e3),m=()=>{if(s||!r||!t)return null;try{let g=String(r).includes("?")?"&":"?",I=o===null?String(r):`${r}${g}lastEventId=${encodeURIComponent(o)}`;return n=new t(I,e.eventSourceOptions),n.onmessage=d=>{d?.lastEventId&&(o=d.lastEventId);try{i(typeof d?.data=="string"?JSON.parse(d.data):d?.data)}catch(y){a(Object.assign(new Error("\u6865\u63A5\u4E8B\u4EF6\u683C\u5F0F\u65E0\u6548"),{code:"INVALID_SSE_EVENT",cause:y}))}},n.onerror=d=>{a(Object.assign(new Error("\u6865\u63A5\u8FDE\u63A5\u4E2D\u65AD"),{code:"SSE_ERROR",cause:d})),!s&&u===null&&(u=setTimeout(()=>{u=null,m()},c))},n}catch(g){return a(Object.assign(new Error("\u65E0\u6CD5\u5EFA\u7ACB\u6865\u63A5\u8FDE\u63A5"),{code:"SSE_CONNECT_ERROR",cause:g})),null}};return{connect:m,close(){s=!0,u!==null&&clearTimeout(u),u=null,n?.close?.(),n=null},get connected(){return!!n},get lastEventId(){return o}}}function Be(e){return e.mode?e.mode:e.bridgeUrl&&typeof(e.eventSourceFactory??globalThis.EventSource)=="function"?S.BRIDGE:e.hasFileSystemAccess??"showDirectoryPicker"in globalThis?S.FILESYSTEM:S.DRAFT}function Z(e={}){let t=new Map,r=e.draftStore??Ae({key:e.draftKey??"map"}),n=Be(e),s={mode:n,status:n===S.DRAFT?h.DRAFT:h.IDLE,dirty:!1,revision:Number.isInteger(e.revision)?e.revision:0,baselineHash:e.baselineHash??null,error:null,conflict:null},u=!1,o=null,i=null,a=(l,f)=>{for(let A of t.get(l)??[])try{A(f,{...s})}catch{}},c=(l,f="status")=>{Object.assign(s,l),a(f,{...s})},m=(l,f)=>{let A=t.get(l)??new Set;return A.add(f),t.set(l,A),()=>A.delete(f)},g=(l="edit")=>{u||(c({dirty:!0,status:h.DIRTY,error:null},"status"),a("dirty",{reason:l}))},I=()=>c({status:h.SAVING,error:null},"status"),d=(l={})=>c({dirty:!1,status:h.SYNCED,error:null,conflict:null,...l},"status"),y=(l,f={})=>{let A=l instanceof Error?l:new Error(String(l));c({status:h.ERROR,error:A,...f},"error"),a("status",{...s})},E=(l={})=>{c({status:h.CONFLICT,dirty:!0,conflict:{...l}},"conflict")},p=(l,f={})=>{let A=r.save(l,{mode:n,...f});return c({status:s.dirty?h.DIRTY:h.DRAFT},"status"),a("draft",A),A},B=()=>r.load(),ue=()=>{r.clear(),a("draft-cleared")},oe=(l,f)=>{let A=typeof l=="string"?l:C(l);return c({baselineHash:A,revision:Number.isInteger(f)?f:s.revision},"status"),A},W=(l={})=>{let f=Number.isInteger(l.revision)&&Number.isInteger(s.revision)&&l.revision!==s.revision,A=!!(l.hash&&s.baselineHash&&l.hash!==s.baselineHash);return f||A?(E({expectedRevision:s.revision,receivedRevision:l.revision,expectedHash:s.baselineHash,receivedHash:l.hash}),!1):!0};return{get state(){return{...s}},get mode(){return s.mode},on:m,markDirty:g,markSaving:I,markSaved:d,markError:y,markConflict:E,saveDraft:p,loadDraft:B,clearDraft:ue,setBaseline:oe,assertBase:W,connectBridge:(l={})=>!l.url&&!e.bridgeUrl?!1:l.eventSourceFactory??e.eventSourceFactory??globalThis.EventSource?(o?.close?.(),o=Ie({url:l.url??e.bridgeUrl,eventSourceFactory:l.eventSourceFactory??e.eventSourceFactory,onCommand:f=>a("command",f),onError:f=>y(f,{status:h.DEGRADED}),retryMs:l.retryMs??e.retryMs}),o.connect(),i=De({baseUrl:l.baseUrl??e.bridgeUrl,fetchImpl:l.fetchImpl??e.fetchImpl}),c({mode:S.BRIDGE,status:h.IDLE},"status"),!0):(c({mode:S.DRAFT,status:h.DEGRADED},"status"),!1),sendCommand:async l=>{if(!i)throw new Error("\u5C1A\u672A\u8FDE\u63A5\u6865\u63A5\u670D\u52A1");if(!W({revision:l?.baseRevision}))throw Object.assign(new Error("\u5730\u56FE\u5DF2\u53D1\u751F\u51B2\u7A81\uFF0C\u8BF7\u5148\u5237\u65B0"),{code:"CONFLICT"});I();try{let f=await i.send(l);return c({revision:Number.isInteger(f?.revision)?f.revision:s.revision},"status"),d(),f}catch(f){throw f?.status===409||f?.code==="CONFLICT"?E({error:f}):y(f),f}},installCloseWarning:(l=globalThis)=>{if(!l?.addEventListener)return U;let f=A=>{if(!(!s.dirty&&s.status!==h.CONFLICT))return A.preventDefault(),A.returnValue="\u8FD8\u6709\u672A\u540C\u6B65\u7684\u5730\u56FE\u6539\u52A8",A.returnValue};return l.addEventListener("beforeunload",f),()=>l.removeEventListener?.("beforeunload",f)},close:()=>{u=!0,o?.close?.(),o=null,c({status:h.CLOSED},"status")}}}function Q(e){return`${String(e?.from??"")}\0${String(e?.to??"")}`}var v=class{constructor(t=[]){this.groups=new Map,this.positions=new Map,this.rebuild(t)}rebuild(t=[]){this.groups.clear(),this.positions.clear();for(let r of t){if(!r||r.to===null||r.to===void 0)continue;let n=Q(r),s=this.groups.get(n)??[];s.push(r),this.groups.set(n,s)}for(let r of this.groups.values()){let n=[...r].sort((s,u)=>String(s.id).localeCompare(String(u.id)));n.forEach((s,u)=>this.positions.set(s.id,{index:u,count:n.length}))}return this}groupFor(t){return this.groups.get(Q(t))??[]}offsetFor(t,r=46){let n=this.positions.get(t?.id);return!n||n.count<2?0:(n.index-(n.count-1)/2)*r}};function ee(e){return!e||!Number.isFinite(Number(e.x))||!Number.isFinite(Number(e.y))?null:{x:Number(e.x),y:Number(e.y)}}function Fe(e,t,r,n=12){let s=ee(t?.get?.(e.from)??t?.[e.from]);if(!s)return[];let u=e.to===null||e.to===void 0?{x:s.x+Number(e.dx??160),y:s.y+Number(e.dy??0)}:ee(t?.get?.(e.to)??t?.[e.to]);if(!u)return[s];let o=Math.max(2,Math.min(64,Math.floor(n))),i=r?.offsetFor(e)??0,a=u.x-s.x,c=u.y-s.y,m=Math.hypot(a,c)||1,g={x:-c/m*i,y:a/m*i},I={x:(s.x+u.x)/2+g.x+Number(e.cx??0),y:(s.y+u.y)/2+g.y+Number(e.cy??0)},d=[];for(let y=0;y<=o;y+=1){let E=y/o,p=1-E;d.push({x:p*p*s.x+2*p*E*I.x+E*E*u.x,y:p*p*s.y+2*p*E*I.y+E*E*u.y})}return d}function te(e,t){return`${e}:${t}`}function $(e,t,r){let n=Math.floor(e/r),s=Math.floor(t/r),u=[];for(let o=n;o<=s;o+=1)u.push(o);return u}function ve(e,t,r){let n=r.x-t.x,s=r.y-t.y,u=n*n+s*s;if(!u)return Math.hypot(e.x-t.x,e.y-t.y);let o=Math.max(0,Math.min(1,((e.x-t.x)*n+(e.y-t.y)*s)/u));return Math.hypot(e.x-(t.x+o*n),e.y-(t.y+o*s))}var T=class{constructor(t=[],r=new Map,n={}){this.cellSize=Math.max(16,Number(n.cellSize)||160),this.samples=Math.max(2,Number(n.samples)||12),this.cells=new Map,this.geometry=new Map,this.edges=new Map,this.parallel=n.parallelIndex??new v(t),this.rebuild(t,r)}rebuild(t=[],r=new Map){this.cells.clear(),this.geometry.clear(),this.edges.clear(),this.parallel instanceof v?this.parallel.rebuild(t):this.parallel=new v(t);for(let n of t){if(!n||n.id===void 0)continue;let s=Fe(n,r,this.parallel,this.samples);if(s.length===0)continue;this.edges.set(String(n.id),n),this.geometry.set(String(n.id),s);let u=s.map(i=>i.x),o=s.map(i=>i.y);for(let i of $(Math.min(...u),Math.max(...u),this.cellSize))for(let a of $(Math.min(...o),Math.max(...o),this.cellSize)){let c=te(i,a),m=this.cells.get(c)??new Set;m.add(String(n.id)),this.cells.set(c,m)}}return this}queryRect(t,r={}){let n=Math.min(Number(t?.x??0),Number(t?.x??0)+Number(t?.width??0)),s=Math.max(Number(t?.x??0),Number(t?.x??0)+Number(t?.width??0)),u=Math.min(Number(t?.y??0),Number(t?.y??0)+Number(t?.height??0)),o=Math.max(Number(t?.y??0),Number(t?.y??0)+Number(t?.height??0)),i=new Set;for(let c of $(n,s,this.cellSize))for(let m of $(u,o,this.cellSize))for(let g of this.cells.get(te(c,m))??[])i.add(g);let a=[];for(let c of i)(this.geometry.get(c)??[]).some(g=>g.x>=n&&g.x<=s&&g.y>=u&&g.y<=o)&&a.push(this.edges.get(c));return a.filter(Boolean)}queryPoint(t,r=18){let n=Number(t?.x??0),s=Number(t?.y??0);return this.queryRect({x:n-r,y:s-r,width:r*2,height:r*2}).map(o=>{let i=this.geometry.get(String(o.id))??[],a=1/0;for(let c=1;c<i.length;c+=1)a=Math.min(a,ve({x:n,y:s},i[c-1],i[c]));return{edge:o,distance:a}}).filter(o=>o.distance<=r).sort((o,i)=>o.distance-i.distance).map(o=>o.edge)}};function re(e,t,r={}){let n=t instanceof Map?t:new Map((t??[]).map(s=>[s.id,s]));return new T(e??[],n,r)}function ne(e,t={},r=240){let n=Number(e?.width??e?.clientWidth??0),s=Number(e?.height??e?.clientHeight??0),u=Math.max(.001,Number(t.k??1)),o=Number(t.x??0),i=Number(t.y??0),a=Number(r)/u;return{x:-o/u-a,y:-i/u-a,width:n/u+a*2,height:s/u+a*2}}function se(e,t,r=0){if(!Array.isArray(e))return[];let n=Number(t?.x??0)-r,s=Number(t?.y??0)-r,u=n+Number(t?.width??0)+r*2,o=s+Number(t?.height??0)+r*2;return e.filter(i=>i&&i.x>=n&&i.x<=u&&i.y>=s&&i.y<=o)}var we=Object.freeze({[h.IDLE]:"\u5F85\u540C\u6B65",[h.DRAFT]:"\u672C\u5730\u8349\u7A3F",[h.DIRTY]:"\u6709\u672A\u540C\u6B65\u6539\u52A8",[h.SAVING]:"\u540C\u6B65\u4E2D",[h.SYNCED]:"\u5DF2\u540C\u6B65",[h.CONFLICT]:"\u5B58\u5728\u51B2\u7A81",[h.ERROR]:"\u540C\u6B65\u9519\u8BEF",[h.DEGRADED]:"\u964D\u7EA7\u6A21\u5F0F",[h.CLOSED]:"\u5DF2\u5173\u95ED"}),Ce=Object.freeze({[S.BRIDGE]:"\u6865\u63A5",[S.FILESYSTEM]:"\u6587\u4EF6\u5939",[S.DRAFT]:"\u8349\u7A3F",[S.EXPORT]:"\u5BFC\u51FA"});function j(e){try{return globalThis[e]}catch{return}}function Ne(e){if(!e?.createElement)return null;let t=e.querySelector?.("[data-dotmap-sync]");if(t)return t;let r=e.createElement("span");r.dataset.dotmapSync="true",r.setAttribute("role","status"),r.style.cssText=["position:fixed","right:16px","bottom:14px","z-index:80","display:inline-flex","align-items:center","gap:6px","padding:5px 9px","border:1px solid rgba(70,64,58,.18)","border-radius:999px","background:rgba(255,253,248,.92)","color:#5b554e","font:12px/1.2 system-ui,sans-serif","box-shadow:0 2px 12px rgba(50,40,30,.08)","pointer-events:none"].join(";");let n=e.createElement("i");n.setAttribute("aria-hidden","true"),n.style.cssText="width:7px;height:7px;border-radius:50%;background:#a59b91;display:inline-block;flex:none";let s=e.createElement("span");return r.append(n,s),(e.body??e.documentElement)?.appendChild(r),r._dot=n,r._text=s,r}function D(e,t){if(!e)return;let r=t?.status??h.IDLE,n=t?.mode??S.DRAFT,s=`${Ce[n]??n} \xB7 ${we[r]??r}`;e._text?e._text.textContent=s:e.textContent=s;let u={[h.SYNCED]:"#4f8d65",[h.SAVING]:"#b48528",[h.DIRTY]:"#b48528",[h.CONFLICT]:"#b64a45",[h.ERROR]:"#b64a45",[h.DEGRADED]:"#8e6d29"};e._dot&&(e._dot.style.background=u[r]??"#a59b91"),e.title=t?.error?.message?String(t.error.message).slice(0,240):s}function be(e={}){if(e.bridgeUrl)return String(e.bridgeUrl);try{let t=new URL(globalThis.location?.href??"").searchParams.get("bridge");if(!t)return null;let r=new URL(t,globalThis.location?.href);return["http:","https:"].includes(r.protocol)?r.toString():null}catch{return null}}function xe(e){let t=j("requestAnimationFrame");return typeof t=="function"?t(e):setTimeout(e,16)}function N(e,t){let r=j(e);if(typeof r!="function"||r.__dotmapV2Wrapped)return null;let n=t(r);if(typeof n!="function")return null;Object.defineProperty(n,"__dotmapV2Wrapped",{value:!0}),Object.defineProperty(n,"__dotmapV2Original",{value:r});try{globalThis[e]=n}catch{return null}return n}function G(){let e=j("serialize");if(typeof e!="function")return null;try{let t=e();return typeof t=="string"?JSON.parse(t):t&&typeof t=="object"?t:null}catch{return null}}function Me(e={}){if(e.coalesceRender===!1)return null;let t=!1,r=[];return N("render",n=>function(...u){r=u,!t&&(t=!0,xe(()=>{t=!1;let o=r;r=[],n.apply(this,o)}))})}function Te(e,t){let r=globalThis;if(!r?.addEventListener)return()=>{};let n=u=>{let o=u?.error?.message??u?.message??"\u9875\u9762\u811A\u672C\u53D1\u751F\u9519\u8BEF";e.markError(new Error(String(o).slice(0,240))),D(t,e.state)},s=u=>{let o=u?.reason,i=o?.message??o??"\u5F02\u6B65\u64CD\u4F5C\u5931\u8D25";e.markError(new Error(String(i).slice(0,240))),D(t,e.state)};return r.addEventListener("error",n),r.addEventListener("unhandledrejection",s),()=>{r.removeEventListener?.("error",n),r.removeEventListener?.("unhandledrejection",s)}}function _e(e={}){if(globalThis.__DOTMAP_V2?.version===2)return globalThis.__DOTMAP_V2;let t=be(e),r=Z({...e,bridgeUrl:t,eventSourceFactory:e.eventSourceFactory,hasFileSystemAccess:e.hasFileSystemAccess??"showDirectoryPicker"in globalThis}),n=j("document"),s=e.badge===!1||globalThis.LiveDotBridge?null:Ne(n);D(s,r.state);let u=new Set,o=!1,i=null,a=()=>{i!==null&&clearTimeout(i),i=setTimeout(()=>{i=null;let d=G();if(d){try{let y=M(d),E=q(y);r.saveDraft(y,{sourceVersion:y.version,migrated:E.document?.version!==y.version,valid:E.ok,hash:C(y)})}catch(y){r.markError(y)}D(s,r.state)}},Math.max(80,Number(e.draftDebounceMs)||320)),u.add(i)},c=d=>{r.markDirty(d),a(),D(s,r.state)};N("serialize",d=>function(...E){let p=d.apply(this,E);return!p||typeof p!="object"?p:M(p)});for(let d of["pushHistory","undo","redo","addNodeAt","addEdge","addAnnotation"])N(d,y=>function(...p){let B=y.apply(this,p);return c(d),B});N("deserialize",d=>function(...E){let p=d.apply(this,E),B=E[0];return B&&typeof B=="object"&&r.setBaseline(B,Number.isInteger(B.revision)?B.revision:0),r.clearDraft(),r.markSaved(),D(s,r.state),p}),N("writeMapNow",d=>async function(...E){r.markSaving(),D(s,r.state);try{let p=await d.apply(this,E);return r.markSaved({mode:S.FILESYSTEM}),D(s,r.state),p}catch(p){throw r.markError(p),D(s,r.state),p}}),N("exportMap",d=>function(...E){let p=d.apply(this,E);return r.markSaved({mode:S.EXPORT}),D(s,r.state),p}),Me(e),r.on("status",()=>D(s,r.state)),r.on("error",()=>D(s,r.state)),r.on("conflict",()=>D(s,r.state)),r.installCloseWarning(globalThis);let m=Te(r,s);n?.addEventListener&&n.addEventListener("dotmap:state-changed",d=>c(d?.detail?.reason??"event")),t&&(r.connectBridge({url:t}),D(s,r.state));let g=G();g&&r.setBaseline(g,Number.isInteger(g.revision)?g.revision:0);let I={version:2,sync:r,badge:s,captureState:G,scheduleDraft:a,normalizeMap:z,canonicalizeMarkdownFields:M,stableMarkdownPath:x,stableHash:C,createParallelIndex:d=>new v(d),createEdgeIndex:re,EdgeSpatialIndex:T,visibleWorldBounds:ne,cullPoints:se,close(){if(!o){o=!0,i!==null&&clearTimeout(i);for(let d of u)clearTimeout(d);m(),r.close(),D(s,r.state)}}};return globalThis.__DOTMAP_V2=I,I}typeof globalThis.document<"u"&&_e();})();
 </script>
 </body>
 </html>
