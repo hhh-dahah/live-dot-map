@@ -242,6 +242,13 @@
 - **腾讯系候选适配器（2026-08-12）**：依据 CodeBuddy 官方插件/Hook 文档新增 `.codebuddy-plugin` 与 `.workbuddy-plugin` 双 manifest、`.mcp.json`、`SessionStart/UserPromptSubmit/Stop` hooks、安装器可选探测和图形化信任提示；未发现腾讯系客户端时不污染普通用户的默认三行 Agent 状态。新增安装器单测与 `agent-cycle` 的 `codebuddy` 协议模拟闭环；这不是腾讯真实客户端证据，正式支持仍未勾选。
 - **Claude 真实客户端再诊断（2026-08-12）**：不输出凭据的 API 探针返回 `429 API_KEY_QUOTA_EXHAUSTED`，确认 2.1.223 的 180 秒空转来自当前自定义 API 端点额度耗尽，不是地图桥错误；未修改用户全局 Claude 配置，也不把模拟闭环当真实通过。额度恢复后应重跑 `node tests/e2e/real-client-smoke.mjs claude`。
 
+## 上线计划分发旁路复核（2026-08-12，Codex）
+
+- 更新 `docs/plans/8-12上线plan.md`：将上线前工作明确拆成“产品与协作线”和“分发线”。本地桥、画布、协议、自动测试和受控 RC 不等待 Store、代码签名、EdgeOne 或 CloudBase；分发源失败只阻断对应公开渠道。
+- 计划状态同步为：Codex/Kimi 已有真实 CLI 临时项目证据；Claude 因当前自定义端点 `429 API_KEY_QUOTA_EXHAUSTED` 未完成；腾讯系适配器仍为候选包，未宣称真实支持；Cloudflare 三件套已通过 200/hash，EdgeOne 与 CloudBase 仍旧版。
+- 本次只改计划与执行记录，没有修改产品代码、安装器、部署产物或用户项目数据。
+- 文档校验：`git diff --check` 通过；工作树变化仅为 `docs/plans/8-12上线plan.md` 与本条 `implement.md` 记录。
+
 ### 里程碑语义修正后的复验（2026-08-12）
 
 - Agent 创建或更新里程碑为 `approved` 的单测通过，来源仍固定为 `agent_created`，且 `createdBy/updatedBy` 不可伪造。
