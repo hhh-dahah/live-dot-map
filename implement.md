@@ -234,6 +234,7 @@
 - 推送 `a9da809` 后 GitHub Actions 的 Cloudflare job 真实失败，原因是 `.deploy/livedot-bridge-win-x64.exe` 约 87.7MiB，超过 Workers Static Assets 单文件 25MiB 限制；CloudBase job 按未配置凭证规则跳过，不影响本地 RC。
 - 已在 `wrangler.toml` `[assets].exclude` 排除 Windows SEA 桥、SEA 临时文件和 `sea-manifest.json`。Windows 安装器、GitHub RC 物料和 `.deploy` 本地校验仍保留这些文件；网页部署只上传 `app.html`、`livedot.mjs`、`agent-kit/` 和 PWA 静态资源。
 - `npm run verify` 在该修复前后均通过（最新一次核心 70/70、浏览器/降级、性能、三适配器模拟、安装器 UI、SEA/release manifest 全部 `[verify] all gates passed`）。等待修复后的 Actions 成功后，再按三源 `200 + SHA-256` 结果更新上线计划，不把“流水线触发”当成上线证据。
+- 第二次 Action 证明 Wrangler 3.90 不识别 `[assets].exclude`，仍上传大文件；已撤回该字段，改为 `scripts/build-deploy-runtime.mjs` 自动生成 `.deploy/.assetsignore`，并保留同名构建产物。该路径兼容当前 Action 的 Wrangler 3 回退版本，等待第三次部署验证。
 
 ### 里程碑语义修正后的复验（2026-08-12）
 
