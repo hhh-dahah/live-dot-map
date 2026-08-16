@@ -1,0 +1,32 @@
+{
+  "mapId": "map-it63fn",
+  "version": 2,
+  "revision": 0,
+  "lastEventId": 0,
+  "name": "ui设计 html",
+  "createdAt": "2026-08-16T04:35:27.644Z",
+  "updatedAt": "2026-08-16T04:35:27.644Z",
+  "view": {
+    "x": 0,
+    "y": 0,
+    "k": 1
+  },
+  "ui": {
+    "showAnns": true,
+    "showRoutes": true,
+    "showNums": false,
+    "showFailed": true
+  },
+  "counters": {
+    "num": 1,
+    "edge": 1,
+    "ann": 1,
+    "nodeName": 1,
+    "edgeName": 1,
+    "routeName": 1
+  },
+  "routes": [],
+  "nodes": [],
+  "edges": [],
+  "anns": []
+}

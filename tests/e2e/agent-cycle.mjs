@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const RUNTIME = join(ROOT, 'livedot.mjs');
 const TEMPLATE = join(ROOT, 'agent-kit', 'map.template.json');
+const TEST_ROOT = resolve(process.env.LIVEDOT_TEST_ROOT || 'D:\\LiveDotMap-Test');
+await mkdir(TEST_ROOT, { recursive: true });
 
 function runHook(project, agent, event, input = '') {
   return new Promise((resolveRun, reject) => {
@@ -32,10 +33,15 @@ async function mcp(project, agent, calls) {
   });
   await request('initialize', {});
   const results = [];
-  for (const [name, args] of calls) {
+  for (const [name, args, expectedError] of calls) {
     const response = await request('tools/call', { name, arguments: args });
-    assert.equal(response.error, undefined, `${agent}/${name}: ${JSON.stringify(response.error)}`);
-    results.push(response.result.structuredContent);
+    if (expectedError) {
+      assert.equal(response.error?.data?.code, expectedError, `${agent}/${name}: ${JSON.stringify(response)}`);
+      results.push(response.error);
+    } else {
+      assert.equal(response.error, undefined, `${agent}/${name}: ${JSON.stringify(response.error)}`);
+      results.push(response.result.structuredContent);
+    }
   }
   child.stdin.end(); child.kill();
   return results;
@@ -43,7 +49,7 @@ async function mcp(project, agent, calls) {
 
 const results = [];
 for (const agent of ['codex', 'claude', 'kimi', 'codebuddy']) {
-  const project = await mkdtemp(join(tmpdir(), `livedot-agent-${agent}-`));
+  const project = await mkdtemp(join(TEST_ROOT, `livedot-agent-${agent}-`));
   try {
     const data = join(project, '.live-dot-map'); await mkdir(data, { recursive: true });
     const mapPath = join(data, 'map.json'); await cp(TEMPLATE, mapPath);
@@ -54,18 +60,23 @@ for (const agent of ['codex', 'claude', 'kimi', 'codebuddy']) {
     });
     await writeFile(mapPath, `${JSON.stringify(map, null, 2)}\n`);
     const started = await runHook(project, agent, 'session-start');
-    assert.deepEqual(started.deliveredIds, ['a-human-1']);
-    const [acked, applied] = await mcp(project, agent, [
+    assert.equal(started.hookSpecificOutput?.hookEventName, 'SessionStart');
+    const deliveredMap = JSON.parse(await readFile(mapPath, 'utf8'));
+    assert.equal(deliveredMap.anns[0].attention, 'delivered');
+    const [acked, applied, forgedActor] = await mcp(project, agent, [
       ['map_ack_human_updates', { ids: ['a-human-1'], summary: '已读取 a-human-1：先验证真实用户入口' }],
       ['map_apply_commands', { commands: [{ op: 'create', collection: 'nodes', value: { id: `n-${agent}`, num: '02', name: `${agent} 写回`, type: '结果', route: 'r1', x: 240, y: 0, md: `.live-dot-map/nodes/n-${agent}.md` } }] }],
+      ['map_apply_commands', { actor: 'human', commands: [{ op: 'update', collection: 'nodes', id: `n-${agent}`, patch: { archived: true } }] }, 'HUMAN_APPROVAL_REQUIRED'],
     ]);
     assert.ok(acked.revision >= 2);
     assert.ok(applied.revision > acked.revision);
+    assert.equal(forgedActor.data.code, 'HUMAN_APPROVAL_REQUIRED');
     const persisted = JSON.parse(await readFile(mapPath, 'utf8'));
     assert.equal(persisted.anns[0].attention, 'acknowledged');
     assert.equal(persisted.nodes.some((node) => node.id === `n-${agent}` && node.updatedBy === `agent:${agent}`), true);
     const stopped = await runHook(project, agent, 'stop');
-    assert.equal(stopped.collaborationClosed, true);
+    assert.equal(stopped.decision, undefined);
+    assert.equal(stopped.systemMessage, '地图闭环完成。');
     results.push({ agent, delivered: true, acknowledged: true, wroteBack: true, stopClosed: true, revision: persisted.revision });
   } finally { await rm(project, { recursive: true, force: true }); }
 }

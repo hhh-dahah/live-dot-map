@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "product": "live-dot-map",
+  "version": "2.0.0",
+  "channel": "internal-rc",
+  "files": {
+    "app.html": {
+      "bytes": 224234,
+      "sha256": "2b85088d494b8bb675a672afb748a1b49589330d6a5ebfe70d7badb31e3ca232",
+      "url": "payload/app.html"
+    },
+    "livedot-bridge-win-x64.exe": {
+      "bytes": 92125184,
+      "sha256": "174d58f8318aff782014984d27fcc4e0c8172d0c090a4fd1c1c31afdcc710ace",
+      "url": "payload/livedot-bridge-win-x64.exe"
+    },
+    "manifest.webmanifest": {
+      "bytes": 550,
+      "sha256": "aa41be332276032d399a3644c993aa9a5fc3bb24736d339d36bcfb9af1188439",
+      "url": "payload/manifest.webmanifest"
+    },
+    "sw.js": {
+      "bytes": 1870,
+      "sha256": "41ac0851be6cbbc0ddab6d98163669aebd668f161aa77e8bc8e59cb622bba73c",
+      "url": "payload/sw.js"
+    },
+    "favicon.ico": {
+      "bytes": 24645,
+      "sha256": "eab21d3e55f211882354435dde318e457079e98f7dc6d67cc111af15a01bc4bf",
+      "url": "payload/favicon.ico"
+    },
+    "icons/icon-192.png": {
+      "bytes": 9442,
+      "sha256": "320398900626d76a94465252c0607c4e50581716ed4661ff812d5797069ab8b4",
+      "url": "payload/icons/icon-192.png"
+    },
+    "icons/icon-512.png": {
+      "bytes": 27249,
+      "sha256": "5eaa4169f40fe375b270b73082c25263c1d8cfa5792621e8672b8e61de030834",
+      "url": "payload/icons/icon-512.png"
+    },
+    "assets/app-icon.ico": {
+      "bytes": 24645,
+      "sha256": "eab21d3e55f211882354435dde318e457079e98f7dc6d67cc111af15a01bc4bf",
+      "url": "payload/assets/app-icon.ico"
+    },
+    "agent-kit/skills/live-dot-map/SKILL.md": {
+      "bytes": 5482,
+      "sha256": "741782c897f7c3f84754d832576b0f84c91e476028083768e1848a23e7ceb132",
+      "url": "payload/agent-kit/skills/live-dot-map/SKILL.md"
+    },
+    "agent-kit/skills/live-dot-map/templates/attempt.md": {
+      "bytes": 290,
+      "sha256": "8c818cd96efdce7d36551f8a76cef1291b99d11d883f92376aac80c56031bc80",
+      "url": "payload/agent-kit/skills/live-dot-map/templates/attempt.md"
+    }
+  }
+}

@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { commandId, LocalBridgeClient, projectIdForRoot, BridgeClientError } from './bridge-client.mjs';
 
 export const HOOK_NAMES = Object.freeze(['session-start', 'user-prompt-submit', 'stop']);
 
-export const INITIALIZATION_REQUEST = '请初始化我的活点地图：先读取 AGENTS.md 路由，再按顺序读取 goal.md、PRD、README、计划和最新执行记录；只保留一个总目标、3–7 个关键阶段和当前待判断路线，不要按文件/目录/函数或聊天轮次建节点。通过本地桥创建地图，为每个节点写入来源路径、生成理由、createdBy 和层级；不确定内容标为“待确认”，不要覆盖已有地图。';
+export const INITIALIZATION_REQUEST = '请初始化我的活点地图：先使用 live-dot-map Skill 和 map_get_context；只有用户明确授权时，才按 AGENTS.md 路由读取 goal.md、PRD、README、计划和最新执行记录。只保留一个总目标、3–7 个关键阶段和当前待判断路线，不按文件/目录/函数或聊天轮次建节点；通过本地桥写入并保留来源、理由、createdBy 和层级，不覆盖已有地图。';
 
 function firstEnv(env, names, fallback = '') {
   for (const name of names) if (typeof env?.[name] === 'string' && env[name].trim()) return env[name].trim();
@@ -95,25 +97,100 @@ async function deliver(client, updates) {
   return { delivered: ids, result };
 }
 
-export async function runSessionStart({ client, env = process.env, write = () => {}, now = new Date() } = {}) {
+// ---- 增量变更通知（2026-08-15 原则：无事不打扰，有事必回应） ----
+// 已读水位 .live-dot-map/agent-read.json：只报告水位之后的地图变化；
+// 无变化时完全静默，不做全量状态汇报。
+
+async function collectIncrementalChanges(root, now) {
+  // 多地图布局：事实源是 active-map 指针指向的 maps/<id>/map.json；老项目回退单图路径。
+  let mapPath = join(root, '.live-dot-map', 'map.json');
+  try {
+    const pointer = (await readFile(join(root, '.live-dot-map', 'active-map'), 'utf8')).trim();
+    if (/^[a-z0-9][a-z0-9-_]{0,63}$/.test(pointer)) {
+      const candidate = join(root, '.live-dot-map', 'maps', pointer, 'map.json');
+      await readFile(candidate, 'utf8');
+      mapPath = candidate;
+    }
+  } catch { /* 无指针或目标缺失：保持老路径 */ }
+  const readPath = join(root, '.live-dot-map', 'agent-read.json');
+  let watermark = 0;
+  try {
+    const parsed = JSON.parse(await readFile(readPath, 'utf8'));
+    if (typeof parsed?.updatedAt === 'string') watermark = Date.parse(parsed.updatedAt);
+  } catch { /* 首次运行 */ }
+  const since = watermark || now.getTime();
+  let map = {};
+  try { map = JSON.parse(await readFile(mapPath, 'utf8')); } catch { return { changes: [], watermark, next: now.getTime(), mapMissing: true }; }
+  const changes = [];
+  const collections = [['nodes', '节点'], ['edges', '方案'], ['anns', '标注'], ['routes', '路线']];
+  for (const [collection, label] of collections) {
+    for (const item of Array.isArray(map[collection]) ? map[collection] : []) {
+      const updated = Date.parse(String(item?.updatedAt));
+      if (Number.isFinite(updated) && updated > since) {
+        changes.push({
+          label,
+          id: String(item.id),
+          name: String(item.name ?? item.text ?? ''),
+          status: item.status ? String(item.status) : '',
+          attention: item.attention ? String(item.attention) : '',
+        });
+      }
+    }
+  }
+  return { changes, watermark, next: now.getTime(), mapMissing: false };
+}
+
+async function writeWatermark(root, timestamp) {
+  const readPath = join(root, '.live-dot-map', 'agent-read.json');
+  await mkdir(dirname(readPath), { recursive: true });
+  await writeFile(readPath, `${JSON.stringify({ version: 1, updatedAt: new Date(timestamp).toISOString() }, null, 2)}\n`, 'utf8');
+}
+
+export async function runSessionStart({ client, env = process.env, write = () => {}, now = new Date(), projectRoot } = {}) {
   const bridge = client || createClientFromEnv(env);
   try {
     await bridge.health();
-    const listed = await bridge.mapListHumanUpdates({ includeAcknowledged: false });
-    const pending = pendingUpdates(listed);
-    // Delivery is a durable command, but acknowledgement is deliberately not
-    // performed here: the Agent must first quote the IDs in its own summary.
-    if (pending.length) await deliver(bridge, pending.filter((item) => item.attention === 'new'));
-    const context = await bridge.mapGetContext({ query: '', sessionId: bridge.sessionId });
-    const after = pendingUpdates(await bridge.mapListHumanUpdates({ includeAcknowledged: false }));
-    const output = contextText(context, after.length ? after : pending);
+    const root = resolveProjectRoot(projectRoot, bridge, env);
+    const { changes, next, mapMissing } = await collectIncrementalChanges(root, now);
+    // 保留标注交付协议（new → delivered）；"已读"语义由水位承担。
+    let deliveredIds = [];
+    try {
+      const listed = await bridge.mapListHumanUpdates({ includeAcknowledged: false });
+      const pending = pendingUpdates(listed);
+      if (pending.length) {
+        const delivered = await deliver(bridge, pending.filter((item) => item.attention === 'new'));
+        deliveredIds = delivered.delivered;
+      }
+    } catch { /* 桥不可用时只报增量，不阻断 */ }
+    if (!changes.length && !deliveredIds.length) {
+      // 无事不打扰：无变化时零输出。
+      write('');
+      return { ok: true, output: '', sessionId: bridge.sessionId, deliveredIds, at: now.toISOString(), changes: [], mapMissing };
+    }
+    await writeWatermark(root, next);
+    const newCount = changes.filter((item) => item.label === '标注' && item.attention === 'new').length;
+    const lines = changes.slice(0, 20).map((item) => `${item.label} ${item.id}${item.name ? `「${item.name}」` : ''}${item.status ? `(${item.status})` : ''}`);
+    const output = [
+      `[活点地图] 自上次以来有 ${changes.length} 处更新（${newCount} 条新标注优先）：`,
+      ...lines,
+      changes.length > 20 ? `…共 ${changes.length} 处` : '',
+      '详细请读 .live-dot-map/active-map 指向的当前地图 map.json。',
+    ].filter(Boolean).join('\n');
     write(output);
-    return { ok: true, output, sessionId: bridge.sessionId, deliveredIds: pending.filter((item) => item.attention === 'new').map((item) => String(item.id)), at: now.toISOString() };
+    return { ok: true, output, sessionId: bridge.sessionId, deliveredIds, at: now.toISOString(), changes };
   } catch (error) {
     const output = failureText('SessionStart', error);
     write(output);
     return { ok: false, output, sessionId: bridge.sessionId, error };
   }
+}
+
+function resolveProjectRoot(projectRoot, bridge, env) {
+  if (projectRoot) return projectRoot;
+  const fromEnv = firstEnv(env, ['LIVEDOT_PROJECT_ROOT', 'PROJECT_ROOT'], '');
+  if (fromEnv) return fromEnv;
+  if (bridge?.projectRoot) return bridge.projectRoot;
+  return process.cwd();
 }
 
 async function readPrompt(input = process.stdin) {
@@ -154,12 +231,14 @@ export async function runStop({ client, env = process.env, write = () => {}, att
       // Validation is part of the stop gate; preserve the failure below.
       validation = { ok: false, error: error?.code || error?.message };
     }
+    const attemptIssues = Array.isArray(validation?.attemptIssues) ? validation.attemptIssues : [];
     const validationFailed = validation && (validation.ok === false || validation.valid === false || validation.error);
     const stateIssues = [];
     for (const key of ['conflicts', 'uncommitted', 'dirty', 'pendingWrites']) {
       const value = snapshot?.[key] ?? validation?.[key];
       if (value === true || (Array.isArray(value) && value.length)) stateIssues.push(key);
     }
+    if (attemptIssues.length) stateIssues.push('attemptEvidence');
     if (!pending.length && !validationFailed && !stateIssues.length) {
       const output = '[活点地图] Stop 闭环检查通过：没有未确认人类标注，地图校验通过。';
       write(output);
@@ -168,6 +247,7 @@ export async function runStop({ client, env = process.env, write = () => {}, att
     const issues = [];
     if (pending.length) issues.push(`未确认人类标注：${pending.map((item) => item.id).join('、')}`);
     if (validationFailed) issues.push('地图校验或本地桥状态未通过');
+    if (attemptIssues.length) issues.push(`大尝试证据未闭环：${attemptIssues.map((item) => `${item.edgeId}（${item.missing.join('、')}）`).join('；')}`);
     if (stateIssues.length) issues.push(`存在未提交或冲突状态：${stateIssues.join('、')}`);
     const allowStop = attempt >= 2;
     const error = new BridgeClientError('COLLABORATION_NOT_CLOSED', issues.join('；'), { status: 409, details: { pendingIds: pending.map((item) => item.id), validation } });

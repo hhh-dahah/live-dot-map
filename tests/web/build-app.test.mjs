@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../../scripts/build-app.mjs';
 
+const TEST_ROOT = resolve(process.env.LIVEDOT_TEST_ROOT || 'D:\\LiveDotMap-Test');
+await mkdir(TEST_ROOT, { recursive: true });
+
 test('构建注入 CSP/nonce、运行时，并修复菜单外部文本与 Markdown 前缀', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'dotmap-build-'));
+  const dir = await mkdtemp(join(TEST_ROOT, 'dotmap-build-'));
   const input = join(dir, 'fixture.html');
   const output = join(dir, 'out.html');
   const source = '<!doctype html><html><head><meta charset="utf-8"></head><body><script>function openMenu(items){return `<span>${it.label}</span>`} const x={md:\'nodes/a.md\'};</script></body></html>';
@@ -29,7 +31,7 @@ test('构建注入 CSP/nonce、运行时，并修复菜单外部文本与 Markdo
 test('构建脚本不触碰冻结 canvas.html', async () => {
   const canvas = await readFile(new URL('../../canvas.html', import.meta.url), 'utf8');
   const before = createHash('sha256').update(canvas).digest('hex');
-  const dir = await mkdtemp(join(tmpdir(), 'dotmap-build-canvas-'));
+  const dir = await mkdtemp(join(TEST_ROOT, 'dotmap-build-canvas-'));
   await buildApp({ input: new URL('../../app.html', import.meta.url), output: join(dir, 'out.html'), nonce: 'canvas-test' });
   const after = createHash('sha256').update(await readFile(new URL('../../canvas.html', import.meta.url), 'utf8')).digest('hex');
   assert.equal(after, before);

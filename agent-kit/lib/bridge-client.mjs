@@ -13,6 +13,7 @@ export const MCP_TOOL_NAMES = Object.freeze([
   'map_apply_commands',
   'map_validate',
   'map_checkpoint',
+  'map_plan_consolidation',
 ]);
 
 export class BridgeClientError extends Error {
@@ -257,6 +258,7 @@ export class LocalBridgeClient {
         map_next_candidates: '/api/v1/candidates',
         map_validate: '/api/v1/validate',
         map_checkpoint: '/api/v1/checkpoint',
+        map_plan_consolidation: '/api/v1/consolidation/plan',
       }[name];
       if (!fallback || name === 'map_ack_human_updates' || name === 'map_apply_commands') throw error;
       return this.#fetch(fallback, { ...options, method: 'POST', body: jsonClone(args) });
@@ -319,6 +321,10 @@ export class LocalBridgeClient {
 
   async mapCheckpoint(args = {}, options = {}) {
     return this.mcp('map_checkpoint', { ...args, projectId: args.projectId || this.projectId, sessionId: args.sessionId || this.sessionId }, options);
+  }
+
+  async mapPlanConsolidation(args = {}, options = {}) {
+    return this.mcp('map_plan_consolidation', { ...args, projectId: args.projectId || this.projectId, sessionId: args.sessionId || this.sessionId }, options);
   }
 
   /**

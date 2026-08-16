@@ -1,0 +1,17 @@
+{
+  "name": "live-dot-map",
+  "version": "2.0.0",
+  "description": "活点地图人机协作：项目记忆、确定性检索与探索策展",
+  "author": { "name": "Live Dot Map" },
+  "license": "MIT",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "活点地图",
+    "shortDescription": "项目记忆与探索策展",
+    "longDescription": "在 Agent 对话与画布之间共享可审阅的项目记忆。",
+    "developerName": "Live Dot Map",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": ["读取当前项目投影并继续推进", "记录这次大尝试和证据", "整理地图建议"]
+  }
+}

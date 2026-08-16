@@ -11,9 +11,10 @@ test('构建产物包含 CSP、强模式状态与修复后的转义器', async (
   assert.doesNotMatch(html, /<span>\$\{it\.label\}<\/span>/);
 });
 
-test('新建 Markdown 路径使用稳定对象 ID', async () => {
+test('新建 Markdown 路径按当前地图目录生成（mdPath）', async () => {
   const html = await readFile(new URL('../../dist/app.v2.html', import.meta.url), 'utf8');
-  assert.match(html, /\.live-dot-map\/nodes\/\$\{nodeId\}\.md/);
-  assert.match(html, /\.live-dot-map\/routes\/e\$\{S\.nextEdge-1\}\.md/);
+  assert.match(html, /function mdPath\(kind, id\)/);
+  assert.match(html, /mdPath\('nodes', nodeId\)/);
+  assert.match(html, /mdPath\('routes', `e\$\{S\.nextEdge-1\}`\)/);
   assert.doesNotMatch(html, /n\.md = `nodes\//);
 });

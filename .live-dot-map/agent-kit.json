@@ -1,0 +1,87 @@
+{
+  "version": 2,
+  "projectId": "project:4f74c352696cee6faa2d5e02978641fc",
+  "projectRoot": "D:\\桌面\\活点地图\\live-dot-map\\ui设计 html",
+  "runtime": null,
+  "runtimeMode": "sea",
+  "nodeCommand": "E:\\livedotmap\\current\\payload\\livedot-bridge-win-x64.exe",
+  "homeRoot": "C:\\Users\\Thomas",
+  "detectedAgents": {
+    "codex": {
+      "id": "codex",
+      "configured": true,
+      "executable": true,
+      "executableSource": null,
+      "discovered": true
+    },
+    "claude-code": {
+      "id": "claude-code",
+      "configured": true,
+      "executable": true,
+      "executableSource": null,
+      "discovered": true
+    },
+    "kimi-code": {
+      "id": "kimi-code",
+      "configured": true,
+      "executable": true,
+      "executableSource": null,
+      "discovered": true
+    },
+    "codebuddy": {
+      "id": "codebuddy",
+      "configured": true,
+      "executable": true,
+      "executableSource": "workbuddy-embedded",
+      "discovered": true
+    }
+  },
+  "trust": {
+    "codex": {
+      "acknowledged": false,
+      "updatedAt": null
+    },
+    "claude-code": {
+      "acknowledged": false,
+      "updatedAt": null
+    },
+    "kimi-code": {
+      "acknowledged": false,
+      "updatedAt": null
+    },
+    "codebuddy": {
+      "acknowledged": false,
+      "updatedAt": null
+    }
+  },
+  "bridge": {
+    "url": "http://127.0.0.1:0",
+    "tokenEnv": "LIVEDOT_BRIDGE_TOKEN",
+    "sessionEnv": "LIVEDOT_SESSION_ID"
+  },
+  "installed": {
+    "codex": true,
+    "claude-code": true,
+    "kimi-code": true,
+    "codebuddy": true
+  },
+  "installBackup": "C:\\Users\\Thomas\\.live-dot-map\\backups\\agent-kit-install-project_4f74c352696cee6faa2d5e02978641fc.json",
+  "installedFiles": {
+    "D:\\桌面\\活点地图\\live-dot-map\\ui设计 html\\.live-dot-map\\agent-kit.json": null,
+    "C:\\Users\\Thomas\\.codex\\config.toml": "c29813de3b0378dbbfc34c43027fbea79b1fafd3dac46b99e9856a89a3f90f46",
+    "C:\\Users\\Thomas\\.codex\\hooks.json": "fe12e2ae3eade2d91f2d2c58e40517aa4198a461c2dca42f32d2c1ffd082d20d",
+    "C:\\Users\\Thomas\\.claude\\settings.json": "672f332b4ed4a1194de2fcd0d81815240523d5020eb36eca40e94d5dd1d15925",
+    "C:\\Users\\Thomas\\.kimi-code\\mcp.json": "ba33f993c7db9a6ac2d6435762c013767e3b032d456b7453b88a85bb0668baec",
+    "C:\\Users\\Thomas\\.kimi-code\\plugins\\live-dot-map\\kimi.plugin.json": "cee84866de36d88afaac84b6c6d69f0d2ae5e7e0b31ce7bb31493a0e75e5ea46",
+    "C:\\Users\\Thomas\\.codebuddy\\settings.json": "59b766af2fc2d75d421da94108424c27fdb6b2470cbd2588fc5cab675b1e9ecc",
+    "C:\\Users\\Thomas\\.codebuddy\\plugins\\live-dot-map\\.codebuddy-plugin\\plugin.json": "a20c0b83efc0c566d3bb150d4225da4e5f7ea41467caadc17ed52294298b967b",
+    "C:\\Users\\Thomas\\.codebuddy\\plugins\\live-dot-map\\.workbuddy-plugin\\plugin.json": "a20c0b83efc0c566d3bb150d4225da4e5f7ea41467caadc17ed52294298b967b",
+    "C:\\Users\\Thomas\\.codebuddy\\plugins\\live-dot-map\\hooks\\hooks.json": "aa9187d8981dc2926dd311918c8f156aecc4b117232e2b5e648599b21c15b29a",
+    "C:\\Users\\Thomas\\.codex\\skills\\live-dot-map\\SKILL.md": "741782c897f7c3f84754d832576b0f84c91e476028083768e1848a23e7ceb132",
+    "C:\\Users\\Thomas\\.claude\\skills\\live-dot-map\\SKILL.md": "741782c897f7c3f84754d832576b0f84c91e476028083768e1848a23e7ceb132",
+    "C:\\Users\\Thomas\\.kimi-code\\plugins\\live-dot-map\\skills\\live-dot-map\\SKILL.md": "741782c897f7c3f84754d832576b0f84c91e476028083768e1848a23e7ceb132",
+    "C:\\Users\\Thomas\\.codebuddy\\plugins\\live-dot-map\\skills\\live-dot-map\\SKILL.md": "741782c897f7c3f84754d832576b0f84c91e476028083768e1848a23e7ceb132"
+  },
+  "installedAt": "2026-08-16T14:17:01.685Z",
+  "updatedAt": "2026-08-16T14:17:01.685Z"
+}

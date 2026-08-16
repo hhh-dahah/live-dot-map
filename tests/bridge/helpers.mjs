@@ -1,10 +1,12 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 import { join } from 'node:path';
 import { loadSharedAdapter } from '../../src/bridge/shared-adapter.mjs';
 
 export async function temporaryProject(test, { withMap = true, map } = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'live-dot-map-bridge-test-'));
+  const testRoot = resolve(process.env.LIVEDOT_TEST_ROOT || 'D:\\LiveDotMap-Test');
+  await mkdir(testRoot, { recursive: true });
+  const root = await mkdtemp(join(testRoot, 'live-dot-map-bridge-test-'));
   test.after(() => rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }));
   const shared = await loadSharedAdapter();
   if (withMap) {

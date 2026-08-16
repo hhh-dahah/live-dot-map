@@ -8,7 +8,7 @@ dist/
 dist/windows-installer/
 installer/winforms/bin/
 installer/winforms/obj/
-output/playwright/
+output/
 # landing 构建缓存与导出目录（发布内容由 .deploy/ 承接）
 landing/node_modules/
 landing/.next/

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installProject, doctorProject } from '../agent-kit/lib/installer.mjs';
@@ -15,9 +15,10 @@ const result = await installProject({
   exec: () => { throw new Error('simulated desktop shortcut denial'); },
 });
 assert.equal(result.ok, true);
-assert.equal(result.shortcut?.ok, false);
-assert.equal(result.shortcut?.type, 'windows-lnk');
-await stat(result.shortcut.fallback);
+// 产品安装器负责唯一的“活点地图”桌面入口；项目配置不再创建“本地桥”快捷方式。
+assert.equal(result.shortcut?.ok, true);
+assert.equal(result.shortcut?.reason, 'product-installer-manages-shortcut');
+assert.equal(result.shortcut?.skipped, true);
 const config = JSON.parse(await readFile(join(root, '.live-dot-map', 'agent-kit.json'), 'utf8'));
 assert.equal(config.version, 2);
 assert.equal(Object.keys(config.installed).length, 4);

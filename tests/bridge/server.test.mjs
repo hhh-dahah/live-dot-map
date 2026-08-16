@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import test from 'node:test';
-import { createBridgeServer } from '../../src/bridge/server.mjs';
+import { join, resolve } from 'node:path';
+import { createBridgeServer, ensureProjectAgentConfig, buildPickFolderScript } from '../../src/bridge/server.mjs';
 import { ProjectStore } from '../../src/bridge/project-store.mjs';
 import { commandEnvelope, createRouteCommand, temporaryProject } from './helpers.mjs';
+
+const TEST_ROOT_DIR = process.env.LIVEDOT_TEST_ROOT || 'D:\\LiveDotMap-Test';
+
+// 隔离最近项目记录：server.mjs 的 RECENT_PROJECTS_FILE 每次读取该 env，
+// 测试进程独立于用户环境，避免把临时项目写进真实 ~/.live-dot-map。
+process.env.LIVEDOT_RECENT_PROJECTS_FILE = join(TEST_ROOT_DIR, 'recent-projects-server-test.json');
 
 const APP_ORIGIN = 'https://app.example.test';
 
@@ -127,16 +135,146 @@ test('exchanges the bootstrap token once and enforces cookie, Origin and CSRF', 
   assert.equal((await opened.json()).revision, 0);
 });
 
-test('rejects hostile Host and non-allowlisted project roots', async (t) => {
+test('resumes an authenticated browser session after the one-time URL token is gone', async (t) => {
+  const { root, server } = await startServer(t);
+  const session = await establishSession(server);
+  assert.equal((await openProject(server, root, session)).status, 200);
+  const resumed = await fetch(`${server.origin}/session`, {
+    headers: { Origin: APP_ORIGIN, Cookie: session.cookie },
+  });
+  assert.equal(resumed.status, 200);
+  const body = await resumed.json();
+  assert.equal(body.resumed, true);
+  assert.equal(body.projectRoot, root);
+  assert.equal(body.csrfToken, session.csrf);
+});
+
+test('project open returns a non-blocking Agent setup status for the UI', async (t) => {
+  const setup = async (root) => ({ ok: true, status: 'none', changed: false, projectRoot: root, detectedAgents: {} });
+  const { root, server } = await startServer(t, { agentSetup: setup });
+  const session = await establishSession(server);
+  const response = await openProject(server, root, session);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(body.agentSetup, { ok: true, status: 'none', changed: false, projectRoot: root, detectedAgents: {} });
+  assert.equal(body.revision, 0);
+});
+
+test('reads, creates and atomically saves project Markdown with explicit conflict checks', async (t) => {
+  const { root, server } = await startServer(t);
+  const session = await establishSession(server);
+  assert.equal((await openProject(server, root, session)).status, 200);
+  const headers = authHeaders(session);
+  const path = '.live-dot-map/nodes/n-test.md';
+
+  const missing = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(path)}`, { headers });
+  assert.equal(missing.status, 200);
+  assert.equal((await missing.json()).exists, false);
+
+  const created = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(path)}&create=1&title=${encodeURIComponent('问题记录')}`, { headers });
+  assert.equal(created.status, 200);
+  const createdBody = await created.json();
+  assert.equal(createdBody.created, true);
+  assert.match(createdBody.content, /^# 问题记录\n/);
+  assert.ok(createdBody.etag);
+
+  const emptyPath = '.live-dot-map/nodes/empty.md';
+  await mkdir(`${root}/.live-dot-map/nodes`, { recursive: true });
+  await writeFile(`${root}/${emptyPath}`, '');
+  const initialized = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(emptyPath)}&create=1&title=${encodeURIComponent('空记录')}`, { headers });
+  assert.equal(initialized.status, 200);
+  assert.equal((await initialized.json()).content, '# 空记录\n\n');
+
+  const saved = await fetch(`${server.origin}/markdown`, {
+    method: 'PUT', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ path, content: '# 问题记录\n\n证据已补充。', baseEtag: createdBody.etag }),
+  });
+  assert.equal(saved.status, 200);
+  const savedBody = await saved.json();
+  assert.notEqual(savedBody.etag, createdBody.etag);
+  const mcpRead = await fetch(`${server.origin}/api/v1/mcp`, {
+    method: 'POST', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name: 'map_read_markdown', arguments: { path } }),
+  });
+  assert.equal(mcpRead.status, 200);
+  assert.equal(mcpRead.headers.get('content-type')?.startsWith('application/json'), true);
+  assert.equal((await mcpRead.json()).result.content, '# 问题记录\n\n证据已补充。');
+  const mcpWrite = await fetch(`${server.origin}/api/v1/mcp`, {
+    method: 'POST', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name: 'map_write_markdown', arguments: { path, content: '# Agent 证据\n', baseEtag: savedBody.etag } }),
+  });
+  assert.equal(mcpWrite.status, 200);
+  assert.equal((await mcpWrite.json()).result.content, '# Agent 证据\n');
+  const racePath = '.live-dot-map/nodes/race.md';
+  const raceCreated = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(racePath)}&create=1&title=${encodeURIComponent('并发')}`, { headers });
+  const raceBase = await raceCreated.json();
+  const raceResponses = await Promise.all([
+    fetch(`${server.origin}/markdown`, {
+      method: 'PUT', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ path: racePath, content: '# writer-a\n', baseEtag: raceBase.etag }),
+    }),
+    fetch(`${server.origin}/markdown`, {
+      method: 'PUT', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ path: racePath, content: '# writer-b\n', baseEtag: raceBase.etag }),
+    }),
+  ]);
+  assert.deepEqual(raceResponses.map((response) => response.status).sort(), [200, 409]);
+  const raceConflict = await raceResponses.find((response) => response.status === 409).json();
+  assert.equal(raceConflict.error.code, 'MARKDOWN_CONFLICT');
+  assert.equal(typeof raceConflict.error.details.current.etag, 'string');
+
+  // Creation/legacy-empty repair must share the path lock with PUT. Regardless
+  // of which request wins the queue, the writer's content is never rolled
+  // back by a late '# title' initializer.
+  for (let index = 0; index < 8; index += 1) {
+    const concurrentPath = `.live-dot-map/nodes/create-write-${index}.md`;
+    const [createResponse, writeResponse] = await Promise.all([
+      fetch(`${server.origin}/markdown?path=${encodeURIComponent(concurrentPath)}&create=1&title=${encodeURIComponent('并发创建')}`, { headers }),
+      fetch(`${server.origin}/markdown`, {
+        method: 'PUT', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ path: concurrentPath, content: `# writer-${index}\n` }),
+      }),
+    ]);
+    assert.equal(createResponse.status, 200);
+    assert.equal(writeResponse.status, 200);
+    const final = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(concurrentPath)}`, { headers });
+    assert.equal((await final.json()).content, `# writer-${index}\n`);
+  }
+  const stale = await fetch(`${server.origin}/markdown`, {
+    method: 'PUT', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ path, content: '覆盖', baseEtag: createdBody.etag }),
+  });
+  assert.equal(stale.status, 409);
+  assert.equal((await stale.json()).error.code, 'MARKDOWN_CONFLICT');
+
+  const traversal = await fetch(`${server.origin}/markdown?path=${encodeURIComponent('../outside.md')}`, { headers });
+  assert.equal(traversal.status, 403);
+  assert.equal((await traversal.json()).error.code, 'MARKDOWN_PATH_TRAVERSAL');
+
+  const reveal = await fetch(`${server.origin}/markdown/reveal?path=${encodeURIComponent(path)}`, { headers });
+  assert.equal(reveal.status, 200);
+  assert.equal((await reveal.json()).opened, false);
+  const unprotectedReveal = await fetch(`${server.origin}/markdown/reveal`, {
+    method: 'POST', headers: { Origin: APP_ORIGIN, Cookie: session.cookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  });
+  assert.equal(unprotectedReveal.status, 403);
+  assert.equal((await unprotectedReveal.json()).error.code, 'INVALID_CSRF');
+});
+
+test('rejects hostile Host and missing project roots while allowing session-side switching', async (t) => {
   const { root: otherRoot } = await temporaryProject(t);
   const { root, server } = await startServer(t);
   assert.equal(await requestWithHost(server, 'evil.example'), 403);
 
   const session = await establishSession(server);
-  const denied = await openProject(server, otherRoot, session);
-  assert.equal(denied.status, 403);
+  // 会话内切换：已认证会话可打开任意存在的本机目录（桥是用户本机进程，loopback + CSRF 保护）。
+  const switched = await openProject(server, otherRoot, session);
+  assert.equal(switched.status, 200);
   const allowed = await openProject(server, root, session);
   assert.equal(allowed.status, 200);
+  const missing = await openProject(server, resolve(root, 'does-not-exist-xyz'), session);
+  assert.equal(missing.status, 404);
 });
 
 test('returns truthful five-state Agent discovery for the opened project', async (t) => {
@@ -153,6 +291,41 @@ test('returns truthful five-state Agent discovery for the opened project', async
     assert.ok(['awaiting_trust', 'connected', 'discovered', 'error', 'not_installed'].includes(agent.state));
     assert.equal(typeof agent.discovered, 'boolean');
   }
+});
+
+test('opening a project auto-configures only detected Agents and preserves trust boundaries', async (t) => {
+  const { root } = await temporaryProject(t, { withMap: false });
+  const home = await mkdtemp(join(TEST_ROOT_DIR, 'livedot-agent-home-'));
+  const detected = {
+    codex: { id: 'codex', configured: false, executable: true, discovered: true },
+    'claude-code': { id: 'claude-code', configured: false, executable: false, discovered: false },
+    'kimi-code': { id: 'kimi-code', configured: false, executable: false, discovered: false },
+    codebuddy: { id: 'codebuddy', configured: false, executable: false, discovered: false },
+  };
+  const first = await ensureProjectAgentConfig(root, {
+    platform: 'linux',
+    homeRoot: home,
+    sourceRoot: resolve(import.meta.dirname, '../..'),
+    runtimeSource: resolve(import.meta.dirname, '../../livedot.mjs'),
+    detect: async () => detected,
+  });
+  assert.equal(first.ok, true);
+  assert.equal(first.status, 'configured');
+  assert.equal(first.changed, true);
+  assert.equal(first.configured.codex, true);
+  assert.equal(first.trust.codex?.acknowledged, undefined);
+  assert.equal(await import('node:fs/promises').then(({ access }) => access(`${home}/.codex/config.toml`).then(() => true).catch(() => false)), true);
+  assert.equal(await import('node:fs/promises').then(({ access }) => access(`${home}/.claude/settings.json`).then(() => true).catch(() => false)), false);
+  // 项目内零配置：全局化后项目不再出现 .codex 等配置目录。
+  assert.equal(await import('node:fs/promises').then(({ access }) => access(`${root}/.codex/config.toml`).then(() => true).catch(() => false)), false);
+  const configPath = `${root}/.live-dot-map/agent-kit.json`;
+  const config = JSON.parse(await import('node:fs/promises').then(({ readFile }) => readFile(configPath, 'utf8')));
+  config.trust.codex.acknowledged = true;
+  await import('node:fs/promises').then(({ writeFile }) => writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`));
+  const second = await ensureProjectAgentConfig(root, { platform: 'linux', homeRoot: home, detect: async () => detected });
+  assert.equal(second.status, 'ready');
+  assert.equal(second.changed, false);
+  assert.equal(second.trust.codex.acknowledged, true);
 });
 
 test('enforces request body limit and baseRevision conflicts through HTTP', async (t) => {
@@ -182,6 +355,41 @@ test('enforces request body limit and baseRevision conflicts through HTTP', asyn
     body: JSON.stringify({ ...commandEnvelope('command-http3', 1), padding: 'x'.repeat(1024) }),
   });
   assert.equal(oversized.status, 413);
+});
+
+test('binds browser writes to human and MCP writes to Agent regardless of supplied actor', async (t) => {
+  const { root, server } = await startServer(t);
+  const session = await establishSession(server);
+  assert.equal((await openProject(server, root, session)).status, 200);
+
+  const humanWrite = await fetch(`${server.origin}/commands`, {
+    method: 'POST',
+    headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ ...commandEnvelope('command-bind-human', 0), actor: 'agent:codex' }),
+  });
+  assert.equal(humanWrite.status, 200);
+  const humanDocument = (await humanWrite.json()).document;
+  assert.equal(humanDocument.routes[0].createdBy, 'human');
+
+  const forgedMcp = await fetch(`${server.origin}/api/v1/mcp`, {
+    method: 'POST',
+    headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      name: 'map_apply_commands',
+      arguments: {
+        actor: 'human',
+        baseRevision: 1,
+        commandId: 'mcp-forged-human',
+        commands: [{ op: 'update', collection: 'routes', id: 'r1', patch: { archived: true } }],
+      },
+    }),
+  });
+  assert.equal(forgedMcp.status, 403);
+  assert.equal((await forgedMcp.json()).error.code, 'HUMAN_APPROVAL_REQUIRED');
+  const snapshot = await fetch(`${server.origin}/snapshot`, { headers: { Origin: APP_ORIGIN, Cookie: session.cookie } });
+  const persisted = await snapshot.json();
+  assert.equal(persisted.revision, 1);
+  assert.equal(persisted.document.routes[0].archived, undefined);
 });
 
 test('streams commit events and supports snapshot plus backup recovery endpoints', async (t) => {
@@ -285,4 +493,69 @@ test('reconnects the event stream with the latest revision after a disconnected 
   const stream = await readUntil(reader, decoder, '', 'event: ready', 2_000);
   assert.match(stream, /"revision":2/);
   await reader.cancel();
+});
+
+test('session can switch to another local directory and keep prior project in allowlist', async (t) => {
+  const { root, server } = await startServer(t);
+  const session = await establishSession(server);
+  assert.equal((await openProject(server, root, session)).status, 200);
+  const second = await temporaryProject(t);
+  const opened = await openProject(server, second.root, session);
+  assert.equal(opened.status, 200);
+  const body = await opened.json();
+  assert.equal(body.projectRoot, second.root);
+  // 历史项目仍可回切（allowlist 保留）。
+  const back = await openProject(server, root, session);
+  assert.equal(back.status, 200);
+  assert.equal((await back.json()).projectRoot, root);
+});
+
+test('open reports a clear error for a missing directory', async (t) => {
+  const { root, server } = await startServer(t);
+  const session = await establishSession(server);
+  const missing = resolve(root, 'does-not-exist-xyz');
+  const response = await openProject(server, missing, session);
+  assert.equal(response.status, 404);
+  const body = await response.json();
+  assert.equal(body.error?.code, 'PROJECT_NOT_FOUND');
+});
+
+test('recent projects lists opened directories newest first', async (t) => {
+  const { root, server } = await startServer(t);
+  const session = await establishSession(server);
+  const second = await temporaryProject(t);
+  await openProject(server, root, session);
+  await openProject(server, second.root, session);
+  const response = await fetch(`${server.origin}/projects/recent`, {
+    method: 'GET',
+    headers: authHeaders(session),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.ok(Array.isArray(body.recent));
+  assert.equal(body.recent[0], second.root);
+  assert.ok(body.recent.includes(root));
+});
+
+test('pick folder script prefers modern IFileOpenDialog with topmost owner and falls back safely', () => {
+  const script = buildPickFolderScript('D:\\tmp\\pick-测试.txt');
+  // 主路径：COM IFileOpenDialog + FOS_PICKFOLDERS（VS Code 同款现代选择文件夹对话框）。
+  assert.match(script, /IFileOpenDialog/);
+  assert.match(script, /FOS_PICKFOLDERS/);
+  // 置顶隐形 owner 窗体，句柄传给对话框，保证弹窗在画布窗口前。
+  assert.match(script, /TopMost\s*=\s*\$true/);
+  assert.match(script, /Pick\(\$owner\.Handle/);
+  // 兜底：异常时回落 FolderBrowserDialog，同样挂置顶 owner。
+  assert.match(script, /FolderBrowserDialog/);
+  assert.match(script, /\$d\.ShowDialog\(\$owner\)/);
+  // 输出协议：选中路径写 marker 文件，stdout 报告 OK/CANCEL 与使用的模式。
+  assert.match(script, /PICK:OK/);
+  assert.match(script, /PICK:CANCEL/);
+  assert.match(script, /WriteAllText\('D:\\\\tmp\\\\pick-测试\.txt'/);
+});
+
+test('pick folder script escapes quotes in marker path', () => {
+  const script = buildPickFolderScript("C:\\Users\\o'brien\\pick.txt");
+  // PowerShell 单引号字符串内的单引号须双写转义。
+  assert.match(script, /o''brien/);
 });

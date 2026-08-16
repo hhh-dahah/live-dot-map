@@ -23,6 +23,19 @@ async function run(command, args, options = {}) {
   });
 }
 
+async function removeWithRetry(path) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    try {
+      await rm(path, { force: true });
+      return;
+    } catch (error) {
+      const retryable = ['EBUSY', 'EPERM', 'UNKNOWN'].includes(error?.code);
+      if (!retryable || attempt === 11) throw error;
+      await new Promise((resolveRun) => setTimeout(resolveRun, 150 + attempt * 150));
+    }
+  }
+}
+
 await build({
   entryPoints: [resolve(ROOT, 'src', 'cli', 'livedot.ts')],
   outfile: SEA_ENTRY,
@@ -49,9 +62,9 @@ const binary = (await readFile(process.execPath)).toString('latin1');
 const fuse = binary.match(/NODE_SEA_FUSE_[A-Za-z0-9_]+/)?.[0];
 if (!fuse) throw new Error('当前 Node 可执行文件没有可识别的 SEA sentinel fuse');
 await run(process.execPath, [resolve(ROOT, 'node_modules', 'postject', 'dist', 'cli.js'), blank, 'NODE_SEA_BLOB', BLOB, 'NODE_SEA_BLOB', '--sentinel-fuse', fuse]);
-await rm(OUT, { force: true });
+await removeWithRetry(OUT);
 await copyFile(blank, OUT);
-await rm(blank, { force: true });
-await rm(BLOB, { force: true });
+await removeWithRetry(blank);
+await removeWithRetry(BLOB);
 await writeFile(resolve(ROOT, '.deploy', 'sea-manifest.json'), `${JSON.stringify({ version: '2.0.0', platform: 'windows-x64', path: OUT, node: process.version, builtAt: new Date().toISOString(), note: 'unsigned internal RC; production installer still pending' }, null, 2)}\n`);
 console.log(`已生成 ${OUT}`);
