@@ -15,6 +15,7 @@ import {
   withFileLock,
   writeJsonAtomic,
 } from './fs-utils.mjs';
+import { mapDirectory, mapRelativeDirectory, mapsRoot, resolveActiveMap } from './maps.mjs';
 
 const MAP_DIRECTORY = '.live-dot-map';
 const BRIDGE_DIRECTORY = '.bridge';
@@ -42,6 +43,7 @@ export class ProjectStore {
   #pollIntervalMs;
   #pollTimer;
   #diskSignature;
+  #lastOperationQuarantineAt = 0;
 
   constructor({
     projectRoot,
@@ -51,6 +53,9 @@ export class ProjectStore {
     faultInjector = () => {},
     onEvent = () => {},
     pollIntervalMs = 250,
+    dataDirectory,
+    mapName,
+    mapDir,
   }) {
     this.projectRoot = projectRoot;
     this.shared = shared;
@@ -59,12 +64,16 @@ export class ProjectStore {
     this.readOnly = false;
     this.#faultInjector = faultInjector;
     this.#onEvent = onEvent;
+    // 多地图布局：每张地图一个数据目录（.live-dot-map/maps/<id>/），
+    // mapName 是空地图的显示名，mapDir 是写进新文档的项目相对目录。
+    this.mapName = typeof mapName === 'string' && mapName ? mapName : undefined;
+    this.mapDir = typeof mapDir === 'string' && mapDir ? mapDir : undefined;
     const requestedPollInterval = Number(pollIntervalMs);
     this.#pollIntervalMs = requestedPollInterval <= 0
       ? 0
       : Math.max(50, requestedPollInterval || 250);
 
-    this.dataDirectory = join(projectRoot, MAP_DIRECTORY);
+    this.dataDirectory = dataDirectory ?? join(projectRoot, MAP_DIRECTORY);
     this.mapPath = join(this.dataDirectory, 'map.json');
     this.bridgeDirectory = join(this.dataDirectory, BRIDGE_DIRECTORY);
     this.walPath = join(this.bridgeDirectory, 'wal.ndjson');
@@ -75,7 +84,18 @@ export class ProjectStore {
   }
 
   static async open(options) {
-    const store = new ProjectStore(options);
+    let resolved = options;
+    // 未显式指定数据目录时按多地图布局解析：maps/ 已存在就打开 active-map
+    // 指向的地图目录；否则保持旧的单地图 .live-dot-map/ 行为。
+    if (!options?.dataDirectory && options?.projectRoot && (await exists(mapsRoot(options.projectRoot)))) {
+      const mapId = await resolveActiveMap(options.projectRoot);
+      resolved = {
+        ...options,
+        dataDirectory: mapDirectory(options.projectRoot, mapId),
+        mapDir: options.mapDir ?? mapRelativeDirectory(mapId),
+      };
+    }
+    const store = new ProjectStore(resolved);
     await store.#initialize();
     store.#startExternalMonitor();
     return store;
@@ -144,13 +164,18 @@ export class ProjectStore {
     }
   }
 
+  #createEmptyDocument() {
+    return this.shared.createEmptyMap({
+      name: this.mapName ?? basename(this.projectRoot),
+      now: this.clock().toISOString(),
+      ...(this.mapDir ? { mapDir: this.mapDir } : {}),
+    });
+  }
+
   async #initializeLocked() {
     this.#records = await this.#readWal();
     if (!(await exists(this.mapPath))) {
-      const created = await this.shared.createEmptyMap({
-        name: basename(this.projectRoot),
-        now: this.clock().toISOString(),
-      });
+      const created = await this.#createEmptyDocument();
       await this.#assertValid(created, 'EMPTY_MAP_INVALID');
       await writeJsonAtomic(this.mapPath, created);
     }
@@ -175,17 +200,30 @@ export class ProjectStore {
       if (error?.code === 'FILE_TOO_LARGE') {
         throw new BridgeError('MAP_TOO_LARGE', 'map.json 超过 64 MiB 安全上限', { status: 413, details: error.details });
       }
-      await quarantineCopy(this.mapPath, this.quarantineDirectory, 'map.json.corrupt').catch(() => {});
-      const candidate = await this.#latestRecoverableDocument();
-      if (!candidate) {
-        if (error instanceof BridgeError) throw error;
-        throw new BridgeError('CORRUPT_MAP', 'map.json cannot be parsed or recovered', {
-          status: 409,
-          cause: error,
-        });
+      // 0 字节或纯空白 map.json（例如上次清理/中断留下的空壳）：
+      // 视为全新空项目重建，原文件保留到隔离区作为证据；不打断用户进入画布。
+      let raw = '';
+      try { raw = await readFile(this.mapPath, 'utf8'); } catch { /* 读不到按空处理 */ }
+      if (!raw.trim()) {
+        await quarantineCopy(this.mapPath, this.quarantineDirectory, 'map.empty.json').catch(() => undefined);
+        const created = await this.#createEmptyDocument();
+        await this.#assertValid(created, 'EMPTY_MAP_INVALID');
+        await writeJsonAtomic(this.mapPath, created);
+        document = created;
+      } else {
+        const quarantinePath = await quarantineCopy(this.mapPath, this.quarantineDirectory, 'map.json.corrupt').catch(() => undefined);
+        const candidate = await this.#latestRecoverableDocument();
+        if (!candidate) {
+          if (error instanceof BridgeError) throw error;
+          throw new BridgeError('CORRUPT_MAP', 'map.json 无法解析或恢复（损坏文件已隔离，可手工检查）', {
+            status: 409,
+            cause: error,
+            details: { causeMessage: String(error?.message || error), quarantinePath },
+          });
+        }
+        document = candidate.document;
+        await writeJsonAtomic(this.mapPath, document);
       }
-      document = candidate.document;
-      await writeJsonAtomic(this.mapPath, document);
     }
 
     this.document = document;
@@ -418,16 +456,33 @@ export class ProjectStore {
       if (error?.code === 'FILE_TOO_LARGE') {
         throw new BridgeError('MAP_TOO_LARGE', 'map.json 超过 64 MiB 安全上限', { status: 413, details: error.details });
       }
-      const quarantinePath = await quarantineCopy(this.mapPath, this.quarantineDirectory, 'map.operation-corrupt.json').catch(() => undefined);
-      if (error instanceof BridgeError) {
-        error.details = { ...error.details, quarantinePath };
-        throw error;
+      // 运行中被清空（0 字节/纯空白）：重建空地图而不是每轮轮询隔离垃圾文件；
+      // 若 WAL 有提交记录，#refreshExternalUnlocked 会把历史文档恢复回来。
+      let raw = '';
+      try { raw = await readFile(this.mapPath, 'utf8'); } catch { /* 读不到按空处理 */ }
+      if (!raw.trim()) {
+        const created = await this.#createEmptyDocument();
+        await this.#assertValid(created, 'EMPTY_MAP_INVALID');
+        await writeJsonAtomic(this.mapPath, created);
+        disk = created;
+      } else {
+        // 隔离节流：同一种损坏持续存在时，60 秒内只隔离一次，避免轮询风暴写满磁盘。
+        let quarantinePath;
+        const nowMs = this.clock().getTime();
+        if (!this.#lastOperationQuarantineAt || nowMs - this.#lastOperationQuarantineAt > 60_000) {
+          this.#lastOperationQuarantineAt = nowMs;
+          quarantinePath = await quarantineCopy(this.mapPath, this.quarantineDirectory, 'map.operation-corrupt.json').catch(() => undefined);
+        }
+        if (error instanceof BridgeError) {
+          error.details = { ...error.details, quarantinePath };
+          throw error;
+        }
+        throw new BridgeError('CORRUPT_MAP', 'map.json is not valid JSON', {
+          status: 409,
+          details: { quarantinePath },
+          cause: error,
+        });
       }
-      throw new BridgeError('CORRUPT_MAP', 'map.json is not valid JSON', {
-        status: 409,
-        details: { quarantinePath },
-        cause: error,
-      });
     }
     const latestTerminal = this.#records.filter(terminalRecord).sort((a, b) => (a.revision || 0) - (b.revision || 0)).at(-1);
     this.revision = latestTerminal?.revision ?? (Number.isSafeInteger(disk.revision) ? disk.revision : 0);

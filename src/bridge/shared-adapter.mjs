@@ -1,6 +1,6 @@
 import { BridgeError } from './errors.mjs';
 
-const REQUIRED_EXPORTS = ['validateMapDocument', 'applyMapCommand', 'applyCommandEnvelope', 'envelopeTouches', 'createEmptyMap', 'migrateMapV1', 'retrieveContext', 'autonomyDecision'];
+const REQUIRED_EXPORTS = ['validateMapDocument', 'applyMapCommand', 'applyCommandEnvelope', 'envelopeTouches', 'createEmptyMap', 'migrateMapV1', 'retrieveContext', 'checkAttemptEvidence', 'buildProjectProjection', 'findExplorationAlternatives', 'autonomyDecision', 'planConsolidation'];
 
 export async function loadSharedAdapter() {
   let shared;
@@ -27,7 +27,11 @@ export async function loadSharedAdapter() {
     applyEnvelope: shared.applyCommandEnvelope,
     envelopeTouches: shared.envelopeTouches,
     retrieveContext: shared.retrieveContext,
+    checkAttemptEvidence: shared.checkAttemptEvidence,
+    buildProjectProjection: shared.buildProjectProjection,
+    findExplorationAlternatives: shared.findExplorationAlternatives,
     autonomyDecision: shared.autonomyDecision,
+    planConsolidation: shared.planConsolidation,
     createEmptyMap: shared.createEmptyMap,
     migrateDocument: shared.migrateMapV1,
   };

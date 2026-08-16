@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { installProject } from '../../agent-kit/lib/installer.mjs';
 
@@ -14,6 +13,8 @@ const clients = {
 };
 const selected = process.argv.slice(2).filter((value) => value in clients);
 if (!selected.length) throw new Error('用法：node tests/e2e/real-client-smoke.mjs codex|claude|kimi|codebuddy');
+const REAL_TEST_ROOT = resolve(process.env.LIVEDOT_REAL_TEST_ROOT || 'D:\\LiveDotMap-Test');
+await mkdir(REAL_TEST_ROOT, { recursive: true });
 
 async function run(command, args, options = {}) {
   const executable = options.execPath || command;
@@ -58,7 +59,7 @@ async function runClient(agent, project, mcpConfigPath) {
 
 const results = [];
 for (const agent of selected) {
-  const project = await mkdtemp(join(tmpdir(), `livedot-real-${agent}-`));
+  const project = await mkdtemp(join(REAL_TEST_ROOT, `livedot-real-${agent}-`));
   try {
     // CodeBuddy is embedded in WorkBuddy on this machine and is not on PATH;
     // force the optional adapter into this isolated fixture so the real CLI

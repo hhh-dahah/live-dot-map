@@ -18,7 +18,7 @@ test('mcp calls use local bridge and fixed tool names', async () => {
     calls.push({ url: String(url), options });
     return response({ structuredContent: { objects: [], markdown: [] } });
   } });
-  assert.deepEqual(MCP_TOOL_NAMES, ['map_get_context', 'map_list_human_updates', 'map_ack_human_updates', 'map_next_candidates', 'map_apply_commands', 'map_validate', 'map_checkpoint']);
+  assert.deepEqual(MCP_TOOL_NAMES, ['map_get_context', 'map_list_human_updates', 'map_ack_human_updates', 'map_next_candidates', 'map_apply_commands', 'map_validate', 'map_checkpoint', 'map_plan_consolidation']);
   const result = await client.mapNextCandidates({ query: '路线' });
   assert.deepEqual(result, { objects: [], markdown: [] });
   assert.equal(calls.length, 1);

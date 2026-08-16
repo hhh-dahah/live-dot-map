@@ -125,8 +125,8 @@ window.LiveDotApp = {
   serialize,
   load(document){
     acceptMapDocument(document, 'bridge');
-    // 桥接加载是异步的；如果空白引导先出现，已有项目地图到达后必须自动让位。
-    if (Array.isArray(document?.nodes) && document.nodes.length > 0){
+    // 桥接加载是异步的；只有项目里出现真实内容（不止模板节点）时空白引导才让位。
+    if (Array.isArray(document?.nodes) && (document.nodes.length > 1 || (Array.isArray(document.edges) && document.edges.length > 0) || (Array.isArray(document.anns) && document.anns.length > 0))){
       globalThis.document?.querySelector('#first-map-guide')?.classList.remove('on');
     }
     if (document.ui?.collaboration?.status === 'incomplete') queueMicrotask(() => window.LiveDotApp.setStatus('error', document.ui.collaboration.reason || '本次协作未闭环'));
@@ -137,7 +137,24 @@ window.LiveDotApp = {
     let label = document.querySelector('#sync-label');
     if (!label){ label = document.createElement('span'); label.id='sync-label'; label.style.cssText='font-size:11px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; document.querySelector('#project-pill').insertBefore(label, document.querySelector('#proj-menu-btn')); }
     const states = {draft:['var(--note-border)','本地草稿'],saving:['var(--note-border)','保存中'],saved:['var(--success)','已保存'],offline:['var(--pending)','离线'],conflict:['var(--danger)','冲突'],error:['var(--danger)','错误'],fallback:['var(--pending)','降级模式']};
-    const current = states[state] || states.error; dot.style.background=current[0]; dot.title=detail || current[1]; label.textContent=current[1];
+    const current = states[state] || states.error; dot.style.background=current[0]; dot.title=(detail || current[1]) + (typeof agentActivityLine === 'function' ? agentActivityLine() : ''); label.textContent=current[1];
+  },
+  // Agent 刚写回的新对象高亮：给对应画布元素加 pulse 类（动画结束后自动移除）
+  flashObjects(ids){
+    if (!Array.isArray(ids) || !ids.length) return;
+    setTimeout(() => {
+      const wanted = new Set(ids.map(String));
+      let count = 0;
+      document.querySelectorAll('.node,[data-edge],.ann').forEach(el => {
+        const id = el.dataset.id || el.dataset.edge || el.dataset.ann;
+        if (id && wanted.has(id)){
+          el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); count++;
+        }
+      });
+      if (count) setTimeout(() => {
+        document.querySelectorAll('.pulse').forEach(el => el.classList.remove('pulse'));
+      }, 3600);
+    }, 80);
   }
 };
 /* live-dot-map-v2:integration:end */

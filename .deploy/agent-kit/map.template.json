@@ -18,7 +18,7 @@
   ],
   "nodes": [
     {
-      "id": "n1", "num": "01", "name": "开始", "type": "目的", "route": "r1",
+      "id": "n1", "num": "01", "name": "开始", "kind": "goal", "type": "目的", "route": "r1",
       "x": 0, "y": 0, "md": ".live-dot-map/nodes/n1.md",
       "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z", "createdBy": "migration",
       "updatedBy": "migration", "updatedRevision": 0

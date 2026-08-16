@@ -1,0 +1,66 @@
+{
+  "revision": 0,
+  "checksum": "033d488d7f3384db3f2b2aa9c7a6d7c1b9bb0602c705d16d8066a71c6309c455",
+  "createdAt": "2026-08-16T11:26:29.451Z",
+  "document": {
+    "mapId": "project:58ca7727eba53e8ff895fac2b020c92f",
+    "version": 2,
+    "revision": 0,
+    "lastEventId": 0,
+    "name": "repro-tuG032",
+    "createdAt": "2026-08-16T11:26:29.390Z",
+    "updatedAt": "2026-08-16T11:26:29.390Z",
+    "view": {
+      "x": 0,
+      "y": 0,
+      "k": 1
+    },
+    "ui": {
+      "showAnns": true,
+      "showRoutes": true,
+      "showNums": false,
+      "showFailed": true
+    },
+    "counters": {
+      "num": 2,
+      "edge": 1,
+      "ann": 1,
+      "nodeName": 1,
+      "edgeName": 1,
+      "routeName": 1
+    },
+    "routes": [
+      {
+        "id": "r1",
+        "name": "主路线",
+        "source": null,
+        "main": true,
+        "createdAt": "2026-08-16T11:26:29.390Z",
+        "updatedAt": "2026-08-16T11:26:29.390Z",
+        "createdBy": "migration",
+        "updatedBy": "installer",
+        "updatedRevision": 0
+      }
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "num": "01",
+        "name": "开始",
+        "kind": "goal",
+        "type": "目的",
+        "route": "r1",
+        "x": 0,
+        "y": 0,
+        "md": ".live-dot-map/nodes/n1.md",
+        "createdAt": "2026-08-16T11:26:29.390Z",
+        "updatedAt": "2026-08-16T11:26:29.390Z",
+        "createdBy": "migration",
+        "updatedBy": "installer",
+        "updatedRevision": 0
+      }
+    ],
+    "edges": [],
+    "anns": []
+  }
+}

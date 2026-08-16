@@ -1,0 +1,37 @@
+{
+  "revision": 0,
+  "checksum": "c60bd05525c6de00826fc27547d20810a86365899fcdf6c802f35611e95e968f",
+  "createdAt": "2026-08-16T11:25:22.463Z",
+  "document": {
+    "mapId": "map-y4m0rn",
+    "version": 2,
+    "revision": 0,
+    "lastEventId": 0,
+    "name": "repro-0bMJHi",
+    "createdAt": "2026-08-16T11:25:22.456Z",
+    "updatedAt": "2026-08-16T11:25:22.456Z",
+    "view": {
+      "x": 0,
+      "y": 0,
+      "k": 1
+    },
+    "ui": {
+      "showAnns": true,
+      "showRoutes": true,
+      "showNums": false,
+      "showFailed": true
+    },
+    "counters": {
+      "num": 1,
+      "edge": 1,
+      "ann": 1,
+      "nodeName": 1,
+      "edgeName": 1,
+      "routeName": 1
+    },
+    "routes": [],
+    "nodes": [],
+    "edges": [],
+    "anns": []
+  }
+}

@@ -6,7 +6,7 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
     description: '读取当前项目地图上下文、全局推进摘要与相关 Markdown 片段。',
     inputSchema: {
       type: 'object',
-      properties: { query: { type: 'string' }, includeHistory: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 12 } },
+      properties: { query: { type: 'string' }, currentNodeId: { anyOf: [{ type: 'string' }, { type: 'null' }] }, includeHistory: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 12 } },
       additionalProperties: true,
     },
   },
@@ -70,6 +70,15 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
     description: '请求本地桥创建可恢复检查点；不复制或重写地图文件。',
     inputSchema: { type: 'object', properties: { reason: { type: 'string' } }, additionalProperties: true },
   },
+  {
+    name: 'map_plan_consolidation',
+    description: '只读生成可审核的地图整理建议；不会直接修改地图。',
+    inputSchema: {
+      type: 'object',
+      properties: { maxSuggestions: { type: 'integer', minimum: 1, maximum: 20 }, now: { type: 'string' } },
+      additionalProperties: true,
+    },
+  },
 ]);
 
 const DEFINITION_BY_NAME = new Map(MCP_TOOL_DEFINITIONS.map((definition) => [definition.name, definition]));
@@ -106,6 +115,7 @@ export class MapMcpServer {
       case 'map_apply_commands': return this.client.mapApplyCommands(args);
       case 'map_validate': return this.client.mapValidate(args);
       case 'map_checkpoint': return this.client.mapCheckpoint(args);
+      case 'map_plan_consolidation': return this.client.mapPlanConsolidation(args);
       default: throw new BridgeClientError('UNKNOWN_MCP_TOOL', `未知地图工具: ${name}`, { status: 400 });
     }
   }

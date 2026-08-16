@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MapMcpServer, mcpToolDefinitions } from '../../agent-kit/lib/mcp-tools.mjs';
 
-test('MCP stdio adapter exposes exactly seven tools and never writes files', async () => {
+test('MCP stdio adapter exposes exactly eight tools and never writes files', async () => {
   const calls = [];
   const client = {
     async mapGetContext(args) { calls.push(['context', args]); return { summary: 'ok' }; },
@@ -12,11 +12,12 @@ test('MCP stdio adapter exposes exactly seven tools and never writes files', asy
     async mapApplyCommands(args) { calls.push(['apply', args]); return { revision: 1 }; },
     async mapValidate(args) { calls.push(['validate', args]); return { ok: true }; },
     async mapCheckpoint(args) { calls.push(['checkpoint', args]); return { revision: 1 }; },
+    async mapPlanConsolidation(args) { calls.push(['consolidation', args]); return { suggestions: [] }; },
   };
   const server = new MapMcpServer({ client });
   const list = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
-  assert.equal(list.result.tools.length, 7);
-  assert.deepEqual(list.result.tools.map((tool) => tool.name), ['map_get_context', 'map_list_human_updates', 'map_ack_human_updates', 'map_next_candidates', 'map_apply_commands', 'map_validate', 'map_checkpoint']);
+  assert.equal(list.result.tools.length, 8);
+  assert.deepEqual(list.result.tools.map((tool) => tool.name), ['map_get_context', 'map_list_human_updates', 'map_ack_human_updates', 'map_next_candidates', 'map_apply_commands', 'map_validate', 'map_checkpoint', 'map_plan_consolidation']);
   const result = await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'map_validate', arguments: {} } });
   assert.equal(result.result.isError, false);
   assert.equal(calls[0][0], 'validate');

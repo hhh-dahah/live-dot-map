@@ -22,7 +22,7 @@ export function windowsDesktopDirectory({ platform = process.platform, env = pro
 export async function createShortcut({
   target,
   arguments: args = '',
-  name = '活点地图本地桥',
+  name = '活点地图',
   desktopDirectory,
   platform = process.platform,
   env = process.env,
@@ -57,4 +57,3 @@ export async function createShortcut({
     return { ok: false, type: 'windows-lnk', path: shortcut, fallback, reason: 'powershell-shortcut-failed', error };
   }
 }
-

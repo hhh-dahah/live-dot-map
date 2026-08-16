@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, truncate, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, truncate, writeFile } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
 import test from 'node:test';
 import { ProjectStore } from '../../src/bridge/project-store.mjs';
 import { commandEnvelope, createRouteCommand, temporaryProject } from './helpers.mjs';
@@ -135,6 +134,44 @@ test('recovers a corrupted map from the last checksummed WAL image', async (t) =
   assert.ok(quarantine.some((name) => name.includes('map.json.corrupt')));
 });
 
+test('treats an empty map.json as a fresh project instead of failing', async (t) => {
+  const { root, shared } = await temporaryProject(t);
+  await writeFile(join(root, '.live-dot-map', 'map.json'), '', 'utf8');
+  const store = await ProjectStore.open({ projectRoot: root, shared });
+  const snapshot = await store.snapshot();
+  assert.equal(snapshot.revision, 0);
+  assert.equal(snapshot.document.version, 2);
+  assert.ok(typeof snapshot.document.mapId === 'string' && snapshot.document.mapId.length > 0, 'empty map should be replaced by a fresh empty map');
+  assert.ok(Array.isArray(snapshot.document.routes), 'rebuilt map must have collections');
+  const quarantine = await readdir(join(root, '.live-dot-map', '.bridge', 'quarantine'));
+  assert.ok(quarantine.some((name) => name.includes('map.empty.json')), 'empty original should be preserved as evidence');
+  await store.execute(commandEnvelope('command-empty1', 0));
+  assert.equal((await store.snapshot()).revision, 1, 'rebuilt map must stay writable');
+});
+
+test('rebuilds a map emptied at runtime instead of quarantining per poll', async (t) => {
+  const { root, shared } = await temporaryProject(t);
+  const store = await ProjectStore.open({ projectRoot: root, shared, pollIntervalMs: 30 });
+  await store.execute(commandEnvelope('command-empty2', 0));
+  const quarantineDir = join(root, '.live-dot-map', '.bridge', 'quarantine');
+  const before = await readdir(quarantineDir);
+  await writeFile(join(root, '.live-dot-map', 'map.json'), '', 'utf8');
+  // 轮询检测到磁盘变化后应重建（WAL 有提交记录 → 恢复历史文档，revision 保持）。
+  const mapPath = join(root, '.live-dot-map', 'map.json');
+  const deadline = Date.now() + 5000;
+  let size = 0;
+  while (Date.now() < deadline) {
+    size = (await stat(mapPath)).size;
+    if (size > 0) break;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+  }
+  assert.ok(size > 0, 'emptied map should be rebuilt from WAL');
+  assert.ok((await store.snapshot()).revision >= 1, 'WAL history should survive a runtime empty');
+  const after = await readdir(quarantineDir);
+  const newOperationCorrupt = after.filter((name) => name.includes('operation-corrupt') && !before.includes(name));
+  assert.deepEqual(newOperationCorrupt, [], 'runtime rebuild must not quarantine garbage per poll');
+});
+
 test('detects an external write and turns an old command into a revision conflict', async (t) => {
   const { root, shared } = await temporaryProject(t);
   const store = await ProjectStore.open({ projectRoot: root, shared });
@@ -260,7 +297,9 @@ test('rejects an oversized map before reading or quarantining the payload', asyn
 
 test('rejects a .live-dot-map junction that escapes the registered project', async (t) => {
   const { root, shared } = await temporaryProject(t, { withMap: false });
-  const outside = await mkdtemp(join(tmpdir(), 'live-dot-map-outside-'));
+  const testRoot = resolve(process.env.LIVEDOT_TEST_ROOT || 'D:\\LiveDotMap-Test');
+  await mkdir(testRoot, { recursive: true });
+  const outside = await mkdtemp(join(testRoot, 'live-dot-map-outside-'));
   t.after(() => rm(outside, { recursive: true, force: true }));
   await mkdir(outside, { recursive: true });
   try {

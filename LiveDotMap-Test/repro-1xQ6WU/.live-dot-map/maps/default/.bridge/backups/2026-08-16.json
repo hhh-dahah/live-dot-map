@@ -1,0 +1,38 @@
+{
+  "revision": 0,
+  "checksum": "8ff0b229b9996818bb6a0cc1c19bb297b69c137024fb53bb296faad27e64048a",
+  "createdAt": "2026-08-16T11:25:45.796Z",
+  "document": {
+    "mapId": "map-2x54zd",
+    "version": 2,
+    "revision": 0,
+    "lastEventId": 0,
+    "name": "bridge-test",
+    "createdAt": "2026-08-11T00:00:00.000Z",
+    "updatedAt": "2026-08-11T00:00:00.000Z",
+    "view": {
+      "x": 0,
+      "y": 0,
+      "k": 1
+    },
+    "ui": {
+      "showAnns": true,
+      "showRoutes": true,
+      "showNums": false,
+      "showFailed": true
+    },
+    "counters": {
+      "num": 1,
+      "edge": 1,
+      "ann": 1,
+      "nodeName": 1,
+      "edgeName": 1,
+      "routeName": 1
+    },
+    "routes": [],
+    "nodes": [],
+    "edges": [],
+    "anns": [],
+    "mapDir": ".live-dot-map/maps/default"
+  }
+}

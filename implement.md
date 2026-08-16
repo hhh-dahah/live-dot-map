@@ -343,3 +343,102 @@
 - `npm test` 72/72、Claude 与 CodeBuddy 真实客户端冒烟均通过；`npm run verify:release` 通过并重新生成 `.deploy` 运行时与 Windows SEA 产物。临时 SEA 注入文件不作为发布源文件。
 - CloudBase CLI 已确认登录态有效，本次已直接上传当前 `.deploy` 119 个文件，返回 `successCount=119`；CDN 刷新需数分钟。EdgeOne 仍由 GitHub master 自动部署，控制台页面已打开待授权/确认；浏览器自动化内核当前报系统路径错误，未伪造授权成功。
 - EdgeOne Makers 重新部署失败的实际原因已由部署日志确认：其输出目录直接扫描 `.deploy`，`livedot-bridge-win-x64.exe`（约 87 MiB）超过平台单文件 25 MiB 限制；Wrangler 使用的 `.assetsignore` 对 EdgeOne 不生效。新增 `scripts/edgeone-build.mjs` 与 `npm run build:edgeone`，仅清理 EdgeOne 输出中的 Release 专属二进制，保留网页、运行时和 Agent 接入文件。
+
+## 记忆策展 V1 实施收口（2026-08-13，Codex）
+
+- 实现 `buildProjectProjection`：从当前 `map.json` 即时生成总目标、主路线、`currentNodeId`（`stored|inferred|none`）、待验证候选、最近结果、停滞路线、人类新标注和待审里程碑；SessionStart 与 `map_get_context` 注入该投影，不建立第二份记忆。
+- 为路线增加可选 `currentNodeId` 约束；校验必须引用同路线节点，删除当前节点会清空指针；补充往返、跨路线和未知字段保持测试。
+- 实现 `findExplorationAlternatives`：失败方案从 `from` 回源，最多给 3 个同来源或关键词相似的 pending/成功方向，排除 archived/shelved 失败线；没有新增父子关系。
+- 实现 `map_plan_consolidation` 与 `app.html`“整理地图”审核层：预览只生成可审核的失败/重复方案归档建议；用户逐项勾选后先 checkpoint，再经统一命令处理器单 revision 应用，取消和读取失败均不改地图。20 个活跃节点显示克制提示，30 个节点硬限制保持不变。
+- 新增 canonical `agent-kit/skills/live-dot-map/SKILL.md`、大尝试模板、Codex 插件包和四个平台副本；安装器把同一 Skill 复制到已发现 Agent 的项目配置目录。`npm run verify:agent-skill`：SHA-256 `8e2349872c8305be22956b918e5009e7a349f746fe6d1204ba97e8de6bb3a288`，5 个副本一致。
+- `AGENTS.snippet.md` 改为短路由，完整策展规则只在 Skill；`docs/map-json-v2.md`、`docs/agent-protocol.md` 同步投影、当前位置、失败候选和整理预览协议。`canvas.html` 与 `landing/` 未修改。
+- 验证：`npm test` **76/76**；`npm run verify:agents` **16/16** + 四 Agent cycle；`npm run verify:web` **21/21**；`npm run verify:agent-skill` 通过；Codex `plugin-creator` 校验通过；`npm run verify` 全部门禁通过（桥接三浏览器、降级、首次地图、性能、安装器、Windows 安装器、SEA、release manifest）。之后再次运行 `node --test tests/e2e/bridge-browser.mjs` 三浏览器整理路径通过，`npm run verify:release` 重新生成并校验 `.deploy` RC。`git diff --check` 无错误。
+- 尚未宣称完整仿生直觉：Stop 现在已能从 Markdown 结构检查“大尝试证据缺口”，但整理 V1 目前只做可逆归档预览，未做合并/摘要重写；长任务真实模型的失败→回溯→成功仍需用户人工实测。计划中真实长程门禁保持未勾选，不改 `goal.md` 为“可靠性实现完成”。
+- **Stop 语义门禁补齐（本轮续作）**：新增 `checkAttemptEvidence`，对 Agent 更新过的 pending/success/failed 方案检查对应 Markdown 的关键证据、结果、失败原因、评分和下一步；`map_validate`、CLI Hook 与统一 Agent Hook 都会返回/消费缺口。第一次 Stop 阻止，第二次允许结束并写红色协作状态。新增 shared/hooks 单测，三浏览器桥接回归覆盖缺证据检测与整理应用，全部通过。
+
+### 记忆策展 V1 真实长程闭环收口（2026-08-13，Codex）
+
+- **Windows Hook 启动修复**：Codex/Claude 的宿主会再套一层 `cmd /C`；直接配置带空格的 Node 绝对路径会在嵌套引号下失败。安装器现在把命令写成 `cmd /d /s /c .live-dot-map\hook.cmd ...`，由项目内 launcher 统一调用 Node/SEA，避免路径引号和安装目录泄漏；Kimi 插件入口同步该形式。
+- **Hook 输出协议收口**：SessionStart/UserPromptSubmit 只输出官方 `hookSpecificOutput`，Stop 只输出 `decision/reason` 或 `systemMessage`，不把产品内部字段混入宿主协议；UserPromptSubmit 注入短投影与有限召回，避免吞入整张地图。
+- **真实 Codex 长程验证**：`node tests/e2e/real-long-task-smoke.mjs codex` 通过。临时项目实际完成 `map_get_context → map_list_human_updates → 引用 a-human-long-task → map_ack_human_updates → pending 失败方案 e-failed → 失败结果 n-failed → 替代方案 e-alternative → 成功结果 n-success → 更新 r1.currentNodeId → map_validate → 新会话恢复`；地图 revision=7，标注为 `acknowledged`，失败/替代/成功结构和 Markdown 均持久化。两次会话的 `SessionStart`、`UserPromptSubmit`、`Stop` 均显示 `Completed`。
+- **计划状态**：`docs/plans/8-13待修改plan.md` 已将阶段 11、强制门禁 14 和长程逐项清单勾选，并明确只有 Codex 具备本次真实证据；Claude/Kimi/CodeBuddy/WorkBuddy 仍需分别按真实生命周期结果标记，不因 Codex 通过而自动宣称正式支持。
+- **方向收口**：`goal.md` 当前阶段更新为“记忆策展 V1 已完成”，同时保留 Claude/Kimi/CodeBuddy/WorkBuddy、普通小白流程和公开分发门禁，未宣称完整仿生直觉或正式公开版。
+- **回归**：`npm test` 78/78；真实 Codex 长程脚本通过；`npm run verify:agent-skill` 通过（5 个副本 hash 一致）；随后重新生成 `.deploy`/SEA/release 物料，`npm run verify` 输出 `[verify] all gates passed`，包含三浏览器、降级模式、性能、四适配器进程级模拟、安装器 UI、SEA 与 release manifest。
+- **安装幂等补丁**：Hook 命令改为嵌套 `cmd /d /s /c` 后，安装器去重规则同时识别旧 `livedot.mjs` 和新 `hook.cmd`；新增重复安装回归，三类 Hook 不会叠加。`npm test` 仍为 78/78；`npm run verify:release` 重跑通过并刷新 `.deploy` hash。
+- **构建稳定性补丁**：Windows SEA 临时文件遇到 Defender/映射句柄短暂占用时，`scripts/build-sea.mjs` 对 `EBUSY/EPERM/UNKNOWN` 做有限退避重试；随后完整 `npm run verify` 再次通过并输出 `[verify] all gates passed`。
+
+### 8-13 计划独立复核与人工验收前修复（2026-08-13，Codex + 子代理）
+
+- **复核结论**：计划此前“全部完成”的勾选不真实。独立审计实际复现了四类阻断：MCP 可伪造 `actor:human` 且 Agent 可直接归档记忆；Windows RC payload 缺 canonical Skill 导致全新项目安装失败；安装 UI 测试复用旧目录产生假阳性；整理冲突/失败后画布仍可能显示绿色“已保存”。在这些问题修复前只适合探索性试用，不适合正式人工验收。
+- **可信身份与人类权限**：浏览器命令由服务端固定绑定为 `human`，MCP/CLI 身份由受信适配器启动参数绑定并忽略模型传入的 `actor/sessionId/envelope`。Agent 对删除、归档、搁置及 `humanOnly` 整理命令返回 `403 HUMAN_APPROVAL_REQUIRED`；未知命令返回明确错误且不推进 revision。新增 reducer、HTTP 和四适配器伪造身份回归。
+- **路线自治与回溯**：`findExplorationAlternatives` 支持 `edge.from`/`route.source` 回源，返回 `sourceNodeId/sourceRouteId/isTried/isCrossRoute/reason`，排除已归档、搁置和重复失败方向，最多返回 3 项；`autonomyDecision` 增加当前路线/一跳、跨路线重大方向、批量对象数量、活跃节点阈值和候选分差门禁。
+- **睡眠整理 V1**：只读计划新增近义节点、连续成功链、重复分支重连和长 Markdown 摘要建议。归档/重连使用 `humanOnly` 命令；合并、压缩、摘要在尚不能原子保留原证据时明确标为 `preview_only`，画布禁用其勾选并显示“仅预览”，不假装已经应用。
+- **画布可靠性**：整理预览显示对象 ID、来源、路线/节点/方案前后数量及当前位置的 stored/inferred 来源；普通节点和方案显示创建/更新者。取消零修改，应用必须恰好推进一个 revision；409/失败显示红色冲突或错误。增加“恢复整理前”入口，真实走 `/recover`；20/30 节点提示只在跨阈值时出现。
+- **真实上下文恢复与健康证据**：`map_get_context`/SessionStart 返回大尝试证据摘要、失败原因、下一步和稳定 Markdown 路径；新会话不再只恢复对象 ID。MCP/Hook 成功或失败会在 `.live-dot-map/.bridge/agent-health.json` 留下最近健康证据，Agent 状态可显示持久红态。
+- **Windows RC 干净安装**：payload 加入 canonical Skill 和大尝试模板，PayloadVerifier 强制检查；验证器从 payload SEA 在全新临时项目执行 `install + doctor`，UI E2E 每次使用独立项目及独立安装根，证明 map/config/bridge 均由本次安装产生。source、`.deploy`、payload 和 manifests 的关键 SHA-256 必须一致；不再借用旧安装冒充成功。
+- **真实 Codex 验证**：`node tests/e2e/real-long-task-smoke.mjs codex` 通过，revision 最终为 9（只验证严格单调，不写死数字）；人类标注确认、失败方案、替代成功、当前位置、新会话失败原因与下一步均持久化。相同临时项目还验证 20+ 节点整理预览零副作用、部分建议单 revision、checkpoint 恢复和健康证据。
+- **自动验证**：`npm test` 85/85；三浏览器强模式整理 E2E 通过（Chromium/Firefox/WebKit，均完成冲突红态和 checkpoint 恢复）；Chrome/Edge 降级模式与首次地图引导通过；四 Agent 进程级闭环通过；`npm run verify:windows-installer` 的全新隔离安装通过；最终 `npm run verify` 输出 `[verify] all gates passed`。`canvas.html` 和 `landing/` 未修改，未执行生产部署。
+- **诚实边界**：真实 Codex 长程脚本仍给出了步骤和对象 ID，它证明端到端能力链，不证明 Agent 只接收一个高层目标时一定会自主判断失败、控制记录粒度并回溯。该项已在 `docs/plans/8-13待修改plan.md` 撤回勾选，作为项目所有者人工验收的首要场景；Claude/Kimi/CodeBuddy/WorkBuddy 桌面生命周期和公开分发继续分别验收。
+
+## 8-14 实测问题整改（2026-08-14，Luna 实施 + 独立复审）
+
+- 输入与对照：以 `docs/8-14实测记录.md` 的记录 01–06 和原始截图为强制复现依据；`canvas.html`、`landing/`、`E:\壁纸制作` 真实项目均未修改。
+- 安装与入口：WinForms 安装器现在只安装软件，显示并允许选择安装位置；旧/不完整 `current` 自动备份并修复。桌面、开始菜单、窗口统一显示“活点地图”，旧“活点地图本地桥”入口仅在确认属于产品目录时安全迁移清理。`--open` 进入产品启动器，选择项目后内部启动本地桥并打开带会话 token 的 loopback URL；关闭启动窗口不再终止已启动桥。
+- 协作与 Markdown：桥支持安全会话恢复；新增 Markdown create/read/write/reveal 与 MCP `map_read_markdown`/`map_write_markdown`。路径限定项目内 `.md`、2 MiB、拒绝 traversal/符号链接；首次创建和旧 0 字节恢复与写入共用路径锁，同一 etag 并发保存严格返回一个成功、一个 `409 MARKDOWN_CONFLICT`，不静默覆盖。
+- 画布与协议：新增 `map.name`/`set_meta`；节点正式使用 `kind: goal|problem|result`，兼容旧 `type:"问题"`。问题节点独立显示/检索，不再被问题路线替代；画布可重命名、设为问题、从问题建路线，并在强模式下编辑/保存 Markdown。协议、PRD、UI、品牌和 Agent Skill 已同步。
+- 验证：`npm run test:core` 22/22、`tests/web` 19/19、`tests/bridge` 31/31、`tests/agent-kit/installer` 6/6；`npm run verify:windows-installer`、产品入口隔离验证、`git diff --check` 均通过。Skill 同步后、再构建 Windows 安装器后再次 `npm run verify:agent-skill` 通过；canonical、5 个分发副本、`.deploy` 与安装器 payload hash 一致。
+- 未越界宣称：完整 Playwright E2E 曾在本机无输出挂起，未算通过；记录 01–06 仍需产品所有者用新安装包按原操作和截图重新人工复测。未生产部署、未公开发布。
+
+## 8-14 真实 Codex 接入收口（2026-08-14，受控临时项目）
+
+- **成功证据**：最后一次使用当前全局、已登录的 Codex CLI（未设置隔离 `CODEX_HOME`，未使用 `--dangerously-bypass-hook-trust`），只在 `D:\LiveDotMap-Test\livedot-real-codex-init-owhHcE` 运行。真实会话依次调用 `map_get_context`、`map_validate`、`map_apply_commands`；固定 reducer 命令成功写回，revision `0→1`，节点 `real-codex-initialized` 出现，`createdBy=agent:codex`，health 事件为 `mcp:map_apply_commands`。这证明当前 Codex 的登录、MCP 注入、地图写回和来源记录链路可用。
+- **此前失败根因（保留事实，不算通过）**：`livedot-real-codex-init-1Ovbvf` 使用隔离 `CODEX_HOME`，因没有用户凭据得到 API `401 Missing bearer/basic auth`；`livedot-real-codex-init-AAaQoj` 同样为隔离配置，复现同一认证阻断，隔离 `CODEX_HOME` 为 `livedot-real-codex-home-zTFr57`。`livedot-real-codex-init-zG4Y3B` 已继承全局登录并成功进入 MCP，但验收提示词误写为 `type:create_node`，服务端按协议拒绝，revision 保持 `0`；修正为 `{op:"create",collection:"nodes",value:{...}}` 后才通过。
+- **目录状态**：以上 5 个临时目录均在 `D:\LiveDotMap-Test`，因 `LIVEDOT_KEEP_REAL_CLIENT_TMP=1` 保留用于审计；未读写用户认证文件、未触碰 `E:\壁纸制作`。后续清理只应针对这些明确列出的测试目录，不得清理整个测试根目录。
+- **当前边界**：Codex 真实初始化门槛已通过；Claude/Kimi/CodeBuddy/WorkBuddy 桌面生命周期、普通小白新安装和公开分发仍按台账人工门禁执行，不能由本次 Codex 证据替代。
+
+## 8-14 Windows 安装目录占用修复（2026-08-14，Codex）
+
+- **诊断**：用户报告 `Access to the path 'D:\\livedotmap\\current' is denied` 时，只读检查确认目录 ACL 对当前用户仍有 Modify；实际占用是 `D:\\livedotmap\\current\\payload\\livedot-bridge-win-x64.exe`。原更新流程直接重命名固定 `current`，Windows 遇到该可执行文件句柄会拒绝访问，且此前直接显示底层错误。
+- **修复**：仅在可执行文件位于确认的目标产品目录内时，更新/旧布局迁移会停止 `livedot-bridge-win-x64.exe` 或 `LiveDotMapSetup.exe`，再备份并切换。恢复分支不再删除意外存在的 `current`；若仍因 ACL 或第三方占用不能切换，明确说明“未删除任何现有文件或项目数据”、可关闭产品后重试或选择其他安装位置。
+- **隔离验证**：`D:\\LiveDotMap-Test` 的 WinForms UI 脚本覆盖可识别旧 `X\\current` 迁移、损坏安装自动修复、运行中的 `current` bridge 被定向停止后更新且用户文件存在 `.previous-*` 备份、以及拒绝访问时 `current` 和用户文件保持不变并显示无损引导。`dotnet build installer/winforms/LiveDotMapSetup.csproj -c Release --nologo` 通过（0 warning / 0 error）。未触碰 `C:` 或真实项目数据。
+
+## 8-15 实测问题整改（2026-08-15，一次性修复记录 01–05）
+
+- 输入与对照：以 docs/8-15实测记录.md 记录 01–05 与用户截图/原话为强制依据；canvas.html、landing/、E:\壁纸制作 未修改；用户真实安装 D:\map\livedotmap 未触碰。
+- 品牌图标（记录 01）：新增 scripts/generate-app-icon.ps1（PowerShell + System.Drawing）从 icons/icon-512.png 生成 16–256 共 7 尺寸 ssets/app-icon.ico，avicon.ico 同步多尺寸；LiveDotMapSetup.csproj 加 ApplicationIcon 嵌入安装包 exe；payload、桌面/开始菜单快捷方式、窗口图标改用 pp-icon.ico。
+- 安装器极简形态（记录 02/04）：安装页只保留 安装位置（完整路径直接显示、可编辑、选父目录自动拼 livedotmap）+「安装并打开画布」+ 进度条与状态；移除 打开画布/修复/更新/卸载/打开安装位置；副标题改「选择安装位置。打开画布后即可连接 Agent。」；已安装后无参运行 exe 直接进产品启动器打开画布；卸载注册到 Windows 设置→应用（HKCU Uninstall 键 + --uninstall）。
+- 安装卡死修复（记录 05）：复制与 SHA256 校验移入后台线程（Task.Run），UI 全程响应；进度条按 MB/文件序号实时报告；已装同版本不再整目录重拷；已安装但关键文件缺失走自动备份修复（RepairInstalledAsync，保留 .previous-* 备份与无损提示）。
+- 产品内更新（记录 03）：桥新增 /api/v1/update/check、/api/v1/update/apply（src/bridge/server.mjs，下载 payload 到 %TEMP%、逐文件 sha256 校验、启动更新器后优雅退出）；前端项目菜单红点徽标 +「更新到 x.y.z」项 + 菜单底部版本号（loopback 页面每 6 小时静默复查一次）；更新器 --update <新版本目录> 用延迟 cmd 脚本完成 备份 current → 切换 → 重开画布；构建脚本生成线上更新清单 .deploy/windows-installer/update-manifest.json（EdgeOne/CloudBase 源，渠道可用 LIVEDOT_UPDATE_BASE 覆盖）。
+- 顺带修复（verify 暴露）：ridge-client.ts flush 在 inFlight 时不再丢弃新修改（200ms 重试），成功路径只清空本次提交的 pending（不误清新 schedule）；loopback 页面不再注册 ServiceWorker（避免 SW 拦截 /api/v1/events，Firefox 尤甚）。
+- 验证：
+pm run verify:windows-installer 通过（新增断言：首屏无维护按钮、已安装直接进产品启动器、update-manifest 与 payload 哈希一致、app-icon 入 payload）；	ests/e2e/bridge-browser.mjs 三浏览器（Chromium/Firefox/WebKit）连续多轮通过（标注保存等待改为「revision 递增且含本次标注」，避免连续保存窗口误判）；
+pm run verify 全量结果见下。
+- 未越界宣称：桥 exe（livedot-bridge-win-x64.exe）图标未做（后台进程不可见，rcedit 需新依赖，记入后续）；产品内更新闭环需线上渠道真实发布后才可手工验证（红点触发、下载、重启恢复）；安装/图标/卸载仍需用户用新安装包手工复测。
+
+## 8-15 画布即产品：入口收敛与一步接入（2026-08-15，第三轮，按 docs/plans/2026-08-15-画布即产品-入口收敛与一步接入.md）
+
+- 无窗口启动（T1）：--open 与「已安装时双击 exe」改为 SilentOpenContext（ApplicationContext + ProductLauncherLogic），不再弹出启动器窗口；起桥 → 浏览器打开画布 → 进程自行退出，桥 detached 后台运行；错误弹窗兜底。installer/winforms/Program.cs 编译 0 警告 0 错误。
+- 上次工作区记忆（T1 附）：成功打开项目写入 %LocalAppData%\LiveDotMap\last-project.txt（LIVEDOT_SETUP_LAST_PROJECT_FILE 可隔离）；--open 无参时优先恢复上次项目，其次默认工作区 + LIVEDOT_SETUP_TEST_OPEN_PROJECT 测试钩子；更新链路（--update → --open）自动重开上次项目。
+- 验证脚本更新：scripts/verify-windows-product-entry.ps1 断言无窗口（MainWindowHandle=0）、静默退出、last-project 写入与二次启动恢复；scripts/verify-windows-installer-ui.ps1 场景 3 改为无窗口断言（secondRunWindowless + lastProjectRemembered）。两脚本全部通过（10 项 / 17 项全绿）。
+- 桥项目切换（T2/T3）：/api/v1/projects/pick（原生文件夹选择器，POST 已认证）与 /api/v1/projects/recent（最近 10 个有效项目）已存在；bridge-client.ts 新增 pickProject/switchProject/recentProjects + attachProject（切换后重载画布、置「已保存」、重建 EventSource 到新项目频道）；recent 记录文件默认 ~/.live-dot-map/recent-projects.json（LIVEDOT_RECENT_PROJECTS_FILE 可隔离）。
+- 前端（app.html）：首启引导三入口重组为「选择项目…（含最近项目列表与返回）/ 空白开始 / 看看简单示例」，选择入口后记 dotmap-guide-seen；LiveDotApp.load 让位条件改为真实内容（nodes>1 或 edges/anns>0），模板地图不再顶掉引导；项目菜单重组为「工作区▸（选择其他项目/最近项目/新建空白地图）与 地图▸（重命名/导入/导出 map.json）」两级，移除「导出图片」，openMenu 支持子菜单就地展开 + 返回项（‹ 上级）；菜单加微缩放淡入动画（Apple/Linear 基调）；对象右键菜单新增「复制引用给 Agent」（[活点地图] 节点「名」id（类型，路线 r1）→ .live-dot-map/nodes/id.md，方案线同理，格式对齐 SKILL.md「画布引用寻址」）；Agent 写回新对象在画布上脉冲高亮（flashObjects + .pulse drop-shadow 动画）；attachDir 捕获 InvalidStateError/SecurityError 并提示「文件夹状态已变化，请重新选择」。
+- 注意：LiveDotApp 集成区（load/setStatus/flashObjects）的权威源在 scripts/build-app.mjs 的 appIntegration()，改动必须落在构建脚本而非 app.html（构建会覆盖）。
+- 验证：tests/e2e/bridge-browser.mjs 增补 切项目重载且已保存、切后继续写新项目、复制引用格式、Agent 新对象 pulse、菜单层级与导出图片移除、模板不顶掉引导/真实内容让位、file:// 直开引导去重——三浏览器（Chromium/Firefox/WebKit）全绿；e2e 桥进程已用 LIVEDOT_RECENT_PROJECTS_FILE 隔离，避免污染真实用户 recent 记录（并已清理先前污染）。
+- 未越界宣称：原生文件夹选择器弹窗无法自动化，需人工验收；File System Access 句柄失效提示在无桥模式人工复测；Agent 写回高亮依赖外部事件流，多浏览器已验证。
+
+## 8-16 运行日志系统（2026-08-16，人工审查前置基建，详见 docs/8-16实测记录.md 记录 0）
+
+- 新增 src/bridge/logger.mjs：操作级 JSON 行日志，~/.live-dot-map/logs/livedot-YYYY-MM-DD.log 按天滚动、保留 14 天、LIVEDOT_LOG_DIR 可隔离；写失败静默不阻断主流程；as(source) 派生来源共享同文件同队列。
+- 桥（server.mjs）：http 请求计时日志（不含查询串，bootstrap token 不落盘）、project.open、commands（条数+revision）、mcp 工具成败、5xx 堆栈；新增 POST /api/v1/logs/client（认证+CSRF，50 条/256KB 上限）接收画布日志（source=client）。
+- 画布（bridge-client.ts）：1.5s 合批上报、error 立即发；埋点 client.init/project.switch/save.flush/save.conflict/save.failed/sse.error/agent.sync/markdown.save.failed；window.error 与 unhandledrejection 自动上报；降级模式只写 console。
+- Agent（livedot.ts）：serve 记 bridge.start/stop；mcp/hook 进程记 agent.mcp.start/agent.hook.start 与调用错误；进程级故障记 process.error。
+- 验证：新增 tests/bridge/logger.test.mjs 4 用例；tests/bridge 42 过、npm test 全量 100 过；livedot.mjs serve 真实冒烟确认日志落盘。E:\livedotmap\current 旧安装需重建安装包重装后生效。
+
+## 8-16 多地图架构（2026-08-16，问题 7C，按 docs/8-16执行.md 阶段 4）
+
+- 目录结构：`.live-dot-map/maps/<地图id>/`（各自 `map.json` + `nodes/` + `routes/` + 独立 `.bridge`），项目级 `active-map` 指针文件（一行地图 id）；地图 id 限 `[a-z0-9][a-z0-9-_]{0,63}`。
+- 存储与桥：新增 `src/bridge/maps.mjs`（id 校验、指针读写、列表、建图、迁移）；`server.mjs` 的 stores/EventHub 按 `root::mapId` 分键，新增 `GET /maps`、`POST /maps/create|switch|rename` 四个端点，`/events` 按当前地图订阅；`ProjectStore.open` 未显式指定数据目录且 `maps/` 布局已存在时自动按 `active-map` 指针打开（MCP 式独立写入方随之对齐当前地图）。
+- 协议：MapDocument 新增顶层 `mapDir` 字段（项目相对地图目录），`stableMarkdownPath` 以其为前缀；旧式 `.live-dot-map/nodes|routes/...` 路径在桥 Markdown 接口与 MCP 工具上一律重写到当前地图目录，防止迁移后旧客户端在项目根重建老布局。
+- 迁移：打开旧布局项目时先备份再迁入 `maps/default/`，既有 Markdown 路径改写为新前缀；旧 `wal.ndjson` 改名 `wal.ndjson.legacy-migrated` 保留为证据、不再继续使用（有意偏离原计划：迁移改写了路径前缀，旧 WAL 校验和与新文档对不上，重放会被当外部冲突回滚）。agent-kit 安装器对老路径与 maps/ 任一存在的项目不再覆盖写模板，全新项目直接按新布局安装；hooks 增量通知先读指针、失败回退老路径。
+- 前端（app.html）：地图弹窗改为真实列表（桥 `listMaps` / FS `fsListMaps`），新建空白地图三分支（桥建图并切换 / FS 复制式建图 / 演示内存态）；IO 序列化携带 `mapDir`，Markdown 路径统一走 `mdPath(kind,id)`；`attachDir` 按指针打开、缺指针回退 default 或确认后新建；FS 模式迁移为复制式（旧文件保留，无 File System Access 删除语义差异风险）。
+- 验证：新增 `tests/bridge/maps.test.mjs` 7 用例（迁移/备份/幂等/指针回退/四 API/命令按图隔离/旧路径重写）；`tests/agent-kit/installer.test.mjs` 适配新布局断言；`npm run build` 与 `npm test` 全量 113/113 通过。FS 模式无自动化覆盖（Node 无 File System Access API），需人工走查；markdownDocuments 仍为项目级全量扫描不按图限定（路径含 mapDir 前缀天然区分，有意不改）。
