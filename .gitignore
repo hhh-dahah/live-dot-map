@@ -15,7 +15,12 @@ landing/.next/
 landing/out/
 landing/tsconfig.tsbuildinfo
 # .deploy/ 是 EdgeOne Pages Git 部署的发布目录，需要进仓库（wrangler 也读它）
+# 但桥二进制（>50MB）不进 git：EdgeOne 超其 25MiB 单文件限制，且安装包走 GitHub Release 附件
 .edgeone-deploy/
+.deploy/livedot-bridge-win-x64.exe
+.deploy/livedot-bridge-win-x64.blob
+.deploy/windows-installer/livedot-bridge-win-x64.exe
+.deploy/windows-installer/livedot-bridge-win-x64.blob
 # 任何误放进仓库的密钥/环境文件都不进 git（真凭证存仓库外 ~/.live-dot-map/）
 *.env
 *.secrets
