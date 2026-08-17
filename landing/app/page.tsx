@@ -1,5 +1,4 @@
-import { Check, DownloadSimple, Star } from "@phosphor-icons/react/dist/ssr";
-import { CopyPromptButton } from "../components/CopyPromptButton";
+import { DownloadSimple, Star } from "@phosphor-icons/react/dist/ssr";
 import { FeatureVisual } from "../components/FeatureVisual";
 import { HeroArt } from "../components/HeroArt";
 import { HeroMedia } from "../components/HeroMedia";
@@ -7,48 +6,64 @@ import { Logo } from "../components/Logo";
 import { Nav } from "../components/Nav";
 import { Reveal } from "../components/Reveal";
 
-const AGENT_PROMPT =
-  "读取 https://livedotmap.top/agent-kit/setup.md 并严格执行其中的指引，把活点地图接入我当前的项目。";
-
 const WINDOWS_DOWNLOAD_URL =
   "https://github.com/hhh-dahah/live-dot-map/releases/download/v2.0.0/LiveDotMapSetup.exe";
 
-const features = [
+const GITHUB_URL = "https://github.com/hhh-dahah/live-dot-map";
+
+type Feature = {
+  title: string;
+  description: string;
+  src: string;
+  alt: string;
+  layout: "split" | "center";
+  reverse?: boolean;
+};
+
+const features: Feature[] = [
   {
-    title: "节点和方案线，分清目标与尝试",
-    description: "节点只保留结构，每次尝试都沿着方案线留下结果。探索可以失败、回退，也可以走出新的问题路线。",
-    src: "/media/canvas-map-crop.png",
-    alt: "活点地图中展示多条路线与方案线",
-    layout: "center" as const,
-    sync: false,
+    title: "项目记忆可视化",
+    description:
+      "您可以把项目的目标、尝试和结论画在一张地图上，不用翻聊天记录就能看清进展。",
+    src: "/media/feature-1.png",
+    alt: "活点地图画布：节点与方案线组成的项目记忆地图",
+    layout: "split",
   },
   {
-    title: "便签、评分，结论随手留下",
-    description: "把判断挂在地图上，成功、失败和待验证一眼区分；结果可以打分、归档，但不会从历史里消失。",
-    src: "/media/canvas-note-crop.png",
-    alt: "活点地图中选中节点并查看便签和菜单",
-    layout: "split" as const,
-    sync: false,
+    title: "仿生记忆架构",
+    description:
+      "采用图结构加人工策展的海马体仿生架构，只保留最重要的项目上下文，冗余信息不会进入模型。",
+    src: "/media/feature-2.png",
+    alt: "节点详情：策展后收进 Markdown 文件的记忆细节",
+    layout: "split",
+    reverse: true,
   },
   {
-    title: "本地文件，和 Agent 共享一张图",
-    description: "地图与 Markdown 留在你的项目目录。不同 Agent，都能读到同一份探索记忆。",
-    src: "/media/canvas-panel-crop.png",
-    alt: "活点地图属性面板与本地项目地图",
-    layout: "center" as const,
-    sync: false,
+    title: "联合判断",
+    description:
+      "当需要当前任务上下文和另一任务记忆时，可以点击切换地图，agent自动读取，轻松实现联合判断。",
+    src: "/media/feature-3.png",
+    alt: "在当前项目的多张记忆地图之间一键切换",
+    layout: "center",
   },
   {
-    title: "打开项目文件夹，自动同步",
-    description: "你和 Agent 改的是同一份地图。画布上的变化会保存回项目，Agent 的更新也会回到画布。",
-    src: "/media/canvas-loaded-crop.png",
-    alt: "活点地图画布已打开并连接项目",
-    layout: "split" as const,
-    sync: true,
+    title: "精确寻址",
+    description:
+      "开启全新对话时，Agent 可以按节点寻址，迅速回忆当时的判断和细节。",
+    src: "/media/feature-4.png",
+    alt: "把节点引用复制给 Agent，在新对话里继续探讨",
+    layout: "split",
+  },
+  {
+    title: "人机协同",
+    description:
+      "您在地图上的任何标注，Agent 都能立刻看到；它的进展也会实时写回同一张地图，支持人和 Agent 双向操作。",
+    src: "/media/feature-5.png",
+    alt: "地图上的标注被 Agent 读到并回应",
+    layout: "split",
+    reverse: true,
   },
 ];
-
-const localChecks = ["本地优先", "免费开源", "不需要账号"];
 
 export default function Home() {
   return (
@@ -70,7 +85,7 @@ export default function Home() {
               </a>
               <a
                 className="star-button"
-                href="https://github.com/hhh-dahah/live-dot-map"
+                href={GITHUB_URL}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -82,34 +97,16 @@ export default function Home() {
           <HeroMedia />
         </section>
 
-        <section className="join-section" id="join">
-          <Reveal className="join-inner wide-wrap">
-            <span className="join-note hand" aria-hidden="true">
-              one prompt, done
-              <svg viewBox="0 0 40 44">
-                <path d="M34 4 C 26 18, 18 28, 6 38 M6 38 l 10 -3 M6 38 l 2 -11" />
-              </svg>
-            </span>
-            <h2>把活点地图接入你的项目</h2>
-            <p className="join-copy">复制一句话，发给你正在使用的本地 Agent，剩下的接入工作交给它。</p>
-            <CopyPromptButton label="复制安装提示词" prompt={AGENT_PROMPT} />
-          </Reveal>
-        </section>
-
         <section className="features-section" id="features">
-          <div className="wide-wrap section-intro">
-            <h2>把探索过程，变成一眼能看的地图</h2>
-            <p>画布只保留结构和状态，细节留在本地文件里。</p>
-          </div>
           <div className="feature-list wide-wrap">
-            {features.map((feature, index) => (
+            {features.map((feature) => (
               <Reveal
                 className={`feature-row ${feature.layout === "center" ? "feature-row-center" : ""} ${
-                  feature.layout === "split" && index === 3 ? "feature-row-reverse" : ""
+                  feature.reverse ? "feature-row-reverse" : ""
                 }`}
                 key={feature.title}
               >
-                <FeatureVisual src={feature.src} alt={feature.alt} sync={feature.sync} />
+                <FeatureVisual src={feature.src} alt={feature.alt} />
                 <div className="feature-copy">
                   <h3>{feature.title}</h3>
                   <p>{feature.description}</p>
@@ -119,37 +116,28 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="local-section">
-          <Reveal className="local-inner wide-wrap">
-            <div className="local-copy">
-              <h2>你的项目，你的记忆</h2>
-              <p>地图数据和 Markdown 都留在你的项目目录里，换一个 Agent 也能接着读。</p>
-              <div className="check-list" aria-label="产品特点">
-                {localChecks.map((item) => (
-                  <span className="check-item" key={item}>
-                    <Check size={14} weight="bold" />
-                    {item}
-                  </span>
-                ))}
-              </div>
-              <p className="local-note">判断权永远在人：评分你打，归档你确认。</p>
+        <section className="more-section" id="download">
+          <Reveal className="more-inner wide-wrap">
+            <h2>
+              <span className="hl">还有更多……</span>
+            </h2>
+            <p className="more-line">亲自体验，现在免费开源；当前为 Alpha 版，迭代很快。</p>
+            <p className="more-line">还缺少什么？请查看我们的 GitHub。</p>
+            <div className="more-actions">
+              <a className="button button-primary" href={WINDOWS_DOWNLOAD_URL}>
+                <DownloadSimple size={16} weight="bold" />
+                下载 Windows 版
+              </a>
+              <a
+                className="star-button"
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Star size={15} weight="fill" />
+                给我们一个 GitHub 星标
+              </a>
             </div>
-            <div className="folder-card" aria-label="活点地图项目目录结构">
-              <div>项目目录/</div>
-              <div className="folder-indent"><strong>.live-dot-map/</strong></div>
-              <div className="folder-indent folder-deep">map.json <span>探索地图</span></div>
-              <div className="folder-indent folder-deep">nodes/ routes/ <span>Markdown 详情</span></div>
-              <div>AGENTS.md <span>Agent 协议</span></div>
-            </div>
-          </Reveal>
-        </section>
-
-        <section className="bottom-cta">
-          <Reveal className="cta-band">
-            <h2>让 Agent 先看懂，再开始工作</h2>
-            <p>从下一次会话开始，它先汇报全局。</p>
-            <CopyPromptButton label="一键接入 Agent" prompt={AGENT_PROMPT} />
-            <span className="hand" aria-hidden="true">one prompt away</span>
           </Reveal>
         </section>
       </main>
@@ -168,7 +156,7 @@ export default function Home() {
             <div>
               <span>Explore</span>
               <a href="#features">功能</a>
-              <a href="#join">接入</a>
+              <a href="#download">下载</a>
             </div>
             <div>
               <span>Product</span>
@@ -178,8 +166,8 @@ export default function Home() {
             </div>
             <div>
               <span>Contact</span>
-              <a href="https://github.com/hhh-dahah/live-dot-map" target="_blank" rel="noreferrer">GitHub</a>
-              <a href="https://github.com/hhh-dahah/live-dot-map/issues" target="_blank" rel="noreferrer">反馈问题</a>
+              <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
+              <a href={`${GITHUB_URL}/issues`} target="_blank" rel="noreferrer">反馈问题</a>
             </div>
           </div>
         </div>

@@ -22,7 +22,7 @@ export function Nav() {
         </a>
         <nav className="nav-links" aria-label="主导航">
           <a href="#features">功能</a>
-          <a href="#join">接入</a>
+          <a href="#download">下载</a>
           <a href="agent-kit/index.html">说明</a>
           <a
             className="nav-github"

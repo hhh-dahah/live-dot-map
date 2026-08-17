@@ -14,7 +14,28 @@
 
 ## 核心特性
 
-- 画布式地图：节点、方案箭头、便签，评分徽标与归档弱化一目了然。
+**项目记忆可视化** — 您可以把项目的目标、尝试和结论画在一张地图上，不用翻聊天记录就能看清进展。
+
+![项目记忆可视化](landing/public/media/feature-1.png)
+
+**仿生记忆架构** — 采用图结构加人工策展的海马体仿生架构，只保留最重要的项目上下文，冗余信息不会进入模型。
+
+![仿生记忆架构](landing/public/media/feature-2.png)
+
+**联合判断** — 当需要当前任务上下文和另一任务记忆时，可以点击切换地图，agent自动读取，轻松实现联合判断。
+
+![联合判断](landing/public/media/feature-3.png)
+
+**精确寻址** — 开启全新对话时，Agent 可以按节点寻址，迅速回忆当时的判断和细节。
+
+![精确寻址](landing/public/media/feature-4.png)
+
+**人机协同** — 您在地图上的任何标注，Agent 都能立刻看到；它的进展也会实时写回同一张地图，支持人和 Agent 双向操作。
+
+![人机协同](landing/public/media/feature-5.png)
+
+### 技术要点
+
 - 本地桥：可靠保存、WAL 恢复、冲突检测、SSE 实时同步、确定性图检索与 MCP 工具。
 - Agent 接入：内置 Codex、Claude Code、Kimi Code 适配器（`agent-kit/`），接入后 Agent 与你共用同一份本地记忆。
 - 数据不出本机：地图数据默认留在项目目录的 `.live-dot-map/`，不上传项目内容。
