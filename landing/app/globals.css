@@ -805,11 +805,12 @@ img {
   .hero-sticker-left { left: 10px; }
   .feature-row,
   .feature-row-reverse { grid-template-columns: 1fr; gap: 26px; }
-  .feature-row-reverse .feature-visual,
-  .feature-row-reverse .feature-copy { order: initial; }
+  .feature-row .feature-copy,
+  .feature-row-reverse .feature-copy { order: 1; max-width: 620px; }
+  .feature-row .feature-visual,
+  .feature-row-reverse .feature-visual { order: 2; }
   .feature-row-center { text-align: left; }
   .feature-row-center .feature-copy { margin: 0 0 26px; max-width: 620px; }
-  .feature-row .feature-copy { max-width: 620px; }
 }
 
 @media (max-width: 650px) {
