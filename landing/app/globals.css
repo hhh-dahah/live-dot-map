@@ -568,90 +568,15 @@ img {
   }
 }
 
-/* ---------- 接入区 ---------- */
-
-.join-section {
-  padding: 118px 0 40px;
-  text-align: center;
-}
-
-.join-inner {
-  position: relative;
-  max-width: 640px;
-  margin: 0 auto;
-}
-
-.join-inner h2,
-.section-intro h2,
-.local-copy h2 {
-  margin: 0;
-  color: var(--landing-ink);
-  font-size: clamp(28px, 3.6vw, 42px);
-  font-weight: 650;
-  letter-spacing: -0.045em;
-  line-height: 1.2;
-}
-
-.join-copy {
-  max-width: 540px;
-  margin: 16px auto 0;
-  color: var(--landing-muted);
-  font-size: 16.5px;
-}
-
-.join-inner .button {
-  margin-top: 30px;
-}
-
-.join-note {
-  position: absolute;
-  top: -14px;
-  right: -168px;
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  width: 170px;
-  color: #6a65b8;
-  font-size: 21px;
-  line-height: 1.15;
-  text-align: left;
-  transform: rotate(4deg);
-}
-
-.join-note svg {
-  flex: none;
-  width: 34px;
-  height: 38px;
-  margin-top: 26px;
-  margin-left: -14px;
-  stroke: #8f8ae4;
-  stroke-width: 2;
-  stroke-linecap: round;
-  fill: none;
-}
-
 /* ---------- 功能区 ---------- */
 
 .features-section {
   padding: 130px 0 150px;
 }
 
-.section-intro {
-  max-width: 640px;
-  text-align: center;
-  margin: 0 auto;
-}
-
-.section-intro > p:last-child {
-  margin-top: 16px;
-  color: var(--landing-muted);
-  font-size: 17px;
-}
-
 .feature-list {
   display: grid;
   gap: 120px;
-  margin-top: 96px;
 }
 
 .feature-row {
@@ -753,143 +678,44 @@ img {
   line-height: 1.75;
 }
 
-/* ---------- 本地优先区 ---------- */
+/* ---------- 收尾区 ---------- */
 
-.local-section {
-  padding: 118px 0;
-  background: color-mix(in srgb, var(--landing-accent-soft) 30%, var(--landing-bg));
-}
-
-.local-inner {
-  display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
-  align-items: center;
-  gap: clamp(40px, 7vw, 110px);
-}
-
-.local-copy > p:not(.check-list) {
-  max-width: 500px;
-  margin: 18px 0 0;
-  color: var(--landing-muted);
-  font-size: 16.5px;
-  line-height: 1.75;
-}
-
-.local-copy .local-note {
-  color: var(--landing-ink);
-  font-size: 14px;
-  font-weight: 650;
-}
-
-.check-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 26px;
-}
-
-.check-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 14px;
-  border: 1px solid color-mix(in srgb, var(--landing-ink) 14%, transparent);
-  border-radius: 999px;
-  background: var(--landing-white);
-  color: var(--landing-ink);
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-.check-item svg {
-  color: var(--landing-accent);
-}
-
-.folder-card {
-  padding: clamp(28px, 4vw, 44px);
-  border: 1px solid color-mix(in srgb, var(--landing-ink) 13%, transparent);
-  border-radius: 18px;
-  background: var(--landing-white);
-  box-shadow: 0 18px 44px rgb(3 0 100 / 7%);
-  color: var(--landing-ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: clamp(13px, 1.5vw, 15.5px);
-  line-height: 2.1;
-}
-
-.folder-card .folder-indent { padding-left: 26px; }
-.folder-card .folder-deep { padding-left: 56px; color: #5f5b96; }
-.folder-card strong { color: var(--landing-ink); }
-.folder-card span { color: #9794b3; }
-
-/* ---------- 底部 CTA ---------- */
-
-.bottom-cta {
-  padding: 140px 24px 150px;
-}
-
-.cta-band {
-  position: relative;
-  max-width: 1080px;
-  margin: 0 auto;
-  overflow: hidden;
-  padding: clamp(52px, 7vw, 84px) 28px;
-  border-radius: 26px;
-  background: var(--landing-accent);
-  color: var(--landing-white);
+.more-section {
+  padding: 40px 0 150px;
   text-align: center;
 }
 
-.cta-band::before,
-.cta-band::after {
-  position: absolute;
-  width: 340px;
-  height: 340px;
-  border: 1.5px solid rgb(255 255 255 / 16%);
-  border-radius: 50%;
-  content: "";
+.more-inner {
+  max-width: 640px;
+  margin: 0 auto;
 }
 
-.cta-band::before { top: -220px; left: -120px; }
-.cta-band::after { right: -140px; bottom: -240px; }
-
-.cta-band h2 {
-  position: relative;
+.more-inner h2 {
   margin: 0;
-  color: var(--landing-white);
-  font-size: clamp(28px, 3.8vw, 44px);
+  color: var(--landing-ink);
+  font-size: clamp(30px, 4vw, 46px);
   font-weight: 650;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.045em;
   line-height: 1.2;
 }
 
-.cta-band > p {
-  position: relative;
-  margin: 16px auto 0;
-  max-width: 460px;
-  color: rgb(255 255 255 / 82%);
-  font-size: 16.5px;
+.more-line {
+  margin: 14px 0 0;
+  color: var(--landing-muted);
+  font-size: 17px;
+  line-height: 1.7;
 }
 
-.cta-band .button {
-  position: relative;
-  margin-top: 32px;
-  background: var(--landing-white);
-  color: var(--landing-ink);
-  box-shadow: 0 10px 26px rgb(3 0 100 / 22%);
+.more-inner h2 + .more-line {
+  margin-top: 30px;
 }
 
-.cta-band .button:hover {
-  background: var(--landing-star);
-}
-
-.cta-band .hand {
-  position: relative;
-  display: block;
-  margin-top: 22px;
-  color: rgb(255 255 255 / 78%);
-  font-size: 21px;
-  transform: rotate(-2deg);
+.more-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 38px;
 }
 
 /* ---------- 页脚 ---------- */
@@ -970,7 +796,6 @@ img {
 
 @media (max-width: 1100px) {
   .hero-collab { display: none; }
-  .join-note { display: none; }
 }
 
 @media (max-width: 900px) {
@@ -985,7 +810,6 @@ img {
   .feature-row-center { text-align: left; }
   .feature-row-center .feature-copy { margin: 0 0 26px; max-width: 620px; }
   .feature-row .feature-copy { max-width: 620px; }
-  .local-inner { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 650px) {
@@ -1015,18 +839,10 @@ img {
   .hero-sticker-left,
   .hero-dot-one,
   .hero-dot-two { display: none; }
-  .join-section { padding: 84px 0 20px; }
   .features-section { padding: 88px 0 100px; }
-  .section-intro { text-align: left; }
-  .feature-list { gap: 72px; margin-top: 56px; }
+  .feature-list { gap: 72px; }
   .feature-copy > p:last-child { margin-top: 10px; font-size: 15px; }
-  .local-section { padding: 84px 0; }
-  .local-inner { gap: 40px; }
-  .folder-card { padding: 22px 18px; font-size: 11px; }
-  .folder-card .folder-indent { padding-left: 18px; }
-  .folder-card .folder-deep { padding-left: 38px; }
-  .bottom-cta { padding: 96px 16px 104px; }
-  .cta-band { border-radius: 20px; }
+  .more-section { padding: 20px 0 104px; }
   .footer-inner { display: block; padding-top: 56px; padding-bottom: 56px; }
   .footer-links { gap: 18px; margin-top: 44px; }
   .footer-links div { min-width: 0; }
