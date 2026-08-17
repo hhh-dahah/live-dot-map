@@ -14,4 +14,9 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- 单文件分发：构建脚本在 publish 前生成 payload.zip（payload/ 的压缩包）嵌入 exe；
+         用户只下载 exe 时，程序启动解压到 %TEMP% 后照常安装。 -->
+    <EmbeddedResource Include="payload.zip" Condition="Exists('payload.zip')" />
+  </ItemGroup>
 </Project>

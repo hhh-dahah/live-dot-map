@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -14,6 +15,14 @@ internal static class Program
         {
             var result = PayloadVerifier.Verify(args[1]);
             Console.Out.WriteLine(JsonSerializer.Serialize(result));
+            return result.Ok ? 0 : 1;
+        }
+
+        if (args.Length == 1 && string.Equals(args[0], "--self-check", StringComparison.Ordinal))
+        {
+            // CI/验收用：按真实逻辑解析 SourceRoot（单文件模式会触发内嵌解压），自检后输出 JSON。
+            var result = PayloadVerifier.Verify(LauncherForm.SourcePayload);
+            Console.Out.WriteLine(JsonSerializer.Serialize(new { sourceRoot = LauncherForm.SourceRoot, result.Ok, result.Version, result.Errors }));
             return result.Ok ? 0 : 1;
         }
 
@@ -58,6 +67,68 @@ internal static class Program
 }
 
 internal sealed record VerificationResult(bool Ok, string Version, IReadOnlyList<string> Errors);
+
+/// <summary>
+/// 单文件分发时的内嵌 payload 来源：exe 旁边没有 payload/ 目录时，
+/// 把构建期嵌入的 payload.zip 解压到 %TEMP%\livedotmap-setup\&lt;哈希&gt;\ 并复用（按内容哈希缓存，
+/// 同一个安装包重复运行只解压一次；旧版本目录尽力清理，占用中则跳过）。
+/// </summary>
+internal static class EmbeddedPayloadSource
+{
+    public static string EnsureExtracted()
+    {
+        var assembly = typeof(EmbeddedPayloadSource).Assembly;
+        var resourceName = assembly.GetManifestResourceNames()
+            .FirstOrDefault(name => name.EndsWith("payload.zip", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("安装包缺少内嵌 payload，请重新下载完整安装包。");
+
+        byte[] bytes;
+        using (var resourceStream = assembly.GetManifestResourceStream(resourceName)!)
+        using (var memory = new MemoryStream((int)Math.Min(resourceStream.Length, int.MaxValue)))
+        {
+            resourceStream.CopyTo(memory);
+            bytes = memory.ToArray();
+        }
+        var hash = Convert.ToHexString(SHA256.HashData(bytes))[..12].ToLowerInvariant();
+
+        var parent = Path.Combine(Path.GetTempPath(), "livedotmap-setup");
+        var targetRoot = Path.Combine(parent, hash);
+        var marker = Path.Combine(targetRoot, ".complete");
+        if (!File.Exists(marker))
+        {
+            var staging = $"{targetRoot}.staging-{Environment.ProcessId}";
+            try
+            {
+                if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+                Directory.CreateDirectory(staging);
+                using (var archive = new ZipArchive(new MemoryStream(bytes), ZipArchiveMode.Read))
+                    archive.ExtractToDirectory(staging);
+                if (Directory.Exists(targetRoot)) Directory.Delete(targetRoot, recursive: true);
+                Directory.Move(staging, targetRoot);
+                File.WriteAllText(marker, DateTimeOffset.UtcNow.ToString("O"));
+            }
+            catch (IOException) when (File.Exists(marker))
+            {
+                // 并发解压时另一个进程已完成，直接复用。
+            }
+            finally
+            {
+                try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); } catch { /* 占用中则跳过 */ }
+            }
+        }
+
+        try
+        {
+            foreach (var dir in Directory.GetDirectories(parent))
+            {
+                if (!string.Equals(dir, targetRoot, StringComparison.OrdinalIgnoreCase)) Directory.Delete(dir, recursive: true);
+            }
+        }
+        catch { /* 旧版本目录占用中则下次再清 */ }
+
+        return targetRoot;
+    }
+}
 
 internal static class PayloadVerifier
 {
@@ -353,7 +424,21 @@ internal sealed class LauncherForm : Form
 
     public const string ProductDirectoryName = "livedotmap";
 
-    public static string SourceRoot => AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    private static string? _sourceRoot;
+
+    /// <summary>
+    /// 安装包源目录。优先用 exe 所在目录（开发输出与已安装目录旁边都带 payload/）；
+    /// 单文件分发（用户只下载了一个 exe）时，把内嵌的 payload.zip 解压到临时目录后用那份。
+    /// </summary>
+    public static string SourceRoot => _sourceRoot ??= ResolveSourceRoot();
+
+    private static string ResolveSourceRoot()
+    {
+        var baseDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (Directory.Exists(Path.Combine(baseDirectory, "payload"))) return baseDirectory;
+        return EmbeddedPayloadSource.EnsureExtracted();
+    }
+
     public static string SourcePayload => Path.Combine(SourceRoot, "payload");
     public static string CurrentInstalledRoot
     {

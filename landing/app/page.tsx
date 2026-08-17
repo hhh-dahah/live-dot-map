@@ -11,7 +11,7 @@ const AGENT_PROMPT =
   "读取 https://livedotmap.top/agent-kit/setup.md 并严格执行其中的指引，把活点地图接入我当前的项目。";
 
 const WINDOWS_DOWNLOAD_URL =
-  "https://qingqi-v1-d2g8hq1bhcb0e8b6f-1425841737.tcloudbaseapp.com/downloads/LiveDotMapSetup.exe";
+  "https://github.com/hhh-dahah/live-dot-map/releases/download/v2.0.0/LiveDotMapSetup.exe";
 
 const features = [
   {

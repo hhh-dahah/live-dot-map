@@ -107,16 +107,6 @@ await buildSeaWithRetry();
 await run(process.execPath, ['scripts/build-release-manifest.mjs']);
 await removeGeneratedDirectory(output);
 await mkdir(output, { recursive: true });
-// Publish outside the final directory. GenerateBundle opens its destination
-// more than once on Windows, and placing a populated payload beside it can
-// make Defender/indexers race the self-contained executable.
-const publishOutput = `${output}.publish-${process.pid}-${Date.now()}`;
-try {
-  await run('dotnet', ['publish', 'installer/winforms/LiveDotMapSetup.csproj', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-o', publishOutput]);
-  await cp(join(publishOutput, 'LiveDotMapSetup.exe'), join(output, 'LiveDotMapSetup.exe'), { force: true });
-} finally {
-  await removeGeneratedDirectory(publishOutput);
-}
 await mkdir(payload, { recursive: true });
 for (const sourceRelative of payloadFiles) {
   const source = join(deploy, sourceRelative);
@@ -135,6 +125,25 @@ await writeFile(join(payload, 'payload-manifest.json'), `${JSON.stringify({
   sourceReleaseManifest: releaseManifest,
   files: payloadHashes,
 }, null, 2)}\n`, 'utf8');
+
+// 单文件分发：把整个 payload/ 打成 zip 嵌入安装器 exe（csproj 的 EmbeddedResource）。
+// 用户只下载 exe 时，程序启动会把这份 zip 解压到 %TEMP% 后照常安装；
+// exe 旁边带 payload/ 的开发/已安装场景不受影响。
+const embeddedZip = join(root, 'installer', 'winforms', 'payload.zip');
+await removeGeneratedFile(embeddedZip);
+await run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `Compress-Archive -Path '${payload}' -DestinationPath '${embeddedZip}' -CompressionLevel Optimal`]);
+
+// Publish outside the final directory. GenerateBundle opens its destination
+// more than once on Windows, and placing a populated payload beside it can
+// make Defender/indexers race the self-contained executable.
+const publishOutput = `${output}.publish-${process.pid}-${Date.now()}`;
+try {
+  await run('dotnet', ['publish', 'installer/winforms/LiveDotMapSetup.csproj', '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-o', publishOutput]);
+  await cp(join(publishOutput, 'LiveDotMapSetup.exe'), join(output, 'LiveDotMapSetup.exe'), { force: true });
+} finally {
+  await removeGeneratedDirectory(publishOutput);
+  await removeGeneratedFile(embeddedZip);
+}
 
 const installerFiles = await enumerateFiles(output);
 const installerHashes = {};
