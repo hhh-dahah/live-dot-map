@@ -1,4 +1,4 @@
-import { Check, Star } from "@phosphor-icons/react/dist/ssr";
+import { Check, DownloadSimple, Star } from "@phosphor-icons/react/dist/ssr";
 import { CopyPromptButton } from "../components/CopyPromptButton";
 import { FeatureVisual } from "../components/FeatureVisual";
 import { HeroArt } from "../components/HeroArt";
@@ -9,6 +9,9 @@ import { Reveal } from "../components/Reveal";
 
 const AGENT_PROMPT =
   "读取 https://livedotmap.top/agent-kit/setup.md 并严格执行其中的指引，把活点地图接入我当前的项目。";
+
+const WINDOWS_DOWNLOAD_URL =
+  "https://qingqi-v1-d2g8hq1bhcb0e8b6f-1425841737.tcloudbaseapp.com/downloads/LiveDotMapSetup.exe";
 
 const features = [
   {
@@ -61,7 +64,10 @@ export default function Home() {
             </h1>
             <p className="hero-sub rise rise-2">探索 记录 回忆 · 一切尽在 livedotmap</p>
             <div className="hero-actions rise rise-3">
-              <CopyPromptButton label="一键接入 Agent" prompt={AGENT_PROMPT} />
+              <a className="button button-primary" href={WINDOWS_DOWNLOAD_URL}>
+                <DownloadSimple size={16} weight="bold" />
+                下载 Windows 版
+              </a>
               <a
                 className="star-button"
                 href="https://github.com/hhh-dahah/live-dot-map"
@@ -166,6 +172,7 @@ export default function Home() {
             </div>
             <div>
               <span>Product</span>
+              <a href={WINDOWS_DOWNLOAD_URL}>下载 Windows 版</a>
               <a href="app.html">打开画布</a>
               <a href="agent-kit/index.html">接入说明</a>
             </div>
