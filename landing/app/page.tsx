@@ -150,7 +150,7 @@ export default function Home() {
               <span>活点地图</span>
             </a>
             <p>人和 Agent 共享同一张探索地图。</p>
-            <small>免费开源 · MIT 许可证</small>
+            <small>免费开源 · Apache-2.0 许可证</small>
           </div>
           <div className="footer-links">
             <div>
