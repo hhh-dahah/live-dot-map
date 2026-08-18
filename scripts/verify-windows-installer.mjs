@@ -128,7 +128,8 @@ try {
   const installed = await run(bridge, ['install', '--project', project, '--app', join(payload, 'app.html'), '--no-shortcut'], { cwd: payload });
   const installResult = JSON.parse(installed.stdout);
   assert.equal(installResult.ok, true, installed.stdout);
-  const map = JSON.parse(await readFile(join(project, '.live-dot-map', 'map.json'), 'utf8'));
+  // v2 布局：地图文件在 .live-dot-map/maps/<地图id>/ 下，默认地图为 default。
+  const map = JSON.parse(await readFile(join(project, '.live-dot-map', 'maps', 'default', 'map.json'), 'utf8'));
   const config = JSON.parse(await readFile(join(project, '.live-dot-map', 'agent-kit.json'), 'utf8'));
   assert.equal(map.version, 2);
   assert.equal(config.projectRoot, project);

@@ -36,9 +36,10 @@ try {
   }
   if ($maxHandle -ne 0) { throw '产品入口出现了启动器窗口（应无窗口静默启动）' }
   if (-not $bridge) { throw '产品入口没有直接启动默认工作区并切换到本机选择项目的画布会话' }
-  $mapPath = Join-Path $workspace '.live-dot-map/map.json'
+  # v2 布局：地图文件在 .live-dot-map/maps/<地图id>/ 下，默认地图为 default。
+  $mapPath = Join-Path $workspace '.live-dot-map/maps/default/map.json'
   if (-not (Test-Path -LiteralPath $mapPath)) { throw '产品入口没有创建真实默认工作区地图' }
-  $targetMapPath = Join-Path $targetProject '.live-dot-map/map.json'
+  $targetMapPath = Join-Path $targetProject '.live-dot-map/maps/default/map.json'
   if (-not (Test-Path -LiteralPath $targetMapPath)) { throw '产品入口没有复制默认地图到所选项目' }
   # 静默启动：桥启动后启动器进程应自行退出（ExitThread），无窗口可关。
   $deadline = (Get-Date).AddSeconds(15)

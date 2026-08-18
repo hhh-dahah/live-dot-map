@@ -51,8 +51,9 @@ const results = [];
 for (const agent of ['codex', 'claude', 'kimi', 'codebuddy']) {
   const project = await mkdtemp(join(TEST_ROOT, `livedot-agent-${agent}-`));
   try {
-    const data = join(project, '.live-dot-map'); await mkdir(data, { recursive: true });
-    const mapPath = join(data, 'map.json'); await cp(TEMPLATE, mapPath);
+    const data = join(project, '.live-dot-map'); await mkdir(join(data, 'maps', 'default'), { recursive: true });
+    // v2 布局：地图文件在 .live-dot-map/maps/<地图id>/ 下，默认地图为 default。
+    const mapPath = join(data, 'maps', 'default', 'map.json'); await cp(TEMPLATE, mapPath);
     const map = JSON.parse(await readFile(mapPath, 'utf8'));
     map.anns.push({
       id: 'a-human-1', target: { kind: 'canvas' }, text: '先验证真实用户入口', source: 'human', priority: 'high', attention: 'new', acknowledgements: [],
