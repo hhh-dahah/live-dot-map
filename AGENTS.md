@@ -8,6 +8,7 @@
 - 界面与品牌：`UI设计需求文档.md`、`brand-spec.md`
 - 走查问题与当前计划：`设计细节.md`、`docs/真实用户实测记录.md`、`docs/plans/`
 - 数据与 Agent 协议：`docs/map-json-v2.md`、`docs/agent-protocol.md`（v1 仅作迁移历史）
+- 底层技术与记忆演化整合：`docs/技术架构与记忆演化.md`
 
 ## 项目边界
 - `canvas.html` 是冻结的验收样板；正式产品在 `app.html` 演进。
