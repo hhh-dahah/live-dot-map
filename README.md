@@ -27,7 +27,7 @@ Chat is linear. Exploration is not.
 
 ## 产品 Demo
 
-在线体验落地页与画布：<https://livedotmap.top>（落地页「打开画布」可直接进入）。
+在线体验：<https://livedotmap.top>（落地页与在线画布可直接浏览；真实体验需本地安装，并接入你自己的 Agent）。
 
 ![项目记忆可视化](landing/public/media/feature-1.png)
 
@@ -41,16 +41,19 @@ Chat is linear. Exploration is not.
 
 ## 安装方式
 
-**普通用户（Windows）**：下载 **[LiveDotMapSetup.exe](https://github.com/hhh-dahah/live-dot-map/releases/download/v2.0.0/LiveDotMapSetup.exe)**（或到 [Releases](../../releases) 选择最新版本），安装后双击桌面图标直达画布，选择一个项目文件夹即可开始。在画布里对 Agent 说一句 `/地图自检` 可完成接入与健康检查。
+**普通用户（Windows）**：下载 **[LiveDotMapSetup.exe](https://github.com/hhh-dahah/live-dot-map/releases/download/v2.0.0/LiveDotMapSetup.exe)**（或到 [Releases](../../releases) 选择最新版本），安装后双击桌面图标直达画布，选择一个项目文件夹即可开始。然后在你自己的 Agent（Codex / Claude Code / Kimi Code 等）里打开这个项目文件夹，对它说一句 `/地图自检`，即可完成接入与健康检查——画布本身不含 Agent，协作发生在你信任的 Agent 与本地桥之间。
 
-**开发者**：
+**开发者**（需要 Node.js ≥ 20.12）：
 
 ```powershell
-npm ci
-npm run verify
+git clone https://github.com/hhh-dahah/live-dot-map.git
+cd live-dot-map
+npm ci          # 安装依赖（根目录，含精确锁版本）
+npm run build   # 构建核心、画布 app.html 与本地桥
+npm test        # 113 项单元与闭环测试
 ```
 
-`verify` 会依次运行核心测试、三浏览器强模式、降级模式、性能、三适配器模拟闭环、安装器降级入口和部署产物检查。
+构建后用浏览器打开根目录的 `app.html` 即是画布；落地页开发见 `landing/`（`cd landing && npm ci && npm run dev`）。全量验收（含三浏览器与安装器检查）执行 `npm run verify`。
 
 ## 文件结构 / Agent 如何读取
 
