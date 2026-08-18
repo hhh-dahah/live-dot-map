@@ -80,8 +80,9 @@ const results = [];
 for (const [name, descriptor] of Object.entries(engines)) {
   const project = await mkdtemp(join(TEST_ROOT, `livedot-${name}-`));
   const data = join(project, '.live-dot-map');
-  const mapPath = join(data, 'map.json');
-  await mkdir(data, { recursive: true });
+  // v2 布局：地图文件在 .live-dot-map/maps/<地图id>/ 下，默认地图为 default。
+  const mapPath = join(data, 'maps', 'default', 'map.json');
+  await mkdir(join(data, 'maps', 'default'), { recursive: true });
   await cp(TEMPLATE, mapPath);
     const seed = JSON.parse(await readFile(mapPath, 'utf8'));
     seed.routes[0].currentNodeId = 'n1';
@@ -127,10 +128,14 @@ for (const [name, descriptor] of Object.entries(engines)) {
       const state = await page.evaluate(() => ({ label: document.querySelector('#sync-label')?.textContent, title: document.querySelector('#sync-dot')?.getAttribute('title'), pill: document.querySelector('#project-pill')?.innerText }));
       throw new Error(`${name}: save badge mismatch ${JSON.stringify(state)}; ${errors.join('; ')}`, { cause: error });
     }
-    // Agent discovery now probes an optional Tencent adapter too; WebKit can
-    // need a little longer for the loopback response on a cold process.
-    await page.waitForFunction(() => document.querySelectorAll('#agent-status-list .agent-status').length >= 3, undefined, { timeout: 15_000 });
-    const agentStatusRows = await page.locator('#agent-status-list .agent-status').count();
+    // v2 移除了画布内的 Agent 状态面板，发现能力保留在桥 API：
+    // 直接查 /api/v1/agents，三个第一方适配器（codex / claude-code / kimi-code）必须都在。
+    const agentsPayload = await page.evaluate(async () => {
+      const res = await fetch('/api/v1/agents');
+      return res.ok ? res.json() : { agents: [] };
+    });
+    const agentStatusRows = Array.isArray(agentsPayload.agents) ? agentsPayload.agents.length : 0;
+    assert.ok(agentStatusRows >= 3, `${name}: agent discovery returned ${agentStatusRows} rows`);
     await page.waitForFunction(() => window.LiveDotApp?.serialize()?.nodes?.[0]?.name === '<img src=x onerror=alert(1)>');
     await page.waitForFunction(() => document.querySelector('.node')?.textContent?.includes('<img'));
     assert.equal(await page.locator('.node img').count(), 0, `${name}: malicious HTML became an element`);
@@ -179,7 +184,7 @@ for (const [name, descriptor] of Object.entries(engines)) {
     await markdownSave.click();
     await page.waitForFunction(() => document.body.textContent?.includes('保存失败：临时保存失败，请重试'));
     await markdownSave.click();
-    const markdownPath = join(data, 'nodes', `${createdNodeId}.md`);
+    const markdownPath = join(data, 'maps', 'default', 'nodes', `${createdNodeId}.md`);
     assert.match(await waitForFileText(markdownPath, '可编辑且可保存。'), /可编辑且可保存。/, `${name}: Markdown retry did not write the document`);
     await page.getByRole('button', { name: '关闭', exact: true }).click();
 
@@ -202,9 +207,10 @@ for (const [name, descriptor] of Object.entries(engines)) {
     });
     assert.deepEqual(problemVisual, { kind: 'problem', border: problemVisual.expected, expected: problemVisual.expected }, `${name}: problem node is not red`);
 
-    await page.click('#agent-btn');
-    assert.doesNotMatch(await page.locator('#drawer').innerText(), /本地桥|MCP|hook|AGENTS\.snippet/, `${name}: technical implementation terms leaked into the primary flow`);
-    await page.click('#drawer-close');
+    // v2 移除了 Agent 抽屉，主流程只剩顶栏与项目菜单：断言主界面不出现实现术语。
+    await page.click('#proj-menu-btn');
+    assert.doesNotMatch(await page.locator('#menu').innerText(), /本地桥|MCP|hook|AGENTS\.snippet/, `${name}: technical implementation terms leaked into the primary flow`);
+    await page.keyboard.press('Escape');
     await page.locator('.node[data-id="n1"]').dispatchEvent('pointerdown', { button:0, clientX:300, clientY:300 });
     await page.locator('.node[data-id="n1"]').dispatchEvent('pointerup', { button:0, clientX:300, clientY:300 });
     await page.waitForFunction(() => S.sel?.kind === 'node' && S.sel.id === 'n1' && document.querySelector('#panel-body')?.textContent?.includes('<img'));
@@ -353,8 +359,8 @@ for (const [name, descriptor] of Object.entries(engines)) {
     // ---- T3（C4）：桥模式切换项目后画布重载且状态已保存，且能继续写新项目 ----
     const projectB = await mkdtemp(join(TEST_ROOT, `livedot-${name}-b-`));
     const dataB = join(projectB, '.live-dot-map');
-    const mapPathB = join(dataB, 'map.json');
-    await mkdir(dataB, { recursive: true });
+    const mapPathB = join(dataB, 'maps', 'default', 'map.json');
+    await mkdir(join(dataB, 'maps', 'default'), { recursive: true });
     const templateB = JSON.parse(await readFile(TEMPLATE, 'utf8'));
     templateB.name = '切换目标项目';
     await writeFile(mapPathB, `${JSON.stringify(templateB, null, 2)}\n`, 'utf8');
@@ -370,27 +376,27 @@ for (const [name, descriptor] of Object.entries(engines)) {
     await waitRevision(mapPathB, bRevisionBefore + 1);
     await page.waitForFunction(() => document.querySelector('#sync-label')?.textContent === '已保存');
 
-    // ---- T3b（C5/C6）：菜单多层展开、移除导出图片、工作区含最近项目 ----
-    await page.click('#proj-menu-btn');
-    await page.waitForSelector('#menu.on');
-    const menuTopLabels = await page.locator('#menu button[data-mi]').allInnerTexts();
-    assert.ok(menuTopLabels.some((text) => text.includes('工作区')), `${name}: workspace group missing`);
-    assert.ok(menuTopLabels.some((text) => text.includes('地图')), `${name}: map group missing`);
-    await page.click('#menu button[data-mi="map"]');
-    await page.waitForFunction(() => document.querySelector('#menu button[data-mi="__back"]') !== null);
-    const mapSubLabels = await page.locator('#menu button[data-mi]').allInnerTexts();
-    assert.ok(mapSubLabels.some((text) => text.includes('重命名地图')), `${name}: rename lost in map group`);
-    assert.ok(!mapSubLabels.some((text) => text.includes('导出图片')), `${name}: export-image item still present`);
-    await page.click('#menu button[data-mi="__back"]');
-    await page.waitForFunction(() => document.querySelector('#menu button[data-mi="__back"]') === null);
-    await page.click('#menu button[data-mi="ws"]');
-    await page.waitForFunction(() => document.querySelector('#menu button[data-mi="pick"]') !== null);
-    const wsLabels = await page.locator('#menu button[data-mi]').allInnerTexts();
-    const wsHeads = await page.locator('#menu .mhead').allInnerTexts();
-    assert.ok(wsHeads.some((text) => text.includes('最近项目')), `${name}: recent projects header missing in workspace group`);
-    assert.ok(wsLabels.some((text) => text.includes('选择其他项目')), `${name}: pick-project entry missing in workspace group`);
-    assert.ok(wsLabels.some((text) => text.includes('新建空白地图')), `${name}: new-blank-map entry missing in workspace group`);
-    await page.keyboard.press('Escape');
+    // ---- T3b（C5/C6）：项目/地图弹层结构、移除导出图片、项目弹层含最近项目 ----
+    // v2 把「工作区 / 地图」两组从 ⋯ 菜单拆到顶栏两个弹层：选择项目、切换地图。
+    await page.click('#map-btn');
+    await page.waitForSelector('#popover.on');
+    // 弹层先挂空壳再异步填列表（listMaps 走 loopback，WebKit 冷进程更慢），等真实条目到达。
+    await page.waitForFunction(() => [...document.querySelectorAll('#popover .pitem')].some((b) => b.textContent?.includes('重命名地图')));
+    const mapLabels = await page.locator('#popover .pitem').allInnerTexts();
+    assert.ok(mapLabels.some((text) => text.includes('重命名地图')), `${name}: rename lost in map popover`);
+    assert.ok(mapLabels.some((text) => text.includes('新建地图')), `${name}: new-map entry missing in map popover`);
+    assert.ok(!mapLabels.some((text) => text.includes('导出图片')), `${name}: export-image item still present`);
+    await page.click('#map-btn');
+    await page.waitForFunction(() => !document.querySelector('#popover')?.classList.contains('on'));
+    await page.click('#proj-btn');
+    await page.waitForSelector('#popover.on');
+    await page.waitForFunction(() => [...document.querySelectorAll('#popover .pitem')].some((b) => b.textContent?.includes('选择其他项目')));
+    const wsLabels = await page.locator('#popover .pitem').allInnerTexts();
+    const wsHeads = await page.locator('#popover .phead').allInnerTexts();
+    assert.ok(wsHeads.some((text) => text.includes('最近项目')), `${name}: recent projects header missing in project popover`);
+    assert.ok(wsLabels.some((text) => text.includes('选择其他项目')), `${name}: pick-project entry missing in project popover`);
+    await page.click('#proj-btn');
+    await page.waitForFunction(() => !document.querySelector('#popover')?.classList.contains('on'));
 
     // ---- T3（C1/C2）：模板地图不顶掉首启引导，真实内容到达才让位 ----
     const guideTemplate = JSON.parse(await readFile(TEMPLATE, 'utf8'));
