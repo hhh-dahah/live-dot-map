@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "chinese-copyright-application": {
+      "source": "okooo5km/skills4u",
+      "sourceType": "github",
+      "skillPath": "skills/chinese-copyright-application/SKILL.md",
+      "computedHash": "45e7c6609c743bb4149df5677a4883a26b4c675fd356aca5fcdd7e07bc960ecd"
+    },
+    "human-writing": {
+      "source": "kkkkhazix/human-writing",
+      "sourceType": "github",
+      "skillPath": "human-writing/SKILL.md",
+      "computedHash": "1753e7f740dea9f20a19418d0de342e0d427779ff85f01688333a1f2a886de4f"
+    }
+  }
+}

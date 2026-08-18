@@ -31,3 +31,6 @@ landing/tsconfig.tsbuildinfo
 # 平台登录/控制台截图与抓取快照，不进入源码或发布物料
 edgeone-config.yml
 edgeone-login.png
+
+# 软件著作权申请材料与本地 LaTeX 编译环境（含营业执照等隐私信息）
+.tools/
