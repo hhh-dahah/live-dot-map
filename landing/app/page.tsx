@@ -39,25 +39,25 @@ const features: Feature[] = [
     reverse: true,
   },
   {
-    title: "联合判断",
+    title: "跨任务打通记忆，不用反复复述历史背景",
     description:
-      "当需要当前任务上下文和另一任务记忆时，可以点击切换地图，agent自动读取，轻松实现联合判断。",
+      "切换不同记忆地图，Agent 自动读取多任务历史，实现跨项目联合推理，不用你把过往全部信息重新输入一遍。",
     src: "/media/feature-3.png",
     alt: "在当前项目的多张记忆地图之间一键切换",
     layout: "center",
   },
   {
-    title: "精确寻址",
+    title: "全新对话，直接找回过往思考细节",
     description:
-      "开启全新对话时，Agent 可以按节点寻址，迅速回忆当时的判断和细节。",
+      "开启全新对话时，Agent 可以定位到指定记忆节点，快速调取当时的判断、方案与结论，不用从头探索代码库。",
     src: "/media/feature-4.png",
     alt: "把节点引用复制给 Agent，在新对话里继续探讨",
     layout: "split",
   },
   {
-    title: "人机协同",
+    title: "人和 Agent 共用一张思考画布，双向同步",
     description:
-      "您在地图上的任何标注，Agent 都能立刻看到；它的进展也会实时写回同一张地图，支持人和 Agent 双向操作。",
+      "你在地图上做的标注、修改，Agent 实时感知；Agent 产出的思考也自动回写到地图，人与 AI 同步推进思路。",
     src: "/media/feature-5.png",
     alt: "地图上的标注被 Agent 读到并回应",
     layout: "split",
