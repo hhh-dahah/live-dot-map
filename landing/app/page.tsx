@@ -7,7 +7,7 @@ import { Nav } from "../components/Nav";
 import { Reveal } from "../components/Reveal";
 
 const WINDOWS_DOWNLOAD_URL =
-  "https://github.com/hhh-dahah/live-dot-map/releases/download/v2.0.0/LiveDotMapSetup.exe";
+  "https://github.com/hhh-dahah/live-dot-map/releases/download/v2.0.0-rc.2/LiveDotMapSetup.exe";
 
 const GITHUB_URL = "https://github.com/hhh-dahah/live-dot-map";
 
