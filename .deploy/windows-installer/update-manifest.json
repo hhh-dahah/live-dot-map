@@ -5,13 +5,13 @@
   "channel": "internal-rc",
   "files": {
     "app.html": {
-      "bytes": 224234,
-      "sha256": "2b85088d494b8bb675a672afb748a1b49589330d6a5ebfe70d7badb31e3ca232",
+      "bytes": 276277,
+      "sha256": "518258b7f3b96872cc408a3ddfb7c650993ef229e9f1689c3ff148c4bea41d21",
       "url": "payload/app.html"
     },
     "livedot-bridge-win-x64.exe": {
-      "bytes": 92125184,
-      "sha256": "174d58f8318aff782014984d27fcc4e0c8172d0c090a4fd1c1c31afdcc710ace",
+      "bytes": 92265472,
+      "sha256": "0b6f318071cae61859f40ab2ee0de20db26570ebcd70f99e52da8bff1307bd67",
       "url": "payload/livedot-bridge-win-x64.exe"
     },
     "manifest.webmanifest": {
@@ -45,8 +45,8 @@
       "url": "payload/assets/app-icon.ico"
     },
     "agent-kit/skills/live-dot-map/SKILL.md": {
-      "bytes": 5482,
-      "sha256": "741782c897f7c3f84754d832576b0f84c91e476028083768e1848a23e7ceb132",
+      "bytes": 7348,
+      "sha256": "c1f20eb1b96a665a3b5d4329a632a7c81d5eb8d5e189405ab42ed9f64d230539",
       "url": "payload/agent-kit/skills/live-dot-map/SKILL.md"
     },
     "agent-kit/skills/live-dot-map/templates/attempt.md": {

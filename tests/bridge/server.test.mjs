@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { createBridgeServer, ensureProjectAgentConfig, buildPickFolderScript } from '../../src/bridge/server.mjs';
 import { ProjectStore } from '../../src/bridge/project-store.mjs';
+import { MapManager } from '../../src/bridge/map-manager.mjs';
 import { commandEnvelope, createRouteCommand, temporaryProject } from './helpers.mjs';
 
-const TEST_ROOT_DIR = process.env.LIVEDOT_TEST_ROOT || 'D:\\LiveDotMap-Test';
+const OWNS_TEST_ROOT = !process.env.LIVEDOT_TEST_ROOT;
+const TEST_ROOT_DIR = process.env.LIVEDOT_TEST_ROOT || await mkdtemp(join(tmpdir(), 'livedot-server-suite-'));
+process.env.LIVEDOT_TEST_ROOT = TEST_ROOT_DIR;
+after(() => OWNS_TEST_ROOT ? rm(TEST_ROOT_DIR, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) : undefined);
 
 // 隔离最近项目记录：server.mjs 的 RECENT_PROJECTS_FILE 每次读取该 env，
 // 测试进程独立于用户环境，避免把临时项目写进真实 ~/.live-dot-map。
@@ -22,15 +27,161 @@ async function json(response) {
 
 async function startServer(test, options = {}) {
   const project = await temporaryProject(test);
+  const recent = [];
   const server = await createBridgeServer({
     allowedProjectRoots: [project.root],
     allowedOrigins: [APP_ORIGIN],
     shared: project.shared,
+    recentProjectsStore: {
+      async record(root) { const index = recent.indexOf(root); if (index >= 0) recent.splice(index, 1); recent.unshift(root); },
+      async list() { return [...recent]; },
+    },
     ...options,
   });
   test.after(() => server.close());
   return { ...project, server };
 }
+
+test('bridge can bind a persisted port and refuses to silently move when it is occupied', async (test) => {
+  const first = await startServer(test);
+  assert.ok(first.server.port > 0);
+
+  const secondProject = await temporaryProject(test);
+  await assert.rejects(
+    createBridgeServer({
+      allowedProjectRoots: [secondProject.root],
+      allowedOrigins: [APP_ORIGIN],
+      shared: secondProject.shared,
+      listenPort: first.server.port,
+    }),
+    (error) => error?.code === 'EADDRINUSE',
+  );
+});
+
+test('bridge rejects invalid persisted ports before opening a socket', async (test) => {
+  const project = await temporaryProject(test);
+  await assert.rejects(
+    createBridgeServer({ allowedProjectRoots: [project.root], shared: project.shared, listenPort: 70_000 }),
+    (error) => error?.code === 'INVALID_LISTEN_PORT',
+  );
+});
+
+test('authenticated control channel issues a fresh project-bound bootstrap ticket', async (test) => {
+  const controlToken = 'control-token-for-test';
+  const project = await temporaryProject(test);
+  const server = await createBridgeServer({
+    allowedProjectRoots: [project.root],
+    allowedOrigins: [APP_ORIGIN],
+    shared: project.shared,
+    controlToken,
+  });
+  test.after(() => server.close());
+
+  const denied = await fetch(`${server.origin}/api/v1/control/status`);
+  assert.equal(denied.status, 401);
+  const status = await fetch(`${server.origin}/api/v1/control/status`, { headers: { 'X-LiveDot-Control': controlToken } });
+  assert.equal(status.status, 200);
+
+  const issued = await fetch(`${server.origin}/api/v1/control/open-project`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-LiveDot-Control': controlToken },
+    body: JSON.stringify({ projectRoot: project.root }),
+  });
+  assert.equal(issued.status, 201);
+  const { bootstrapToken } = await issued.json();
+  assert.ok(bootstrapToken);
+
+  const exchange = await fetch(`${server.origin}/api/v1/session`, {
+    method: 'POST',
+    headers: { Origin: APP_ORIGIN, Authorization: `Bearer ${bootstrapToken}` },
+  });
+  assert.equal(exchange.status, 201);
+  assert.equal((await exchange.json()).projectRoot, project.root);
+  const replay = await fetch(`${server.origin}/api/v1/session`, {
+    method: 'POST',
+    headers: { Origin: APP_ORIGIN, Authorization: `Bearer ${bootstrapToken}` },
+  });
+  assert.equal(replay.status, 401);
+});
+
+test('one cookie session can authorize two project handles without rotating csrf', async (test) => {
+  const controlToken = 'shared-browser-control';
+  const first = await temporaryProject(test);
+  const second = await temporaryProject(test);
+  const entries = new Map([
+    ['ph_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', first.root],
+    ['ph_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', second.root],
+  ]);
+  const projectRegistry = {
+    resolve(handle) {
+      const projectRoot = entries.get(handle);
+      if (!projectRoot) throw new Error('unknown handle');
+      return { projectHandle: handle, projectRoot };
+    },
+  };
+  const server = await createBridgeServer({
+    allowedProjectRoots: [first.root, second.root],
+    allowedOrigins: [APP_ORIGIN],
+    shared: first.shared,
+    controlToken,
+    projectRegistry,
+    agentSetup: null,
+  });
+  test.after(() => server.close());
+
+  async function issue(projectHandle, projectRoot) {
+    const response = await fetch(`${server.origin}/api/v1/control/open-project`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-LiveDot-Control': controlToken },
+      body: JSON.stringify({ projectHandle, projectRoot }),
+    });
+    assert.equal(response.status, 201);
+    return (await response.json()).bootstrapToken;
+  }
+
+  const handleA = 'ph_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  const handleB = 'ph_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+  const tokenA = await issue(handleA, first.root);
+  const exchangeA = await fetch(`${server.origin}/api/v1/session`, {
+    method: 'POST', headers: { Origin: APP_ORIGIN, Authorization: `Bearer ${tokenA}` },
+  });
+  assert.equal(exchangeA.status, 201);
+  const bodyA = await exchangeA.json();
+  const cookie = exchangeA.headers.get('set-cookie').split(';', 1)[0];
+
+  const tokenB = await issue(handleB, second.root);
+  const exchangeB = await fetch(`${server.origin}/api/v1/session`, {
+    method: 'POST', headers: { Origin: APP_ORIGIN, Cookie: cookie, Authorization: `Bearer ${tokenB}` },
+  });
+  assert.equal(exchangeB.status, 200);
+  assert.equal((await exchangeB.json()).csrfToken, bodyA.csrfToken);
+  assert.match(exchangeB.headers.get('set-cookie'), new RegExp(cookie.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  const missing = await fetch(`${server.origin}/api/v1/snapshot`, { headers: { Origin: APP_ORIGIN, Cookie: cookie } });
+  assert.equal(missing.status, 400);
+  const snapshotA = await fetch(`${server.origin}/api/v1/snapshot`, { headers: { Origin: APP_ORIGIN, Cookie: cookie, 'X-LiveDot-Project-Handle': handleA } });
+  const snapshotB = await fetch(`${server.origin}/api/v1/snapshot`, { headers: { Origin: APP_ORIGIN, Cookie: cookie, 'X-LiveDot-Project-Handle': handleB } });
+  assert.equal(snapshotA.status, 200);
+  assert.equal(snapshotB.status, 200);
+  const beforeA = await snapshotA.json();
+  const beforeB = await snapshotB.json();
+  const marker = `only-a-${Date.now()}`;
+  const writeA = await fetch(`${server.origin}/api/v1/commands`, {
+    method: 'POST',
+    headers: {
+      Origin: APP_ORIGIN,
+      Cookie: cookie,
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': bodyA.csrfToken,
+      'X-LiveDot-Project-Handle': handleA,
+    },
+    body: JSON.stringify(commandEnvelope(marker, beforeA.revision, createRouteCommand(marker))),
+  });
+  assert.equal(writeA.status, 200);
+  const afterB = await fetch(`${server.origin}/api/v1/snapshot`, { headers: { Origin: APP_ORIGIN, Cookie: cookie, 'X-LiveDot-Project-Handle': handleB } });
+  assert.equal(afterB.status, 200);
+  assert.deepEqual((await afterB.json()).document, beforeB.document);
+});
 
 async function establishSession(server) {
   const exchange = await fetch(`${server.origin}/session`, {
@@ -165,7 +316,7 @@ test('reads, creates and atomically saves project Markdown with explicit conflic
   const session = await establishSession(server);
   assert.equal((await openProject(server, root, session)).status, 200);
   const headers = authHeaders(session);
-  const path = '.live-dot-map/nodes/n-test.md';
+  const path = '.live-dot-map/nodes/n-test/index.md';
 
   const missing = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(path)}`, { headers });
   assert.equal(missing.status, 200);
@@ -178,9 +329,9 @@ test('reads, creates and atomically saves project Markdown with explicit conflic
   assert.match(createdBody.content, /^# 问题记录\n/);
   assert.ok(createdBody.etag);
 
-  const emptyPath = '.live-dot-map/nodes/empty.md';
-  await mkdir(`${root}/.live-dot-map/nodes`, { recursive: true });
-  await writeFile(`${root}/${emptyPath}`, '');
+  const emptyPath = '.live-dot-map/nodes/empty/index.md';
+  await mkdir(`${root}/.live-dot-map/maps/default/nodes/empty`, { recursive: true });
+  await writeFile(`${root}/.live-dot-map/maps/default/nodes/empty/index.md`, '');
   const initialized = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(emptyPath)}&create=1&title=${encodeURIComponent('空记录')}`, { headers });
   assert.equal(initialized.status, 200);
   assert.equal((await initialized.json()).content, '# 空记录\n\n');
@@ -205,7 +356,7 @@ test('reads, creates and atomically saves project Markdown with explicit conflic
   });
   assert.equal(mcpWrite.status, 200);
   assert.equal((await mcpWrite.json()).result.content, '# Agent 证据\n');
-  const racePath = '.live-dot-map/nodes/race.md';
+  const racePath = '.live-dot-map/nodes/race/index.md';
   const raceCreated = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(racePath)}&create=1&title=${encodeURIComponent('并发')}`, { headers });
   const raceBase = await raceCreated.json();
   const raceResponses = await Promise.all([
@@ -228,17 +379,18 @@ test('reads, creates and atomically saves project Markdown with explicit conflic
   // back by a late '# title' initializer.
   for (let index = 0; index < 8; index += 1) {
     const concurrentPath = `.live-dot-map/nodes/create-write-${index}.md`;
+    const emptyBase = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(concurrentPath)}`, { headers }).then((response) => response.json());
     const [createResponse, writeResponse] = await Promise.all([
       fetch(`${server.origin}/markdown?path=${encodeURIComponent(concurrentPath)}&create=1&title=${encodeURIComponent('并发创建')}`, { headers }),
       fetch(`${server.origin}/markdown`, {
         method: 'PUT', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ path: concurrentPath, content: `# writer-${index}\n` }),
+        body: JSON.stringify({ path: concurrentPath, content: `# writer-${index}\n`, baseEtag: emptyBase.etag }),
       }),
     ]);
     assert.equal(createResponse.status, 200);
-    assert.equal(writeResponse.status, 200);
+    assert.ok([200, 409].includes(writeResponse.status));
     const final = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(concurrentPath)}`, { headers });
-    assert.equal((await final.json()).content, `# writer-${index}\n`);
+    assert.equal((await final.json()).content, writeResponse.status === 200 ? `# writer-${index}\n` : '# 并发创建\n\n');
   }
   const stale = await fetch(`${server.origin}/markdown`, {
     method: 'PUT', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
@@ -260,6 +412,34 @@ test('reads, creates and atomically saves project Markdown with explicit conflic
   });
   assert.equal(unprotectedReveal.status, 403);
   assert.equal((await unprotectedReveal.json()).error.code, 'INVALID_CSRF');
+});
+
+test('bundle REST uses owner routing and binary asset streams', async (t) => {
+  const { root, server } = await startServer(t, { agentSetup: null });
+  const session = await establishSession(server);
+  assert.equal((await openProject(server, root, session)).status, 200);
+  const created = await fetch(`${server.origin}/api/v1/bundles/markdown/create`, {
+    method: 'POST',
+    headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ ownerKind: 'node', ownerId: 'n1', fileName: 'evidence.md', content: 'evidence' }),
+  });
+  assert.equal(created.status, 200);
+  const listed = await fetch(`${server.origin}/api/v1/bundles?ownerKind=node&ownerId=n1`, { headers: authHeaders(session) });
+  assert.equal(listed.status, 200);
+  assert.equal((await listed.json()).files.some((file) => file.name === 'evidence.md'), true);
+
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const uploaded = await fetch(`${server.origin}/api/v1/assets/import?ownerKind=node&ownerId=n1&fileName=image.png`, {
+    method: 'POST',
+    headers: authHeaders(session, { 'Content-Type': 'image/png' }),
+    body: png,
+  });
+  assert.equal(uploaded.status, 201);
+  const downloaded = await fetch(`${server.origin}/api/v1/assets/read?ownerKind=node&ownerId=n1&fileName=image.png`, { headers: authHeaders(session) });
+  assert.equal(downloaded.status, 200);
+  assert.equal(downloaded.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(downloaded.headers.get('content-type'), 'image/png');
+  assert.deepEqual(Buffer.from(await downloaded.arrayBuffer()), png);
 });
 
 test('rejects hostile Host and missing project roots while allowing session-side switching', async (t) => {
@@ -380,16 +560,16 @@ test('binds browser writes to human and MCP writes to Agent regardless of suppli
         actor: 'human',
         baseRevision: 1,
         commandId: 'mcp-forged-human',
-        commands: [{ op: 'update', collection: 'routes', id: 'r1', patch: { archived: true } }],
+        commands: [{ op: 'archive', collection: 'routes', id: 'r1', archiveReason: 'Agent 判断已过时' }],
       },
     }),
   });
-  assert.equal(forgedMcp.status, 403);
-  assert.equal((await forgedMcp.json()).error.code, 'HUMAN_APPROVAL_REQUIRED');
+  assert.equal(forgedMcp.status, 200);
   const snapshot = await fetch(`${server.origin}/snapshot`, { headers: { Origin: APP_ORIGIN, Cookie: session.cookie } });
   const persisted = await snapshot.json();
-  assert.equal(persisted.revision, 1);
-  assert.equal(persisted.document.routes[0].archived, undefined);
+  assert.equal(persisted.revision, 2);
+  assert.equal(persisted.document.routes[0].archived, true);
+  assert.equal(persisted.document.routes[0].archivedBy, 'agent:bridge');
 });
 
 test('streams commit events and supports snapshot plus backup recovery endpoints', async (t) => {
@@ -468,6 +648,38 @@ test('notifies an opened canvas when an independent MCP-style ProjectStore write
   controller.abort();
 });
 
+test('external stdio-style map switch is observed and published to open canvases', async (t) => {
+  const { root, shared, server } = await startServer(t, { activeMapPollIntervalMs: 50 });
+  const session = await establishSession(server);
+  assert.equal((await openProject(server, root, session)).status, 200);
+  const createdResponse = await fetch(`${server.origin}/api/v1/maps/create`, {
+    method: 'POST',
+    headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name: 'Agent 外部切换目标' }),
+  });
+  assert.equal(createdResponse.status, 200);
+  const created = await createdResponse.json();
+
+  const controller = new AbortController();
+  const eventResponse = await fetch(`${server.origin}/events`, {
+    headers: { Origin: APP_ORIGIN, Cookie: session.cookie },
+    signal: controller.signal,
+  });
+  const reader = eventResponse.body.getReader();
+  const decoder = new TextDecoder();
+  const initial = decoder.decode((await reader.read()).value);
+  assert.match(initial, /event: ready/);
+
+  const external = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
+  t.after(() => external.close());
+  await external.switch(created.createdMap);
+  const stream = await readUntil(reader, decoder, initial, 'event: active-map-changed', 2_000);
+  assert.match(stream, new RegExp(`"mapKey":"${String(created.createdMap).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
+  assert.match(stream, /"source":"external"/);
+  await reader.cancel();
+  controller.abort();
+});
+
 test('reconnects the event stream with the latest revision after a disconnected write', async (t) => {
   const { root, shared, server } = await startServer(t, { pollIntervalMs: 50 });
   const session = await establishSession(server);
@@ -535,6 +747,104 @@ test('recent projects lists opened directories newest first', async (t) => {
   assert.ok(Array.isArray(body.recent));
   assert.equal(body.recent[0], second.root);
   assert.ok(body.recent.includes(root));
+});
+
+test('archive settings lists, restores and requires typed confirmation before human purge', async (t) => {
+  const recycled = [];
+  const { root, server } = await startServer(t, { recycleBin: { async recycle(path) { recycled.push(path); return true; } } });
+  const session = await establishSession(server);
+  assert.equal((await openProject(server, root, session)).status, 200);
+  const snapshot = await fetch(`${server.origin}/snapshot`, { headers: authHeaders(session) }).then((response) => response.json());
+  const node = { id: 'archive-settings-node', name: '待清理节点', kind: 'goal', route: null, x: 0, y: 0 };
+  const archived = await fetch(`${server.origin}/commands`, {
+    method: 'POST',
+    headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      projectId: snapshot.document.mapId,
+      baseRevision: snapshot.revision,
+      commandId: 'archive-settings-create',
+      sessionId: 'browser-test',
+      commands: [
+        { op: 'create', collection: 'nodes', value: node },
+        { op: 'archive', collection: 'nodes', id: node.id, archiveReason: '测试归档' },
+      ],
+    }),
+  });
+  assert.equal(archived.status, 200);
+
+  const listed = await fetch(`${server.origin}/api/v1/archive`, { headers: authHeaders(session) });
+  assert.equal(listed.status, 200);
+  assert.equal((await listed.json()).archived.some((item) => item.id === node.id && item.collection === 'nodes'), true);
+
+  const denied = await fetch(`${server.origin}/api/v1/archive/purge`, {
+    method: 'POST', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ collection: 'nodes', id: node.id, confirmed: true, confirmation: 'wrong-id' }),
+  });
+  assert.equal(denied.status, 403);
+  assert.equal(recycled.length, 0);
+
+  const restored = await fetch(`${server.origin}/api/v1/archive/restore`, {
+    method: 'POST', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ collection: 'nodes', id: node.id }),
+  });
+  assert.equal(restored.status, 200);
+  const afterRestore = await restored.json();
+  const rearchive = await fetch(`${server.origin}/commands`, {
+    method: 'POST', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      projectId: afterRestore.document.mapId,
+      baseRevision: afterRestore.revision,
+      commandId: 'archive-settings-rearchive',
+      sessionId: 'browser-test',
+      commands: [{ op: 'archive', collection: 'nodes', id: node.id }],
+    }),
+  });
+  assert.equal(rearchive.status, 200);
+  const purged = await fetch(`${server.origin}/api/v1/archive/purge`, {
+    method: 'POST', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ collection: 'nodes', id: node.id, confirmed: true, confirmation: node.id }),
+  });
+  assert.equal(purged.status, 200);
+  assert.equal((await purged.json()).purged, true);
+  assert.equal(recycled.length, 1);
+});
+
+test('editor HTTP surface accepts only opaque ids and project-relative targets', async (t) => {
+  const nativeCalls = [];
+  const nativeHelper = async (request) => {
+    nativeCalls.push(request);
+    if (request.operation === 'save-as') return { destinationPath: join(root, 'exported.md') };
+    return { ok: true };
+  };
+  const { root, server } = await startServer(t, { nativeHelper });
+  const session = await establishSession(server);
+  assert.equal((await openProject(server, root, session)).status, 200);
+  await mkdir(join(root, 'docs'), { recursive: true });
+  await writeFile(join(root, 'docs', 'editor target.md'), '# editor\n');
+
+  const listing = await fetch(`${server.origin}/api/v1/editors`, { headers: authHeaders(session) });
+  assert.equal(listing.status, 200);
+  const listBody = await listing.json();
+  assert.equal(listBody.editors.some((item) => item.id === 'system' && item.available), true);
+  assert.equal(JSON.stringify(listBody).includes('.exe'), false);
+
+  const opened = await fetch(`${server.origin}/api/v1/editors/open`, {
+    method: 'POST', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ editorId: 'system', relativePath: 'docs/editor target.md' }),
+  });
+  assert.equal(opened.status, 200);
+  assert.equal(nativeCalls[0].operation, 'open-default');
+
+  const hostile = await fetch(`${server.origin}/api/v1/editors/open`, {
+    method: 'POST', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ editorId: 'C:\\Windows\\System32\\cmd.exe', relativePath: 'docs/editor target.md' }),
+  });
+  assert.equal(hostile.status, 400);
+  const outside = await fetch(`${server.origin}/api/v1/editors/open`, {
+    method: 'POST', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ editorId: 'system', relativePath: '..\\secret.md' }),
+  });
+  assert.equal(outside.status, 403);
 });
 
 test('pick folder script prefers modern IFileOpenDialog with topmost owner and falls back safely', () => {

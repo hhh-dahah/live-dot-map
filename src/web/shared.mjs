@@ -4,6 +4,7 @@ import * as core from '../shared/index.mjs';
 export const MAP_VERSION = core.MAP_VERSION;
 export const COLLECTIONS = core.COLLECTIONS;
 export const stableMarkdownPath = core.stableMarkdownPath;
+export const documentMapDir = core.documentMapDir;
 export const validateMapDocument = core.validateMapDocument;
 export const migrateMapV1 = core.migrateMapV1;
 export const applyMapCommand = core.applyMapCommand;
@@ -37,12 +38,9 @@ const PATH_SEGMENT_RE = /[<>:"/\\|?*\u0000-\u001f]/;
  * 新对象的稳定路径应由 core.stableMarkdownPath(id) 生成；旧文件路径不强制重命名。
  */
 export function normalizeMarkdownPath(value, options = {}) {
-  const { collection, id, preferStable = false } = options;
-  if (preferStable && (collection === 'nodes' || collection === 'edges') && typeof id === 'string') {
-    try { return stableMarkdownPath(collection, id); } catch { /* 继续检查已有路径 */ }
-  }
+  const { collection, id, preferStable = false, mapDir = '.live-dot-map' } = options;
   if (value === null || value === undefined || value === '') {
-    if ((collection === 'nodes' || collection === 'edges') && typeof id === 'string') return stableMarkdownPath(collection, id);
+    if ((collection === 'nodes' || collection === 'edges') && typeof id === 'string') return stableMarkdownPath(collection, id, mapDir);
     return null;
   }
   if (typeof value !== 'string') throw new TypeError('Markdown 路径必须是字符串');
@@ -63,6 +61,10 @@ export function normalizeMarkdownPath(value, options = {}) {
     // 外部数据只允许显式的项目相对目录，不能借此逃逸到项目根外。
     path = `docs/${path}`;
   }
+  // preferStable 只影响没有显式指针的新对象；已有合法的项目内自定义指针必须保留。
+  if (preferStable && !path && (collection === 'nodes' || collection === 'edges') && typeof id === 'string') {
+    return stableMarkdownPath(collection, id, mapDir);
+  }
   return path;
 }
 
@@ -71,15 +73,20 @@ export function canonicalizeMarkdownFields(document) {
   const clone = typeof structuredClone === 'function'
     ? structuredClone(document)
     : JSON.parse(JSON.stringify(document));
+  const mapDir = documentMapDir(clone);
   for (const collection of ['nodes', 'edges']) {
     if (!Array.isArray(clone[collection])) continue;
     for (const item of clone[collection]) {
       if (!item || typeof item !== 'object') continue;
       try {
-        item.md = normalizeMarkdownPath(item.md, { collection, id: item.id, preferStable: true });
+        // v1 的 nodes/<name>.md、routes/<name>.md 是旧约定，不是用户在 v2
+        // 明确登记的自定义指针；迁移时一次性收敛到资料包 index.md。
+        item.md = Number(clone.version) === 1
+          ? stableMarkdownPath(collection, String(item.id), mapDir)
+          : normalizeMarkdownPath(item.md, { collection, id: item.id, preferStable: true, mapDir });
       } catch {
         // 坏路径不应阻断导出；改为按 ID 生成受控路径。
-        try { item.md = stableMarkdownPath(collection, String(item.id)); } catch { delete item.md; }
+        try { item.md = stableMarkdownPath(collection, String(item.id), mapDir); } catch { delete item.md; }
       }
     }
   }

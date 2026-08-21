@@ -1,12 +1,23 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { access, lstat, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { isSea } from 'node:sea';
-import { createBridgeServer, createLogger, ProjectStore } from '../bridge/index.mjs';
-import { ensureMapsLayout, mapDirectory, mapRelativeDirectory } from '../bridge/maps.mjs';
+import { createBridgeServer, createLogger, MapManager, noopLogger, TOOL_DEFINITIONS, ToolService } from '../bridge/index.mjs';
+import { ProjectRegistry } from '../bridge/project-registry.mjs';
+import { SessionStore } from '../bridge/session-store.mjs';
+import {
+  acquireSingletonLock,
+  checkBridgeProcess,
+  clearStaleSingletonLock,
+  isProcessAlive,
+  readBridgeState,
+  readOrCreateControlToken,
+  removeBridgeState,
+  writeBridgeState,
+} from '../bridge/runtime-state.mjs';
 import { loadSharedAdapter } from '../bridge/shared-adapter.mjs';
-import { autonomyDecision, buildProjectProjection, checkAttemptEvidence, findExplorationAlternatives, planConsolidation, retrieveContext, validateMapDocument } from '../shared/index.ts';
 import { doctorProject, installProject, uninstallProject } from '../../agent-kit/lib/installer.mjs';
 
 if (isSea()) process.env.LIVEDOT_SEA = '1';
@@ -34,64 +45,64 @@ function required(args: Args, name: string): string {
   return value;
 }
 
-async function markdownDocuments(root: string, limit = 200): Promise<Array<{ path: string; text: string }>> {
-  const output: Array<{ path: string; text: string }> = [];
-  const ignored = new Set(['.git', 'node_modules', '.next', 'dist', 'out', '.bridge', 'backups', 'snapshots', 'quarantine']);
-  const walk = async (directory: string, depth: number): Promise<void> => {
-    if (depth > 5 || output.length >= limit) return;
-    const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      if (output.length >= limit || ignored.has(entry.name)) continue;
-      const full = join(directory, entry.name);
-      if (entry.isDirectory()) await walk(full, depth + 1);
-      else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
-        const metadata = await stat(full).catch(() => null);
-        if (!metadata || metadata.size > 2_000_000) continue;
-        const text = await readFile(full, 'utf8').catch(() => '');
-        if (text && text.length <= 2_000_000) output.push({ path: full.slice(root.length + 1).replace(/\\/g, '/'), text });
-      }
-    }
-  };
-  await walk(root, 0);
-  return output;
-}
-
-function markdownSection(text: string, headings: string[]): string {
-  const wanted = new Set(headings.map((heading) => heading.replace(/\s+/g, '')));
-  const lines = String(text ?? '').split(/\r?\n/);
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^\s*#{1,6}\s*(.*?)\s*$/);
-    if (!match || !wanted.has(match[1].replace(/[：:]\s*$/, '').replace(/\s+/g, ''))) continue;
-    const content: string[] = [];
-    for (let next = index + 1; next < lines.length && !/^\s*#{1,6}\s+/.test(lines[next]); next += 1) content.push(lines[next]);
-    return content.join('\n').trim();
+async function openThroughRunningBridge(
+  state: { pid: number; port: number },
+  controlToken: string,
+  projectRoot: string,
+  projectHandle: string,
+): Promise<Json> {
+  const origin = `http://127.0.0.1:${state.port}`;
+  const signal = AbortSignal.timeout(2_000);
+  const status = await fetch(`${origin}/api/v1/control/status`, {
+    headers: { 'X-LiveDot-Control': controlToken },
+    signal,
+  });
+  if (!status.ok) throw new Error(`已记录的 Bridge 未通过身份验证（HTTP ${status.status}）`);
+  const statusBody = await status.json() as Json;
+  if (Number(statusBody.pid) !== state.pid) throw new Error('持久化端口上的 Bridge PID 与运行状态不一致');
+  const opened = await fetch(`${origin}/api/v1/control/open-project`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-LiveDot-Control': controlToken },
+    body: JSON.stringify({ projectRoot, projectHandle }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = await opened.json().catch(() => ({})) as Json;
+  if (opened.ok && typeof body.bootstrapToken === 'string') {
+    const url = `${origin}/app.html?token=${encodeURIComponent(body.bootstrapToken)}`;
+    return { ok: true, reused: true, pid: state.pid, origin, projectHandle, url };
   }
-  return '';
+  const detail = (body.error && typeof body.error === 'object' ? body.error : {}) as Json;
+  const code = typeof detail.code === 'string' ? detail.code : '';
+  const message = typeof detail.message === 'string' ? detail.message : '';
+  // 把服务端真实错误码带进启动器弹窗，不再只有一句笼统的「打开画布失败」。
+  throw Object.assign(
+    new Error(`Bridge 无法打开项目（HTTP ${opened.status}${code ? ` ${code}` : ''}${message ? `：${message}` : ''}）`),
+    { httpStatus: opened.status, errorCode: code },
+  );
 }
 
-function attemptEvidence(document: Json, markdown: Array<{ path: string; text: string }>): Json[] {
-  const docs = new Map(markdown.map((item) => [String(item.path).replace(/\\/g, '/'), String(item.text ?? '')]));
-  const edges = Array.isArray(document.edges) ? document.edges as Json[] : [];
-  const mapDir = typeof document.mapDir === 'string' && document.mapDir ? document.mapDir : '.live-dot-map';
-  return edges
-    .filter((edge) => ['failed', 'success', 'pending'].includes(String(edge.status)) && edge.archived !== true && edge.shelved !== true)
-    .map((edge) => {
-      const path = String(edge.md ?? `${mapDir}/routes/${edge.id}.md`).replace(/\\/g, '/');
-      const text = docs.get(path) ?? '';
-      const result = markdownSection(text, ['结果', '结论']);
-      const failureReason = markdownSection(text, ['失败原因', '失败原因/排除条件']);
-      const nextStep = markdownSection(text, ['下一步', '后续建议']);
-      const evidence = markdownSection(text, ['关键证据', '证据']);
-      return {
-        id: String(edge.id), status: String(edge.status), name: String(edge.name ?? edge.id), path,
-        evidence: evidence.slice(0, 360), result: result.slice(0, 360),
-        failureReason: failureReason.slice(0, 360), nextStep: nextStep.slice(0, 360),
-        hasMarkdown: Boolean(text),
-      };
-    })
-    .filter((item) => item.status === 'failed' || item.status === 'pending' || item.status === 'success')
-    .sort((a, b) => (a.status === 'failed' ? -1 : 0) - (b.status === 'failed' ? -1 : 0) || String(a.id).localeCompare(String(b.id)))
-    .slice(0, 8);
+// 冲突/繁忙类错误（WAL 竞争、迁移写入中途）通常下一次调用即自愈，做有限重试；
+// 其余错误（权限、布局过新等）重试无意义，直接抛给启动器显示真实原因。
+const REUSABLE_RETRY_STATUS = new Set([409, 503]);
+
+async function openThroughRunningBridgeWithRetry(
+  state: { pid: number; port: number },
+  controlToken: string,
+  projectRoot: string,
+  projectHandle: string,
+): Promise<Json> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (attempt) await new Promise((resolveDelay) => setTimeout(resolveDelay, 300));
+    try {
+      return await openThroughRunningBridge(state, controlToken, projectRoot, projectHandle);
+    } catch (error) {
+      lastError = error;
+      const status = (error as { httpStatus?: number })?.httpStatus;
+      if (typeof status !== 'number' || !REUSABLE_RETRY_STATUS.has(status)) throw error;
+    }
+  }
+  throw lastError;
 }
 
 async function recordAgentHealth(root: string, actor: string, event: string, status: 'ok' | 'error', error?: unknown): Promise<void> {
@@ -108,24 +119,73 @@ async function recordAgentHealth(root: string, actor: string, event: string, sta
   try { await writeFile(temporary, `${JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), records }, null, 2)}\n`, 'utf8'); await rename(temporary, path); } catch { /* health is best-effort and must not change map writes */ }
 }
 
-async function openStore(projectRoot: string): Promise<ProjectStore> {
-  // MCP/hook 进程是短生命周期写入方；常驻桥负责跨进程轮询和画布 SSE 通知。
-  // 多地图布局：先幂等迁移/补指针，再按 active-map 指针打开当前地图的目录。
+type ProjectQualification = {
+  ok: boolean;
+  code?: 'PROJECT_NOT_FOUND' | 'PROJECT_NOT_INITIALIZED' | 'PROJECT_READONLY' | 'PROJECT_LAYOUT_INVALID';
+  message?: string;
+};
+
+/**
+ * MCP 和 hook 只能打开已经存在的项目。这个检查必须完全只读：不能调用
+ * ensureMapsLayout、ProjectStore.open 或任何会补齐运行目录的函数。
+ *
+ * 空目录、Agent 在错误 cwd 启动、没有写权限的目录都走 fail-open；只有
+ * 已经有明确地图标记的目录才交给 ProjectStore，这样损坏/未知版本仍会
+ * 按真实项目错误上报，而不会被静默伪装成新项目。
+ */
+async function inspectProjectQualification(projectRoot: string): Promise<ProjectQualification> {
   const root = resolve(projectRoot);
-  const { activeMap } = await ensureMapsLayout(root);
-  let mapName: string | undefined;
-  try {
-    const parsed = JSON.parse(await readFile(join(mapDirectory(root, activeMap), 'map.json'), 'utf8'));
-    if (typeof parsed?.name === 'string' && parsed.name) mapName = parsed.name;
-  } catch { /* 空地图由 ProjectStore 创建，用默认名 */ }
-  return ProjectStore.open({
-    projectRoot: root,
-    dataDirectory: mapDirectory(root, activeMap),
-    mapName,
-    mapDir: mapRelativeDirectory(activeMap),
-    shared: await loadSharedAdapter(),
-    pollIntervalMs: 0,
-  });
+  const rootMetadata = await lstat(root).catch(() => null);
+  if (!rootMetadata || !rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
+    return { ok: false, code: 'PROJECT_NOT_FOUND', message: '当前目录不存在或不是有效项目目录。' };
+  }
+
+  const dataDirectory = join(root, '.live-dot-map');
+  const dataMetadata = await lstat(dataDirectory).catch(() => null);
+  if (!dataMetadata) return { ok: false, code: 'PROJECT_NOT_INITIALIZED', message: '当前目录还没有活点地图项目。' };
+  if (!dataMetadata.isDirectory() || dataMetadata.isSymbolicLink()) {
+    return { ok: false, code: 'PROJECT_LAYOUT_INVALID', message: '活点地图数据目录不是可安全读取的目录。' };
+  }
+
+  const marker = async (path: string): Promise<boolean> => {
+    const metadata = await lstat(path).catch(() => null);
+    // 存在但为 symlink 的 map.json 仍属于一个需要报错的项目；交给
+    // ProjectStore 的安全路径检查，不要把它误判成全新项目。
+    return Boolean(metadata && (metadata.isFile() || metadata.isSymbolicLink()));
+  };
+
+  const legacy = await marker(join(dataDirectory, 'map.json'));
+  const mapsPath = join(dataDirectory, 'maps');
+  const mapsMetadata = await lstat(mapsPath).catch(() => null);
+  let packageMap = false;
+  if (mapsMetadata?.isDirectory() && !mapsMetadata.isSymbolicLink()) {
+    const entries = await readdir(mapsPath, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      if (await marker(join(mapsPath, entry.name, 'map.json'))) { packageMap = true; break; }
+    }
+  }
+  if (!legacy && !packageMap) {
+    return { ok: false, code: 'PROJECT_NOT_INITIALIZED', message: '当前目录不是已初始化的活点地图项目。' };
+  }
+
+  // 不进行写探测（那本身会污染错误目录）。access(W_OK) 只读取 ACL；对
+  // 已存在但只读的项目 fail-open，避免 ProjectStore 初始化创建 .bridge。
+  const writableTarget = packageMap
+    ? (await access(mapsPath, constants.W_OK).then(() => true).catch(() => false))
+    : (await access(dataDirectory, constants.W_OK).then(() => true).catch(() => false));
+  if (!writableTarget) return { ok: false, code: 'PROJECT_READONLY', message: '当前活点地图项目目录不可写。' };
+  return { ok: true };
+}
+
+function unavailableToolResult(qualification: ProjectQualification): Json {
+  const code = qualification.code ?? 'PROJECT_NOT_INITIALIZED';
+  const message = qualification.message ?? '当前目录没有可用的活点地图项目。';
+  return {
+    isError: true,
+    content: [{ type: 'text', text: `[活点地图] ${message}` }],
+    structuredContent: { ok: false, error: { code, message } },
+  };
 }
 
 function envelope(projectId: string, revision: number, actor: string, sessionId: string, commands: Json[]): Json {
@@ -152,81 +212,17 @@ function compactHookContext(value: unknown): Json {
   };
 }
 
-async function callTool(store: ProjectStore, root: string, tool: string, args: Json, defaultActor = 'agent:generic'): Promise<unknown> {
-  const snapshot = await store.snapshot();
-  const document = snapshot.document as Json;
-  // The adapter process, not model-provided tool arguments, owns identity.
-  // Otherwise a model could submit actor="human" and bypass human-only
-  // delete/curation rules in the shared reducer.
-  const actor = defaultActor.startsWith('agent:') ? defaultActor : 'agent:generic';
-  const sessionId = `session-${randomUUID()}`;
-  if (tool === 'map_get_context') {
-    const markdown = await markdownDocuments(root);
-    const projection = { ...buildProjectProjection(document as never), attemptEvidence: attemptEvidence(document, markdown) };
-    return { revision: snapshot.revision, projection, attemptEvidence: projection.attemptEvidence, ...retrieveContext(document as never, String(args.query ?? ''), { currentNodeId: args.currentNodeId == null ? null : String(args.currentNodeId), markdown }) };
-  }
-  if (tool === 'map_list_human_updates') {
-    const anns = Array.isArray(document.anns) ? document.anns as Json[] : [];
-    return { revision: snapshot.revision, updates: anns.filter((ann) => ann.source === 'human' && ['new', 'delivered'].includes(String(ann.attention))) };
-  }
-  if (tool === 'map_ack_human_updates') {
-    const ids = Array.isArray(args.ids) ? args.ids.map(String) : [];
-    return store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: 'ack_annotations', ids, summary: String(args.summary ?? '') }]) as never);
-  }
-  if (tool === 'map_next_candidates') {
-    const markdown = await markdownDocuments(root);
-    const context = retrieveContext(document as never, String(args.query ?? ''), {
-      currentNodeId: args.currentNodeId === null || args.currentNodeId === undefined ? null : String(args.currentNodeId),
-      limit: Number.isInteger(args.limit) ? Number(args.limit) : 12,
-      includeHistory: args.includeHistory === true,
-      markdown,
-    });
-    return { revision: snapshot.revision, alternatives: findExplorationAlternatives(document as never, args.currentNodeId == null ? null : String(args.currentNodeId), { limit: 3 }), attemptEvidence: attemptEvidence(document, markdown), ...context, autonomy: autonomyDecision(document as never, context.objects) };
-  }
-  if (tool === 'map_apply_commands') {
-    const request = {
-      ...envelope(String(document.mapId), snapshot.revision, actor, sessionId, Array.isArray(args.commands) ? args.commands as Json[] : []),
-      baseRevision: Number.isInteger(args.baseRevision) ? args.baseRevision : snapshot.revision,
-      commandId: typeof args.commandId === 'string' ? args.commandId : `cmd-${randomUUID()}`,
-    };
-    return store.execute(request as never);
-  }
-  if (tool === 'map_validate') {
-    const target = args.document ?? document;
-    const validation = validateMapDocument(target);
-    return target === document ? { ...validation, attemptIssues: validation.ok ? checkAttemptEvidence(document as never, await markdownDocuments(root)) : [] } : validation;
-  }
-  if (tool === 'map_checkpoint') return store.createSnapshot();
-  if (tool === 'map_plan_consolidation') {
-    const markdown = await markdownDocuments(root);
-    return { ...planConsolidation(document as never, {
-      now: typeof args.now === 'string' ? args.now : undefined,
-      maxSuggestions: Number.isInteger(args.maxSuggestions) ? Number(args.maxSuggestions) : 12,
-      markdown,
-    }), revision: snapshot.revision };
-  }
-  throw Object.assign(new Error(`未知工具 ${tool}`), { code: 'UNKNOWN_TOOL' });
-}
-
-const toolDefinitions = [
-  ['map_get_context', '按图结构与本地 Markdown 检索本轮相关上下文', { query: { type: 'string' } }],
-  ['map_list_human_updates', '列出 new/delivered 的人类标注', {}],
-  ['map_ack_human_updates', '摘要明确引用标注 ID 后确认读取', { ids: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } }],
-  ['map_next_candidates', '返回带可解释分数的推进候选与自治判断', {
-    query: { type: 'string' }, currentNodeId: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    limit: { type: 'integer', minimum: 1, maximum: 12 }, includeHistory: { type: 'boolean' },
-  }],
-  ['map_apply_commands', '通过统一 reducer 原子提交地图命令', { commands: { type: 'array' } }],
-  ['map_validate', '校验 v2 地图或当前地图', { document: { type: 'object' } }],
-  ['map_checkpoint', '创建人工检查点', {}],
-  ['map_plan_consolidation', '只读分析可审核的地图整理建议，不直接修改地图', { maxSuggestions: { type: 'integer', minimum: 1, maximum: 20 } }],
-].map(([name, description, properties]) => ({ name, description, inputSchema: { type: 'object', properties, additionalProperties: true } }));
+const toolDefinitions = TOOL_DEFINITIONS;
 
 async function runMcp(projectRoot: string, actor: string): Promise<void> {
   const root = resolve(projectRoot);
-  const logger = createLogger({ source: 'agent' });
-  const store = await openStore(root);
-  await logger.info('agent.mcp.start', { project: root, actor, pid: process.pid });
+  const qualification = await inspectProjectQualification(root);
+  // fail-open 进程不能创建日志目录、health 文件或地图目录。transport
+  // 仍然保持可用，只有 tools/call 返回结构化 isError。
+  const logger = qualification.ok ? createLogger({ source: 'agent' }) : noopLogger;
+  let manager: MapManager | null = null;
+  let tools: ToolService | null = null;
+  if (qualification.ok) await logger.info('agent.mcp.start', { project: root, actor, pid: process.pid });
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
     let request: Json;
@@ -238,28 +234,50 @@ async function runMcp(projectRoot: string, actor: string): Promise<void> {
       if (request.method === 'initialize') result = { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'live-dot-map', version: '2.0.0' } };
       else if (request.method === 'tools/list') result = { tools: toolDefinitions };
       else if (request.method === 'tools/call') {
-        const params = request.params as Json;
-        const value = await callTool(store, root, String(params.name), (params.arguments as Json) ?? {}, actor);
-        result = { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value };
+        if (!qualification.ok) {
+          result = unavailableToolResult(qualification);
+        } else {
+          const params = request.params as Json;
+          // 延迟打开 manager：initialize/tools/list 即使地图损坏也必须能返回，
+          // 真实损坏会在 tools/call 处按 JSON-RPC error 上报。
+          if (!manager) {
+            const shared = await loadSharedAdapter();
+            manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
+            tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: 'stdio' });
+          }
+          const value = await tools!.dispatch(String(params.name), (params.arguments as Json) ?? {});
+          result = { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value };
+        }
       } else throw Object.assign(new Error(`未知方法 ${String(request.method)}`), { code: -32601 });
-      await recordAgentHealth(root, actor, `mcp:${String(request.method === 'tools/call' ? (request.params as Json)?.name ?? 'call' : request.method)}`, 'ok');
+      if (qualification.ok) await recordAgentHealth(root, actor, `mcp:${String(request.method === 'tools/call' ? (request.params as Json)?.name ?? 'call' : request.method)}`, 'ok');
       process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, result })}\n`);
     } catch (error) {
       const value = error as Error & { code?: string | number; details?: unknown };
-      await recordAgentHealth(root, actor, `mcp:${String((request.params as Json | undefined)?.name ?? request.method ?? 'unknown')}`, 'error', value);
-      await logger.error('agent.mcp', { tool: String((request.params as Json | undefined)?.name ?? request.method ?? 'unknown'), error: value });
+      if (qualification.ok) {
+        await recordAgentHealth(root, actor, `mcp:${String((request.params as Json | undefined)?.name ?? request.method ?? 'unknown')}`, 'error', value);
+        await logger.error('agent.mcp', { tool: String((request.params as Json | undefined)?.name ?? request.method ?? 'unknown'), error: value });
+      }
       process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, error: { code: typeof value.code === 'number' ? value.code : -32000, message: value.message, data: { code: value.code, details: value.details } } })}\n`);
     }
   }
+  await manager?.close().catch(() => undefined);
 }
 
 async function runHook(kind: string, args: Args): Promise<void> {
   const root = resolve(required(args, 'project'));
   const actor = `agent:${String(args.agent || 'generic')}`;
   const sessionId = String(args.session || `session-${randomUUID()}`);
+  const qualification = await inspectProjectQualification(root);
+  // Hook 在未初始化/错误/只读目录中必须完全静默成功：不能打开 store，
+  // 也不能落 health、日志或其他运行态文件。
+  if (!qualification.ok) return;
   const logger = createLogger({ source: 'agent' });
   await logger.info('agent.hook.start', { event: kind, actor, project: root });
-  const store = await openStore(root);
+  const shared = await loadSharedAdapter();
+  const manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
+  const resolvedMap = await manager.resolve();
+  const store = resolvedMap.store;
+  const tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: 'hook' });
   const snapshot = await store.snapshot();
   const document = snapshot.document as Json;
   if (kind === 'session-start') {
@@ -313,6 +331,7 @@ async function runHook(kind: string, args: Args): Promise<void> {
     }
     // 无变更且无新交付：零输出（无事不打扰）。
     await recordAgentHealth(root, actor, 'hook:session-start', 'ok');
+    await manager.close();
     return;
   }
   if (kind === 'user-prompt') {
@@ -325,9 +344,10 @@ async function runHook(kind: string, args: Args): Promise<void> {
         prompt = String(input.prompt ?? input.user_prompt ?? input.input ?? raw);
       } catch { prompt = raw; }
     }
-    const context = await callTool(store, root, 'map_get_context', { query: prompt }, actor);
+    const context = await tools.dispatch('map_get_context', { query: prompt });
     process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: JSON.stringify(compactHookContext(context)) } })}\n`);
     await recordAgentHealth(root, actor, 'hook:user-prompt', 'ok');
+    await manager.close();
     return;
   }
   if (kind === 'stop') {
@@ -337,8 +357,8 @@ async function runHook(kind: string, args: Args): Promise<void> {
       for await (const chunk of process.stdin) raw += chunk;
       try { hookInput = raw ? JSON.parse(raw) as Json : {}; } catch { hookInput = {}; }
     }
-    const updates = await callTool(store, root, 'map_list_human_updates', {}, actor) as Json;
-    const validation = await callTool(store, root, 'map_validate', {}, actor) as Json;
+    const updates = await tools.dispatch('map_list_human_updates', {}) as Json;
+    const validation = await tools.dispatch('map_validate', {}) as Json;
     const attemptIssues = Array.isArray(validation.attemptIssues) ? validation.attemptIssues as Json[] : [];
     const incomplete = (Array.isArray(updates.updates) && updates.updates.length > 0) || attemptIssues.length > 0 || validation.ok === false;
     const attempt = Number(args.attempt || process.env.LIVEDOT_STOP_ATTEMPT || (hookInput.stop_hook_active ? 2 : 1)) || 1;
@@ -360,6 +380,7 @@ async function runHook(kind: string, args: Args): Promise<void> {
       : { systemMessage: reason };
     process.stdout.write(`${JSON.stringify(output)}\n`);
     await recordAgentHealth(root, actor, 'hook:stop', incomplete ? 'error' : 'ok', incomplete ? new Error(reason) : undefined);
+    await manager.close();
   }
 }
 
@@ -368,6 +389,51 @@ async function main(): Promise<void> {
   if (command === 'serve') {
     const logger = createLogger({ source: 'bridge' });
     const projectRoot = resolve(required(args, 'project'));
+    const runtimeStateDir = typeof args['runtime-state-dir'] === 'string' ? resolve(args['runtime-state-dir']) : undefined;
+    const controlToken = await readOrCreateControlToken(runtimeStateDir);
+    const registry = await ProjectRegistry.open({ runtimeStateDir });
+    const sessionStore = await SessionStore.open({ runtimeStateDir });
+    const registered = await registry.register(projectRoot);
+    let state = await readBridgeState(runtimeStateDir);
+    if (state) {
+      try {
+        const reused = await openThroughRunningBridgeWithRetry(state, controlToken, projectRoot, registered.projectHandle);
+        process.stdout.write(`${JSON.stringify(reused)}\n`);
+        await logger.flush();
+        return;
+      } catch (error) {
+        // pid 可能被系统回收复用：只有确认活着的进程不是 Bridge（或进程已死）才清理，
+        // 否则用户强杀 Bridge 后将永远无法从桌面图标恢复（打开画布失败）。
+        // 探测结果不明（unknown）时保持保守，按“仍在运行”报错而不是冒险双开。
+        const identity = isProcessAlive(state.pid) ? await checkBridgeProcess(state.pid) : 'other';
+        if (identity !== 'other') {
+          throw new Error(`现有 Bridge 进程仍在运行但无法安全复用：${error instanceof Error ? error.message : String(error)}`);
+        }
+        if (!(await clearStaleSingletonLock(runtimeStateDir, state.pid, { force: true }))) {
+          throw new Error('Bridge 状态已失效，但单例锁不能安全回收');
+        }
+        await removeBridgeState(runtimeStateDir, state.pid);
+      }
+    }
+    let releaseLock: (() => Promise<void>) | null = null;
+    try {
+      releaseLock = await acquireSingletonLock(runtimeStateDir);
+    } catch (error) {
+      // 并发首启时，另一个进程可能已取得锁但尚未写 bridge.json；短暂等待其就绪后复用。
+      if ((error as { code?: string })?.code !== 'BRIDGE_START_IN_PROGRESS') throw error;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+        state = await readBridgeState(runtimeStateDir);
+        if (!state) continue;
+        try {
+          const reused = await openThroughRunningBridge(state, controlToken, projectRoot, registered.projectHandle);
+          process.stdout.write(`${JSON.stringify(reused)}\n`);
+          await logger.flush();
+          return;
+        } catch { /* 首个进程仍在启动 */ }
+      }
+      throw new Error('Bridge 正在启动，但在 2 秒内没有进入可复用状态');
+    }
     const appPath = resolve(typeof args.app === 'string' ? args.app : join(process.cwd(), 'app.html'));
     const appHtml = await readFile(appPath, 'utf8');
     const assetRoot = dirname(appPath);
@@ -380,11 +446,37 @@ async function main(): Promise<void> {
     ]) {
       try { staticAssets[urlPath] = { body: await readFile(join(assetRoot, file)), type }; } catch { /* 可选 PWA 资产 */ }
     }
-    const bridge = await (createBridgeServer as (options: Json) => Promise<{ origin: string; bootstrapToken: string; close(): Promise<void> }>)({ allowedProjectRoots: [projectRoot], appHtml, staticAssets, logger });
-    const url = `${bridge.origin}/app.html?token=${encodeURIComponent(bridge.bootstrapToken)}&project=${encodeURIComponent(projectRoot)}`;
-    await logger.info('bridge.start', { origin: bridge.origin, project: projectRoot, pid: process.pid });
-    process.stdout.write(`${JSON.stringify({ ok: true, origin: bridge.origin, bootstrapToken: bridge.bootstrapToken, url })}\n`);
-    const shutdown = async () => { await logger.info('bridge.stop', { pid: process.pid }); await logger.flush(); await bridge.close(); process.exit(0); };
+    let bridge: { origin: string; port: number; issueBootstrapTicket(root: string, projectHandle?: string): string; close(): Promise<void> };
+    try {
+      bridge = await (createBridgeServer as (options: Json) => Promise<{ origin: string; port: number; issueBootstrapTicket(root: string, projectHandle?: string): string; close(): Promise<void> }>)({
+        allowedProjectRoots: [projectRoot],
+        appHtml,
+        staticAssets,
+        logger,
+        controlToken,
+        projectRegistry: registry,
+        sessionStore,
+        listenPort: state?.port ?? 0,
+      });
+      state = await writeBridgeState(runtimeStateDir, { pid: process.pid, port: bridge.port });
+    } catch (error) {
+      await releaseLock?.();
+      if ((error as { code?: string })?.code === 'EADDRINUSE' && state?.port) {
+        throw new Error(`Bridge 固定端口 ${state.port} 被其他程序占用；为保护浏览器草稿，未切换到随机端口`);
+      }
+      throw error;
+    }
+    const bootstrapToken = bridge.issueBootstrapTicket(projectRoot, registered.projectHandle);
+    const url = `${bridge.origin}/app.html?token=${encodeURIComponent(bootstrapToken)}`;
+    await logger.info('bridge.start', { origin: bridge.origin, pid: process.pid });
+    process.stdout.write(`${JSON.stringify({ ok: true, reused: false, pid: process.pid, origin: bridge.origin, projectHandle: registered.projectHandle, url })}\n`);
+    const shutdown = async () => {
+      await logger.info('bridge.stop', { pid: process.pid });
+      await logger.flush();
+      await bridge.close();
+      await releaseLock?.();
+      process.exit(0);
+    };
     process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
     return;
   }

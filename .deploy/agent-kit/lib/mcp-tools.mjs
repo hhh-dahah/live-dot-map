@@ -1,85 +1,7 @@
-import { MCP_TOOL_NAMES, BridgeClientError, LocalBridgeClient } from './bridge-client.mjs';
+import { BridgeClientError, LocalBridgeClient } from './bridge-client.mjs';
+import { MCP_TOOL_DEFINITIONS, MCP_TOOL_NAMES } from './tool-definitions.generated.mjs';
 
-export const MCP_TOOL_DEFINITIONS = Object.freeze([
-  {
-    name: 'map_get_context',
-    description: '读取当前项目地图上下文、全局推进摘要与相关 Markdown 片段。',
-    inputSchema: {
-      type: 'object',
-      properties: { query: { type: 'string' }, currentNodeId: { anyOf: [{ type: 'string' }, { type: 'null' }] }, includeHistory: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 12 } },
-      additionalProperties: true,
-    },
-  },
-  {
-    name: 'map_list_human_updates',
-    description: '列出人类新标注和仍未确认的标注；不会因为调用本工具就伪造 Agent 已读取。',
-    inputSchema: {
-      type: 'object',
-      properties: { includeAcknowledged: { type: 'boolean' }, includeResolved: { type: 'boolean' } },
-      additionalProperties: true,
-    },
-  },
-  {
-    name: 'map_ack_human_updates',
-    description: '在摘要明确引用每个标注 ID 后确认已读取；服务端会再次校验 ID。',
-    inputSchema: {
-      type: 'object',
-      required: ['ids', 'summary'],
-      properties: { ids: { type: 'array', items: { type: 'string' }, minItems: 1 }, summary: { type: 'string', minLength: 1 } },
-      additionalProperties: true,
-    },
-  },
-  {
-    name: 'map_next_candidates',
-    description: '按确定性图检索返回候选地图对象和理由。参数契约固定为 query、currentNodeId、limit、includeHistory。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', default: '' },
-        currentNodeId: { anyOf: [{ type: 'string' }, { type: 'null' }], default: null },
-        limit: { type: 'integer', minimum: 1, maximum: 12, default: 12 },
-        includeHistory: { type: 'boolean', default: false },
-      },
-      additionalProperties: true,
-    },
-  },
-  {
-    name: 'map_apply_commands',
-    description: '通过本地桥命令处理器提交命令；客户端不直接修改 map.json。',
-    inputSchema: {
-      type: 'object',
-      required: ['baseRevision', 'commands'],
-      properties: {
-        projectId: { type: 'string' },
-        baseRevision: { type: 'integer', minimum: 0 },
-        commandId: { type: 'string' },
-        actor: { type: 'string' },
-        sessionId: { type: 'string' },
-        commands: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object' } },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'map_validate',
-    description: '在本地桥校验当前地图及其 Markdown 关系。',
-    inputSchema: { type: 'object', properties: { revision: { type: 'integer', minimum: 0 } }, additionalProperties: true },
-  },
-  {
-    name: 'map_checkpoint',
-    description: '请求本地桥创建可恢复检查点；不复制或重写地图文件。',
-    inputSchema: { type: 'object', properties: { reason: { type: 'string' } }, additionalProperties: true },
-  },
-  {
-    name: 'map_plan_consolidation',
-    description: '只读生成可审核的地图整理建议；不会直接修改地图。',
-    inputSchema: {
-      type: 'object',
-      properties: { maxSuggestions: { type: 'integer', minimum: 1, maximum: 20 }, now: { type: 'string' } },
-      additionalProperties: true,
-    },
-  },
-]);
+export { MCP_TOOL_DEFINITIONS, MCP_TOOL_NAMES };
 
 const DEFINITION_BY_NAME = new Map(MCP_TOOL_DEFINITIONS.map((definition) => [definition.name, definition]));
 
@@ -107,17 +29,7 @@ export class MapMcpServer {
 
   async callTool(name, args = {}) {
     if (!DEFINITION_BY_NAME.has(name)) throw new BridgeClientError('UNKNOWN_MCP_TOOL', `未知地图工具: ${name}`, { status: 400 });
-    switch (name) {
-      case 'map_get_context': return this.client.mapGetContext(args);
-      case 'map_list_human_updates': return this.client.mapListHumanUpdates(args);
-      case 'map_ack_human_updates': return this.client.mapAckHumanUpdates(args);
-      case 'map_next_candidates': return this.client.mapNextCandidates(args);
-      case 'map_apply_commands': return this.client.mapApplyCommands(args);
-      case 'map_validate': return this.client.mapValidate(args);
-      case 'map_checkpoint': return this.client.mapCheckpoint(args);
-      case 'map_plan_consolidation': return this.client.mapPlanConsolidation(args);
-      default: throw new BridgeClientError('UNKNOWN_MCP_TOOL', `未知地图工具: ${name}`, { status: 400 });
-    }
+    return this.client.mcp(name, args);
   }
 
   async handleMessage(message) {
@@ -195,5 +107,3 @@ export class MapMcpServer {
 export function mcpToolDefinitions() {
   return MCP_TOOL_DEFINITIONS.map((definition) => structuredClone(definition));
 }
-
-export { MCP_TOOL_NAMES };

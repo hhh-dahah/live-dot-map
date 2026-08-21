@@ -1,24 +1,26 @@
 import { randomBytes, randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
-import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, extname, join, resolve } from 'node:path';
+import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { canonicalDirectory } from './fs-utils.mjs';
 import { asBridgeError, BridgeError } from './errors.mjs';
 import { noopLogger } from './logger.mjs';
-import { ProjectStore } from './project-store.mjs';
 import { MarkdownStore } from './markdown-store.mjs';
+import { HumanMdUpdateLog } from './human-md-updates.mjs';
+import { MapManager } from './map-manager.mjs';
+import { ToolService } from './tool-service.mjs';
+import { ArchiveLifecycle } from './archive-lifecycle.mjs';
+import { NativeRecycleBin } from './recycle-bin.mjs';
+import { EditorService } from './editor-service.mjs';
+import { NativeWindowsHelper } from './native-helper.mjs';
 import {
-  createMap,
   ensureMapsLayout,
   isSafeMapId,
   listMaps,
-  mapDirectory,
   mapRelativeDirectory,
-  readActiveMap,
   resolveActiveMap,
-  writeActiveMap,
 } from './maps.mjs';
 import { loadSharedAdapter } from './shared-adapter.mjs';
 import { detectInstalledAdapters, installProject } from '../../agent-kit/lib/installer.mjs';
@@ -228,62 +230,6 @@ function randomToken(bytes = 32) {
   return randomBytes(bytes).toString('base64url');
 }
 
-async function markdownDocuments(root, limit = 200) {
-  const output = [];
-  const ignored = new Set(['.git', 'node_modules', '.next', 'dist', 'out', '.bridge', 'backups', 'snapshots', 'quarantine']);
-  const walk = async (directory, depth) => {
-    if (depth > 5 || output.length >= limit) return;
-    const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      if (output.length >= limit || ignored.has(entry.name)) continue;
-      const full = join(directory, entry.name);
-      if (entry.isDirectory()) await walk(full, depth + 1);
-      else if (entry.isFile() && extname(entry.name).toLowerCase() === '.md') {
-        const metadata = await stat(full).catch(() => null);
-        if (!metadata || metadata.size > 2_000_000) continue;
-        const text = await readFile(full, 'utf8').catch(() => '');
-        if (text && text.length <= 2_000_000) output.push({ path: full.slice(root.length + 1).replace(/\\/g, '/'), text });
-      }
-    }
-  };
-  await walk(root, 0);
-  return output;
-}
-
-function markdownSection(text, headings) {
-  const wanted = new Set(headings.map((heading) => heading.replace(/\s+/g, '')));
-  const lines = String(text || '').split(/\r?\n/);
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^\s*#{1,6}\s*(.*?)\s*$/);
-    if (!match || !wanted.has(match[1].replace(/[：:]\s*$/, '').replace(/\s+/g, ''))) continue;
-    const content = [];
-    for (let next = index + 1; next < lines.length && !/^\s*#{1,6}\s+/.test(lines[next]); next += 1) content.push(lines[next]);
-    return content.join('\n').trim();
-  }
-  return '';
-}
-
-function attemptEvidence(document, markdown) {
-  const docs = new Map(markdown.map((item) => [String(item.path).replace(/\\/g, '/'), String(item.text || '')]));
-  const mapDir = typeof document?.mapDir === 'string' && document.mapDir ? document.mapDir : '.live-dot-map';
-  return (Array.isArray(document.edges) ? document.edges : [])
-    .filter((edge) => ['failed', 'success', 'pending'].includes(String(edge.status)) && edge.archived !== true && edge.shelved !== true)
-    .map((edge) => {
-      const path = String(edge.md || `${mapDir}/routes/${edge.id}.md`).replace(/\\/g, '/');
-      const text = docs.get(path) || '';
-      return {
-        id: String(edge.id), status: String(edge.status), name: String(edge.name || edge.id), path,
-        evidence: markdownSection(text, ['关键证据', '证据']).slice(0, 360),
-        result: markdownSection(text, ['结果', '结论']).slice(0, 360),
-        failureReason: markdownSection(text, ['失败原因', '失败原因/排除条件']).slice(0, 360),
-        nextStep: markdownSection(text, ['下一步', '后续建议']).slice(0, 360),
-        hasMarkdown: Boolean(text),
-      };
-    })
-    .sort((a, b) => (a.status === 'failed' ? -1 : 0) - (b.status === 'failed' ? -1 : 0) || a.id.localeCompare(b.id))
-    .slice(0, 8);
-}
-
 async function recordAgentHealth(root, actor, event, status, error) {
   const path = join(root, '.live-dot-map', '.bridge', 'agent-health.json');
   const prior = await readFile(path, 'utf8').then((text) => JSON.parse(text)).catch(() => ({}));
@@ -443,6 +389,17 @@ async function readJsonBody(request, limit) {
 
 class EventHub {
   #clients = new Map();
+  #heartbeat;
+
+  constructor(heartbeatMs = 3_000) {
+    this.#heartbeat = setInterval(() => {
+      const payload = `event: heartbeat\ndata: ${JSON.stringify({ at: Date.now() })}\n\n`;
+      for (const clients of this.#clients.values()) {
+        for (const response of clients) if (!response.destroyed) response.write(payload);
+      }
+    }, heartbeatMs);
+    this.#heartbeat.unref?.();
+  }
 
   subscribe(root, response) {
     let clients = this.#clients.get(root);
@@ -459,6 +416,7 @@ class EventHub {
   }
 
   close() {
+    clearInterval(this.#heartbeat);
     for (const clients of this.#clients.values()) {
       for (const response of clients) {
         // 否则 SSE 响应可能让 node:http 的 keep-alive 套接字在桥关闭时
@@ -512,9 +470,22 @@ export async function createBridgeServer({
   sessionTtlMs = DEFAULT_SESSION_TTL,
   snapshotEvery = 20,
   pollIntervalMs = 250,
+  heartbeatMs = 3_000,
+  activeMapPollIntervalMs = 250,
   clock = () => new Date(),
   faultInjector,
   host = '127.0.0.1',
+  listenPort = 0,
+  controlToken = null,
+  projectRegistry = null,
+  sessionStore = null,
+  recentProjectsStore = { record: recordRecentProject, list: readRecentProjects },
+  recycleBin = null,
+  nativeHelper = null,
+  editorOpener = null,
+  retentionEnabled = true,
+  retentionInitialDelayMs = 30_000,
+  retentionIntervalMs = 6 * 60 * 60 * 1000,
   appHtml = null,
   staticAssets = {},
   agentSetup = ensureProjectAgentConfig,
@@ -523,18 +494,37 @@ export async function createBridgeServer({
   if (!Array.isArray(allowedProjectRoots) || allowedProjectRoots.length === 0) {
     throw new BridgeError('ALLOWLIST_REQUIRED', 'At least one project root must be allowlisted');
   }
+  if (!Number.isInteger(listenPort) || listenPort < 0 || listenPort > 65535) {
+    throw new BridgeError('INVALID_LISTEN_PORT', 'Bridge listenPort must be an integer between 0 and 65535', { status: 400 });
+  }
   const adapter = shared || await loadSharedAdapter();
   const roots = new Map();
   for (const root of allowedProjectRoots) roots.set(await canonicalDirectory(root), true);
 
-  const bootstrapToken = randomToken();
-  let bootstrapConsumed = false;
+  const bootstrapTickets = new Map();
+  function issueBootstrapTicket(projectRoot = null, projectHandle = null) {
+    const token = randomToken();
+    bootstrapTickets.set(token, { projectRoot, projectHandle, createdAt: clock().getTime() });
+    return token;
+  }
+  // The returned token keeps the embedded/test API backward compatible: it
+  // creates an authenticated session but does not implicitly choose a project.
+  // Launcher-issued control tickets below are project-bound.
+  const bootstrapToken = issueBootstrapTicket(null);
   let port;
   const sessions = new Map();
-  const stores = new Map();
+  const mapManagers = new Map();
+  const knownActiveMaps = new Map();
   const markdownStores = new Map();
-  const events = new EventHub();
+  const humanMdLogs = new Map();
+  const editorServices = new Map();
+  const events = new EventHub(heartbeatMs);
   const configuredOrigins = new Set(allowedOrigins);
+  const recycleService = recycleBin ?? (process.platform === 'win32' ? new NativeRecycleBin() : null);
+  const nativeWindowsHelper = nativeHelper ?? (process.platform === 'win32' ? new NativeWindowsHelper() : null);
+  let retentionStartTimer = null;
+  let retentionTimer = null;
+  let activeMapTimer = null;
 
   function allowedHosts() {
     return new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
@@ -565,14 +555,77 @@ export async function createBridgeServer({
     response.setHeader('Vary', 'Origin');
   }
 
-  function authenticate(request) {
+  function readSession(request, response = null) {
     const sessionId = parseCookies(request.headers.cookie).get(SESSION_COOKIE);
+    if (sessionStore) {
+      const persisted = sessionId && sessionStore.get(sessionId);
+      if (!persisted) throw new BridgeError('UNAUTHENTICATED', 'A valid local bridge session is required', { status: 401 });
+      const projects = new Map();
+      for (const handle of persisted.projectHandles) {
+        try {
+          const registered = projectRegistry?.resolve(handle);
+          if (registered) projects.set(handle, { projectRoot: registered.projectRoot });
+        } catch { /* 已撤销的项目授权不恢复 */ }
+      }
+      if (response) {
+        response.setHeader('Set-Cookie', `${SESSION_COOKIE}=${sessionId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(sessionStore.ttlMs / 1000)}`);
+      }
+      return {
+        sessionId,
+        session: {
+          csrfToken: persisted.csrfToken,
+          expiresAt: Date.parse(persisted.expiresAt),
+          projectRoot: null,
+          projects,
+        },
+      };
+    }
     const session = sessionId && sessions.get(sessionId);
     if (!session || session.expiresAt <= clock().getTime()) {
       if (sessionId) sessions.delete(sessionId);
       throw new BridgeError('UNAUTHENTICATED', 'A valid local bridge session is required', { status: 401 });
     }
+    return { sessionId, session };
+  }
+
+  function authenticate(request, url = null, response = null) {
+    const { sessionId, session } = readSession(request, response);
+    const projectHandle = String(request.headers['x-livedot-project-handle'] || url?.searchParams?.get('projectHandle') || '');
+    if (session.projects?.size) {
+      if (!projectHandle) throw new BridgeError('PROJECT_HANDLE_REQUIRED', 'A projectHandle is required for this request', { status: 400 });
+      const project = session.projects.get(projectHandle);
+      if (!project) throw new BridgeError('PROJECT_NOT_AUTHORIZED', 'This browser session is not authorized for the requested project', { status: 403 });
+      return {
+        ...session,
+        sessionId,
+        projectHandle,
+        projectRoot: project.projectRoot,
+        activeMapId: String(request.headers['x-livedot-map-key'] || url?.searchParams?.get('mapKey') || '') || null,
+      };
+    }
+    // 兼容未启用 project registry 的内存会话：后续 /open 会直接更新
+    // 这个对象，因此不能在这里返回浅拷贝，否则绑定只活一个请求。
+    session.sessionId = sessionId;
     return session;
+  }
+
+  async function authorizeOpenedProject(session, projectRoot) {
+    if (!projectRegistry) {
+      session.projectRoot = projectRoot;
+      return {};
+    }
+    const registered = await projectRegistry.register(projectRoot);
+    session.projects?.set(registered.projectHandle, { projectRoot: registered.projectRoot });
+    let reconnectTicket;
+    if (sessionStore && session.sessionId) {
+      const authorized = sessionStore.authorize(session.sessionId, registered.projectHandle);
+      reconnectTicket = authorized?.reconnectTicket;
+      await sessionStore.flush();
+    }
+    return {
+      projectHandle: registered.projectHandle,
+      ...(reconnectTicket ? { reconnectTicket } : {}),
+    };
   }
 
   function validateCsrf(request, session) {
@@ -585,36 +638,64 @@ export async function createBridgeServer({
   // 多地图：stores/事件频道按「项目::地图」键控；会话记住自己当前的地图 id。
   const storeKey = (root, mapId) => `${root}::${mapId}`;
 
-  async function openMapStore(root, mapId, { mapName } = {}) {
-    const key = storeKey(root, mapId);
-    let store = stores.get(key);
-    if (!store) {
-      store = await ProjectStore.open({
+  async function mapManagerFor(root) {
+    let manager = mapManagers.get(root);
+    if (!manager) {
+      manager = await MapManager.open({
         projectRoot: root,
-        dataDirectory: mapDirectory(root, mapId),
-        mapName,
-        mapDir: mapRelativeDirectory(mapId),
         shared: adapter,
         snapshotEvery,
         pollIntervalMs,
         clock,
         faultInjector,
         onEvent: (event) => events.publish(
-          key,
+          storeKey(root, event.mapKey),
           event.type === 'external' ? { ...event, type: 'revision', source: 'external' } : event,
         ),
+        onActiveMapChanged: (event) => {
+          knownActiveMaps.set(root, event.mapKey);
+          events.publish(`project::${root}`, event);
+        },
       });
-      stores.set(key, store);
+      mapManagers.set(root, manager);
+      knownActiveMaps.set(root, await resolveActiveMap(root));
     }
-    return store;
+    return manager;
+  }
+
+  async function openMapStore(root, mapId, { mapName } = {}) {
+    return (await (await mapManagerFor(root)).resolve({ mapKey: mapId })).store;
   }
 
   async function activeStore(session) {
     if (!session.projectRoot) throw new BridgeError('PROJECT_NOT_OPEN', 'Open an allowlisted project first', { status: 409 });
     if (!session.activeMapId) session.activeMapId = await resolveActiveMap(session.projectRoot);
-    const store = stores.get(storeKey(session.projectRoot, session.activeMapId));
-    if (!store) return openMapStore(session.projectRoot, session.activeMapId);
-    return store;
+    else {
+      if (!isSafeMapId(session.activeMapId)) throw new BridgeError('INVALID_MAP_KEY', 'mapKey is invalid', { status: 400 });
+      const available = await listMaps(session.projectRoot);
+      if (!available.maps.some((map) => map.id === session.activeMapId)) {
+        throw new BridgeError('MAP_NOT_FOUND', `Map does not exist: ${session.activeMapId}`, { status: 404 });
+      }
+    }
+    return openMapStore(session.projectRoot, session.activeMapId);
+  }
+
+  async function activeBundleStore(session) {
+    await activeStore(session);
+    return (await (await mapManagerFor(session.projectRoot)).resolve({ mapKey: session.activeMapId })).bundleStore;
+  }
+
+  async function editorServiceFor(projectRoot) {
+    let service = editorServices.get(projectRoot);
+    if (!service) {
+      service = await EditorService.open({
+        projectRoot,
+        nativeHelper: nativeWindowsHelper,
+        ...(typeof editorOpener === 'function' ? { spawn: editorOpener } : {}),
+      });
+      editorServices.set(projectRoot, service);
+    }
+    return service;
   }
 
   // 兼容单图时代的 Markdown 路径：.live-dot-map/nodes|routes/ 一律重写到当前地图
@@ -638,13 +719,35 @@ export async function createBridgeServer({
     // 会话内切换：已认证会话可把新目录加入 allowlist（桥是用户本机进程，loopback + 随机端口 + CSRF 保护；
     // Agent 的 MCP 通道不暴露此接口）。目录不存在返回明确 404。
     if (!roots.has(root)) roots.set(root, true);
-    await recordRecentProject(root).catch(() => undefined);
+    await recentProjectsStore.record(root).catch(() => undefined);
     // 打开项目时幂等迁移到多地图布局（老项目先备份再动），再按指针打开当前地图。
     const { activeMap } = await ensureMapsLayout(root);
     const store = await openMapStore(root, activeMap);
-    if (!markdownStores.has(root)) markdownStores.set(root, new MarkdownStore(root));
+    markdownStoreFor(root);
     logger.info('project.open', { root, map: activeMap });
     return { root, store, mapId: activeMap };
+  }
+
+  function markdownStoreFor(root) {
+    if (!root) throw new BridgeError('PROJECT_NOT_OPEN', 'Open an allowlisted project first', { status: 409 });
+    let store = markdownStores.get(root);
+    if (!store) {
+      store = new MarkdownStore(root);
+      markdownStores.set(root, store);
+    }
+    return store;
+  }
+
+  /** 人类 md 写入的未确认信号日志（per-map，惰性创建）。 */
+  async function humanMdLogFor(session) {
+    const mapKey = session.activeMapId ?? await resolveActiveMap(session.projectRoot);
+    const key = `${session.projectRoot}/${mapKey}`;
+    let log = humanMdLogs.get(key);
+    if (!log) {
+      log = new HumanMdUpdateLog({ projectRoot: session.projectRoot, mapKey });
+      humanMdLogs.set(key, log);
+    }
+    return log;
   }
 
   // ---- 产品内更新：/update/check 与 /update/apply ----
@@ -738,12 +841,17 @@ export async function createBridgeServer({
 
   function scheduleRestart() {
     setTimeout(() => {
+      if (activeMapTimer) clearInterval(activeMapTimer);
+      if (retentionStartTimer) clearTimeout(retentionStartTimer);
+      if (retentionTimer) clearInterval(retentionTimer);
       events.close();
-      Promise.all([...stores.values()].map((store) => store.close())).catch(() => undefined).finally(() => {
-        sessions.clear();
-        server.close(() => process.exit(0));
-        server.closeAllConnections?.();
-        setTimeout(() => process.exit(0), 1500).unref?.();
+      Promise.all([...mapManagers.values()].map((manager) => manager.close())).catch(() => undefined).finally(() => {
+        Promise.resolve(sessionStore?.flush()).catch(() => undefined).finally(() => {
+          if (!sessionStore) sessions.clear();
+          server.close(() => process.exit(0));
+          server.closeAllConnections?.();
+          setTimeout(() => process.exit(0), 1500).unref?.();
+        });
       });
     }, 500);
   }
@@ -770,6 +878,7 @@ export async function createBridgeServer({
       const aliases = new Map([
         ['/api/v1/health', '/health'],
         ['/api/v1/session', '/session'],
+        ['/api/v1/session/reconnect', '/session/reconnect'],
         ['/api/v1/projects/open', '/open'],
         ['/api/v1/projects/pick', '/projects/pick'],
         ['/api/v1/projects/recent', '/projects/recent'],
@@ -784,17 +893,71 @@ export async function createBridgeServer({
         ['/api/v1/agents', '/agents'],
         ['/api/v1/markdown', '/markdown'],
         ['/api/v1/markdown/reveal', '/markdown/reveal'],
+        ['/api/v1/bundles', '/bundles'],
+        ['/api/v1/bundles/markdown/read', '/bundles/markdown/read'],
+        ['/api/v1/bundles/markdown/create', '/bundles/markdown/create'],
+        ['/api/v1/bundles/markdown/replace', '/bundles/markdown/replace'],
+        ['/api/v1/bundles/markdown/append', '/bundles/markdown/append'],
+        ['/api/v1/bundles/rename', '/bundles/rename'],
+        ['/api/v1/bundles/archive', '/bundles/archive'],
+        ['/api/v1/bundles/restore', '/bundles/restore'],
+        ['/api/v1/archive', '/archive'],
+        ['/api/v1/archive/restore', '/archive/restore'],
+        ['/api/v1/archive/purge', '/archive/purge'],
+        ['/api/v1/editors', '/editors'],
+        ['/api/v1/editors/open', '/editors/open'],
+        ['/api/v1/editors/preferred', '/editors/preferred'],
+        ['/api/v1/editors/pick', '/editors/pick'],
+        ['/api/v1/editors/save-as', '/editors/save-as'],
+        ['/api/v1/assets/import', '/assets/import'],
+        ['/api/v1/assets/read', '/assets/read'],
         ['/api/v1/update/check', '/update/check'],
         ['/api/v1/update/apply', '/update/apply'],
         ['/api/v1/logs/client', '/logs/client'],
+        ['/api/v1/control/status', '/control/status'],
+        ['/api/v1/control/open-project', '/control/open-project'],
       ]);
       const pathname = aliases.get(url.pathname) || url.pathname;
+
+      if (pathname === '/control/status' || pathname === '/control/open-project') {
+        if (!controlToken || !constantEqual(request.headers['x-livedot-control'], controlToken)) {
+          throw new BridgeError('INVALID_CONTROL_TOKEN', 'Bridge control authentication failed', { status: 401 });
+        }
+        if (pathname === '/control/status') {
+          requireMethod(request, 'GET');
+          sendJson(response, 200, { ok: true, service: 'live-dot-map-bridge', pid: process.pid, port });
+          return;
+        }
+        requireMethod(request, 'POST');
+        const body = await readJsonBody(request, bodyLimit);
+        if (typeof body.projectRoot !== 'string' || !body.projectRoot.trim()) {
+          throw new BridgeError('PROJECT_ROOT_REQUIRED', 'projectRoot is required', { status: 400 });
+        }
+        let projectHandle = typeof body.projectHandle === 'string' ? body.projectHandle : null;
+        if (projectRegistry) {
+          if (projectHandle) await projectRegistry.refresh?.();
+          const registered = projectHandle ? projectRegistry.resolve(projectHandle) : await projectRegistry.register(body.projectRoot);
+          const canonical = await canonicalDirectory(body.projectRoot);
+          if (registered.projectRoot !== canonical) {
+            throw new BridgeError('PROJECT_HANDLE_MISMATCH', 'Project handle does not match the requested project', { status: 403 });
+          }
+          projectHandle = registered.projectHandle;
+        }
+        const opened = await openProject(body.projectRoot);
+        const ticket = issueBootstrapTicket(opened.root, projectHandle);
+        sendJson(response, 201, {
+          ok: true,
+          bootstrapToken: ticket,
+          ...(projectHandle ? { projectHandle } : {}),
+        });
+        return;
+      }
 
       if (request.method === 'OPTIONS') {
         validateOrigin(request, response);
         response.statusCode = 204;
         response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
-        response.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token, Authorization');
+        response.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token, X-LiveDot-Project-Handle, X-LiveDot-Map-Key, Authorization');
         response.setHeader('Access-Control-Max-Age', '600');
         response.end();
         return;
@@ -849,31 +1012,97 @@ export async function createBridgeServer({
           // constrained by the Host check; browsers may omit Origin on a
           // same-origin GET, so it is intentionally optional here.
           validateOrigin(request, response, { required: false });
-          const current = authenticate(request);
+          const { session: current } = readSession(request, response);
           sendJson(response, 200, {
             csrfToken: current.csrfToken,
             expiresAt: new Date(current.expiresAt).toISOString(),
+            projects: current.projects ? [...current.projects.keys()] : [],
             projectRoot: current.projectRoot,
             resumed: true,
           });
           return;
         }
         requireMethod(request, 'POST');
-        if (bootstrapConsumed) throw new BridgeError('BOOTSTRAP_CONSUMED', 'Bootstrap token has already been consumed', { status: 401 });
         const authorization = request.headers.authorization || '';
         const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
-        if (!constantEqual(token, bootstrapToken)) throw new BridgeError('INVALID_BOOTSTRAP_TOKEN', 'Bootstrap token is invalid', { status: 401 });
-        bootstrapConsumed = true;
-        const sessionId = randomToken();
-        const csrfToken = randomToken();
-        const expiresAt = clock().getTime() + sessionTtlMs;
-        sessions.set(sessionId, { csrfToken, expiresAt, projectRoot: null });
-        response.setHeader('Set-Cookie', `${SESSION_COOKIE}=${sessionId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(sessionTtlMs / 1000)}`);
-        sendJson(response, 201, { csrfToken, expiresAt: new Date(expiresAt).toISOString(), resumed: false });
+        const ticket = [...bootstrapTickets.entries()].find(([candidate]) => constantEqual(token, candidate));
+        if (!ticket) throw new BridgeError('INVALID_BOOTSTRAP_TOKEN', 'Bootstrap token is invalid or has already been consumed', { status: 401 });
+        bootstrapTickets.delete(ticket[0]);
+        const existingId = parseCookies(request.headers.cookie).get(SESSION_COOKIE);
+        if (sessionStore && existingId && ticket[1].projectHandle && ticket[1].projectRoot) {
+          const authorized = sessionStore.authorize(existingId, ticket[1].projectHandle);
+          if (authorized) {
+            await sessionStore.persistIfDue();
+            response.setHeader('Set-Cookie', `${SESSION_COOKIE}=${existingId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(sessionStore.ttlMs / 1000)}`);
+            sendJson(response, 200, {
+              csrfToken: authorized.csrfToken,
+              expiresAt: authorized.expiresAt,
+              projectHandle: ticket[1].projectHandle,
+              reconnectTicket: authorized.reconnectTicket,
+              resumed: true,
+            });
+            return;
+          }
+        }
+        const existing = existingId && sessions.get(existingId);
+        if (existing && existing.expiresAt > clock().getTime() && ticket[1].projectHandle && ticket[1].projectRoot) {
+          existing.projects ??= new Map();
+          existing.projects.set(ticket[1].projectHandle, { projectRoot: ticket[1].projectRoot });
+          response.setHeader('Set-Cookie', `${SESSION_COOKIE}=${existingId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(sessionTtlMs / 1000)}`);
+          sendJson(response, 200, {
+            csrfToken: existing.csrfToken,
+            expiresAt: new Date(existing.expiresAt).toISOString(),
+            projectHandle: ticket[1].projectHandle,
+            resumed: true,
+          });
+          return;
+        }
+        const createdSession = sessionStore ? sessionStore.create({ projectHandle: ticket[1].projectHandle }) : null;
+        const sessionId = createdSession?.sessionId || randomToken();
+        const csrfToken = createdSession?.record.csrfToken || randomToken();
+        const expiresAt = createdSession ? Date.parse(createdSession.record.expiresAt) : clock().getTime() + sessionTtlMs;
+        const projects = new Map();
+        if (ticket[1].projectHandle && ticket[1].projectRoot) projects.set(ticket[1].projectHandle, { projectRoot: ticket[1].projectRoot });
+        if (!sessionStore) sessions.set(sessionId, { csrfToken, expiresAt, projectRoot: ticket[1].projectHandle ? null : ticket[1].projectRoot, projects });
+        else await sessionStore.flush();
+        const cookieTtl = sessionStore?.ttlMs || sessionTtlMs;
+        response.setHeader('Set-Cookie', `${SESSION_COOKIE}=${sessionId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(cookieTtl / 1000)}`);
+        sendJson(response, 201, {
+          csrfToken,
+          expiresAt: new Date(expiresAt).toISOString(),
+          projectRoot: ticket[1].projectHandle ? undefined : ticket[1].projectRoot,
+          projectHandle: ticket[1].projectHandle,
+          reconnectTicket: createdSession?.reconnectTicket,
+          resumed: false,
+        });
         return;
       }
 
-      const session = authenticate(request);
+      if (pathname === '/session/reconnect') {
+        requireMethod(request, 'POST');
+        if (!sessionStore || !projectRegistry) throw new BridgeError('RECONNECT_UNAVAILABLE', 'Persistent reconnect is not configured', { status: 503 });
+        const peer = String(request.socket.remoteAddress || '');
+        if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(peer)) {
+          throw new BridgeError('LOOPBACK_REQUIRED', 'Reconnect is only available from loopback', { status: 403 });
+        }
+        const body = await readJsonBody(request, bodyLimit);
+        if (typeof body.projectHandle !== 'string' || typeof body.reconnectTicket !== 'string') {
+          throw new BridgeError('RECONNECT_CREDENTIALS_REQUIRED', 'projectHandle and reconnectTicket are required', { status: 400 });
+        }
+        projectRegistry.resolve(body.projectHandle);
+        const reconnected = sessionStore.reconnect({ reconnectTicket: body.reconnectTicket, projectHandle: body.projectHandle, peer });
+        await sessionStore.flush();
+        response.setHeader('Set-Cookie', `${SESSION_COOKIE}=${reconnected.sessionId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(sessionStore.ttlMs / 1000)}`);
+        sendJson(response, 201, {
+          csrfToken: reconnected.record.csrfToken,
+          expiresAt: reconnected.record.expiresAt,
+          projectHandle: body.projectHandle,
+          reconnectTicket: reconnected.reconnectTicket,
+        });
+        return;
+      }
+
+      const session = authenticate(request, url, response);
       if (pathname === '/update/apply') {
         requireMethod(request, 'POST');
         validateCsrf(request, session);
@@ -891,18 +1120,19 @@ export async function createBridgeServer({
           return;
         }
         const { root, store, mapId } = await openProject(picked.path);
+        const binding = await authorizeOpenedProject(session, root);
         session.projectRoot = root;
         session.activeMapId = mapId;
         const snapshot = await store.snapshot();
         const setup = typeof agentSetup === 'function'
           ? await agentSetup(root).catch((error) => ({ ok: false, status: 'error', changed: false, code: error?.code || 'AGENT_SETUP_FAILED', message: String(error?.message || error).slice(0, 400) }))
           : { ok: true, status: 'none', changed: false, projectRoot: root, detectedAgents: {} };
-        sendJson(response, 200, { cancelled: false, projectRoot: root, activeMap: mapId, projectId: snapshot.document.mapId, agentSetup: setup, ...snapshot });
+        sendJson(response, 200, { cancelled: false, projectRoot: root, activeMap: mapId, projectId: snapshot.document.mapId, agentSetup: setup, ...binding, ...snapshot });
         return;
       }
       if (pathname === '/projects/recent') {
         requireMethod(request, 'GET');
-        sendJson(response, 200, { projectRoot: session.projectRoot, recent: await readRecentProjects() });
+        sendJson(response, 200, { projectRoot: session.projectRoot, recent: await recentProjectsStore.list() });
         return;
       }
       // ---- 多地图：列/建/切/改名。切换与新建返回与 /open 相同的装载载荷，
@@ -910,7 +1140,7 @@ export async function createBridgeServer({
       if (pathname === '/maps') {
         requireMethod(request, 'GET');
         if (!session.projectRoot) throw new BridgeError('PROJECT_NOT_OPEN', 'Open an allowlisted project first', { status: 409 });
-        const { activeMap, maps } = await listMaps(session.projectRoot);
+        const { activeMap, maps } = await (await mapManagerFor(session.projectRoot)).list();
         sendJson(response, 200, { projectRoot: session.projectRoot, activeMap, maps });
         return;
       }
@@ -919,13 +1149,13 @@ export async function createBridgeServer({
         validateCsrf(request, session);
         if (!session.projectRoot) throw new BridgeError('PROJECT_NOT_OPEN', 'Open an allowlisted project first', { status: 409 });
         const body = await readJsonBody(request, bodyLimit);
-        const created = await createMap(session.projectRoot, typeof body.name === 'string' ? body.name : '');
-        await writeActiveMap(session.projectRoot, created.id);
-        session.activeMapId = created.id;
-        const store = await openMapStore(session.projectRoot, created.id, { mapName: created.name });
-        const snapshot = await store.snapshot();
-        logger.info('map.create', { root: session.projectRoot, map: created.id });
-        sendJson(response, 200, { projectRoot: session.projectRoot, activeMap: created.id, projectId: snapshot.document.mapId, ...snapshot });
+        const created = await (await mapManagerFor(session.projectRoot)).create(typeof body.name === 'string' ? body.name : '');
+        logger.info('map.create', { root: session.projectRoot, map: created.createdMap });
+        sendJson(response, 200, {
+          projectRoot: session.projectRoot,
+          ...created,
+          projectId: created.documentId,
+        });
         return;
       }
       if (pathname === '/maps/switch') {
@@ -933,16 +1163,10 @@ export async function createBridgeServer({
         validateCsrf(request, session);
         if (!session.projectRoot) throw new BridgeError('PROJECT_NOT_OPEN', 'Open an allowlisted project first', { status: 409 });
         const body = await readJsonBody(request, bodyLimit);
-        if (!isSafeMapId(body.mapId)) throw new BridgeError('INVALID_MAP_ID', '地图 ID 无效', { status: 400 });
-        if (!(await listMaps(session.projectRoot)).maps.some((map) => map.id === body.mapId)) {
-          throw new BridgeError('MAP_NOT_FOUND', `地图不存在：${body.mapId}`, { status: 404 });
-        }
-        await writeActiveMap(session.projectRoot, body.mapId);
+        const switched = await (await mapManagerFor(session.projectRoot)).switch(String(body.mapId || ''));
         session.activeMapId = body.mapId;
-        const store = await openMapStore(session.projectRoot, body.mapId);
-        const snapshot = await store.snapshot();
         logger.info('map.switch', { root: session.projectRoot, map: body.mapId });
-        sendJson(response, 200, { projectRoot: session.projectRoot, activeMap: body.mapId, projectId: snapshot.document.mapId, ...snapshot });
+        sendJson(response, 200, { projectRoot: session.projectRoot, ...switched, projectId: switched.documentId });
         return;
       }
       if (pathname === '/maps/rename') {
@@ -950,21 +1174,8 @@ export async function createBridgeServer({
         validateCsrf(request, session);
         if (!session.projectRoot) throw new BridgeError('PROJECT_NOT_OPEN', 'Open an allowlisted project first', { status: 409 });
         const body = await readJsonBody(request, bodyLimit);
-        if (!isSafeMapId(body.mapId)) throw new BridgeError('INVALID_MAP_ID', '地图 ID 无效', { status: 400 });
         const name = typeof body.name === 'string' ? body.name.trim() : '';
-        if (!name) throw new BridgeError('MAP_NAME_REQUIRED', '地图名称不能为空', { status: 400 });
-        if (!(await listMaps(session.projectRoot)).maps.some((map) => map.id === body.mapId)) {
-          throw new BridgeError('MAP_NOT_FOUND', `地图不存在：${body.mapId}`, { status: 404 });
-        }
-        // 重命名走目标图的命令通道（set_meta），与画布改名一样进 WAL，保持 revision/审计一致。
-        const store = await openMapStore(session.projectRoot, body.mapId);
-        const current = await store.snapshot();
-        const executed = await store.execute({
-          commandId: `map-rename-${randomToken(12)}`,
-          baseRevision: current.revision,
-          command: { op: 'set_meta', patch: { name: name.slice(0, 80) } },
-          actor: 'human',
-        });
+        const executed = await (await mapManagerFor(session.projectRoot)).rename(String(body.mapId || ''), name, 'human');
         logger.info('map.rename', { root: session.projectRoot, map: body.mapId, revision: executed.revision });
         sendJson(response, 200, { ok: true, mapId: body.mapId, name: name.slice(0, 80), revision: executed.revision });
         return;
@@ -975,6 +1186,7 @@ export async function createBridgeServer({
         const body = await readJsonBody(request, bodyLimit);
         if (typeof body.projectRoot !== 'string') throw new BridgeError('PROJECT_ROOT_REQUIRED', 'projectRoot is required', { status: 400 });
         const { root, store, mapId } = await openProject(body.projectRoot);
+        const binding = await authorizeOpenedProject(session, root);
         session.projectRoot = root;
         session.activeMapId = mapId;
         const snapshot = await store.snapshot();
@@ -985,7 +1197,7 @@ export async function createBridgeServer({
         const setup = typeof agentSetup === 'function'
           ? await agentSetup(root).catch((error) => ({ ok: false, status: 'error', changed: false, code: error?.code || 'AGENT_SETUP_FAILED', message: String(error?.message || error).slice(0, 400) }))
           : { ok: true, status: 'none', changed: false, projectRoot: root, detectedAgents: {} };
-        sendJson(response, 200, { projectRoot: root, activeMap: mapId, projectId: snapshot.document.mapId, agentSetup: setup, ...snapshot });
+        sendJson(response, 200, { projectRoot: root, activeMap: mapId, projectId: snapshot.document.mapId, agentSetup: setup, ...binding, ...snapshot });
         return;
       }
 
@@ -1043,19 +1255,122 @@ export async function createBridgeServer({
 
       if (pathname === '/snapshot') {
         const store = await activeStore(session);
+        const activeMap = session.activeMapId || await resolveActiveMap(session.projectRoot);
         if (request.method === 'GET') {
-          sendJson(response, 200, await store.snapshot());
+          sendJson(response, 200, { activeMap, ...await store.snapshot() });
           return;
         }
         requireMethod(request, 'POST');
         validateCsrf(request, session);
-        sendJson(response, 201, await store.createSnapshot());
+        sendJson(response, 201, { activeMap, ...await store.createSnapshot() });
+        return;
+      }
+
+      if (pathname === '/archive') {
+        requireMethod(request, 'GET');
+        const store = await activeStore(session);
+        const snapshot = await store.snapshot();
+        const lifecycle = new ArchiveLifecycle({ store, projectRoot: session.projectRoot, shared: adapter, clock, recycleBin: recycleService });
+        const collections = ['routes', 'nodes', 'edges', 'anns'];
+        const archived = collections.flatMap((collection) => (Array.isArray(snapshot.document[collection]) ? snapshot.document[collection] : [])
+          .filter((item) => item?.archived === true)
+          .map((item) => ({
+            collection,
+            id: String(item.id),
+            name: String(item.name || item.text || item.id),
+            archivedAt: typeof item.archivedAt === 'string' ? item.archivedAt : null,
+            archivedBy: typeof item.archivedBy === 'string' ? item.archivedBy : null,
+            archiveReason: typeof item.archiveReason === 'string' ? item.archiveReason : null,
+            purgeEligible: lifecycle.eligible(item, { now: clock() }),
+          })));
+        sendJson(response, 200, { mapKey: session.activeMapId, documentId: snapshot.document.mapId, revision: snapshot.revision, archived });
+        return;
+      }
+
+      if (pathname === '/archive/restore') {
+        requireMethod(request, 'POST');
+        validateCsrf(request, session);
+        const body = await readJsonBody(request, bodyLimit);
+        const store = await activeStore(session);
+        const snapshot = await store.snapshot();
+        const collection = String(body.collection || '');
+        const id = String(body.id || '');
+        const result = await store.execute({
+          projectId: String(snapshot.document.mapId),
+          baseRevision: snapshot.revision,
+          commandId: `human-restore-${randomUUID()}`,
+          actor: 'human',
+          sessionId: 'browser-archive-settings',
+          commands: [{ op: 'restore', collection, id }],
+        });
+        sendJson(response, 200, result);
+        return;
+      }
+
+      if (pathname === '/archive/purge') {
+        requireMethod(request, 'POST');
+        validateCsrf(request, session);
+        const body = await readJsonBody(request, bodyLimit);
+        const id = String(body.id || '');
+        if (body.confirmed !== true || String(body.confirmation || '') !== id) {
+          throw new BridgeError('PURGE_HUMAN_CONFIRMATION_REQUIRED', '永久清除需要再次输入对象 ID 确认', { status: 403 });
+        }
+        const store = await activeStore(session);
+        const lifecycle = new ArchiveLifecycle({ store, projectRoot: session.projectRoot, shared: adapter, clock, recycleBin: recycleService });
+        const result = await lifecycle.purge({
+          collection: String(body.collection || ''),
+          id,
+          actor: 'human',
+          confirmed: true,
+          commandId: `human-purge-${randomUUID()}`,
+        });
+        sendJson(response, 200, result);
+        return;
+      }
+
+      if (pathname === '/editors') {
+        requireMethod(request, 'GET');
+        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).list());
+        return;
+      }
+
+      if (pathname === '/editors/open') {
+        requireMethod(request, 'POST');
+        validateCsrf(request, session);
+        const body = await readJsonBody(request, bodyLimit);
+        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).open({
+          editorId: String(body.editorId || ''),
+          relativePath: String(body.relativePath || ''),
+          targetKind: body.targetKind === 'directory' ? 'directory' : 'file',
+        }));
+        return;
+      }
+
+      if (pathname === '/editors/preferred') {
+        requireMethod(request, 'POST');
+        validateCsrf(request, session);
+        const body = await readJsonBody(request, bodyLimit);
+        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).setPreferredEditor(String(body.editorId || '')));
+        return;
+      }
+
+      if (pathname === '/editors/pick') {
+        requireMethod(request, 'POST');
+        validateCsrf(request, session);
+        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).pickManualEditor());
+        return;
+      }
+
+      if (pathname === '/editors/save-as') {
+        requireMethod(request, 'POST');
+        validateCsrf(request, session);
+        const body = await readJsonBody(request, bodyLimit);
+        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath: String(body.relativePath || '') }));
         return;
       }
 
       if (pathname === '/markdown') {
-        const markdown = markdownStores.get(session.projectRoot);
-        if (!markdown) throw new BridgeError('PROJECT_NOT_OPEN', 'Open an allowlisted project first', { status: 409 });
+        const markdown = markdownStoreFor(session.projectRoot);
         if (request.method === 'GET') {
           const requestedPath = url.searchParams.get('path');
           if (!requestedPath) throw new BridgeError('MARKDOWN_PATH_REQUIRED', 'path is required', { status: 400 });
@@ -1069,15 +1384,26 @@ export async function createBridgeServer({
           validateCsrf(request, session);
           const body = await readJsonBody(request, bodyLimit);
           if (typeof body.path !== 'string') throw new BridgeError('MARKDOWN_PATH_REQUIRED', 'path is required', { status: 400 });
-          sendJson(response, 200, await markdown.write(await mapMarkdownPath(session, body.path), body.content, { baseEtag: body.baseEtag ?? body.etag }));
+          const saved = await markdown.write(await mapMarkdownPath(session, body.path), body.content, { baseEtag: body.baseEtag ?? body.etag });
+          // 人类保存即产生「未确认输入」信号：Agent 的 humanUpdates 必列，直到 ack。
+          try {
+            await (await humanMdLogFor(session)).record({
+              path: saved.path,
+              etag: saved.etag,
+              mtime: saved.updatedAt,
+              snippet: String(saved.content ?? ''),
+            });
+          } catch (error) {
+            logger.warn('human-md-updates.record', { path: saved.path, error: error?.message });
+          }
+          sendJson(response, 200, saved);
           return;
         }
         throw new BridgeError('METHOD_NOT_ALLOWED', 'Expected GET, PUT or POST', { status: 405 });
       }
 
       if (pathname === '/markdown/reveal') {
-        const markdown = markdownStores.get(session.projectRoot);
-        if (!markdown) throw new BridgeError('PROJECT_NOT_OPEN', 'Open an allowlisted project first', { status: 409 });
+        const markdown = markdownStoreFor(session.projectRoot);
         if (request.method === 'GET') {
           const requestedPath = url.searchParams.get('path');
           if (!requestedPath) throw new BridgeError('MARKDOWN_PATH_REQUIRED', 'path is required', { status: 400 });
@@ -1088,9 +1414,92 @@ export async function createBridgeServer({
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
         if (typeof body.path !== 'string') throw new BridgeError('MARKDOWN_PATH_REQUIRED', 'path is required', { status: 400 });
-        // Opening Explorer is an observable local side effect, so it stays on
-        // a CSRF-protected POST rather than a GET beacon.
-        sendJson(response, 200, await markdown.reveal(await mapMarkdownPath(session, body.path), { open: true }));
+        // 可观察的本机副作用统一经过 EditorService + 原生 helper；旧 reveal
+        // 接口只作为“在文件夹中显示”的兼容入口。
+        const path = await mapMarkdownPath(session, body.path);
+        const metadata = await markdown.reveal(path);
+        const opened = await (await editorServiceFor(session.projectRoot)).open({ editorId: 'folder', relativePath: path });
+        sendJson(response, 200, { ...metadata, opened: opened.launched === true });
+        return;
+      }
+
+      if (pathname === '/bundles') {
+        requireMethod(request, 'GET');
+        const ownerKind = url.searchParams.get('ownerKind');
+        const ownerId = url.searchParams.get('ownerId');
+        if (!ownerKind || !ownerId) throw new BridgeError('BUNDLE_OWNER_REQUIRED', 'ownerKind and ownerId are required', { status: 400 });
+        const bundle = await activeBundleStore(session);
+        sendJson(response, 200, {
+          files: await bundle.list({ ownerKind, ownerId, includeArchived: url.searchParams.get('includeArchived') === 'true' }),
+        });
+        return;
+      }
+
+      if (pathname === '/bundles/markdown/read') {
+        requireMethod(request, 'GET');
+        const ownerKind = url.searchParams.get('ownerKind');
+        const ownerId = url.searchParams.get('ownerId');
+        const fileName = url.searchParams.get('fileName') || 'index.md';
+        if (!ownerKind || !ownerId) throw new BridgeError('BUNDLE_OWNER_REQUIRED', 'ownerKind and ownerId are required', { status: 400 });
+        const bundle = await activeBundleStore(session);
+        const { buffer: _buffer, ...markdown } = await bundle.readMarkdown({
+          ownerKind,
+          ownerId,
+          fileName,
+          archived: url.searchParams.get('archived') === 'true',
+        });
+        sendJson(response, 200, markdown);
+        return;
+      }
+
+      if (pathname === '/bundles/markdown/create' || pathname === '/bundles/markdown/replace' || pathname === '/bundles/markdown/append' || pathname === '/bundles/rename' || pathname === '/bundles/archive' || pathname === '/bundles/restore') {
+        requireMethod(request, 'POST');
+        validateCsrf(request, session);
+        const body = await readJsonBody(request, bodyLimit);
+        const bundle = await activeBundleStore(session);
+        let result;
+        if (pathname === '/bundles/markdown/create') result = await bundle.createMarkdown(body);
+        else if (pathname === '/bundles/markdown/replace') result = await bundle.replaceMarkdown(body);
+        else if (pathname === '/bundles/markdown/append') result = await bundle.appendMarkdown(body);
+        else if (pathname === '/bundles/rename') result = await bundle.rename(body);
+        else if (pathname === '/bundles/archive') result = await bundle.archive(body);
+        else result = await bundle.restore(body);
+        sendJson(response, 200, result);
+        return;
+      }
+
+      if (pathname === '/assets/import') {
+        requireMethod(request, 'POST');
+        validateCsrf(request, session);
+        const ownerKind = url.searchParams.get('ownerKind');
+        const ownerId = url.searchParams.get('ownerId');
+        const fileName = url.searchParams.get('fileName');
+        if (!ownerKind || !ownerId || !fileName) throw new BridgeError('ASSET_FIELDS_REQUIRED', 'ownerKind, ownerId and fileName are required', { status: 400 });
+        const bundle = await activeBundleStore(session);
+        const result = await bundle.importAsset({
+          ownerKind,
+          ownerId,
+          fileName,
+          stream: request,
+          mimeType: String(request.headers['content-type'] || ''),
+        });
+        sendJson(response, 201, result);
+        return;
+      }
+
+      if (pathname === '/assets/read') {
+        requireMethod(request, 'GET');
+        const ownerKind = url.searchParams.get('ownerKind');
+        const ownerId = url.searchParams.get('ownerId');
+        const fileName = url.searchParams.get('fileName');
+        if (!ownerKind || !ownerId || !fileName) throw new BridgeError('ASSET_FIELDS_REQUIRED', 'ownerKind, ownerId and fileName are required', { status: 400 });
+        const bundle = await activeBundleStore(session);
+        const asset = await bundle.readAsset({ ownerKind, ownerId, fileName, archived: url.searchParams.get('archived') === 'true' });
+        response.statusCode = 200;
+        response.setHeader('Content-Type', asset.mimeType);
+        response.setHeader('Content-Length', asset.buffer.length);
+        response.setHeader('Content-Disposition', `${asset.disposition}; filename*=UTF-8''${encodeURIComponent(asset.fileName)}`);
+        response.end(asset.buffer);
         return;
       }
 
@@ -1099,10 +1508,31 @@ export async function createBridgeServer({
         validateCsrf(request, session);
         const store = await activeStore(session);
         const body = await readJsonBody(request, bodyLimit);
+        const current = await store.snapshot();
+        const claimedDocumentId = body.documentId ?? body.projectId;
+        if (claimedDocumentId !== undefined && String(claimedDocumentId) !== String(current.document.mapId)) {
+          throw new BridgeError('DOCUMENT_ID_MISMATCH', 'documentId does not match the routed map', { status: 409 });
+        }
         // This endpoint is the authenticated browser/human channel.  Never
         // trust a caller-supplied actor value; Agent writes use the MCP channel.
         const executed = await store.execute({ ...body, actor: 'human' });
         logger.info('commands', { count: Array.isArray(body.commands) ? body.commands.length : 0, revision: executed?.revision, actor: 'human' });
+        // 建节点命令提交成功后补建资料包主文档，避免“有记录无 index.md”的半状态
+        // （幂等：已存在则原样返回；补建失败不阻断已落盘的提交，打开时还有懒创建兜底）。
+        if (Array.isArray(body.commands)) {
+          try {
+            const bundle = await activeBundleStore(session);
+            for (const command of body.commands) {
+              if (command?.op === 'create' && command?.collection === 'nodes' && typeof command?.value?.id === 'string') {
+                await bundle.ensureIndex({ ownerKind: 'node', ownerId: command.value.id, title: String(command.value.name || '') }).catch((error) => {
+                  logger.warn('bundle.ensureIndex', { ownerId: command.value.id, error: error?.message });
+                });
+              }
+            }
+          } catch (error) {
+            logger.warn('bundle.ensureIndex.failed', { error: error?.message });
+          }
+        }
         sendJson(response, 200, executed);
         return;
       }
@@ -1115,8 +1545,9 @@ export async function createBridgeServer({
         response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
         response.setHeader('Connection', 'keep-alive');
         response.flushHeaders();
-        response.write(`event: ready\ndata: ${JSON.stringify({ revision: snapshot.revision, checksum: snapshot.checksum })}\n\n`);
+        response.write(`event: ready\ndata: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.activeMapId, revision: snapshot.revision, checksum: snapshot.checksum })}\n\n`);
         events.subscribe(storeKey(session.projectRoot, session.activeMapId), response);
+        events.subscribe(`project::${session.projectRoot}`, response);
         return;
       }
 
@@ -1132,75 +1563,26 @@ export async function createBridgeServer({
       if (pathname === '/api/v1/mcp') {
         requireMethod(request, 'POST');
         validateCsrf(request, session);
-        const store = await activeStore(session);
         const body = await readJsonBody(request, bodyLimit);
         try {
-        const tool = body.tool || body.name;
-        const args = body.arguments && typeof body.arguments === 'object' ? body.arguments : {};
-        const snapshot = await store.snapshot();
-        const agentEnvelope = (commands, prefix) => ({
-          projectId: snapshot.document.mapId,
-          baseRevision: Number.isInteger(args.baseRevision) ? args.baseRevision : snapshot.revision,
-          commandId: typeof args.commandId === 'string' ? args.commandId : `${prefix}-${randomToken(12)}`,
-          actor: 'agent:bridge',
-          sessionId: 'agent-bridge',
-          commands,
-        });
-        let result;
-        if (tool === 'map_get_context') {
-          const markdown = Array.isArray(args.markdown) ? args.markdown : await markdownDocuments(session.projectRoot);
-          const context = adapter.retrieveContext(snapshot.document, String(args.query || ''), { markdown, currentNodeId: args.currentNodeId == null ? null : String(args.currentNodeId) });
-          const projection = { ...adapter.buildProjectProjection(snapshot.document, { now: typeof args.now === 'string' ? args.now : undefined }), attemptEvidence: attemptEvidence(snapshot.document, markdown) };
-          result = { revision: snapshot.revision, projection, attemptEvidence: projection.attemptEvidence, ...context };
-        } else if (tool === 'map_read_markdown') {
-          const markdown = markdownStores.get(session.projectRoot);
-          if (!markdown) throw new BridgeError('PROJECT_NOT_OPEN', 'Open an allowlisted project first', { status: 409 });
-          result = await markdown.read(await mapMarkdownPath(session, String(args.path || '')), { create: args.create === true, title: String(args.title || '') });
-        } else if (tool === 'map_write_markdown') {
-          const markdown = markdownStores.get(session.projectRoot);
-          if (!markdown) throw new BridgeError('PROJECT_NOT_OPEN', 'Open an allowlisted project first', { status: 409 });
-          result = await markdown.write(await mapMarkdownPath(session, String(args.path || '')), args.content, { baseEtag: args.baseEtag ?? args.etag });
-        } else if (tool === 'map_list_human_updates') {
-          result = { revision: snapshot.revision, updates: snapshot.document.anns.filter((ann) => ann.source === 'human' && ['new', 'delivered'].includes(ann.attention)) };
-        } else if (tool === 'map_ack_human_updates') {
-          result = await store.execute(agentEnvelope([{
-            op: 'ack_annotations',
-            ids: Array.isArray(args.ids) ? args.ids.map(String) : [],
-            summary: String(args.summary || ''),
-          }], 'mcp-ack'));
-        } else if (tool === 'map_next_candidates') {
-          const markdown = Array.isArray(args.markdown) ? args.markdown : await markdownDocuments(session.projectRoot);
-          const context = adapter.retrieveContext(snapshot.document, String(args.query || ''), {
-            currentNodeId: args.currentNodeId === null || args.currentNodeId === undefined ? null : String(args.currentNodeId),
-            limit: Number.isInteger(args.limit) ? Number(args.limit) : 12,
-            includeHistory: args.includeHistory === true,
-            markdown,
+          const tool = String(body.tool || body.name || '');
+          const args = body.arguments && typeof body.arguments === 'object' ? body.arguments : {};
+          const manager = await mapManagerFor(session.projectRoot);
+          const service = new ToolService({
+            mapManager: manager,
+            shared: adapter,
+            actor: 'agent:bridge',
+            projectHandle: session.projectHandle || 'browser',
           });
-          result = { revision: snapshot.revision, projection: adapter.buildProjectProjection(snapshot.document), attemptEvidence: attemptEvidence(snapshot.document, markdown), alternatives: adapter.findExplorationAlternatives(snapshot.document, args.currentNodeId == null ? null : String(args.currentNodeId), { limit: 3 }), ...context, autonomy: adapter.autonomyDecision(snapshot.document, context.objects) };
-        } else if (tool === 'map_apply_commands') {
-          result = await store.execute(agentEnvelope(Array.isArray(args.commands) ? args.commands : [], 'mcp-apply'));
-        } else if (tool === 'map_validate') {
-          const target = args.document || snapshot.document;
-          const validation = await adapter.validateDocument(target);
-          result = target === snapshot.document
-            ? { ...validation, attemptIssues: validation.ok ? adapter.checkAttemptEvidence(snapshot.document, await markdownDocuments(session.projectRoot)) : [] }
-            : validation;
-        } else if (tool === 'map_checkpoint') {
-          result = await store.createSnapshot();
-        } else if (tool === 'map_plan_consolidation') {
-          const markdown = await markdownDocuments(session.projectRoot);
-          result = { revision: snapshot.revision, ...adapter.planConsolidation(snapshot.document, {
-            now: typeof args.now === 'string' ? args.now : undefined,
-            maxSuggestions: Number.isInteger(args.maxSuggestions) ? args.maxSuggestions : 12,
-            markdown,
-          }) };
-        } else {
-          throw new BridgeError('UNKNOWN_MCP_TOOL', 'Unknown MCP tool', { status: 404 });
-        }
-        await recordAgentHealth(session.projectRoot, 'agent:bridge', `mcp:${String(tool)}`, 'ok');
-        logger.info('mcp', { tool: String(tool), ok: true });
-        sendJson(response, 200, { tool, result });
-        return;
+          const result = await service.dispatch(tool, {
+            ...args,
+            mapKey: typeof args.mapKey === 'string' && args.mapKey ? args.mapKey : session.activeMapId,
+          });
+          if (tool === 'map_switch' && result?.activeMap) session.activeMapId = result.activeMap;
+          await recordAgentHealth(session.projectRoot, 'agent:bridge', `mcp:${tool}`, 'ok');
+          logger.info('mcp', { tool, ok: true });
+          sendJson(response, 200, { tool, result });
+          return;
         } catch (error) {
           await recordAgentHealth(session.projectRoot, 'agent:bridge', `mcp:${String(body.tool || body.name || 'unknown')}`, 'error', error);
           logger.error('mcp', { tool: String(body.tool || body.name || 'unknown'), error });
@@ -1225,19 +1607,84 @@ export async function createBridgeServer({
   server.keepAliveTimeout = 5_000;
   await new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(0, host, resolve);
+    server.listen(listenPort, host, resolve);
   });
   port = server.address().port;
+
+  async function pollActiveMaps() {
+    for (const [root, manager] of mapManagers) {
+      try {
+        const mapKey = await resolveActiveMap(root);
+        const previous = knownActiveMaps.get(root);
+        if (!previous) {
+          knownActiveMaps.set(root, mapKey);
+          continue;
+        }
+        if (previous === mapKey) continue;
+        // 外部 stdio MCP 只有在新图可完整打开时才会通知画布；损坏 pointer
+        // 只记录诊断，不让所有标签页跟进不可用地图。
+        const context = await manager.resolve({ mapKey });
+        knownActiveMaps.set(root, mapKey);
+        events.publish(`project::${root}`, {
+          type: 'active-map-changed',
+          mapKey,
+          documentId: context.documentId,
+          source: 'external',
+        });
+      } catch (error) {
+        logger.warn('map.pointer.watch', { root, error });
+      }
+    }
+  }
+  if (Number(activeMapPollIntervalMs) > 0) {
+    activeMapTimer = setInterval(
+      () => pollActiveMaps().catch((error) => logger.warn('map.pointer.watch', { error })),
+      Math.max(50, Number(activeMapPollIntervalMs)),
+    );
+    activeMapTimer.unref?.();
+  }
+
+  async function runRetentionSweep() {
+    if (!recycleService) return;
+    for (const projectRoot of roots.keys()) {
+      try {
+        const manager = await mapManagerFor(projectRoot);
+        const listed = await manager.list();
+        for (const map of listed.maps) {
+          const context = await manager.resolve({ mapKey: map.id });
+          const lifecycle = new ArchiveLifecycle({ store: context.store, projectRoot, shared: adapter, clock, recycleBin: recycleService });
+          for (const item of await lifecycle.listEligible({ now: clock() })) {
+            await lifecycle.purge({ ...item, actor: 'system:retention', now: clock(), commandId: `retention-purge-${randomUUID()}` });
+          }
+        }
+      } catch (error) {
+        logger.warn('archive.retention', { root: projectRoot, error });
+      }
+    }
+  }
+  if (retentionEnabled && Number(retentionIntervalMs) > 0) {
+    retentionStartTimer = setTimeout(() => {
+      runRetentionSweep().catch((error) => logger.warn('archive.retention', { error }));
+      retentionTimer = setInterval(() => runRetentionSweep().catch((error) => logger.warn('archive.retention', { error })), Number(retentionIntervalMs));
+      retentionTimer.unref?.();
+    }, Math.max(0, Number(retentionInitialDelayMs) || 0));
+    retentionStartTimer.unref?.();
+  }
 
   return {
     host,
     port,
     origin: `http://${host}:${port}`,
     bootstrapToken,
+    issueBootstrapTicket,
     close: async () => {
+      if (activeMapTimer) clearInterval(activeMapTimer);
+      if (retentionStartTimer) clearTimeout(retentionStartTimer);
+      if (retentionTimer) clearInterval(retentionTimer);
       events.close();
-      await Promise.all([...stores.values()].map((store) => store.close()));
-      sessions.clear();
+      await Promise.all([...mapManagers.values()].map((manager) => manager.close()));
+      if (sessionStore) await sessionStore.flush();
+      else sessions.clear();
       await new Promise((resolve, reject) => {
         server.close((error) => error ? reject(error) : resolve());
         server.closeAllConnections?.();
