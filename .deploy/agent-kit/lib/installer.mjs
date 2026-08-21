@@ -179,14 +179,50 @@ function hooksFor(nodeCommand, runtime, agent) {
   ].map(([name, event]) => [name, [{ hooks: [{ type: 'command', command: command(nodeCommand, runtime, agent, event), timeout: 30 }] }]]));
 }
 
-function mergeHooks(existing, additions) {
+const HOOK_EVENTS = Object.freeze({
+  SessionStart: ['session-start', 'sessionstart'],
+  UserPromptSubmit: ['user-prompt', 'userpromptsubmit'],
+  Stop: ['stop'],
+});
+
+/**
+ * Only identify the product executable/script itself, never an arbitrary
+ * command that happens to contain the word "livedot".  The event check is
+ * intentional: a user's helper named livedot.mjs is not a product hook just
+ * because it appears in a group.
+ */
+export function isLiveDotHookCommand(value, eventName) {
+  const commandText = String(value ?? '').trim();
+  if (!commandText) return false;
+  const normalized = commandText.replace(/["']/g, '').replace(/\\/g, '/').toLowerCase();
+  const eventTokens = HOOK_EVENTS[eventName] || [];
+  const hasEvent = eventTokens.some((token) => new RegExp(`(?:^|[^a-z0-9])${token}(?:$|[^a-z0-9])`, 'i').test(normalized));
+  if (!hasEvent) return false;
+
+  const hasProductScript = /(?:^|\/)livedot\.mjs(?:$|\s)/i.test(normalized);
+  const hasProductExecutable = /(?:^|\/)livedot(?:-bridge(?:-[a-z0-9_-]+)?|)\.exe(?:$|\s)/i.test(normalized);
+  const hasScopedLegacyLauncher = /(?:^|\/)hook\.cmd(?:$|\s)/i.test(normalized)
+    && /(?:^|\/)(?:\.live-dot-map|live-dot-map|livedotmap)(?:\/|$)/i.test(normalized);
+  if (!(hasProductScript || hasProductExecutable || hasScopedLegacyLauncher)) return false;
+  // A known product file still must be used by the hook entry, not merely
+  // mentioned in an unrelated matcher or environment value.
+  return /(?:^|[^a-z0-9])hook(?:$|[^a-z0-9])/i.test(normalized) || hasScopedLegacyLauncher;
+}
+
+function stripOwnedHookGroup(group, eventName) {
+  if (!group || typeof group !== 'object' || Array.isArray(group) || !Array.isArray(group.hooks)) return group;
+  const kept = group.hooks.filter((hook) => !(hook && typeof hook === 'object' && hook.type === 'command' && isLiveDotHookCommand(hook.command, eventName)));
+  if (!kept.length) return null;
+  return { ...group, hooks: kept };
+}
+
+export function mergeHooks(existing, additions) {
   const hooks = { ...(existing?.hooks || {}) };
   for (const [event, groups] of Object.entries(additions)) {
     const prior = Array.isArray(hooks[event]) ? hooks[event] : [];
-    const kept = prior.filter((group) => {
-      const serialized = JSON.stringify(group);
-      return !serialized.includes('livedot.mjs') && !serialized.includes('hook.cmd');
-    });
+    const kept = prior
+      .map((group) => stripOwnedHookGroup(group, event))
+      .filter((group) => group !== null);
     hooks[event] = [...kept, ...groups];
   }
   return { ...existing, hooks };
@@ -216,7 +252,7 @@ async function writeCodexConfig(home, nodeCommand, runtime) {
   const old = await readFile(path, 'utf8').catch(() => '');
   const stripped = old.replace(new RegExp(`${begin}[\\s\\S]*?${end}\\s*`, 'g'), '').trimEnd();
   // 全局 MCP 配置不带 --project：桥 mcp 命令使用 Agent 当前工作目录。
-  const block = [begin, '[mcp_servers."livedot-map"]', `command = ${tomlString(nodeCommand)}`, `args = [${[...runtimeArgs(runtime), 'mcp', '--agent', 'codex'].map(tomlString).join(', ')}]`, 'required = true', end].join('\n');
+  const block = [begin, '[mcp_servers."livedot-map"]', `command = ${tomlString(nodeCommand)}`, `args = [${[...runtimeArgs(runtime), 'mcp', '--agent', 'codex'].map(tomlString).join(', ')}]`, 'required = false', end].join('\n');
   await atomicText(path, `${stripped ? `${stripped}\n\n` : ''}${block}\n`);
   const hooksPath = join(home, '.codex', 'hooks.json');
   await atomicJson(hooksPath, mergeHooks(await readJson(hooksPath), hooksFor(nodeCommand, runtime, 'codex')));

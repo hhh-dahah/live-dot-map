@@ -1,4 +1,4 @@
-import { copyFile, cp, lstat, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { copyFile, cp, lstat, mkdir, readdir, readFile, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { BridgeError } from './errors.mjs';
 import {
@@ -6,6 +6,7 @@ import {
   ensureDirectory,
   exists,
   readJson,
+  withFileLock,
   writeJsonAtomic,
 } from './fs-utils.mjs';
 
@@ -15,6 +16,8 @@ const ACTIVE_MAP_FILE = 'active-map';
 const LEGACY_NODES_PREFIX = '.live-dot-map/nodes/';
 const LEGACY_ROUTES_PREFIX = '.live-dot-map/routes/';
 const MAP_ID = /^[a-z0-9][a-z0-9-_]{0,63}$/;
+const BUNDLE_OWNER_ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
+const BUNDLE_LAYOUT_VERSION = 1;
 
 /** 地图 id 直接做目录名，必须是不带分隔符的安全字符集。 */
 export function isSafeMapId(id) {
@@ -107,11 +110,18 @@ export async function listMaps(projectRoot) {
 export async function createMap(projectRoot, name, { now = () => new Date() } = {}) {
   const displayName = String(name ?? '').trim().slice(0, 80) || '未命名地图';
   const base = slugifyMapName(displayName, now);
-  const taken = new Set(await listMapIds(projectRoot));
-  let id = base;
-  for (let suffix = 2; taken.has(id); suffix += 1) id = `${base}-${suffix}`;
-  await ensureDirectory(mapDirectory(projectRoot, id));
-  return { id, name: displayName };
+  await ensureDirectory(mapsRoot(projectRoot));
+  for (let suffix = 1; suffix < 100_000; suffix += 1) {
+    const id = suffix === 1 ? base : `${base}-${suffix}`;
+    try {
+      // 非递归 mkdir 是跨进程原子占位；并发同名只能有一个调用成功。
+      await mkdir(mapDirectory(projectRoot, id));
+      return { id, name: displayName };
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+    }
+  }
+  throw new BridgeError('MAP_ID_EXHAUSTED', '同名地图数量过多，无法分配安全 ID', { status: 409 });
 }
 
 /** 迁移时把节点/方案的 Markdown 分片路径改写为地图目录前缀，并记录 mapDir。 */
@@ -126,6 +136,145 @@ export function rewriteMarkdownPaths(document, mapDir) {
   }
   if (typeof document.mapDir !== 'string') document.mapDir = mapDir;
   return document;
+}
+
+function rewriteBundlePaths(document, mapDir) {
+  let changed = false;
+  for (const [list, kind] of [
+    [document?.nodes, 'nodes'],
+    [document?.edges, 'routes'],
+    [document?.routes, 'routes'],
+  ]) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (!item || typeof item.id !== 'string' || typeof item.md !== 'string') continue;
+      const current = item.md.replace(/\\/g, '/');
+      const finalPath = `${mapDir}/${kind}/${item.id}/index.md`;
+      const ownedLegacyPaths = new Set([
+        `.live-dot-map/${kind}/${item.id}.md`,
+        `.live-dot-map/${kind}/${item.id}/index.md`,
+        `${mapDir}/${kind}/${item.id}.md`,
+        finalPath,
+      ]);
+      if (ownedLegacyPaths.has(current) && item.md !== finalPath) {
+        item.md = finalPath;
+        changed = true;
+      }
+    }
+  }
+  if (document.mapDir !== mapDir) {
+    document.mapDir = mapDir;
+    changed = true;
+  }
+  if (document.bundleLayoutVersion !== BUNDLE_LAYOUT_VERSION) {
+    document.bundleLayoutVersion = BUNDLE_LAYOUT_VERSION;
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * 资料包迁移绕过 WAL 直写 map.json，必须把 revision 推进一格：
+ * 常驻 ProjectStore 只采纳 revision 更高的外部写入；同 revision 的直写会被
+ * 视为“外部旧版本覆盖”，隔离后恢复 WAL 文档，元数据迁移被还原并形成
+ * EXTERNAL_REVISION_CONFLICT 死循环（画布永远打不开）。
+ */
+function stampBundleMigrationRevision(document) {
+  document.revision = (Number.isSafeInteger(document.revision) ? document.revision : 0) + 1;
+}
+
+/** 把地图内旧平铺 nodes|routes/<id>.md 一次性迁入对象资料包的 index.md。 */
+export async function ensureBundleLayout(projectRoot, mapId) {
+  const root = mapDirectory(projectRoot, mapId);
+  const mapPath = join(root, 'map.json');
+  if (!(await exists(mapPath))) return { migrated: false, mapId };
+  // 与常驻 ProjectStore 用同一把写锁（.bridge/write.lock）：元数据迁移必须
+  // 和 Store 的 snapshot/execute 串行，否则直写会被当成“外部旧版本覆盖”。
+  // Store 繁忙时本次跳过迁移（下次打开再试），不让整个打开流程失败。
+  const lockPath = join(root, '.bridge', 'write.lock');
+  try {
+    return await withFileLock(lockPath, () => ensureBundleLayoutLocked(projectRoot, mapId, root, mapPath));
+  } catch (error) {
+    if (error?.code === 'LOCK_TIMEOUT') return { migrated: false, mapId, deferred: true };
+    throw error;
+  }
+}
+
+async function ensureBundleLayoutLocked(projectRoot, mapId, root, mapPath) {
+  let document;
+  try {
+    document = await readJson(mapPath);
+  } catch (error) {
+    if (error instanceof BridgeError) throw error;
+    throw new BridgeError('CORRUPT_MAP', 'map.json 无法解析，资料包迁移未执行', {
+      status: 409,
+      cause: error,
+      details: { mapId, causeMessage: String(error?.message || error) },
+    });
+  }
+  if (Number(document.bundleLayoutVersion) > BUNDLE_LAYOUT_VERSION) {
+    throw new BridgeError('FUTURE_BUNDLE_LAYOUT', '资料包布局版本高于当前程序，只能只读', { status: 409 });
+  }
+  const planned = [];
+  for (const kind of ['nodes', 'routes']) {
+    const directory = join(root, kind);
+    await rejectSymlink(directory);
+    const entries = await readdir(directory, { withFileTypes: true }).catch((error) => error?.code === 'ENOENT' ? [] : (() => { throw error; })());
+    for (const entry of entries) {
+      if (!entry.isFile() || !/\.md$/i.test(entry.name)) continue;
+      const ownerId = entry.name.slice(0, -3);
+      if (!BUNDLE_OWNER_ID.test(ownerId)) throw new BridgeError('BUNDLE_OWNER_INVALID', `旧资料文件名不能安全迁移：${entry.name}`, { status: 409 });
+      const source = join(directory, entry.name);
+      const destination = join(directory, ownerId, 'index.md');
+      await rejectSymlink(source);
+      if (await exists(destination)) {
+        throw new BridgeError('BUNDLE_MIGRATION_CONFLICT', `资料包目标已存在，未覆盖：${kind}/${ownerId}/index.md`, { status: 409 });
+      }
+      planned.push({ source, destination, relative: `${kind}/${entry.name}` });
+    }
+  }
+  const metadataChanged = rewriteBundlePaths(document, mapRelativeDirectory(mapId));
+  if (!metadataChanged && !planned.length) {
+    return { migrated: false, mapId };
+  }
+  if (!planned.length) {
+    stampBundleMigrationRevision(document);
+    await writeJsonAtomic(mapPath, document);
+    return { migrated: false, mapId };
+  }
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupDirectory = join(root, '.bridge', 'backups', `pre-bundle-migration-${stamp}`);
+  const journalPath = join(root, '.bridge', 'migrations', 'bundle-layout-v1.json');
+  await ensureDirectory(backupDirectory);
+  await ensureDirectory(dirname(journalPath));
+  await copyFile(mapPath, join(backupDirectory, 'map.json'));
+  for (const item of planned) {
+    const backup = join(backupDirectory, item.relative);
+    await ensureDirectory(dirname(backup));
+    await copyFile(item.source, backup);
+  }
+  await writeJsonAtomic(journalPath, { version: 1, state: 'prepared', mapId, planned: planned.map((item) => item.relative), completed: [] });
+  const completed = [];
+  try {
+    for (const item of planned) {
+      await ensureDirectory(dirname(item.destination));
+      await rename(item.source, item.destination);
+      completed.push(item);
+      await writeJsonAtomic(journalPath, { version: 1, state: 'moving', mapId, planned: planned.map((entry) => entry.relative), completed: completed.map((entry) => entry.relative) });
+    }
+    rewriteBundlePaths(document, mapRelativeDirectory(mapId));
+    stampBundleMigrationRevision(document);
+    await writeJsonAtomic(mapPath, document);
+    await writeJsonAtomic(journalPath, { version: 1, state: 'complete', mapId, planned: planned.map((entry) => entry.relative), completed: completed.map((entry) => entry.relative) });
+  } catch (error) {
+    for (const item of completed.reverse()) {
+      await ensureDirectory(dirname(item.source));
+      await rename(item.destination, item.source).catch(() => undefined);
+    }
+    throw new BridgeError('BUNDLE_MIGRATION_FAILED', `资料包迁移失败，旧文件已恢复；备份在 ${backupDirectory}`, { status: 500, cause: error, details: { backupDirectory } });
+  }
+  return { migrated: true, mapId, backupDirectory };
 }
 
 async function rejectSymlink(path) {
@@ -219,12 +368,15 @@ export async function ensureMapsLayout(projectRoot) {
     if (!active || !existing.includes(active)) {
       const fallback = existing.includes('default') ? 'default' : existing[0];
       await writeActiveMap(projectRoot, fallback);
+      for (const mapId of existing) await ensureBundleLayout(projectRoot, mapId);
       return { migrated: false, activeMap: fallback };
     }
+    for (const mapId of existing) await ensureBundleLayout(projectRoot, mapId);
     return { migrated: false, activeMap: active };
   }
   if (await exists(join(dataDirectory, 'map.json'))) {
     await migrateLegacyLayout(projectRoot);
+    await ensureBundleLayout(projectRoot, 'default');
     return { migrated: true, activeMap: 'default' };
   }
   await ensureDirectory(mapDirectory(projectRoot, 'default'));

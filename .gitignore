@@ -2,6 +2,7 @@
 走查截图/
 # Playwright MCP 快照与截图产物
 .playwright-mcp/
+.playwright-cli/
 # v2 本地构建依赖；发布产物不依赖 node_modules
 node_modules/
 dist/
@@ -31,6 +32,16 @@ landing/tsconfig.tsbuildinfo
 # 平台登录/控制台截图与抓取快照，不进入源码或发布物料
 edgeone-config.yml
 edgeone-login.png
+
+# 活点地图项目内的可再生运行态；地图事实与资料包本身仍可跟踪
+/.live-dot-map/**/.bridge/
+.live-dot-map/maps/*/.bridge/backups/
+.live-dot-map/maps/*/.bridge/snapshots/
+.live-dot-map/maps/*/.bridge/quarantine/
+.live-dot-map/maps/*/.bridge/migrations/
+.live-dot-map/maps/*/.bridge/*.lock
+.live-dot-map/maps/*/.bridge/wal.ndjson
+.live-dot-map/.bridge/*.tmp
 
 # 软件著作权申请材料与本地 LaTeX 编译环境（含营业执照等隐私信息）
 .tools/

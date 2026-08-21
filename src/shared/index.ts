@@ -25,6 +25,8 @@ export interface CommandEnvelope {
 export type MapCommand =
   | { op: 'create'; collection: Collection; value: Record<string, unknown> }
   | { op: 'update'; collection: Collection; id: string; patch: Record<string, unknown>; humanOnly?: boolean }
+  | { op: 'archive'; collection: Collection; id: string; archiveReason?: string }
+  | { op: 'restore'; collection: Collection; id: string }
   | { op: 'delete'; collection: Collection; id: string }
   | { op: 'set_view'; patch: Record<string, unknown> }
   | { op: 'set_ui'; patch: Record<string, unknown> }
@@ -51,6 +53,8 @@ export interface MapDocument extends Record<string, unknown> {
   nodes: Record<string, unknown>[];
   edges: Record<string, unknown>[];
   anns: Record<string, unknown>[];
+  /** In-process compatibility marker; deliberately non-enumerable on results. */
+  legacyTranslated?: boolean;
 }
 
 const ID = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/;
@@ -111,7 +115,7 @@ export function documentMapDir(document: Pick<MapDocument, 'mapDir'> | Record<st
 
 export function stableMarkdownPath(collection: 'nodes' | 'edges', id: string, mapDir = '.live-dot-map'): string {
   if (!ID.test(id)) throw mapError('INVALID_ID', 400, '对象 ID 无效');
-  return collection === 'nodes' ? `${mapDir}/nodes/${id}.md` : `${mapDir}/routes/${id}.md`;
+  return collection === 'nodes' ? `${mapDir}/nodes/${id}/index.md` : `${mapDir}/routes/${id}/index.md`;
 }
 
 export function createEmptyMap(options: { name?: string; now?: string; mapId?: string; mapDir?: string } = {}): MapDocument {
@@ -124,6 +128,7 @@ export function createEmptyMap(options: { name?: string; now?: string; mapId?: s
     lastEventId: 0,
     name: String(options.name ?? '未命名地图').slice(0, MAX_NAME),
     ...(options.mapDir ? { mapDir: options.mapDir } : {}),
+    bundleLayoutVersion: 1,
     createdAt: now,
     updatedAt: now,
     view: { x: 0, y: 0, k: 1 },
@@ -220,6 +225,10 @@ function validateBaseObject(item: unknown, label: string, ids: Set<string>, erro
   if (typeof item.updatedBy !== 'string') errors.push(`${label}.updatedBy 缺失`);
   if (item.createdBy !== undefined && typeof item.createdBy !== 'string') errors.push(`${label}.createdBy 无效`);
   if (!Number.isInteger(item.updatedRevision) || Number(item.updatedRevision) < 0) errors.push(`${label}.updatedRevision 无效`);
+  if (item.archived !== undefined && typeof item.archived !== 'boolean') errors.push(`${label}.archived 无效`);
+  if (item.archivedAt !== undefined && (typeof item.archivedAt !== 'string' || !ISO_MS.test(item.archivedAt))) errors.push(`${label}.archivedAt 必须是毫秒 UTC`);
+  if (item.archivedBy !== undefined && typeof item.archivedBy !== 'string') errors.push(`${label}.archivedBy 无效`);
+  if (item.archiveReason !== undefined && (typeof item.archiveReason !== 'string' || item.archiveReason.length > MAX_ANN)) errors.push(`${label}.archiveReason 无效或过长`);
   return true;
 }
 
@@ -275,17 +284,7 @@ export function validateMapDocument(value: unknown): ValidationResult {
   for (const [i, node] of byCollection.nodes.entries()) {
     if (node.kind !== undefined && !['goal', 'problem', 'result'].includes(String(node.kind))) errors.push(`nodes[${i}].kind 无效`);
     if (node.route !== null && node.route !== undefined && !routeIds.has(String(node.route))) errors.push(`nodes[${i}].route 引用不存在`);
-    if (node.milestone !== undefined) {
-      const milestone = node.milestone;
-      if (!isObject(milestone) || !['pending', 'approved', 'changes_requested'].includes(String(milestone.status))) {
-        errors.push(`nodes[${i}].milestone 无效`);
-      } else {
-        if (milestone.origin !== undefined && !['human_created', 'agent_created'].includes(String(milestone.origin))) errors.push(`nodes[${i}].milestone.origin 无效`);
-        if (milestone.level !== undefined && !['project', 'route', 'work'].includes(String(milestone.level))) errors.push(`nodes[${i}].milestone.level 无效`);
-        if (milestone.createdBy !== undefined && typeof milestone.createdBy !== 'string') errors.push(`nodes[${i}].milestone.createdBy 无效`);
-        if (milestone.updatedBy !== undefined && typeof milestone.updatedBy !== 'string') errors.push(`nodes[${i}].milestone.updatedBy 无效`);
-      }
-    }
+    // milestone/milestoneSuggestion 是只读历史字段：任何旧形状都不能阻断地图加载。
   }
   for (const [i, ann] of byCollection.anns.entries()) {
     if (typeof ann.text !== 'string' || ann.text.length > MAX_ANN) errors.push(`anns[${i}].text 无效或过长`);
@@ -312,6 +311,34 @@ function touch(item: Record<string, unknown>, actor: Actor, revision: number, no
   item.updatedAt = now;
   item.updatedBy = actor;
   item.updatedRevision = revision;
+}
+
+function archiveItem(item: Record<string, unknown>, actor: Actor, revision: number, now: string, reason?: unknown): void {
+  item.archived = true;
+  item.archivedAt = now;
+  item.archivedBy = actor;
+  if (reason === undefined || reason === null || reason === '') delete item.archiveReason;
+  else if (typeof reason !== 'string' || reason.length > MAX_ANN) throw mapError('INVALID_ARCHIVE_REASON', 422, '归档原因无效或过长');
+  else item.archiveReason = reason;
+  touch(item, actor, revision, now);
+}
+
+function restoreItem(item: Record<string, unknown>, actor: Actor, revision: number, now: string): void {
+  delete item.archived;
+  delete item.archivedAt;
+  delete item.archivedBy;
+  delete item.archiveReason;
+  touch(item, actor, revision, now);
+}
+
+function markLegacyTranslated(document: MapDocument): void {
+  // Keep the marker available to the bridge response without persisting it in
+  // map.json or letting it affect checksums/structuredClone snapshots.
+  Object.defineProperty(document, 'legacyTranslated', {
+    value: true,
+    enumerable: false,
+    configurable: true,
+  });
 }
 
 function assertName(value: unknown): void {
@@ -359,9 +386,11 @@ function assertAgentMilestoneAllowed(value: unknown): void {
 
 function assertAgentCurationAllowed(value: Record<string, unknown>, actor: Actor): void {
   if (!isAgent(actor)) return;
-  const fields = ['archived', 'shelved'].filter((field) => value[field] === true);
+  // Archive/restore is intentionally symmetric for humans and Agents.  Keep
+  // the older shelved guard until that separate legacy state is retired.
+  const fields = ['shelved'].filter((field) => value[field] === true);
   if (!fields.length) return;
-  throw mapError('HUMAN_APPROVAL_REQUIRED', 403, 'Agent 不能直接归档或搁置地图记忆，必须等待人在画布审核后提交', {
+  throw mapError('HUMAN_APPROVAL_REQUIRED', 403, 'Agent 不能直接搁置地图记忆，必须等待人在画布审核后提交', {
     fields,
     suggestion: '调用 map_plan_consolidation 生成只读建议，等待人类审核',
   });
@@ -384,15 +413,13 @@ function applyOne(document: MapDocument, command: MapCommand, actor: Actor, revi
     if (command.collection !== 'anns') assertName(value.name);
     if (command.collection === 'nodes') {
       if (value.kind !== undefined && !['goal', 'problem', 'result'].includes(String(value.kind))) throw mapError('INVALID_NODE_KIND', 422, '节点 kind 必须是 goal、problem 或 result');
-      value.kind = normalizeNodeKind(value.kind ?? value.type);
-    }
-    if (command.collection === 'nodes' && isAgent(actor)) {
-      assertAgentMilestoneAllowed(value.milestone);
-      if (value.level === 'work') assertAgentMilestoneAllowed(value);
+      // result 只为旧数据兼容；任何新 create 都规范化到 goal/problem。
+      value.kind = normalizeNodeKind(value.kind ?? value.type) === 'problem' ? 'problem' : 'goal';
+      delete value.milestone;
+      delete value.milestoneSuggestion;
     }
     assertAgentCurationAllowed(value, actor);
     const item: Record<string, unknown> = { ...value, createdAt: now, updatedAt: now, createdBy: actor, updatedBy: actor, updatedRevision: revision };
-    if (command.collection === 'nodes' && value.milestone !== undefined) item.milestone = normalizeMilestone(value.milestone, actor, now, revision);
     if (command.collection === 'nodes' && item.md === undefined) item.md = stableMarkdownPath('nodes', String(item.id), documentMapDir(document));
     if (command.collection === 'edges' && item.md === undefined) item.md = stableMarkdownPath('edges', String(item.id), documentMapDir(document));
     if (command.collection === 'anns') {
@@ -401,6 +428,13 @@ function applyOne(document: MapDocument, command: MapCommand, actor: Actor, revi
       item.priority = item.priority ?? 'normal';
       item.attention = actor === 'human' ? 'new' : (item.attention ?? 'acknowledged');
       item.acknowledgements = [];
+    }
+    if (value.archived === true) {
+      archiveItem(item, actor, revision, now, value.archiveReason);
+    } else {
+      delete item.archivedAt;
+      delete item.archivedBy;
+      delete item.archiveReason;
     }
     getList(document, command.collection).push(item);
     return;
@@ -412,49 +446,50 @@ function applyOne(document: MapDocument, command: MapCommand, actor: Actor, revi
     if ('name' in patch) assertName(patch.name);
     if (command.collection === 'nodes' && 'kind' in patch) {
       if (!['goal', 'problem', 'result'].includes(String(patch.kind))) throw mapError('INVALID_NODE_KIND', 422, '节点 kind 必须是 goal、problem 或 result');
+      patch.kind = patch.kind === 'problem' ? 'problem' : 'goal';
     }
     assertAgentCurationAllowed(patch, actor);
-    if (command.collection === 'nodes' && isObject(patch.milestone)) {
-      if (isAgent(actor)) {
-        assertAgentMilestoneAllowed(patch.milestone);
-      }
-      patch.milestone = normalizeMilestone(patch.milestone, actor, now, revision, isObject(item.milestone) ? item.milestone : undefined);
+    if (command.collection === 'nodes') {
+      // 历史 milestone 原样保留；新命令中的同名字段被忽略，不能再更新或新增。
+      delete patch.milestone;
+      delete patch.milestoneSuggestion;
     }
+    // Legacy clients used update({ archived: true/false }).  Preserve that
+    // entry point, but derive the audit fields from the current command
+    // instead of accepting caller-supplied timestamps or actors.
+    const archiveState = patch.archived;
+    const archiveReason = patch.archiveReason;
+    delete patch.archived;
+    delete patch.archivedAt;
+    delete patch.archivedBy;
+    delete patch.archiveReason;
     Object.assign(item, patch);
     if (command.collection === 'anns' && actor === 'human') {
       item.source = 'human';
       item.attention = 'new';
       if (!Array.isArray(item.acknowledgements)) item.acknowledgements = [];
     }
-    touch(item, actor, revision, now);
+    if (archiveState === true) archiveItem(item, actor, revision, now, archiveReason);
+    else if (archiveState === false) restoreItem(item, actor, revision, now);
+    else touch(item, actor, revision, now);
+    return;
+  }
+  if (command.op === 'archive') {
+    const item = findItem(document, command.collection, command.id);
+    archiveItem(item, actor, revision, now, command.archiveReason);
+    return;
+  }
+  if (command.op === 'restore') {
+    const item = findItem(document, command.collection, command.id);
+    restoreItem(item, actor, revision, now);
     return;
   }
   if (command.op === 'delete') {
-    if (actor.startsWith('agent:')) throw mapError('HUMAN_APPROVAL_REQUIRED', 403, 'Agent 不能直接删除对象');
-    const list = getList(document, command.collection);
-    const index = list.findIndex((entry) => entry.id === command.id);
-    if (index < 0) return;
-    if (command.collection === 'nodes') {
-      for (const route of document.routes) {
-        if (route.currentNodeId === command.id) {
-          delete route.currentNodeId;
-          touch(route, actor, revision, now);
-        }
-      }
-      document.edges = document.edges.filter((edge) => edge.from !== command.id);
-      for (const edge of document.edges) {
-        if (edge.to === command.id) {
-          edge.to = null;
-          edge.status = 'pending';
-          edge.dx = typeof edge.dx === 'number' ? edge.dx : 120;
-          edge.dy = typeof edge.dy === 'number' ? edge.dy : 0;
-          touch(edge, actor, revision, now);
-        }
-      }
-      document.anns = document.anns.filter((ann) => !(isObject(ann.target) && ann.target.kind === 'node' && ann.target.id === command.id));
-    }
-    if (command.collection === 'edges') document.anns = document.anns.filter((ann) => !(isObject(ann.target) && ann.target.kind === 'edge' && ann.target.id === command.id));
-    list.splice(index, 1);
+    // `delete` is a retired compatibility operation.  It deliberately keeps
+    // the object, topology, annotations and Markdown so restore is lossless.
+    const item = getList(document, command.collection).find((entry) => entry.id === command.id);
+    if (!item) return;
+    archiveItem(item, actor, revision, now);
     return;
   }
   if (command.op === 'set_view' || command.op === 'set_ui') {
@@ -503,10 +538,7 @@ function applyOne(document: MapDocument, command: MapCommand, actor: Actor, revi
     return;
   }
   if (command.op === 'suggest_milestone') {
-    const node = findItem(document, 'nodes', command.nodeId);
-    node.milestoneSuggestion = { status: command.status, reviewNote: command.reviewNote ?? null, suggestedBy: actor, suggestedAt: now };
-    touch(node, actor, revision, now);
-    return;
+    throw mapError('FEATURE_RETIRED', 410, '里程碑功能已下线；请使用普通节点、问题节点和路线表达阶段判断');
   }
   throw mapError('UNKNOWN_COMMAND', 400, `不支持的地图命令：${String((command as { op?: unknown })?.op ?? '')}`);
 }
@@ -523,6 +555,7 @@ export function applyMapCommand(document: MapDocument, command: MapCommand, opti
   next.updatedAt = now;
   const result = validateMapDocument(next);
   if (!result.ok) throw mapError('COMMAND_INVALID_RESULT', 422, '命令会产生无效地图', result.errors);
+  if (command.op === 'delete') markLegacyTranslated(next);
   return next;
 }
 
@@ -533,13 +566,11 @@ export function applyCommandEnvelope(document: MapDocument, envelope: CommandEnv
   const agentInitialMap = isAgent(envelope.actor)
     && (document.nodes.length === 0 || (isObject(document.ui?.initialization) && document.ui.initialization.status === 'in_progress'));
   if (isAgent(envelope.actor)) {
-    const objectCommands = envelope.commands.filter((command) => ['create', 'update', 'delete'].includes(command.op));
+    const objectCommands = envelope.commands.filter((command) => ['create', 'update', 'archive', 'restore', 'delete'].includes(command.op));
     const nodeCreates = envelope.commands.filter((command) => command.op === 'create' && command.collection === 'nodes') as Array<{ op: 'create'; collection: 'nodes'; value: Record<string, unknown> }>;
-    const milestoneCreates = nodeCreates.filter((command) => isObject(command.value) && command.value.milestone !== undefined);
     if (objectCommands.length > MAX_AGENT_OBJECTS_PER_ENVELOPE) throw mapError('AGENT_BATCH_LIMIT', 422, 'Agent 单次最多修改 10 个对象，请先合并或让人选择', { maxObjects: MAX_AGENT_OBJECTS_PER_ENVELOPE, suggestion: '压缩执行碎片，保留项目/路线级结论' });
     if (nodeCreates.length > MAX_AGENT_NEW_NODES_PER_ENVELOPE) throw mapError('AGENT_NODE_LIMIT', 422, 'Agent 单次最多新增 5 个活跃节点，请先合并或分阶段提交', { maxNodes: MAX_AGENT_NEW_NODES_PER_ENVELOPE, suggestion: '只保留目标、阶段、结果或审核门' });
-    if (milestoneCreates.length > MAX_AGENT_MILESTONES_PER_ENVELOPE) throw mapError('AGENT_MILESTONE_LIMIT', 422, 'Agent 单次最多新增 2 个里程碑大节点', { maxMilestones: MAX_AGENT_MILESTONES_PER_ENVELOPE, suggestion: '更新或合并已有阶段，不要创建执行碎片' });
-    const activeNodes = document.nodes.filter((node) => node.archived !== true && node.shelved !== true).length;
+    const activeNodes = document.nodes.filter((node) => visibleNode(document, node)).length;
     if (activeNodes + nodeCreates.length >= MAX_ACTIVE_NODES && nodeCreates.length) throw mapError('AGENT_ACTIVE_NODE_LIMIT', 422, '活跃节点将达到 30 个，Agent 必须先整理、合并或归档', { maxActiveNodes: MAX_ACTIVE_NODES, suggestion: '请让人选择整理路线' });
     if (agentInitialMap && activeNodes + nodeCreates.length > MAX_INITIAL_MAP_NODES) throw mapError('AGENT_INITIAL_MAP_LIMIT', 422, '首次初始化地图最多保留 15 个活跃节点，请压缩为目标、阶段、路线和待判断事项', { maxInitialNodes: MAX_INITIAL_MAP_NODES, suggestion: '不要按文件、目录、函数或聊天轮次建节点' });
   }
@@ -553,11 +584,12 @@ export function applyCommandEnvelope(document: MapDocument, envelope: CommandEnv
   next.updatedAt = now;
   const validation = validateMapDocument(next);
   if (!validation.ok) throw mapError('COMMAND_INVALID_RESULT', 422, '命令会产生无效地图', validation.errors);
+  if (envelope.commands.some((command) => command.op === 'delete')) markLegacyTranslated(next);
   return next;
 }
 
 export function commandTouches(command: MapCommand): string[] {
-  if (command.op === 'create' || command.op === 'delete') return [`${command.collection}/${command.op === 'create' ? String(command.value.id ?? '*') : command.id}/*`];
+  if (command.op === 'create' || command.op === 'delete' || command.op === 'archive' || command.op === 'restore') return [`${command.collection}/${command.op === 'create' ? String(command.value.id ?? '*') : command.id}/*`];
   if (command.op === 'update') return Object.keys(command.patch).map((key) => `${command.collection}/${command.id}/${key}`);
   if (command.op === 'set_view' || command.op === 'set_ui') return Object.keys(command.patch).map((key) => `${command.op === 'set_view' ? 'view' : 'ui'}/${key}`);
   if (command.op === 'set_meta') return ['meta/name'];
@@ -601,6 +633,83 @@ export interface AttemptEvidenceIssue {
   path: string;
   missing: string[];
   reason: string;
+}
+
+function hiddenState(item: Record<string, unknown>): boolean {
+  return item.archived === true || item.shelved === true;
+}
+
+function visibleRoute(document: MapDocument, routeId: unknown, includeHistory = false): boolean {
+  if (includeHistory || typeof routeId !== 'string' || !routeId) return true;
+  const route = document.routes.find((entry) => entry.id === routeId);
+  return !route || !hiddenState(route);
+}
+
+function visibleNode(document: MapDocument, node: Record<string, unknown>, includeHistory = false): boolean {
+  return includeHistory || (!hiddenState(node) && visibleRoute(document, node.route));
+}
+
+function visibleEdge(document: MapDocument, edge: Record<string, unknown>, includeHistory = false): boolean {
+  if (includeHistory) return true;
+  if (hiddenState(edge) || !visibleRoute(document, edge.route)) return false;
+  const nodeById = new Map(document.nodes.map((node) => [String(node.id), node]));
+  const from = typeof edge.from === 'string' ? nodeById.get(edge.from) : undefined;
+  const to = typeof edge.to === 'string' ? nodeById.get(edge.to) : undefined;
+  return (!from || visibleNode(document, from)) && (!to || visibleNode(document, to));
+}
+
+function visibleAnnotation(document: MapDocument, ann: Record<string, unknown>, includeHistory = false): boolean {
+  if (includeHistory || hiddenState(ann)) return includeHistory || !hiddenState(ann);
+  if (!visibleRoute(document, ann.route)) return false;
+  const target = ann.target;
+  if (!isObject(target)) return true;
+  if (target.kind === 'node') {
+    const node = document.nodes.find((entry) => entry.id === target.id);
+    return !node || visibleNode(document, node);
+  }
+  if (target.kind === 'edge') {
+    const edge = document.edges.find((entry) => entry.id === target.id);
+    return !edge || visibleEdge(document, edge);
+  }
+  if (target.kind === 'route') return visibleRoute(document, target.id);
+  return true;
+}
+
+function hiddenMarkdownPaths(document: MapDocument): { exact: Set<string>; prefixes: string[] } {
+  const exact = new Set<string>();
+  const prefixes = new Set<string>();
+  const mapDir = documentMapDir(document).replace(/\\/g, '/').replace(/\/$/, '');
+  const add = (value: unknown): void => {
+    if (typeof value !== 'string' || !value.trim()) return;
+    const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+    exact.add(normalized);
+    const index = normalized.lastIndexOf('/');
+    if (normalized.endsWith('/index.md') && index > 0) prefixes.add(`${normalized.slice(0, index)}/`);
+  };
+  const hideOwner = (collection: 'nodes' | 'edges', item: Record<string, unknown>): void => {
+    const id = String(item.id);
+    add(item.md);
+    add(stableMarkdownPath(collection, id, mapDir));
+    add(`${mapDir}/${collection === 'nodes' ? 'nodes' : 'routes'}/${id}/index.md`);
+    prefixes.add(`${mapDir}/${collection === 'nodes' ? 'nodes' : 'routes'}/${id}/`.toLowerCase());
+  };
+  for (const route of document.routes) if (hiddenState(route)) {
+    add(route.md);
+    add(`${mapDir}/routes/${String(route.id)}/index.md`);
+    prefixes.add(`${mapDir}/routes/${String(route.id)}/`.toLowerCase());
+  }
+  for (const node of document.nodes) if (!visibleNode(document, node)) hideOwner('nodes', node);
+  for (const edge of document.edges) if (!visibleEdge(document, edge)) hideOwner('edges', edge);
+  return { exact, prefixes: [...prefixes] };
+}
+
+function visibleMarkdown(document: MapDocument, docs: MarkdownDocument[], includeHistory = false): MarkdownDocument[] {
+  if (includeHistory) return docs;
+  const hidden = hiddenMarkdownPaths(document);
+  return docs.filter((doc) => {
+    const path = String(doc.path).replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+    return !hidden.exact.has(path) && !hidden.prefixes.some((prefix) => path.startsWith(prefix));
+  });
 }
 
 function headingContent(text: string, heading: string): string {
@@ -661,7 +770,14 @@ export function retrieveContext(document: MapDocument, query: string, options: {
   const limit = Math.max(1, Math.min(12, Number.isInteger(options.limit) ? Number(options.limit) : 12));
   const now = new Date(options.now ?? Date.now());
   const all: Array<{ kind: Collection; item: Record<string, unknown> }> = COLLECTIONS.flatMap((kind) => document[kind].map((item) => ({ kind, item })));
-  const active = all.filter(({ item, kind }) => options.includeHistory || (!(item.archived === true || item.shelved === true) && !(kind === 'edges' && document.routes.some((route) => route.id === item.route && route.archived === true))));
+  const includeHistory = options.includeHistory === true;
+  const active = all.filter(({ item, kind }) => {
+    if (includeHistory) return true;
+    if (kind === 'routes') return !hiddenState(item);
+    if (kind === 'nodes') return visibleNode(document, item);
+    if (kind === 'edges') return visibleEdge(document, item);
+    return visibleAnnotation(document, item);
+  });
   const seeds = new Set<string>();
   for (const { item } of active) {
     const id = String(item.id ?? '').toLowerCase();
@@ -707,7 +823,6 @@ export function retrieveContext(document: MapDocument, query: string, options: {
     if (kind === 'anns' && (item.attention === 'new' || item.attention === 'delivered')) { score += 800; reasons.push('人类新标注尚未确认'); }
     if (kind === 'anns' && isObject(item.target) && seeds.has(String(item.target.id))) { score += 800; reasons.push('标注属于明确目标'); }
     if (kind === 'nodes' && normalizeNodeKind(item.kind ?? item.type) === 'problem' && item.resolved !== true) { score += 700; reasons.push('未解决问题节点'); }
-    if (kind === 'nodes' && isObject(item.milestone) && item.milestone.status === 'pending') { score += 500; reasons.push('里程碑待审核'); }
     if (oneHop.has(id)) { score += 300; reasons.push('明确目标的一跳邻居'); }
     if (typeof item.route === 'string' && seedRoutes.has(item.route)) { score += 200; reasons.push('与明确目标属于同一路线'); }
     if (twoHop.has(id)) { score += 120; reasons.push('明确目标的两跳邻居'); }
@@ -724,7 +839,7 @@ export function retrieveContext(document: MapDocument, query: string, options: {
   }
   ranked.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
 
-  const markdownScores = bm25(terms, options.markdown ?? []);
+  const markdownScores = bm25(terms, visibleMarkdown(document, options.markdown ?? [], includeHistory));
   const max = Math.max(0, ...markdownScores.map((entry) => entry.score));
   const markdown = markdownScores.map(({ doc, score }) => ({
     kind: 'markdown' as const,
@@ -798,7 +913,7 @@ export function findExplorationAlternatives(document: MapDocument, currentNodeId
     return routeForNode(sourceNodeId);
   };
   const failedContexts: FailureContext[] = document.edges
-    .filter((edge) => edge.archived !== true && edge.shelved !== true && edge.status === 'failed')
+    .filter((edge) => visibleEdge(document, edge) && edge.status === 'failed')
     .map((edge) => {
       const sourceNodeId = resolveSourceNode(edge);
       const sourceRouteId = routeForNode(sourceNodeId) ?? resolveRouteId(edge, sourceNodeId);
@@ -813,10 +928,7 @@ export function findExplorationAlternatives(document: MapDocument, currentNodeId
   const failedTerms = new Set(relevantFailures.flatMap((failure) => failure.terms));
   const failedKeys = new Set(relevantFailures.map((failure) => failure.key));
   const active = document.edges.filter((edge) => {
-    if (edge.archived === true || edge.shelved === true || !['pending', 'success'].includes(String(edge.status))) return false;
-    const edgeRouteId = typeof edge.route === 'string' ? edge.route : null;
-    if (edgeRouteId && routeById.get(edgeRouteId)?.archived === true) return false;
-    return true;
+    return visibleEdge(document, edge) && ['pending', 'success'].includes(String(edge.status));
   });
   const rank = (edge: Record<string, unknown>): ExplorationAlternative | null => {
     const sourceNodeId = resolveSourceNode(edge);
@@ -878,10 +990,9 @@ export function buildProjectProjection(document: MapDocument, options: { now?: s
   const now = new Date(options.now ?? Date.now());
   const maxRoutes = Math.max(1, Math.min(12, Number.isInteger(options.maxRoutes) ? Number(options.maxRoutes) : 6));
   const maxCandidates = Math.max(1, Math.min(12, Number.isInteger(options.maxCandidates) ? Number(options.maxCandidates) : 6));
-  const activeRoutes = document.routes.filter((route) => route.archived !== true && route.shelved !== true);
-  const routeById = new Map(activeRoutes.map((route) => [String(route.id), route]));
-  const activeNodes = document.nodes.filter((node) => node.archived !== true && node.shelved !== true);
-  const activeEdges = document.edges.filter((edge) => edge.archived !== true && edge.shelved !== true && (!edge.route || !document.routes.some((route) => route.id === edge.route && route.archived === true)));
+  const activeRoutes = document.routes.filter((route) => !hiddenState(route));
+  const activeNodes = document.nodes.filter((node) => visibleNode(document, node));
+  const activeEdges = document.edges.filter((edge) => visibleEdge(document, edge));
   const nodesByRoute = new Map<string, Record<string, unknown>[]>();
   for (const node of activeNodes) {
     const route = typeof node.route === 'string' ? node.route : '';
@@ -929,15 +1040,13 @@ export function buildProjectProjection(document: MapDocument, options: { now?: s
   const stalledRoutes = activeRoutes.filter((route) => staleDays(route) >= 7 || (nodesByRoute.get(String(route.id)) ?? []).length === 0)
     .sort((a, b) => staleDays(b) - staleDays(a) || String(a.id).localeCompare(String(b.id))).slice(0, 6)
     .map((route) => ({ id: String(route.id), name: String(route.name ?? route.id), reason: (nodesByRoute.get(String(route.id)) ?? []).length === 0 ? '路线暂无节点' : `已 ${Math.floor(staleDays(route))} 天没有更新`, updatedAt: typeof route.updatedAt === 'string' ? route.updatedAt : null }));
-  const humanUpdates = document.anns.filter((ann) => ann.source === 'human' && ['new', 'delivered'].includes(String(ann.attention)))
+  const humanUpdates = document.anns.filter((ann) => visibleAnnotation(document, ann) && ann.source === 'human' && ['new', 'delivered'].includes(String(ann.attention)))
     .sort((a, b) => (String(a.attention) === 'new' ? -1 : 1) - (String(b.attention) === 'new' ? -1 : 1) || updatedTime(b) - updatedTime(a)).slice(0, 6)
     .map((ann) => ({ id: String(ann.id), text: String(ann.text ?? ''), attention: String(ann.attention), priority: String(ann.priority ?? 'normal'), target: clone(ann.target) }));
   const problems = activeNodes.filter((node) => normalizeNodeKind(node.kind ?? node.type) === 'problem' && node.resolved !== true)
     .sort((a, b) => updatedTime(b) - updatedTime(a) || String(a.id).localeCompare(String(b.id))).slice(0, 12)
     .map((node) => ({ id: String(node.id), name: String(node.name ?? node.id), kind: 'problem' as const, resolved: false, routeId: typeof node.route === 'string' ? node.route : null, updatedAt: String(node.updatedAt ?? '') }));
-  const milestones = activeNodes.filter((node) => isObject(node.milestone) && ['pending', 'changes_requested'].includes(String(node.milestone.status)))
-    .sort((a, b) => updatedTime(b) - updatedTime(a) || String(a.id).localeCompare(String(b.id))).slice(0, 6)
-    .map((node) => ({ id: String(node.id), name: String(node.name ?? node.id), status: String((node.milestone as Record<string, unknown>).status), origin: String((node.milestone as Record<string, unknown>).origin ?? 'unknown'), routeId: typeof node.route === 'string' ? node.route : null }));
+  const milestones: ProjectProjection['milestones'] = [];
   return {
     totalGoal: String(document.goal ?? document.name ?? '未命名地图'),
     mainRoute: { id: mainRoute ? String(mainRoute.id) : null, name: mainRoute ? String(mainRoute.name ?? mainRoute.id) : '暂无主路线', status: mainRoute ? String(mainRoute.status ?? 'active') : 'empty', currentNodeId },
@@ -954,8 +1063,7 @@ export function buildProjectProjection(document: MapDocument, options: { now?: s
 
 export function autonomyDecision(document: MapDocument, candidates: RetrievalItem[]): { auto: boolean; reasons: string[] } {
   const reasons: string[] = [];
-  if (document.anns.some((ann) => ann.attention === 'new' || ann.attention === 'delivered')) reasons.push('存在尚未确认的人类标注');
-  if (document.nodes.some((node) => isObject(node.milestone) && node.milestone.status === 'pending')) reasons.push('存在待审核里程碑');
+  if (document.anns.some((ann) => visibleAnnotation(document, ann) && (ann.attention === 'new' || ann.attention === 'delivered'))) reasons.push('存在尚未确认的人类标注');
   const projection = buildProjectProjection(document);
   const currentNodeId = projection.current.nodeId;
   const currentRouteId = projection.current.routeId ?? projection.mainRoute.id;
@@ -987,7 +1095,7 @@ export function autonomyDecision(document: MapDocument, candidates: RetrievalIte
   if (crossRoute.length > 0) reasons.push('存在需要人工确认的跨路线候选');
   const majorNewDirection = crossRoute.some((candidate) => !candidate.reasons.some((reason) => reason.includes('一跳')));
   if (majorNewDirection) reasons.push('存在重大新方向，不能自动扩张路线');
-  const activeNodes = document.nodes.filter((node) => node.archived !== true && node.shelved !== true).length;
+  const activeNodes = document.nodes.filter((node) => visibleNode(document, node)).length;
   if (activeNodes >= 20) reasons.push(`活跃对象数量达到整理阈值（${activeNodes} 个节点）`);
   if (uniqueCandidateIds.size > 10) reasons.push(`单批候选对象超过 10 个（${uniqueCandidateIds.size}）`);
   const first = candidates[0]?.score ?? 0;
@@ -1072,9 +1180,9 @@ function similarText(left: unknown, right: unknown): boolean {
 }
 
 function consolidationCounts(document: MapDocument): ConsolidationCounts {
-  const activeRoutes = document.routes.filter((route) => route.archived !== true && route.shelved !== true);
-  const activeNodes = document.nodes.filter((node) => node.archived !== true && node.shelved !== true);
-  const activeEdges = document.edges.filter((edge) => edge.archived !== true && edge.shelved !== true && !document.routes.some((route) => route.id === edge.route && (route.archived === true || route.shelved === true)));
+  const activeRoutes = document.routes.filter((route) => !hiddenState(route));
+  const activeNodes = document.nodes.filter((node) => visibleNode(document, node));
+  const activeEdges = document.edges.filter((edge) => visibleEdge(document, edge));
   return {
     routes: document.routes.length,
     nodes: document.nodes.length,
@@ -1108,7 +1216,8 @@ function decrementAfter(before: ConsolidationCounts, commands: MapCommand[]): Co
   const after = { ...before };
   const archived = new Set<string>();
   for (const command of commands) {
-    if (command.op !== 'update' || command.patch.archived !== true) continue;
+    const isArchive = command.op === 'archive' || (command.op === 'update' && command.patch.archived === true);
+    if (!isArchive) continue;
     const key = `${command.collection}/${command.id}`;
     if (archived.has(key)) continue;
     archived.add(key);
@@ -1132,10 +1241,10 @@ function makeSuggestion(document: MapDocument, before: ConsolidationCounts, valu
 }
 
 function activeForConsolidation(document: MapDocument): { routes: Record<string, unknown>[]; nodes: Record<string, unknown>[]; edges: Record<string, unknown>[] } {
-  const routes = document.routes.filter((route) => route.archived !== true && route.shelved !== true);
+  const routes = document.routes.filter((route) => !hiddenState(route));
   const routeIds = new Set(routes.map((route) => String(route.id)));
-  const nodes = document.nodes.filter((node) => node.archived !== true && node.shelved !== true);
-  const edges = document.edges.filter((edge) => edge.archived !== true && edge.shelved !== true && (!edge.route || routeIds.has(String(edge.route))));
+  const nodes = document.nodes.filter((node) => visibleNode(document, node));
+  const edges = document.edges.filter((edge) => visibleEdge(document, edge) && (!edge.route || routeIds.has(String(edge.route))));
   return { routes, nodes, edges };
 }
 

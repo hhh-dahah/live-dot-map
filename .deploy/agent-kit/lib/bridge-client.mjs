@@ -1,20 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { MCP_TOOL_NAMES } from './tool-definitions.generated.mjs';
 
 /**
  * The seven tools are intentionally kept in one place.  Adapters must not
  * invent a second map protocol: they all use this client and the local
  * bridge's command handler.
  */
-export const MCP_TOOL_NAMES = Object.freeze([
-  'map_get_context',
-  'map_list_human_updates',
-  'map_ack_human_updates',
-  'map_next_candidates',
-  'map_apply_commands',
-  'map_validate',
-  'map_checkpoint',
-  'map_plan_consolidation',
-]);
+export { MCP_TOOL_NAMES };
 
 export class BridgeClientError extends Error {
   constructor(code, message, { status = 500, details, cause } = {}) {

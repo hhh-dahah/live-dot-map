@@ -106,7 +106,7 @@ export function composeFallbackDocument(sourceDocument, canvasSnapshot, options 
     });
   }
   const validation = validateMapDocument(output);
-  if (!validation.ok) throw new Error(`降级模式不能安全导出此地图：${validation.errors.join('；')}`);
+  if (!validation.ok) throw new Error(`当前模式不能安全导出此地图：${validation.errors.join('；')}`);
   return output;
 }
 

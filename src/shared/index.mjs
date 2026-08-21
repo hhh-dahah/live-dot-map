@@ -8,7 +8,6 @@ var MAX_NAME = 80;
 var MAX_ANN = 4e3;
 var MAX_AGENT_OBJECTS_PER_ENVELOPE = 10;
 var MAX_AGENT_NEW_NODES_PER_ENVELOPE = 5;
-var MAX_AGENT_MILESTONES_PER_ENVELOPE = 2;
 var MAX_ACTIVE_NODES = 30;
 var MAX_INITIAL_MAP_NODES = 15;
 function clone(value) {
@@ -50,7 +49,7 @@ function documentMapDir(document) {
 }
 function stableMarkdownPath(collection, id, mapDir = ".live-dot-map") {
   if (!ID.test(id)) throw mapError("INVALID_ID", 400, "\u5BF9\u8C61 ID \u65E0\u6548");
-  return collection === "nodes" ? `${mapDir}/nodes/${id}.md` : `${mapDir}/routes/${id}.md`;
+  return collection === "nodes" ? `${mapDir}/nodes/${id}/index.md` : `${mapDir}/routes/${id}/index.md`;
 }
 function createEmptyMap(options = {}) {
   const now = utcNow(options.now);
@@ -62,6 +61,7 @@ function createEmptyMap(options = {}) {
     lastEventId: 0,
     name: String(options.name ?? "\u672A\u547D\u540D\u5730\u56FE").slice(0, MAX_NAME),
     ...options.mapDir ? { mapDir: options.mapDir } : {},
+    bundleLayoutVersion: 1,
     createdAt: now,
     updatedAt: now,
     view: { x: 0, y: 0, k: 1 },
@@ -152,6 +152,10 @@ function validateBaseObject(item, label, ids, errors) {
   if (typeof item.updatedBy !== "string") errors.push(`${label}.updatedBy \u7F3A\u5931`);
   if (item.createdBy !== void 0 && typeof item.createdBy !== "string") errors.push(`${label}.createdBy \u65E0\u6548`);
   if (!Number.isInteger(item.updatedRevision) || Number(item.updatedRevision) < 0) errors.push(`${label}.updatedRevision \u65E0\u6548`);
+  if (item.archived !== void 0 && typeof item.archived !== "boolean") errors.push(`${label}.archived \u65E0\u6548`);
+  if (item.archivedAt !== void 0 && (typeof item.archivedAt !== "string" || !ISO_MS.test(item.archivedAt))) errors.push(`${label}.archivedAt \u5FC5\u987B\u662F\u6BEB\u79D2 UTC`);
+  if (item.archivedBy !== void 0 && typeof item.archivedBy !== "string") errors.push(`${label}.archivedBy \u65E0\u6548`);
+  if (item.archiveReason !== void 0 && (typeof item.archiveReason !== "string" || item.archiveReason.length > MAX_ANN)) errors.push(`${label}.archiveReason \u65E0\u6548\u6216\u8FC7\u957F`);
   return true;
 }
 function normalizeNodeKind(value) {
@@ -210,17 +214,6 @@ function validateMapDocument(value) {
   for (const [i, node] of byCollection.nodes.entries()) {
     if (node.kind !== void 0 && !["goal", "problem", "result"].includes(String(node.kind))) errors.push(`nodes[${i}].kind \u65E0\u6548`);
     if (node.route !== null && node.route !== void 0 && !routeIds.has(String(node.route))) errors.push(`nodes[${i}].route \u5F15\u7528\u4E0D\u5B58\u5728`);
-    if (node.milestone !== void 0) {
-      const milestone = node.milestone;
-      if (!isObject(milestone) || !["pending", "approved", "changes_requested"].includes(String(milestone.status))) {
-        errors.push(`nodes[${i}].milestone \u65E0\u6548`);
-      } else {
-        if (milestone.origin !== void 0 && !["human_created", "agent_created"].includes(String(milestone.origin))) errors.push(`nodes[${i}].milestone.origin \u65E0\u6548`);
-        if (milestone.level !== void 0 && !["project", "route", "work"].includes(String(milestone.level))) errors.push(`nodes[${i}].milestone.level \u65E0\u6548`);
-        if (milestone.createdBy !== void 0 && typeof milestone.createdBy !== "string") errors.push(`nodes[${i}].milestone.createdBy \u65E0\u6548`);
-        if (milestone.updatedBy !== void 0 && typeof milestone.updatedBy !== "string") errors.push(`nodes[${i}].milestone.updatedBy \u65E0\u6548`);
-      }
-    }
   }
   for (const [i, ann] of byCollection.anns.entries()) {
     if (typeof ann.text !== "string" || ann.text.length > MAX_ANN) errors.push(`anns[${i}].text \u65E0\u6548\u6216\u8FC7\u957F`);
@@ -245,49 +238,40 @@ function touch(item, actor, revision, now) {
   item.updatedBy = actor;
   item.updatedRevision = revision;
 }
+function archiveItem(item, actor, revision, now, reason) {
+  item.archived = true;
+  item.archivedAt = now;
+  item.archivedBy = actor;
+  if (reason === void 0 || reason === null || reason === "") delete item.archiveReason;
+  else if (typeof reason !== "string" || reason.length > MAX_ANN) throw mapError("INVALID_ARCHIVE_REASON", 422, "\u5F52\u6863\u539F\u56E0\u65E0\u6548\u6216\u8FC7\u957F");
+  else item.archiveReason = reason;
+  touch(item, actor, revision, now);
+}
+function restoreItem(item, actor, revision, now) {
+  delete item.archived;
+  delete item.archivedAt;
+  delete item.archivedBy;
+  delete item.archiveReason;
+  touch(item, actor, revision, now);
+}
+function markLegacyTranslated(document) {
+  Object.defineProperty(document, "legacyTranslated", {
+    value: true,
+    enumerable: false,
+    configurable: true
+  });
+}
 function assertName(value) {
   if (typeof value !== "string" || value.trim().length === 0 || value.length > MAX_NAME) throw mapError("INVALID_NAME", 422, "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u4E14\u4E0D\u80FD\u8D85\u8FC7 80 \u5B57");
 }
 function isAgent(actor) {
   return typeof actor === "string" && actor.startsWith("agent:");
 }
-function milestoneOrigin(actor) {
-  if (actor === "human") return "human_created";
-  if (isAgent(actor)) return "agent_created";
-  return void 0;
-}
-function normalizeMilestone(value, actor, now, revision, existing) {
-  if (!isObject(value)) throw mapError("INVALID_MILESTONE", 422, "\u91CC\u7A0B\u7891\u5FC5\u987B\u662F\u5BF9\u8C61");
-  const merged = { ...existing ?? {}, ...cleanRecord(value, "milestone") };
-  if (!["pending", "approved", "changes_requested"].includes(String(merged.status))) throw mapError("INVALID_MILESTONE", 422, "\u91CC\u7A0B\u7891\u72B6\u6001\u65E0\u6548");
-  if (merged.level !== void 0 && !["project", "route", "work"].includes(String(merged.level))) throw mapError("INVALID_MILESTONE_LEVEL", 422, "\u91CC\u7A0B\u7891\u5C42\u7EA7\u5FC5\u987B\u662F project\u3001route \u6216 work");
-  const origin = milestoneOrigin(actor);
-  if (existing?.origin !== void 0) merged.origin = existing.origin;
-  else if (origin) merged.origin = origin;
-  merged.level = merged.level === void 0 ? "project" : merged.level;
-  if (existing?.createdBy !== void 0) merged.createdBy = existing.createdBy;
-  else merged.createdBy = actor;
-  merged.updatedBy = actor;
-  if (existing?.createdAt !== void 0) merged.createdAt = existing.createdAt;
-  else merged.createdAt = now;
-  merged.updatedAt = now;
-  merged.updatedRevision = revision;
-  return merged;
-}
-function assertAgentMilestoneAllowed(value) {
-  if (!isObject(value)) return;
-  const level = value.level;
-  if (level === "work") {
-    throw mapError("AGENT_WORK_MILESTONE_FORBIDDEN", 422, "Agent \u53EA\u80FD\u521B\u5EFA\u9879\u76EE\u7EA7\u6216\u8DEF\u7EBF\u7EA7\u5927\u8282\u70B9\uFF0C\u4E0D\u80FD\u628A\u6267\u884C\u788E\u7247\u5EFA\u6210\u91CC\u7A0B\u7891", {
-      suggestion: "\u5408\u5E76\u4E3A\u9879\u76EE/\u8DEF\u7EBF\u9636\u6BB5\uFF0C\u6216\u628A\u6267\u884C\u7EC6\u8282\u5199\u5165 Markdown"
-    });
-  }
-}
 function assertAgentCurationAllowed(value, actor) {
   if (!isAgent(actor)) return;
-  const fields = ["archived", "shelved"].filter((field) => value[field] === true);
+  const fields = ["shelved"].filter((field) => value[field] === true);
   if (!fields.length) return;
-  throw mapError("HUMAN_APPROVAL_REQUIRED", 403, "Agent \u4E0D\u80FD\u76F4\u63A5\u5F52\u6863\u6216\u6401\u7F6E\u5730\u56FE\u8BB0\u5FC6\uFF0C\u5FC5\u987B\u7B49\u5F85\u4EBA\u5728\u753B\u5E03\u5BA1\u6838\u540E\u63D0\u4EA4", {
+  throw mapError("HUMAN_APPROVAL_REQUIRED", 403, "Agent \u4E0D\u80FD\u76F4\u63A5\u6401\u7F6E\u5730\u56FE\u8BB0\u5FC6\uFF0C\u5FC5\u987B\u7B49\u5F85\u4EBA\u5728\u753B\u5E03\u5BA1\u6838\u540E\u63D0\u4EA4", {
     fields,
     suggestion: "\u8C03\u7528 map_plan_consolidation \u751F\u6210\u53EA\u8BFB\u5EFA\u8BAE\uFF0C\u7B49\u5F85\u4EBA\u7C7B\u5BA1\u6838"
   });
@@ -308,15 +292,12 @@ function applyOne(document, command, actor, revision, now) {
     if (command.collection !== "anns") assertName(value.name);
     if (command.collection === "nodes") {
       if (value.kind !== void 0 && !["goal", "problem", "result"].includes(String(value.kind))) throw mapError("INVALID_NODE_KIND", 422, "\u8282\u70B9 kind \u5FC5\u987B\u662F goal\u3001problem \u6216 result");
-      value.kind = normalizeNodeKind(value.kind ?? value.type);
-    }
-    if (command.collection === "nodes" && isAgent(actor)) {
-      assertAgentMilestoneAllowed(value.milestone);
-      if (value.level === "work") assertAgentMilestoneAllowed(value);
+      value.kind = normalizeNodeKind(value.kind ?? value.type) === "problem" ? "problem" : "goal";
+      delete value.milestone;
+      delete value.milestoneSuggestion;
     }
     assertAgentCurationAllowed(value, actor);
     const item = { ...value, createdAt: now, updatedAt: now, createdBy: actor, updatedBy: actor, updatedRevision: revision };
-    if (command.collection === "nodes" && value.milestone !== void 0) item.milestone = normalizeMilestone(value.milestone, actor, now, revision);
     if (command.collection === "nodes" && item.md === void 0) item.md = stableMarkdownPath("nodes", String(item.id), documentMapDir(document));
     if (command.collection === "edges" && item.md === void 0) item.md = stableMarkdownPath("edges", String(item.id), documentMapDir(document));
     if (command.collection === "anns") {
@@ -325,6 +306,13 @@ function applyOne(document, command, actor, revision, now) {
       item.priority = item.priority ?? "normal";
       item.attention = actor === "human" ? "new" : item.attention ?? "acknowledged";
       item.acknowledgements = [];
+    }
+    if (value.archived === true) {
+      archiveItem(item, actor, revision, now, value.archiveReason);
+    } else {
+      delete item.archivedAt;
+      delete item.archivedBy;
+      delete item.archiveReason;
     }
     getList(document, command.collection).push(item);
     return;
@@ -336,49 +324,44 @@ function applyOne(document, command, actor, revision, now) {
     if ("name" in patch) assertName(patch.name);
     if (command.collection === "nodes" && "kind" in patch) {
       if (!["goal", "problem", "result"].includes(String(patch.kind))) throw mapError("INVALID_NODE_KIND", 422, "\u8282\u70B9 kind \u5FC5\u987B\u662F goal\u3001problem \u6216 result");
+      patch.kind = patch.kind === "problem" ? "problem" : "goal";
     }
     assertAgentCurationAllowed(patch, actor);
-    if (command.collection === "nodes" && isObject(patch.milestone)) {
-      if (isAgent(actor)) {
-        assertAgentMilestoneAllowed(patch.milestone);
-      }
-      patch.milestone = normalizeMilestone(patch.milestone, actor, now, revision, isObject(item.milestone) ? item.milestone : void 0);
+    if (command.collection === "nodes") {
+      delete patch.milestone;
+      delete patch.milestoneSuggestion;
     }
+    const archiveState = patch.archived;
+    const archiveReason = patch.archiveReason;
+    delete patch.archived;
+    delete patch.archivedAt;
+    delete patch.archivedBy;
+    delete patch.archiveReason;
     Object.assign(item, patch);
     if (command.collection === "anns" && actor === "human") {
       item.source = "human";
       item.attention = "new";
       if (!Array.isArray(item.acknowledgements)) item.acknowledgements = [];
     }
-    touch(item, actor, revision, now);
+    if (archiveState === true) archiveItem(item, actor, revision, now, archiveReason);
+    else if (archiveState === false) restoreItem(item, actor, revision, now);
+    else touch(item, actor, revision, now);
+    return;
+  }
+  if (command.op === "archive") {
+    const item = findItem(document, command.collection, command.id);
+    archiveItem(item, actor, revision, now, command.archiveReason);
+    return;
+  }
+  if (command.op === "restore") {
+    const item = findItem(document, command.collection, command.id);
+    restoreItem(item, actor, revision, now);
     return;
   }
   if (command.op === "delete") {
-    if (actor.startsWith("agent:")) throw mapError("HUMAN_APPROVAL_REQUIRED", 403, "Agent \u4E0D\u80FD\u76F4\u63A5\u5220\u9664\u5BF9\u8C61");
-    const list = getList(document, command.collection);
-    const index = list.findIndex((entry) => entry.id === command.id);
-    if (index < 0) return;
-    if (command.collection === "nodes") {
-      for (const route of document.routes) {
-        if (route.currentNodeId === command.id) {
-          delete route.currentNodeId;
-          touch(route, actor, revision, now);
-        }
-      }
-      document.edges = document.edges.filter((edge) => edge.from !== command.id);
-      for (const edge of document.edges) {
-        if (edge.to === command.id) {
-          edge.to = null;
-          edge.status = "pending";
-          edge.dx = typeof edge.dx === "number" ? edge.dx : 120;
-          edge.dy = typeof edge.dy === "number" ? edge.dy : 0;
-          touch(edge, actor, revision, now);
-        }
-      }
-      document.anns = document.anns.filter((ann) => !(isObject(ann.target) && ann.target.kind === "node" && ann.target.id === command.id));
-    }
-    if (command.collection === "edges") document.anns = document.anns.filter((ann) => !(isObject(ann.target) && ann.target.kind === "edge" && ann.target.id === command.id));
-    list.splice(index, 1);
+    const item = getList(document, command.collection).find((entry) => entry.id === command.id);
+    if (!item) return;
+    archiveItem(item, actor, revision, now);
     return;
   }
   if (command.op === "set_view" || command.op === "set_ui") {
@@ -427,10 +410,7 @@ function applyOne(document, command, actor, revision, now) {
     return;
   }
   if (command.op === "suggest_milestone") {
-    const node = findItem(document, "nodes", command.nodeId);
-    node.milestoneSuggestion = { status: command.status, reviewNote: command.reviewNote ?? null, suggestedBy: actor, suggestedAt: now };
-    touch(node, actor, revision, now);
-    return;
+    throw mapError("FEATURE_RETIRED", 410, "\u91CC\u7A0B\u7891\u529F\u80FD\u5DF2\u4E0B\u7EBF\uFF1B\u8BF7\u4F7F\u7528\u666E\u901A\u8282\u70B9\u3001\u95EE\u9898\u8282\u70B9\u548C\u8DEF\u7EBF\u8868\u8FBE\u9636\u6BB5\u5224\u65AD");
   }
   throw mapError("UNKNOWN_COMMAND", 400, `\u4E0D\u652F\u6301\u7684\u5730\u56FE\u547D\u4EE4\uFF1A${String(command?.op ?? "")}`);
 }
@@ -446,6 +426,7 @@ function applyMapCommand(document, command, options = {}) {
   next.updatedAt = now;
   const result = validateMapDocument(next);
   if (!result.ok) throw mapError("COMMAND_INVALID_RESULT", 422, "\u547D\u4EE4\u4F1A\u4EA7\u751F\u65E0\u6548\u5730\u56FE", result.errors);
+  if (command.op === "delete") markLegacyTranslated(next);
   return next;
 }
 function applyCommandEnvelope(document, envelope, options = {}) {
@@ -454,13 +435,11 @@ function applyCommandEnvelope(document, envelope, options = {}) {
   if (!Number.isInteger(envelope.baseRevision) || envelope.baseRevision < 0) throw mapError("INVALID_ENVELOPE", 400, "baseRevision \u65E0\u6548");
   const agentInitialMap = isAgent(envelope.actor) && (document.nodes.length === 0 || isObject(document.ui?.initialization) && document.ui.initialization.status === "in_progress");
   if (isAgent(envelope.actor)) {
-    const objectCommands = envelope.commands.filter((command) => ["create", "update", "delete"].includes(command.op));
+    const objectCommands = envelope.commands.filter((command) => ["create", "update", "archive", "restore", "delete"].includes(command.op));
     const nodeCreates = envelope.commands.filter((command) => command.op === "create" && command.collection === "nodes");
-    const milestoneCreates = nodeCreates.filter((command) => isObject(command.value) && command.value.milestone !== void 0);
     if (objectCommands.length > MAX_AGENT_OBJECTS_PER_ENVELOPE) throw mapError("AGENT_BATCH_LIMIT", 422, "Agent \u5355\u6B21\u6700\u591A\u4FEE\u6539 10 \u4E2A\u5BF9\u8C61\uFF0C\u8BF7\u5148\u5408\u5E76\u6216\u8BA9\u4EBA\u9009\u62E9", { maxObjects: MAX_AGENT_OBJECTS_PER_ENVELOPE, suggestion: "\u538B\u7F29\u6267\u884C\u788E\u7247\uFF0C\u4FDD\u7559\u9879\u76EE/\u8DEF\u7EBF\u7EA7\u7ED3\u8BBA" });
     if (nodeCreates.length > MAX_AGENT_NEW_NODES_PER_ENVELOPE) throw mapError("AGENT_NODE_LIMIT", 422, "Agent \u5355\u6B21\u6700\u591A\u65B0\u589E 5 \u4E2A\u6D3B\u8DC3\u8282\u70B9\uFF0C\u8BF7\u5148\u5408\u5E76\u6216\u5206\u9636\u6BB5\u63D0\u4EA4", { maxNodes: MAX_AGENT_NEW_NODES_PER_ENVELOPE, suggestion: "\u53EA\u4FDD\u7559\u76EE\u6807\u3001\u9636\u6BB5\u3001\u7ED3\u679C\u6216\u5BA1\u6838\u95E8" });
-    if (milestoneCreates.length > MAX_AGENT_MILESTONES_PER_ENVELOPE) throw mapError("AGENT_MILESTONE_LIMIT", 422, "Agent \u5355\u6B21\u6700\u591A\u65B0\u589E 2 \u4E2A\u91CC\u7A0B\u7891\u5927\u8282\u70B9", { maxMilestones: MAX_AGENT_MILESTONES_PER_ENVELOPE, suggestion: "\u66F4\u65B0\u6216\u5408\u5E76\u5DF2\u6709\u9636\u6BB5\uFF0C\u4E0D\u8981\u521B\u5EFA\u6267\u884C\u788E\u7247" });
-    const activeNodes = document.nodes.filter((node) => node.archived !== true && node.shelved !== true).length;
+    const activeNodes = document.nodes.filter((node) => visibleNode(document, node)).length;
     if (activeNodes + nodeCreates.length >= MAX_ACTIVE_NODES && nodeCreates.length) throw mapError("AGENT_ACTIVE_NODE_LIMIT", 422, "\u6D3B\u8DC3\u8282\u70B9\u5C06\u8FBE\u5230 30 \u4E2A\uFF0CAgent \u5FC5\u987B\u5148\u6574\u7406\u3001\u5408\u5E76\u6216\u5F52\u6863", { maxActiveNodes: MAX_ACTIVE_NODES, suggestion: "\u8BF7\u8BA9\u4EBA\u9009\u62E9\u6574\u7406\u8DEF\u7EBF" });
     if (agentInitialMap && activeNodes + nodeCreates.length > MAX_INITIAL_MAP_NODES) throw mapError("AGENT_INITIAL_MAP_LIMIT", 422, "\u9996\u6B21\u521D\u59CB\u5316\u5730\u56FE\u6700\u591A\u4FDD\u7559 15 \u4E2A\u6D3B\u8DC3\u8282\u70B9\uFF0C\u8BF7\u538B\u7F29\u4E3A\u76EE\u6807\u3001\u9636\u6BB5\u3001\u8DEF\u7EBF\u548C\u5F85\u5224\u65AD\u4E8B\u9879", { maxInitialNodes: MAX_INITIAL_MAP_NODES, suggestion: "\u4E0D\u8981\u6309\u6587\u4EF6\u3001\u76EE\u5F55\u3001\u51FD\u6570\u6216\u804A\u5929\u8F6E\u6B21\u5EFA\u8282\u70B9" });
   }
@@ -474,10 +453,11 @@ function applyCommandEnvelope(document, envelope, options = {}) {
   next.updatedAt = now;
   const validation = validateMapDocument(next);
   if (!validation.ok) throw mapError("COMMAND_INVALID_RESULT", 422, "\u547D\u4EE4\u4F1A\u4EA7\u751F\u65E0\u6548\u5730\u56FE", validation.errors);
+  if (envelope.commands.some((command) => command.op === "delete")) markLegacyTranslated(next);
   return next;
 }
 function commandTouches(command) {
-  if (command.op === "create" || command.op === "delete") return [`${command.collection}/${command.op === "create" ? String(command.value.id ?? "*") : command.id}/*`];
+  if (command.op === "create" || command.op === "delete" || command.op === "archive" || command.op === "restore") return [`${command.collection}/${command.op === "create" ? String(command.value.id ?? "*") : command.id}/*`];
   if (command.op === "update") return Object.keys(command.patch).map((key) => `${command.collection}/${command.id}/${key}`);
   if (command.op === "set_view" || command.op === "set_ui") return Object.keys(command.patch).map((key) => `${command.op === "set_view" ? "view" : "ui"}/${key}`);
   if (command.op === "set_meta") return ["meta/name"];
@@ -506,6 +486,76 @@ function ageScore(updatedAt, now) {
   if (!Number.isFinite(timestamp)) return 0;
   const days = Math.max(0, (now.getTime() - timestamp) / 864e5);
   return Math.max(0, 60 - Math.floor(days) * 5);
+}
+function hiddenState(item) {
+  return item.archived === true || item.shelved === true;
+}
+function visibleRoute(document, routeId, includeHistory = false) {
+  if (includeHistory || typeof routeId !== "string" || !routeId) return true;
+  const route = document.routes.find((entry) => entry.id === routeId);
+  return !route || !hiddenState(route);
+}
+function visibleNode(document, node, includeHistory = false) {
+  return includeHistory || !hiddenState(node) && visibleRoute(document, node.route);
+}
+function visibleEdge(document, edge, includeHistory = false) {
+  if (includeHistory) return true;
+  if (hiddenState(edge) || !visibleRoute(document, edge.route)) return false;
+  const nodeById = new Map(document.nodes.map((node) => [String(node.id), node]));
+  const from = typeof edge.from === "string" ? nodeById.get(edge.from) : void 0;
+  const to = typeof edge.to === "string" ? nodeById.get(edge.to) : void 0;
+  return (!from || visibleNode(document, from)) && (!to || visibleNode(document, to));
+}
+function visibleAnnotation(document, ann, includeHistory = false) {
+  if (includeHistory || hiddenState(ann)) return includeHistory || !hiddenState(ann);
+  if (!visibleRoute(document, ann.route)) return false;
+  const target = ann.target;
+  if (!isObject(target)) return true;
+  if (target.kind === "node") {
+    const node = document.nodes.find((entry) => entry.id === target.id);
+    return !node || visibleNode(document, node);
+  }
+  if (target.kind === "edge") {
+    const edge = document.edges.find((entry) => entry.id === target.id);
+    return !edge || visibleEdge(document, edge);
+  }
+  if (target.kind === "route") return visibleRoute(document, target.id);
+  return true;
+}
+function hiddenMarkdownPaths(document) {
+  const exact = /* @__PURE__ */ new Set();
+  const prefixes = /* @__PURE__ */ new Set();
+  const mapDir = documentMapDir(document).replace(/\\/g, "/").replace(/\/$/, "");
+  const add = (value) => {
+    if (typeof value !== "string" || !value.trim()) return;
+    const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+    exact.add(normalized);
+    const index = normalized.lastIndexOf("/");
+    if (normalized.endsWith("/index.md") && index > 0) prefixes.add(`${normalized.slice(0, index)}/`);
+  };
+  const hideOwner = (collection, item) => {
+    const id = String(item.id);
+    add(item.md);
+    add(stableMarkdownPath(collection, id, mapDir));
+    add(`${mapDir}/${collection === "nodes" ? "nodes" : "routes"}/${id}/index.md`);
+    prefixes.add(`${mapDir}/${collection === "nodes" ? "nodes" : "routes"}/${id}/`.toLowerCase());
+  };
+  for (const route of document.routes) if (hiddenState(route)) {
+    add(route.md);
+    add(`${mapDir}/routes/${String(route.id)}/index.md`);
+    prefixes.add(`${mapDir}/routes/${String(route.id)}/`.toLowerCase());
+  }
+  for (const node of document.nodes) if (!visibleNode(document, node)) hideOwner("nodes", node);
+  for (const edge of document.edges) if (!visibleEdge(document, edge)) hideOwner("edges", edge);
+  return { exact, prefixes: [...prefixes] };
+}
+function visibleMarkdown(document, docs, includeHistory = false) {
+  if (includeHistory) return docs;
+  const hidden = hiddenMarkdownPaths(document);
+  return docs.filter((doc) => {
+    const path = String(doc.path).replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+    return !hidden.exact.has(path) && !hidden.prefixes.some((prefix) => path.startsWith(prefix));
+  });
 }
 function headingContent(text, heading) {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -556,7 +606,14 @@ function retrieveContext(document, query, options = {}) {
   const limit = Math.max(1, Math.min(12, Number.isInteger(options.limit) ? Number(options.limit) : 12));
   const now = new Date(options.now ?? Date.now());
   const all = COLLECTIONS.flatMap((kind) => document[kind].map((item) => ({ kind, item })));
-  const active = all.filter(({ item, kind }) => options.includeHistory || !(item.archived === true || item.shelved === true) && !(kind === "edges" && document.routes.some((route) => route.id === item.route && route.archived === true)));
+  const includeHistory = options.includeHistory === true;
+  const active = all.filter(({ item, kind }) => {
+    if (includeHistory) return true;
+    if (kind === "routes") return !hiddenState(item);
+    if (kind === "nodes") return visibleNode(document, item);
+    if (kind === "edges") return visibleEdge(document, item);
+    return visibleAnnotation(document, item);
+  });
   const seeds = /* @__PURE__ */ new Set();
   for (const { item } of active) {
     const id = String(item.id ?? "").toLowerCase();
@@ -613,10 +670,6 @@ function retrieveContext(document, query, options = {}) {
       score += 700;
       reasons.push("\u672A\u89E3\u51B3\u95EE\u9898\u8282\u70B9");
     }
-    if (kind === "nodes" && isObject(item.milestone) && item.milestone.status === "pending") {
-      score += 500;
-      reasons.push("\u91CC\u7A0B\u7891\u5F85\u5BA1\u6838");
-    }
     if (oneHop.has(id)) {
       score += 300;
       reasons.push("\u660E\u786E\u76EE\u6807\u7684\u4E00\u8DF3\u90BB\u5C45");
@@ -648,7 +701,7 @@ function retrieveContext(document, query, options = {}) {
     }
   }
   ranked.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-  const markdownScores = bm25(terms, options.markdown ?? []);
+  const markdownScores = bm25(terms, visibleMarkdown(document, options.markdown ?? [], includeHistory));
   const max = Math.max(0, ...markdownScores.map((entry) => entry.score));
   const markdown = markdownScores.map(({ doc, score }) => ({
     kind: "markdown",
@@ -688,7 +741,7 @@ function findExplorationAlternatives(document, currentNodeId = null, options = {
     if (typeof edge.route === "string" && edge.route) return edge.route;
     return routeForNode(sourceNodeId);
   };
-  const failedContexts = document.edges.filter((edge) => edge.archived !== true && edge.shelved !== true && edge.status === "failed").map((edge) => {
+  const failedContexts = document.edges.filter((edge) => visibleEdge(document, edge) && edge.status === "failed").map((edge) => {
     const sourceNodeId = resolveSourceNode(edge);
     const sourceRouteId = routeForNode(sourceNodeId) ?? resolveRouteId(edge, sourceNodeId);
     const terms = tokenize(String(edge.name ?? ""));
@@ -702,10 +755,7 @@ function findExplorationAlternatives(document, currentNodeId = null, options = {
   const failedTerms = new Set(relevantFailures.flatMap((failure) => failure.terms));
   const failedKeys = new Set(relevantFailures.map((failure) => failure.key));
   const active = document.edges.filter((edge) => {
-    if (edge.archived === true || edge.shelved === true || !["pending", "success"].includes(String(edge.status))) return false;
-    const edgeRouteId = typeof edge.route === "string" ? edge.route : null;
-    if (edgeRouteId && routeById.get(edgeRouteId)?.archived === true) return false;
-    return true;
+    return visibleEdge(document, edge) && ["pending", "success"].includes(String(edge.status));
   });
   const rank = (edge) => {
     const sourceNodeId = resolveSourceNode(edge);
@@ -749,10 +799,9 @@ function buildProjectProjection(document, options = {}) {
   const now = new Date(options.now ?? Date.now());
   const maxRoutes = Math.max(1, Math.min(12, Number.isInteger(options.maxRoutes) ? Number(options.maxRoutes) : 6));
   const maxCandidates = Math.max(1, Math.min(12, Number.isInteger(options.maxCandidates) ? Number(options.maxCandidates) : 6));
-  const activeRoutes = document.routes.filter((route) => route.archived !== true && route.shelved !== true);
-  const routeById = new Map(activeRoutes.map((route) => [String(route.id), route]));
-  const activeNodes = document.nodes.filter((node) => node.archived !== true && node.shelved !== true);
-  const activeEdges = document.edges.filter((edge) => edge.archived !== true && edge.shelved !== true && (!edge.route || !document.routes.some((route) => route.id === edge.route && route.archived === true)));
+  const activeRoutes = document.routes.filter((route) => !hiddenState(route));
+  const activeNodes = document.nodes.filter((node) => visibleNode(document, node));
+  const activeEdges = document.edges.filter((edge) => visibleEdge(document, edge));
   const nodesByRoute = /* @__PURE__ */ new Map();
   for (const node of activeNodes) {
     const route = typeof node.route === "string" ? node.route : "";
@@ -793,9 +842,9 @@ function buildProjectProjection(document, options = {}) {
     return timestamp ? Math.max(0, (now.getTime() - timestamp) / 864e5) : 999;
   };
   const stalledRoutes = activeRoutes.filter((route) => staleDays(route) >= 7 || (nodesByRoute.get(String(route.id)) ?? []).length === 0).sort((a, b) => staleDays(b) - staleDays(a) || String(a.id).localeCompare(String(b.id))).slice(0, 6).map((route) => ({ id: String(route.id), name: String(route.name ?? route.id), reason: (nodesByRoute.get(String(route.id)) ?? []).length === 0 ? "\u8DEF\u7EBF\u6682\u65E0\u8282\u70B9" : `\u5DF2 ${Math.floor(staleDays(route))} \u5929\u6CA1\u6709\u66F4\u65B0`, updatedAt: typeof route.updatedAt === "string" ? route.updatedAt : null }));
-  const humanUpdates = document.anns.filter((ann) => ann.source === "human" && ["new", "delivered"].includes(String(ann.attention))).sort((a, b) => (String(a.attention) === "new" ? -1 : 1) - (String(b.attention) === "new" ? -1 : 1) || updatedTime(b) - updatedTime(a)).slice(0, 6).map((ann) => ({ id: String(ann.id), text: String(ann.text ?? ""), attention: String(ann.attention), priority: String(ann.priority ?? "normal"), target: clone(ann.target) }));
+  const humanUpdates = document.anns.filter((ann) => visibleAnnotation(document, ann) && ann.source === "human" && ["new", "delivered"].includes(String(ann.attention))).sort((a, b) => (String(a.attention) === "new" ? -1 : 1) - (String(b.attention) === "new" ? -1 : 1) || updatedTime(b) - updatedTime(a)).slice(0, 6).map((ann) => ({ id: String(ann.id), text: String(ann.text ?? ""), attention: String(ann.attention), priority: String(ann.priority ?? "normal"), target: clone(ann.target) }));
   const problems = activeNodes.filter((node) => normalizeNodeKind(node.kind ?? node.type) === "problem" && node.resolved !== true).sort((a, b) => updatedTime(b) - updatedTime(a) || String(a.id).localeCompare(String(b.id))).slice(0, 12).map((node) => ({ id: String(node.id), name: String(node.name ?? node.id), kind: "problem", resolved: false, routeId: typeof node.route === "string" ? node.route : null, updatedAt: String(node.updatedAt ?? "") }));
-  const milestones = activeNodes.filter((node) => isObject(node.milestone) && ["pending", "changes_requested"].includes(String(node.milestone.status))).sort((a, b) => updatedTime(b) - updatedTime(a) || String(a.id).localeCompare(String(b.id))).slice(0, 6).map((node) => ({ id: String(node.id), name: String(node.name ?? node.id), status: String(node.milestone.status), origin: String(node.milestone.origin ?? "unknown"), routeId: typeof node.route === "string" ? node.route : null }));
+  const milestones = [];
   return {
     totalGoal: String(document.goal ?? document.name ?? "\u672A\u547D\u540D\u5730\u56FE"),
     mainRoute: { id: mainRoute ? String(mainRoute.id) : null, name: mainRoute ? String(mainRoute.name ?? mainRoute.id) : "\u6682\u65E0\u4E3B\u8DEF\u7EBF", status: mainRoute ? String(mainRoute.status ?? "active") : "empty", currentNodeId },
@@ -811,8 +860,7 @@ function buildProjectProjection(document, options = {}) {
 }
 function autonomyDecision(document, candidates) {
   const reasons = [];
-  if (document.anns.some((ann) => ann.attention === "new" || ann.attention === "delivered")) reasons.push("\u5B58\u5728\u5C1A\u672A\u786E\u8BA4\u7684\u4EBA\u7C7B\u6807\u6CE8");
-  if (document.nodes.some((node) => isObject(node.milestone) && node.milestone.status === "pending")) reasons.push("\u5B58\u5728\u5F85\u5BA1\u6838\u91CC\u7A0B\u7891");
+  if (document.anns.some((ann) => visibleAnnotation(document, ann) && (ann.attention === "new" || ann.attention === "delivered"))) reasons.push("\u5B58\u5728\u5C1A\u672A\u786E\u8BA4\u7684\u4EBA\u7C7B\u6807\u6CE8");
   const projection = buildProjectProjection(document);
   const currentNodeId = projection.current.nodeId;
   const currentRouteId = projection.current.routeId ?? projection.mainRoute.id;
@@ -844,7 +892,7 @@ function autonomyDecision(document, candidates) {
   if (crossRoute.length > 0) reasons.push("\u5B58\u5728\u9700\u8981\u4EBA\u5DE5\u786E\u8BA4\u7684\u8DE8\u8DEF\u7EBF\u5019\u9009");
   const majorNewDirection = crossRoute.some((candidate) => !candidate.reasons.some((reason) => reason.includes("\u4E00\u8DF3")));
   if (majorNewDirection) reasons.push("\u5B58\u5728\u91CD\u5927\u65B0\u65B9\u5411\uFF0C\u4E0D\u80FD\u81EA\u52A8\u6269\u5F20\u8DEF\u7EBF");
-  const activeNodes = document.nodes.filter((node) => node.archived !== true && node.shelved !== true).length;
+  const activeNodes = document.nodes.filter((node) => visibleNode(document, node)).length;
   if (activeNodes >= 20) reasons.push(`\u6D3B\u8DC3\u5BF9\u8C61\u6570\u91CF\u8FBE\u5230\u6574\u7406\u9608\u503C\uFF08${activeNodes} \u4E2A\u8282\u70B9\uFF09`);
   if (uniqueCandidateIds.size > 10) reasons.push(`\u5355\u6279\u5019\u9009\u5BF9\u8C61\u8D85\u8FC7 10 \u4E2A\uFF08${uniqueCandidateIds.size}\uFF09`);
   const first = candidates[0]?.score ?? 0;
@@ -873,9 +921,9 @@ function similarText(left, right) {
   return overlap > 0 && overlap / (leftTokens.size + rightTokens.size - overlap) >= 0.5;
 }
 function consolidationCounts(document) {
-  const activeRoutes = document.routes.filter((route) => route.archived !== true && route.shelved !== true);
-  const activeNodes = document.nodes.filter((node) => node.archived !== true && node.shelved !== true);
-  const activeEdges = document.edges.filter((edge) => edge.archived !== true && edge.shelved !== true && !document.routes.some((route) => route.id === edge.route && (route.archived === true || route.shelved === true)));
+  const activeRoutes = document.routes.filter((route) => !hiddenState(route));
+  const activeNodes = document.nodes.filter((node) => visibleNode(document, node));
+  const activeEdges = document.edges.filter((edge) => visibleEdge(document, edge));
   return {
     routes: document.routes.length,
     nodes: document.nodes.length,
@@ -906,7 +954,8 @@ function decrementAfter(before, commands) {
   const after = { ...before };
   const archived = /* @__PURE__ */ new Set();
   for (const command of commands) {
-    if (command.op !== "update" || command.patch.archived !== true) continue;
+    const isArchive = command.op === "archive" || command.op === "update" && command.patch.archived === true;
+    if (!isArchive) continue;
     const key = `${command.collection}/${command.id}`;
     if (archived.has(key)) continue;
     archived.add(key);
@@ -928,10 +977,10 @@ function makeSuggestion(document, before, value) {
   };
 }
 function activeForConsolidation(document) {
-  const routes = document.routes.filter((route) => route.archived !== true && route.shelved !== true);
+  const routes = document.routes.filter((route) => !hiddenState(route));
   const routeIds = new Set(routes.map((route) => String(route.id)));
-  const nodes = document.nodes.filter((node) => node.archived !== true && node.shelved !== true);
-  const edges = document.edges.filter((edge) => edge.archived !== true && edge.shelved !== true && (!edge.route || routeIds.has(String(edge.route))));
+  const nodes = document.nodes.filter((node) => visibleNode(document, node));
+  const edges = document.edges.filter((edge) => visibleEdge(document, edge) && (!edge.route || routeIds.has(String(edge.route))));
   return { routes, nodes, edges };
 }
 function successfulChains(edges) {

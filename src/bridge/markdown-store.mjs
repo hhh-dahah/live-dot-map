@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
 import {
   lstat,
   mkdir,
@@ -182,6 +181,9 @@ export class MarkdownStore {
 
   async write(requestedPath, content, { baseEtag } = {}) {
     if (typeof content !== 'string') throw new BridgeError('MARKDOWN_CONTENT_REQUIRED', 'Markdown 内容必须是文本', { status: 400 });
+    if (typeof baseEtag !== 'string' || baseEtag.length === 0) {
+      throw new BridgeError('MARKDOWN_BASE_ETAG_REQUIRED', '替换 Markdown 必须提供 baseEtag', { status: 400 });
+    }
     const bytes = Buffer.byteLength(content, 'utf8');
     if (bytes > MAX_MARKDOWN_BYTES) throw new BridgeError('MARKDOWN_TOO_LARGE', 'Markdown 内容超过 2 MiB 限制', { status: 413, details: { size: bytes, limit: MAX_MARKDOWN_BYTES } });
     const path = normalizeRelativePath(requestedPath);
@@ -201,7 +203,7 @@ export class MarkdownStore {
           if (error?.code !== 'MARKDOWN_NOT_FOUND') throw error;
           current = { path, content: '', exists: false, created: false, size: 0, etag: digest(''), updatedAt: null };
         }
-        if (baseEtag !== undefined && String(baseEtag) !== String(current?.etag ?? digest(''))) {
+        if (String(baseEtag) !== String(current?.etag ?? digest(''))) {
           throw new BridgeError('MARKDOWN_CONFLICT', 'Markdown 已被其他窗口或 Agent 修改', {
             status: 409,
             details: current ? { current: { path: current.path, content: current.content, size: current.size, etag: current.etag, updatedAt: current.updatedAt } } : { current: null },
@@ -223,25 +225,9 @@ export class MarkdownStore {
     }
   }
 
-  async reveal(requestedPath, { open = false } = {}) {
+  async reveal(requestedPath) {
     const { path, candidate } = await this.#target(requestedPath, { allowMissing: true });
     const exists = await stat(candidate).then(() => true).catch((error) => error?.code === 'ENOENT' ? false : Promise.reject(error));
-    let opened = false;
-    if (open) {
-      const target = exists ? candidate : dirname(candidate);
-      try {
-        const child = process.platform === 'win32'
-          ? spawn('explorer.exe', ['/select,', target], { detached: true, stdio: 'ignore' })
-          : process.platform === 'darwin'
-            ? spawn('open', ['-R', target], { detached: true, stdio: 'ignore' })
-            : spawn('xdg-open', [dirname(target)], { detached: true, stdio: 'ignore' });
-        child.once('error', () => {});
-        child.unref();
-        opened = true;
-      } catch {
-        opened = false;
-      }
-    }
-    return { path, exists, opened };
+    return { path, exists, opened: false };
   }
 }
