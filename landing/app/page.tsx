@@ -24,7 +24,7 @@ const features: Feature[] = [
   {
     title: "项目记忆可视化",
     description:
-      "您可以把项目的目标、尝试和结论画在一张地图上，不用翻聊天记录就能看清进展。",
+      "Agent 和您都可以把项目的目标、尝试和结论画在一张地图上，不用翻聊天记录就能看清进展。",
     src: "/media/feature-1.png",
     alt: "活点地图画布：节点与方案线组成的项目记忆地图",
     layout: "split",
