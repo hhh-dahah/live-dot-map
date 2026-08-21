@@ -30,9 +30,9 @@ const features: Feature[] = [
     layout: "split",
   },
   {
-    title: "仿生记忆架构",
+    title: "极度节省上下文",
     description:
-      "采用图结构加人工策展的海马体仿生架构，只保留最重要的项目上下文，冗余信息不会进入模型。",
+      "节点记概要，后端包记详细信息；Agent 智能索引，智慧又省钱，麻麻再也不用担心我的钱包啦。",
     src: "/media/feature-2.png",
     alt: "节点详情：策展后收进 Markdown 文件的记忆细节",
     layout: "split",
