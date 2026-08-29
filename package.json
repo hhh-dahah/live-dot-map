@@ -6,7 +6,7 @@
   "scripts": {
     "build:core": "node scripts/build-core.mjs",
     "build:app": "node scripts/build-app.mjs --output app.html && node scripts/build-app.mjs --output dist/app.v2.html",
-    "build:bridge": "node scripts/build-cli.mjs",
+    "build:bridge": "node scripts/sync-tool-definitions.mjs && node scripts/build-cli.mjs",
     "sync:agent-skill": "node scripts/sync-agent-skill.mjs",
     "verify:agent-skill": "node scripts/verify-agent-skill.mjs",
     "build:sea": "node scripts/build-sea.mjs",
@@ -21,6 +21,7 @@
     "verify:web": "npm run build:app && node --test tests/web/*.test.mjs tests/e2e/fallback-browser.mjs tests/e2e/performance.mjs",
     "verify:agents": "npm run build:core && npm run build:bridge && node --test tests/agent-kit/*.test.mjs tests/e2e/agent-cycle.mjs",
     "verify:real-codex": "node tests/e2e/real-codex-initialization.mjs",
+    "verify:real-clients": "node tests/e2e/real-client-smoke.mjs",
     "verify:installer": "npm run build:bridge && node scripts/verify-installer.mjs",
     "verify:release": "npm run build:deploy-runtime && npm run build:sea && npm run build:release-manifest && node scripts/verify-release.mjs",
     "verify:online": "node scripts/verify-online.mjs",

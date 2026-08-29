@@ -199,7 +199,7 @@ function mergeOwner(entry, owner) {
  * @param {{projectRoot:string,mapKey:string,document:object,includeHistory?:boolean}} input
  * @returns {Promise<{mapKey:string,mapDir:string,markdown:Array,assets:Array}>}
  */
-export async function collect({ projectRoot, mapKey, document, includeHistory = false } = {}) {
+export async function collect({ projectRoot, mapKey, document, includeHistory = false, mdIndex = null } = {}) {
   if (typeof projectRoot !== 'string' || !projectRoot.trim()) throw contextError('CONTEXT_PROJECT_REQUIRED', '上下文需要项目根目录', 400);
   if (!isSafeMapId(mapKey)) throw contextError('CONTEXT_MAP_INVALID', '上下文地图 ID 无效', 400, { mapKey });
   if (!document || typeof document !== 'object') throw contextError('CONTEXT_DOCUMENT_REQUIRED', '上下文需要当前地图文档', 400);
@@ -277,6 +277,35 @@ export async function collect({ projectRoot, mapKey, document, includeHistory = 
     result.assets.push(info);
   };
 
+  // 卡片摘要入上下文（全文不读，命中后由 map_read_markdown 下探）。
+  const addMarkdownFromCard = (card, owner) => {
+    const path = String(card?.path ?? '').replace(/\\/g, '/');
+    if (!path) return;
+    const existing = markdownByPath.get(path.toLowerCase());
+    if (existing) {
+      mergeOwner(existing, owner);
+      if (existing.source === 'custom') existing.source = 'bundle';
+      return;
+    }
+    const info = {
+      path,
+      text: String(card.summary ?? ''),
+      source: 'bundle',
+      ownerKind: owner.ownerKind,
+      ownerId: owner.ownerId,
+      isIndex: path.toLowerCase().endsWith('/index.md'),
+      archived: false,
+      size: Number(card.bytes ?? 0),
+      etag: String(card.etag ?? ''),
+      updatedAt: String(card.updatedAt ?? ''),
+      summaryOnly: true,
+      assets: Array.isArray(card.assets) ? card.assets : [],
+      owners: [{ ownerKind: owner.ownerKind, ownerId: owner.ownerId }],
+    };
+    markdownByPath.set(path.toLowerCase(), info);
+    result.markdown.push(info);
+  };
+
   const scanOwner = async (owner) => {
     const directory = join(mapRoot, owner.directoryKind, owner.ownerId);
     const ownerMetadata = await lstat(directory).catch((error) => error?.code === 'ENOENT' ? null : (() => { throw error; })());
@@ -284,6 +313,7 @@ export async function collect({ projectRoot, mapKey, document, includeHistory = 
     if (ownerMetadata.isSymbolicLink()) throw contextError('CONTEXT_SYMLINK_FORBIDDEN', '资料包对象目录不允许是符号链接', 403, { path: directory });
     if (!ownerMetadata.isDirectory()) throw contextError('CONTEXT_NOT_DIRECTORY', '资料包对象路径不是目录', 409, { path: directory });
     const entries = await readdir(directory, { withFileTypes: true });
+    const useIndex = mdIndex && typeof mdIndex.getOrRefreshCard === 'function';
     for (const entry of entries) {
       if (entry.name === '.archive' || entry.name.startsWith('.')) continue;
       const candidate = join(directory, entry.name);
@@ -291,8 +321,18 @@ export async function collect({ projectRoot, mapKey, document, includeHistory = 
       if (!metadata) continue;
       if (metadata.isSymbolicLink()) throw contextError('CONTEXT_SYMLINK_FORBIDDEN', '资料包文件不允许是符号链接', 403, { path: candidate });
       if (metadata.isDirectory()) continue;
-      if (/\.md$/i.test(entry.name)) await addMarkdown(candidate, owner, 'bundle');
-      else if (ASSET_TYPES[extname(entry.name).toLowerCase()]) await addAsset(candidate, owner, entry.name);
+      if (/\.md$/i.test(entry.name)) {
+        if (useIndex) {
+          // 卡片路径：lstat 指纹比对，命中用摘要，不读全文。
+          const card = await mdIndex.getOrRefreshCard({ mapRoot, relativePath: projectRelative(root, candidate) });
+          if (card) await addMarkdownFromCard(card, owner);
+          else await addMarkdown(candidate, owner, 'bundle');
+        } else {
+          await addMarkdown(candidate, owner, 'bundle');
+        }
+      } else if (ASSET_TYPES[extname(entry.name).toLowerCase()]) {
+        await addAsset(candidate, owner, entry.name);
+      }
     }
   };
 
@@ -322,6 +362,10 @@ export async function collect({ projectRoot, mapKey, document, includeHistory = 
 
   result.markdown.sort((left, right) => left.path.localeCompare(right.path, 'en'));
   result.assets.sort((left, right) => left.path.localeCompare(right.path, 'en'));
+  // 查询途中刷新过的卡片落盘（原子写；失败不影响返回）。
+  if (mdIndex && typeof mdIndex.persist === 'function') {
+    await mdIndex.persist().catch(() => {});
+  }
   return result;
 }
 

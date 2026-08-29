@@ -18,6 +18,7 @@ import {
   writeBridgeState,
 } from '../bridge/runtime-state.mjs';
 import { loadSharedAdapter } from '../bridge/shared-adapter.mjs';
+import { readCurrentProject, resolveProjectRootToUse } from '../bridge/current-project.mjs';
 import { doctorProject, installProject, uninstallProject } from '../../agent-kit/lib/installer.mjs';
 
 if (isSea()) process.env.LIVEDOT_SEA = '1';
@@ -220,8 +221,9 @@ async function runMcp(projectRoot: string, actor: string): Promise<void> {
   // fail-open 进程不能创建日志目录、health 文件或地图目录。transport
   // 仍然保持可用，只有 tools/call 返回结构化 isError。
   const logger = qualification.ok ? createLogger({ source: 'agent' }) : noopLogger;
-  let manager: MapManager | null = null;
-  let tools: ToolService | null = null;
+  // 项目根跟随画布当前项目（bug1）：per-root 缓存实例，指针变化时切换。
+  let currentRoot = root;
+  const entries = new Map<string, { manager: MapManager; tools: ToolService }>();
   if (qualification.ok) await logger.info('agent.mcp.start', { project: root, actor, pid: process.pid });
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
@@ -238,14 +240,20 @@ async function runMcp(projectRoot: string, actor: string): Promise<void> {
           result = unavailableToolResult(qualification);
         } else {
           const params = request.params as Json;
-          // 延迟打开 manager：initialize/tools/list 即使地图损坏也必须能返回，
-          // 真实损坏会在 tools/call 处按 JSON-RPC error 上报。
-          if (!manager) {
+          // 跟随画布当前项目（bug1）：每次调用解析全局指针，失败回落启动根。
+          const targetRoot = await resolveProjectRootToUse(null, currentRoot);
+          let entry = entries.get(targetRoot);
+          if (!entry) {
+            // 延迟打开 manager：initialize/tools/list 即使地图损坏也必须能返回，
+            // 真实损坏会在 tools/call 处按 JSON-RPC error 上报。
             const shared = await loadSharedAdapter();
-            manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
-            tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: 'stdio' });
+            const manager = await MapManager.open({ projectRoot: targetRoot, shared, pollIntervalMs: 0 });
+            const tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: 'stdio' });
+            entry = { manager, tools };
+            entries.set(targetRoot, entry);
           }
-          const value = await tools!.dispatch(String(params.name), (params.arguments as Json) ?? {});
+          currentRoot = targetRoot;
+          const value = await entry.tools.dispatch(String(params.name), (params.arguments as Json) ?? {});
           result = { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value };
         }
       } else throw Object.assign(new Error(`未知方法 ${String(request.method)}`), { code: -32601 });
@@ -260,7 +268,7 @@ async function runMcp(projectRoot: string, actor: string): Promise<void> {
       process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, error: { code: typeof value.code === 'number' ? value.code : -32000, message: value.message, data: { code: value.code, details: value.details } } })}\n`);
     }
   }
-  await manager?.close().catch(() => undefined);
+  for (const entry of entries.values()) await entry.manager.close().catch(() => undefined);
 }
 
 async function runHook(kind: string, args: Args): Promise<void> {

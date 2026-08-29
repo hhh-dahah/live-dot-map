@@ -1,0 +1,56 @@
+{
+  "revision": 1,
+  "checksum": "067daaea31696e19ca2db386fb0a36a6aedc3a4ac14764e48985bd501290cb61",
+  "createdAt": "2026-08-21T02:41:55.274Z",
+  "document": {
+    "mapId": "map-kooep8",
+    "version": 2,
+    "revision": 1,
+    "lastEventId": 1,
+    "name": "ui-verify-0820",
+    "mapDir": ".live-dot-map/maps/default",
+    "bundleLayoutVersion": 1,
+    "createdAt": "2026-08-20T17:22:04.941Z",
+    "updatedAt": "2026-08-20T17:24:40.526Z",
+    "view": {
+      "x": 0,
+      "y": 0,
+      "k": 1
+    },
+    "ui": {
+      "showAnns": true,
+      "showRoutes": true,
+      "showNums": false,
+      "showFailed": true
+    },
+    "counters": {
+      "num": 1,
+      "edge": 1,
+      "ann": 1,
+      "nodeName": 1,
+      "edgeName": 1,
+      "routeName": 1
+    },
+    "routes": [],
+    "nodes": [
+      {
+        "id": "n1",
+        "num": "01",
+        "name": "新节点1",
+        "type": "目标",
+        "kind": "goal",
+        "route": null,
+        "x": 720,
+        "y": 450,
+        "md": ".live-dot-map/maps/default/nodes/n1/index.md",
+        "createdBy": "human",
+        "createdAt": "2026-08-20T17:24:40.526Z",
+        "updatedAt": "2026-08-20T17:24:40.526Z",
+        "updatedBy": "human",
+        "updatedRevision": 1
+      }
+    ],
+    "edges": [],
+    "anns": []
+  }
+}

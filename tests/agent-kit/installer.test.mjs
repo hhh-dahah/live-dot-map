@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { installProject, doctorProject, uninstallProject } from '../../agent-kit/lib/installer.mjs';
 import { downloadPortableNode, portableManifestFor, verifyPortableNodeArchive } from '../../agent-kit/lib/portable-node.mjs';
@@ -39,7 +39,9 @@ test('install writes global agent plugins while keeping the project data-only', 
   assert.equal(map.mapDir, '.live-dot-map/maps/default');
   assert.equal((await readFile(join(root, '.live-dot-map', 'active-map'), 'utf8')).trim(), 'default');
   assert.equal(result.bridge.registered, true);
-  assert.match(await readFile(join(home, '.codex', 'config.toml'), 'utf8'), /mcp_servers\."livedot-map"/);
+  const codexConfig = await readFile(join(home, '.codex', 'config.toml'), 'utf8');
+  assert.match(codexConfig, /mcp_servers\."livedot-map"/);
+  assert.match(codexConfig, /required = false/);
   assert.equal(JSON.parse(await readFile(join(home, '.codex', 'hooks.json'), 'utf8')).hooks.Stop[0].hooks[0].type, 'command');
   await installProject({ projectRoot: root, homeRoot: home, createDesktopShortcut: false, register: false, offline: true, discoverAgents: false });
   const reinstalledHooks = JSON.parse(await readFile(join(home, '.codex', 'hooks.json'), 'utf8')).hooks;
@@ -76,6 +78,70 @@ test('optional CodeBuddy adapter is packaged without adding an undiscovered UI a
   assert.equal(plugin.name, 'livedot-map');
   assert.equal(JSON.parse(await readFile(join(home, '.codebuddy', 'plugins', 'live-dot-map', '.workbuddy-plugin', 'plugin.json'), 'utf8')).name, 'livedot-map');
   assert.equal((await doctorProject({ projectRoot: root, homeRoot: home, checkBridge: false })).ok, true);
+});
+
+test('installer removes only owned hook commands and preserves third-party hooks and matchers', async () => {
+  const root = await mkdtemp(join(TEST_ROOT, 'livedot-hook-merge-'));
+  const home = await mkdtemp(join(TEST_ROOT, 'livedot-hook-merge-home-'));
+  const hooksPath = join(home, '.codex', 'hooks.json');
+  await mkdir(join(home, '.codex'), { recursive: true });
+  const helper = 'node C:\\tools\\livedot-helper.mjs --event session-start';
+  const oldProduct = 'node C:\\old\\livedot.mjs hook --event session-start --agent codex';
+  const original = {
+    hooks: {
+      SessionStart: [
+        { matcher: '.*', metadata: { owner: 'team' }, hooks: [
+          { type: 'command', command: helper, timeout: 5 },
+          { type: 'command', command: oldProduct, timeout: 5 },
+        ] },
+        { matcher: 'custom', hooks: [{ type: 'prompt', prompt: 'keep this matcher' }] },
+      ],
+    },
+    unknownSetting: { keep: true },
+  };
+  await writeFile(hooksPath, `${JSON.stringify(original, null, 2)}\n`, 'utf8');
+  const result = await installProject({
+    projectRoot: root,
+    homeRoot: home,
+    createDesktopShortcut: false,
+    register: false,
+    offline: true,
+    platform: 'linux',
+    detectedAgents: { codex: { id: 'codex', discovered: true } },
+  });
+  const installed = JSON.parse(await readFile(hooksPath, 'utf8'));
+  const session = installed.hooks.SessionStart;
+  assert.equal(session.length, 3, 'mixed third-party group, custom group, and one product group remain');
+  assert.deepEqual(session[0], {
+    matcher: '.*',
+    metadata: { owner: 'team' },
+    hooks: [{ type: 'command', command: helper, timeout: 5 }],
+  });
+  assert.deepEqual(session[1], original.hooks.SessionStart[1]);
+  assert.equal(session[2].hooks.length, 1);
+  assert.match(session[2].hooks[0].command, /hook/);
+  assert.doesNotMatch(session[2].hooks[0].command, /old/);
+
+  // 重装不会叠加产品 Hook，也不会改变第三方 group 的字节级结构。
+  await installProject({
+    projectRoot: root,
+    homeRoot: home,
+    createDesktopShortcut: false,
+    register: false,
+    offline: true,
+    platform: 'linux',
+    detectedAgents: { codex: { id: 'codex', discovered: true } },
+  });
+  const reinstalled = JSON.parse(await readFile(hooksPath, 'utf8'));
+  assert.equal(reinstalled.hooks.SessionStart.length, 3);
+  assert.deepEqual(reinstalled.hooks.SessionStart[0], session[0]);
+  assert.deepEqual(reinstalled.hooks.SessionStart[1], session[1]);
+
+  const config = JSON.parse(await readFile(join(root, '.live-dot-map', 'agent-kit.json'), 'utf8'));
+  const backup = JSON.parse(await readFile(config.installBackup, 'utf8'));
+  const captured = backup.files.find((entry) => entry.path === hooksPath);
+  assert.ok(captured?.exists, 'original hook configuration is captured before write');
+  assert.deepEqual(JSON.parse(Buffer.from(captured.content, 'base64').toString('utf8')), original);
 });
 
 test('Claude and CodeBuddy keep distinct MCP identities when installed together', async () => {

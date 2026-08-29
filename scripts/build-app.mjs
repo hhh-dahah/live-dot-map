@@ -32,8 +32,8 @@ function parseArgs(argv) {
 function transformLegacyPaths(source) {
   // 新建对象的路径只依赖稳定 ID，不随名称编辑改变。
   let output = source
-    .replace(/md:`nodes\/\$\{String\(S\.nextNum\)\.padStart\(2,'0'\)\}-\$\{name\}\.md`/g, 'md:`.live-dot-map/nodes/n${S.nextNum}.md`')
-    .replace(/md:`routes\/e\$\{S\.nextEdge-1\}-\$\{eName\}\.md`/g, 'md:`.live-dot-map/routes/e${S.nextEdge-1}.md`')
+    .replace(/md:`nodes\/\$\{String\(S\.nextNum\)\.padStart\(2,'0'\)\}-\$\{name\}\.md`/g, 'md:`.live-dot-map/nodes/n${S.nextNum}/index.md`')
+    .replace(/md:`routes\/e\$\{S\.nextEdge-1\}-\$\{eName\}\.md`/g, 'md:`.live-dot-map/routes/e${S.nextEdge-1}/index.md`')
     .replace(/md:\s*'nodes\//g, "md:'.live-dot-map/nodes/")
     .replace(/md:\s*'routes\//g, "md:'.live-dot-map/routes/")
     .replace(/md:\s*`nodes\//g, 'md:`.live-dot-map/nodes/')
@@ -42,8 +42,13 @@ function transformLegacyPaths(source) {
   output = output
     .replace(/n\.md\s*=\s*`nodes\/\$\{n\.num\}-\$\{v\}\.md`;?/g, '')
     .replace(/e\.md\s*=\s*`routes\/\$\{e\.id\}-\$\{v\}\.md`;?/g, '')
-    .replace(/obj\.md\s*=\s*`routes\/\$\{obj\.id\}-\$\{v\}\.md`;/g, 'obj.md = obj.md || `.live-dot-map/routes/${obj.id}.md`;')
-    .replace(/obj\.md\s*=\s*`nodes\/\$\{obj\.num\}-\$\{v\}\.md`;/g, 'obj.md = obj.md || `.live-dot-map/nodes/${obj.id}.md`;');
+    .replace(/obj\.md\s*=\s*`routes\/\$\{obj\.id\}-\$\{v\}\.md`;/g, 'obj.md = obj.md || `.live-dot-map/routes/${obj.id}/index.md`;')
+    .replace(/obj\.md\s*=\s*`nodes\/\$\{obj\.num\}-\$\{v\}\.md`;/g, 'obj.md = obj.md || `.live-dot-map/nodes/${obj.id}/index.md`;');
+  // 正式画布以 mdPath 统一生成路径；把旧的平铺主文档后缀升级到最终资料包布局。
+  output = output.replace(
+    /(function mdPath\(kind, id\)\{ return `\$\{currentMapDir \|\| '\.live-dot-map'\}\/\$\{kind === 'routes' \? 'routes' : 'nodes'\}\/\$\{id\})\.md(`; \})/g,
+    '$1/index.md$2',
+  );
   return output;
 }
 
@@ -136,8 +141,9 @@ window.LiveDotApp = {
     if (!dot){ syncBadge(); dot = document.querySelector('#sync-dot'); }
     let label = document.querySelector('#sync-label');
     if (!label){ label = document.createElement('span'); label.id='sync-label'; label.style.cssText='font-size:11px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; document.querySelector('#project-pill').insertBefore(label, document.querySelector('#proj-menu-btn')); }
-    const states = {draft:['var(--note-border)','本地草稿'],saving:['var(--note-border)','保存中'],saved:['var(--success)','已保存'],offline:['var(--pending)','离线'],conflict:['var(--danger)','冲突'],error:['var(--danger)','错误'],fallback:['var(--pending)','降级模式']};
+    const states = {draft:['var(--success)','正常'],saving:['var(--success)','正常'],saved:['var(--success)','正常'],offline:['var(--danger)','断线'],conflict:['var(--danger)','冲突'],error:['var(--danger)','异常'],fallback:['var(--danger)','降级']};
     const current = states[state] || states.error; dot.style.background=current[0]; dot.title=(detail || current[1]) + (typeof agentActivityLine === 'function' ? agentActivityLine() : ''); label.textContent=current[1];
+    try{ window.LiveDotUI?.onStatusChange?.(state, detail); }catch{ /* 状态弹窗是附加能力，不能影响主流程 */ }
   },
   // Agent 刚写回的新对象高亮：给对应画布元素加 pulse 类（动画结束后自动移除）
   flashObjects(ids){

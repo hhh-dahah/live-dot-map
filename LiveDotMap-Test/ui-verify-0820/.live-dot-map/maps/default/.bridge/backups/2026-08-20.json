@@ -1,0 +1,39 @@
+{
+  "revision": 0,
+  "checksum": "f93298f2b7d76b260c3930178a7fd08f1740f43c42860321c2c3b1c854185895",
+  "createdAt": "2026-08-20T17:22:04.947Z",
+  "document": {
+    "mapId": "map-kooep8",
+    "version": 2,
+    "revision": 0,
+    "lastEventId": 0,
+    "name": "ui-verify-0820",
+    "mapDir": ".live-dot-map/maps/default",
+    "bundleLayoutVersion": 1,
+    "createdAt": "2026-08-20T17:22:04.941Z",
+    "updatedAt": "2026-08-20T17:22:04.941Z",
+    "view": {
+      "x": 0,
+      "y": 0,
+      "k": 1
+    },
+    "ui": {
+      "showAnns": true,
+      "showRoutes": true,
+      "showNums": false,
+      "showFailed": true
+    },
+    "counters": {
+      "num": 1,
+      "edge": 1,
+      "ann": 1,
+      "nodeName": 1,
+      "edgeName": 1,
+      "routeName": 1
+    },
+    "routes": [],
+    "nodes": [],
+    "edges": [],
+    "anns": []
+  }
+}

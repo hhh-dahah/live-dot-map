@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { detectInstalledAdapters } from '../../agent-kit/lib/installer.mjs';
 import { ensureProjectAgentConfig } from '../../src/bridge/server.mjs';
+import { ensureMapsLayout } from '../../src/bridge/maps.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const testRoot = resolve(process.env.LIVEDOT_REAL_TEST_ROOT || 'D:\\LiveDotMap-Test');
@@ -73,7 +74,7 @@ try {
       `[mcp_servers."livedot-map"]`,
       `command = ${quote(nodeExe)}`,
       `args = [${mcpArgs.map(quote).join(', ')}]`,
-      'required = true',
+      'required = false',
       '',
       `[projects.${quote(projectKey)}]`,
       `trust_level = ${quote('trusted')}`,
@@ -84,12 +85,13 @@ try {
     await cp(join(project, '.codex', 'skills', 'live-dot-map'), join(codexHome, 'skills', 'live-dot-map'), { recursive: true });
   }
 
-  const mapPath = join(project, '.live-dot-map', 'map.json');
+  await ensureMapsLayout(project);
+  const mapPath = join(project, '.live-dot-map', 'maps', 'default', 'map.json');
   const before = JSON.parse(await readFile(mapPath, 'utf8'));
   const prompt = [
     '这是一次真实 Codex + 活点地图初始化验收，只能修改临时项目中的地图；不要直接编辑 map.json，不要执行其他文件操作。',
     '1. 先调用 map_get_context，再调用 map_validate；地图是唯一事实源，不要先读取 AGENTS.md 或扫描项目。',
-    '2. 使用 map_apply_commands，沿用 map_get_context 返回的 baseRevision；commands 只提交一个固定 reducer 命令 {op:"create", collection:"nodes", value:{id:"real-codex-initialized", name:"真实 Codex 初始化", kind:"goal", type:"目的", route:"r1", x:240, y:0, md:".live-dot-map/nodes/real-codex-initialized.md"}}。',
+    '2. 使用 map_apply_commands，沿用 map_get_context 返回的 baseRevision；commands 只提交一个固定 reducer 命令 {op:"create", collection:"nodes", value:{id:"real-codex-initialized", name:"真实 Codex 初始化", kind:"goal", type:"目的", route:"r1", x:240, y:0, md:".live-dot-map/maps/default/nodes/real-codex-initialized/index.md"}}。',
     '3. 工具成功后报告实际 revision、节点 ID 和 createdBy；如果工具失败，停止并报告错误，不要改用直接文件写入。',
   ].join('\n');
   const codexEnv = useGlobalCodex ? process.env : { ...process.env, CODEX_HOME: codexHome };

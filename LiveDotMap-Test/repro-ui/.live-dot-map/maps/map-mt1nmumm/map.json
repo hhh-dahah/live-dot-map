@@ -1,0 +1,34 @@
+{
+  "mapId": "map-19esrb4",
+  "version": 2,
+  "revision": 0,
+  "lastEventId": 0,
+  "name": "未命名地图",
+  "mapDir": ".live-dot-map/maps/map-mt1nmumm",
+  "bundleLayoutVersion": 1,
+  "createdAt": "2026-08-20T15:07:41.337Z",
+  "updatedAt": "2026-08-20T15:07:41.337Z",
+  "view": {
+    "x": 0,
+    "y": 0,
+    "k": 1
+  },
+  "ui": {
+    "showAnns": true,
+    "showRoutes": true,
+    "showNums": false,
+    "showFailed": true
+  },
+  "counters": {
+    "num": 1,
+    "edge": 1,
+    "ann": 1,
+    "nodeName": 1,
+    "edgeName": 1,
+    "routeName": 1
+  },
+  "routes": [],
+  "nodes": [],
+  "edges": [],
+  "anns": []
+}

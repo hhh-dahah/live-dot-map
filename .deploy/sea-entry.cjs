@@ -1222,10 +1222,10 @@ var init_shared = __esm({
 });
 
 // src/cli/livedot.ts
-var import_node_crypto16 = require("node:crypto");
-var import_promises18 = require("node:fs/promises");
+var import_node_crypto17 = require("node:crypto");
+var import_promises20 = require("node:fs/promises");
 var import_node_fs3 = require("node:fs");
-var import_node_path22 = require("node:path");
+var import_node_path24 = require("node:path");
 var import_node_readline = require("node:readline");
 var import_node_sea = require("node:sea");
 
@@ -1375,7 +1375,7 @@ async function withFileLock(path, operation, { timeoutMs = 5e3, staleMs = 3e4 } 
         timeout.code = "LOCK_TIMEOUT";
         throw timeout;
       }
-      await new Promise((resolve16) => setTimeout(resolve16, 20));
+      await new Promise((resolve18) => setTimeout(resolve18, 20));
     }
   }
   try {
@@ -2430,21 +2430,60 @@ var ProjectStore = class _ProjectStore {
 };
 
 // src/bridge/server.mjs
-var import_node_crypto12 = require("node:crypto");
+var import_node_crypto13 = require("node:crypto");
 var import_node_http = require("node:http");
-var import_promises14 = require("node:fs/promises");
-var import_node_path18 = require("node:path");
+var import_promises16 = require("node:fs/promises");
+var import_node_path20 = require("node:path");
 var import_node_child_process6 = require("node:child_process");
-var import_node_os5 = require("node:os");
+var import_node_os6 = require("node:os");
+
+// src/bridge/current-project.mjs
+var import_promises4 = require("node:fs/promises");
+var import_node_os = require("node:os");
+var import_node_path5 = require("node:path");
+function currentProjectFile() {
+  return process.env.LIVEDOT_CURRENT_PROJECT_FILE || (0, import_node_path5.join)((0, import_node_os.homedir)(), ".live-dot-map", "current-project.json");
+}
+async function recordCurrentProject(projectRoot, options = {}) {
+  try {
+    const target = options.file ?? currentProjectFile();
+    const payload = { projectRoot: (0, import_node_path5.resolve)(projectRoot), updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    await atomicWriteFile(target, `${JSON.stringify(payload)}
+`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function readCurrentProject(options = {}) {
+  const target = options.file ?? currentProjectFile();
+  try {
+    const text = await (0, import_promises4.readFile)(target, "utf8");
+    const parsed = JSON.parse(text);
+    if (typeof parsed?.projectRoot === "string" && parsed.projectRoot.trim()) return parsed.projectRoot.trim();
+  } catch {
+  }
+  return null;
+}
+async function resolveProjectRootToUse(pointerRoot, fallbackRoot, options = {}) {
+  const candidate = pointerRoot ?? await readCurrentProject(options).catch(() => null);
+  if (!candidate) return fallbackRoot;
+  try {
+    const resolved = await canonicalDirectory(candidate);
+    return resolved;
+  } catch {
+    return fallbackRoot;
+  }
+}
 
 // src/bridge/logger.mjs
-var import_promises4 = require("node:fs/promises");
-var import_node_path5 = require("node:path");
-var import_node_os = require("node:os");
+var import_promises5 = require("node:fs/promises");
+var import_node_path6 = require("node:path");
+var import_node_os2 = require("node:os");
 var KEEP_DAYS = 14;
 var MAX_STRING = 1e3;
 function logDirectory() {
-  return process.env.LIVEDOT_LOG_DIR || (0, import_node_path5.join)((0, import_node_os.homedir)(), ".live-dot-map", "logs");
+  return process.env.LIVEDOT_LOG_DIR || (0, import_node_path6.join)((0, import_node_os2.homedir)(), ".live-dot-map", "logs");
 }
 function clean(value, depth = 0) {
   if (value === null || value === void 0) return value;
@@ -2471,26 +2510,26 @@ function createLogger({ source = "bridge", dir, clock = () => /* @__PURE__ */ ne
   let chain = Promise.resolve();
   let prepared = false;
   async function prepare() {
-    await (0, import_promises4.mkdir)(root, { recursive: true });
+    await (0, import_promises5.mkdir)(root, { recursive: true });
     const cutoff = Date.now() - KEEP_DAYS * 24 * 60 * 60 * 1e3;
-    const entries = await (0, import_promises4.readdir)(root).catch(() => []);
+    const entries = await (0, import_promises5.readdir)(root).catch(() => []);
     for (const entry of entries) {
       const match = /^livedot-(\d{4}-\d{2}-\d{2})\.log$/.exec(entry);
       if (match && Date.parse(`${match[1]}T00:00:00Z`) < cutoff) {
-        await (0, import_promises4.rm)((0, import_node_path5.join)(root, entry), { force: true }).catch(() => void 0);
+        await (0, import_promises5.rm)((0, import_node_path6.join)(root, entry), { force: true }).catch(() => void 0);
       }
     }
   }
   function write(level, event, fields = {}, entrySource = source) {
     const at = clock();
     const entry = { at: at.toISOString(), level, source: entrySource, event: String(event).slice(0, 120), ...clean(fields) };
-    const file = (0, import_node_path5.join)(root, `livedot-${at.toISOString().slice(0, 10)}.log`);
+    const file = (0, import_node_path6.join)(root, `livedot-${at.toISOString().slice(0, 10)}.log`);
     chain = chain.then(async () => {
       if (!prepared) {
         prepared = true;
         await prepare();
       }
-      await (0, import_promises4.appendFile)(file, `${JSON.stringify(entry)}
+      await (0, import_promises5.appendFile)(file, `${JSON.stringify(entry)}
 `, "utf8");
     }).catch(() => void 0);
     return chain;
@@ -2524,13 +2563,13 @@ var noopLogger = {
 
 // src/bridge/markdown-store.mjs
 var import_node_crypto3 = require("node:crypto");
-var import_promises5 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_promises6 = require("node:fs/promises");
+var import_node_path7 = require("node:path");
 var MAX_MARKDOWN_BYTES = 2 * 1024 * 1024;
 var MAX_MARKDOWN_PATH = 1024;
 function inRoot(root, candidate) {
-  const value = (0, import_node_path6.relative)(root, candidate);
-  return value === "" || value !== ".." && !value.startsWith(`..${import_node_path6.sep}`) && !(0, import_node_path6.isAbsolute)(value);
+  const value = (0, import_node_path7.relative)(root, candidate);
+  return value === "" || value !== ".." && !value.startsWith(`..${import_node_path7.sep}`) && !(0, import_node_path7.isAbsolute)(value);
 }
 function normalizeRelativePath(input) {
   if (typeof input !== "string" || input.length === 0 || input.length > MAX_MARKDOWN_PATH) {
@@ -2538,7 +2577,7 @@ function normalizeRelativePath(input) {
   }
   if (input.includes("\0")) throw new BridgeError("MARKDOWN_PATH_INVALID", "Markdown \u8DEF\u5F84\u5305\u542B\u975E\u6CD5\u5B57\u7B26", { status: 400 });
   const portable = input.replace(/\\/g, "/");
-  if (portable.startsWith("/") || /^[A-Za-z]:\//.test(portable) || (0, import_node_path6.isAbsolute)(input)) {
+  if (portable.startsWith("/") || /^[A-Za-z]:\//.test(portable) || (0, import_node_path7.isAbsolute)(input)) {
     throw new BridgeError("MARKDOWN_PATH_INVALID", "Markdown \u8DEF\u5F84\u5FC5\u987B\u662F\u9879\u76EE\u5185\u76F8\u5BF9\u8DEF\u5F84", { status: 400 });
   }
   const parts = portable.split("/");
@@ -2555,14 +2594,14 @@ function normalizeRelativePath(input) {
   return normalized;
 }
 async function ensureNoSymlink(root, candidate, { allowMissing = true } = {}) {
-  const rootReal = await (0, import_promises5.realpath)(root);
+  const rootReal = await (0, import_promises6.realpath)(root);
   if (!inRoot(rootReal, candidate)) {
     throw new BridgeError("MARKDOWN_PATH_OUTSIDE_PROJECT", "Markdown \u8DEF\u5F84\u4E0D\u5728\u5F53\u524D\u9879\u76EE\u5185", { status: 403 });
   }
   let cursor = candidate;
   let candidateStat;
   try {
-    candidateStat = await (0, import_promises5.lstat)(candidate);
+    candidateStat = await (0, import_promises6.lstat)(candidate);
   } catch (error3) {
     if (error3?.code !== "ENOENT") throw error3;
   }
@@ -2572,17 +2611,17 @@ async function ensureNoSymlink(root, candidate, { allowMissing = true } = {}) {
   if (candidateStat && !candidateStat.isFile()) {
     throw new BridgeError("MARKDOWN_NOT_FILE", "Markdown \u8DEF\u5F84\u4E0D\u662F\u6587\u4EF6", { status: 409 });
   }
-  while (cursor !== rootReal && cursor !== (0, import_node_path6.dirname)(cursor)) {
+  while (cursor !== rootReal && cursor !== (0, import_node_path7.dirname)(cursor)) {
     try {
-      const info = await (0, import_promises5.lstat)(cursor);
+      const info = await (0, import_promises6.lstat)(cursor);
       if (info.isSymbolicLink()) throw new BridgeError("MARKDOWN_SYMLINK_FORBIDDEN", "\u4E0D\u5141\u8BB8\u901A\u8FC7\u7B26\u53F7\u94FE\u63A5\u8BBF\u95EE Markdown", { status: 403 });
-      const resolved = await (0, import_promises5.realpath)(cursor);
+      const resolved = await (0, import_promises6.realpath)(cursor);
       if (!inRoot(rootReal, resolved)) throw new BridgeError("MARKDOWN_PATH_OUTSIDE_PROJECT", "Markdown \u8DEF\u5F84\u4E0D\u5728\u5F53\u524D\u9879\u76EE\u5185", { status: 403 });
       break;
     } catch (error3) {
       if (error3?.code !== "ENOENT") throw error3;
       if (!allowMissing) throw new BridgeError("MARKDOWN_NOT_FOUND", "Markdown \u6587\u4EF6\u4E0D\u5B58\u5728", { status: 404 });
-      cursor = (0, import_node_path6.dirname)(cursor);
+      cursor = (0, import_node_path7.dirname)(cursor);
     }
   }
   return { root: rootReal, stat: candidateStat };
@@ -2609,36 +2648,36 @@ function result(path, content, metadata, { created = false } = {}) {
 }
 var MarkdownStore = class {
   constructor(projectRoot) {
-    this.projectRoot = (0, import_node_path6.resolve)(projectRoot);
+    this.projectRoot = (0, import_node_path7.resolve)(projectRoot);
   }
   async #target(requestedPath, options = {}) {
     const path = normalizeRelativePath(requestedPath);
-    const candidate = (0, import_node_path6.resolve)(this.projectRoot, path);
+    const candidate = (0, import_node_path7.resolve)(this.projectRoot, path);
     await ensureNoSymlink(this.projectRoot, candidate, options);
     return { path, candidate };
   }
   #lockPath(path) {
     const lockId = (0, import_node_crypto3.createHash)("sha256").update(path, "utf8").digest("hex");
-    return (0, import_node_path6.join)(this.projectRoot, ".live-dot-map", ".bridge", "markdown-locks", `${lockId}.lock`);
+    return (0, import_node_path7.join)(this.projectRoot, ".live-dot-map", ".bridge", "markdown-locks", `${lockId}.lock`);
   }
   async #readUnlocked(requestedPath, { create = false, title = "" } = {}) {
     const { path, candidate } = await this.#target(requestedPath, { allowMissing: true });
     let metadata;
     try {
-      metadata = await (0, import_promises5.stat)(candidate);
+      metadata = await (0, import_promises6.stat)(candidate);
     } catch (error3) {
       if (error3?.code !== "ENOENT") throw error3;
       if (!create) return { path, content: "", exists: false, created: false, size: 0, etag: digest(""), updatedAt: null };
       const initial = initialMarkdown(path, title);
       if (Buffer.byteLength(initial, "utf8") > MAX_MARKDOWN_BYTES) throw new BridgeError("MARKDOWN_TOO_LARGE", "Markdown \u5185\u5BB9\u8D85\u8FC7 2 MiB \u9650\u5236", { status: 413 });
-      await (0, import_promises5.mkdir)((0, import_node_path6.dirname)(candidate), { recursive: true });
+      await (0, import_promises6.mkdir)((0, import_node_path7.dirname)(candidate), { recursive: true });
       await ensureNoSymlink(this.projectRoot, candidate, { allowMissing: true });
       try {
         await atomicWriteFile(candidate, initial);
       } catch (writeError) {
         throw new BridgeError("MARKDOWN_WRITE_FAILED", "Markdown \u521B\u5EFA\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5", { status: 503, cause: writeError });
       }
-      metadata = await (0, import_promises5.stat)(candidate);
+      metadata = await (0, import_promises6.stat)(candidate);
       return result(path, initial, metadata, { created: true });
     }
     if (create && metadata.size === 0) {
@@ -2646,13 +2685,13 @@ var MarkdownStore = class {
       await atomicWriteFile(candidate, initial).catch((error3) => {
         throw new BridgeError("MARKDOWN_WRITE_FAILED", "Markdown \u521D\u59CB\u5316\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5", { status: 503, cause: error3 });
       });
-      metadata = await (0, import_promises5.stat)(candidate);
+      metadata = await (0, import_promises6.stat)(candidate);
       return result(path, initial, metadata, { created: true });
     }
     if (metadata.size > MAX_MARKDOWN_BYTES) throw new BridgeError("MARKDOWN_TOO_LARGE", "Markdown \u6587\u4EF6\u8D85\u8FC7 2 MiB \u9650\u5236", { status: 413, details: { size: metadata.size, limit: MAX_MARKDOWN_BYTES } });
     let content;
     try {
-      content = await (0, import_promises5.readFile)(candidate, "utf8");
+      content = await (0, import_promises6.readFile)(candidate, "utf8");
     } catch (error3) {
       throw new BridgeError("MARKDOWN_READ_FAILED", "Markdown \u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5", { status: 503, cause: error3 });
     }
@@ -2665,7 +2704,7 @@ var MarkdownStore = class {
     const path = normalizeRelativePath(requestedPath);
     const lockPath = this.#lockPath(path);
     try {
-      await ensureDirectory((0, import_node_path6.dirname)(lockPath));
+      await ensureDirectory((0, import_node_path7.dirname)(lockPath));
       await ensureNoSymlink(this.projectRoot, lockPath, { allowMissing: true });
       return await withFileLock(lockPath, () => this.#readUnlocked(path, options), { timeoutMs: 5e3, staleMs: 3e4 });
     } catch (error3) {
@@ -2684,7 +2723,7 @@ var MarkdownStore = class {
     const path = normalizeRelativePath(requestedPath);
     const lockPath = this.#lockPath(path);
     try {
-      await ensureDirectory((0, import_node_path6.dirname)(lockPath));
+      await ensureDirectory((0, import_node_path7.dirname)(lockPath));
       await ensureNoSymlink(this.projectRoot, lockPath, { allowMissing: true });
       return await withFileLock(lockPath, async () => {
         const { candidate } = await this.#target(path, { allowMissing: true });
@@ -2701,10 +2740,10 @@ var MarkdownStore = class {
             details: current ? { current: { path: current.path, content: current.content, size: current.size, etag: current.etag, updatedAt: current.updatedAt } } : { current: null }
           });
         }
-        await (0, import_promises5.mkdir)((0, import_node_path6.dirname)(candidate), { recursive: true });
+        await (0, import_promises6.mkdir)((0, import_node_path7.dirname)(candidate), { recursive: true });
         await ensureNoSymlink(this.projectRoot, candidate, { allowMissing: true });
         await atomicWriteFile(candidate, content);
-        const metadata = await (0, import_promises5.stat)(candidate);
+        const metadata = await (0, import_promises6.stat)(candidate);
         return result(path, content, metadata);
       }, { timeoutMs: 5e3, staleMs: 3e4 });
     } catch (error3) {
@@ -2715,22 +2754,22 @@ var MarkdownStore = class {
   }
   async reveal(requestedPath) {
     const { path, candidate } = await this.#target(requestedPath, { allowMissing: true });
-    const exists3 = await (0, import_promises5.stat)(candidate).then(() => true).catch((error3) => error3?.code === "ENOENT" ? false : Promise.reject(error3));
+    const exists3 = await (0, import_promises6.stat)(candidate).then(() => true).catch((error3) => error3?.code === "ENOENT" ? false : Promise.reject(error3));
     return { path, exists: exists3, opened: false };
   }
 };
 
 // src/bridge/human-md-updates.mjs
-var import_promises6 = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_promises7 = require("node:fs/promises");
+var import_node_path8 = require("node:path");
 var DEFAULT_MAX_LOG_BYTES = 512 * 1024;
 var HumanMdUpdateLog = class {
   constructor(options = {}) {
     if (!options?.projectRoot) throw new TypeError("HumanMdUpdateLog \u9700\u8981 projectRoot");
-    this.projectRoot = (0, import_node_path7.resolve)(options.projectRoot);
+    this.projectRoot = (0, import_node_path8.resolve)(options.projectRoot);
     this.mapKey = String(options.mapKey ?? "default");
     this.maxBytes = Number.isSafeInteger(options.maxBytes) && options.maxBytes > 0 ? options.maxBytes : DEFAULT_MAX_LOG_BYTES;
-    this.logPath = (0, import_node_path7.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge", "human-md-updates.ndjson");
+    this.logPath = (0, import_node_path8.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge", "human-md-updates.ndjson");
     this.lockPath = `${this.logPath}.lock`;
   }
   async record({ path, etag, mtime, snippet }) {
@@ -2772,7 +2811,7 @@ var HumanMdUpdateLog = class {
     const states = /* @__PURE__ */ new Map();
     let text = "";
     try {
-      text = await (0, import_promises6.readFile)(this.logPath, "utf8");
+      text = await (0, import_promises7.readFile)(this.logPath, "utf8");
     } catch (error3) {
       if (error3?.code === "ENOENT") return states;
       throw error3;
@@ -2796,13 +2835,13 @@ var HumanMdUpdateLog = class {
     return states;
   }
   async #withLock(operation) {
-    await ensureDirectory((0, import_node_path7.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
+    await ensureDirectory((0, import_node_path8.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
     return withFileLock(this.lockPath, operation, { timeoutMs: 5e3, staleMs: 3e4 });
   }
   async #compactIfNeeded() {
     let size = 0;
     try {
-      size = (await (0, import_promises6.stat)(this.logPath)).size;
+      size = (await (0, import_promises7.stat)(this.logPath)).size;
     } catch {
       return;
     }
@@ -2814,15 +2853,234 @@ var HumanMdUpdateLog = class {
   }
 };
 
-// src/bridge/map-manager.mjs
-var import_node_crypto5 = require("node:crypto");
+// src/bridge/md-index.mjs
+var import_node_crypto4 = require("node:crypto");
+var import_promises8 = require("node:fs/promises");
 var import_node_path9 = require("node:path");
+var SUMMARIZED_WINDOW = 300;
+function digest2(content) {
+  return (0, import_node_crypto4.createHash)("sha256").update(content).digest("hex");
+}
+function visibleSummary(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim().slice(0, SUMMARIZED_WINDOW);
+}
+function firstHeading(text) {
+  const match = String(text ?? "").match(/^\s*#{1,6}\s+(.*?)\s*$/m);
+  return match ? match[1].trim() : "";
+}
+var MdIndex = class {
+  /**
+   * @param {{projectRoot:string, mapKey:string, fs?:object}} options
+   * @param {object} options.fs 可注入 { readFile, stat, readdir }，测试用它计数全文读取。
+   */
+  constructor(options = {}) {
+    if (!options?.projectRoot) throw new TypeError("MdIndex \u9700\u8981 projectRoot");
+    this.projectRoot = (0, import_node_path9.resolve)(options.projectRoot);
+    this.mapKey = String(options.mapKey ?? "default");
+    this.fs = options.fs ?? { readFile: import_promises8.readFile, stat: import_promises8.stat, readdir: import_promises8.readdir };
+    this.indexPath = (0, import_node_path9.join)(
+      this.projectRoot,
+      ".live-dot-map",
+      "maps",
+      this.mapKey,
+      ".bridge",
+      "md-index.json"
+    );
+    this.lockPath = `${this.indexPath}.lock`;
+    this.#cards = /* @__PURE__ */ new Map();
+    this.#dirty = false;
+  }
+  #cards;
+  #dirty;
+  #fromFile = false;
+  async load() {
+    this.#cards = /* @__PURE__ */ new Map();
+    this.#dirty = false;
+    this.#fromFile = false;
+    let text = "";
+    try {
+      text = await this.fs.readFile(this.indexPath, "utf8");
+    } catch (error3) {
+      if (error3?.code === "ENOENT") return this;
+      throw error3;
+    }
+    this.#fromFile = true;
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      this.#fromFile = false;
+      return this;
+    }
+    const map = parsed && typeof parsed === "object" ? parsed.cards : null;
+    if (map && typeof map === "object") {
+      for (const [path, card] of Object.entries(map)) {
+        if (card && typeof card.path === "string") this.#cards.set(path, card);
+      }
+    }
+    return this;
+  }
+  /** 首次使用（无索引文件）时一次性全量建卡；之后增量。 */
+  async ensureBuilt({ mapRoot }) {
+    if (this.#fromFile) return this;
+    await this.buildAll({ mapRoot });
+    await this.persist();
+    return this;
+  }
+  async persist() {
+    if (!this.#dirty) return this;
+    const payload = `${JSON.stringify({ schema: 1, mapKey: this.mapKey, cards: Object.fromEntries(this.#cards) }, null, 0)}
+`;
+    await ensureDirectory((0, import_node_path9.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
+    await atomicWriteFile(this.indexPath, payload);
+    this.#dirty = false;
+    return this;
+  }
+  /** 取一张卡；指纹对不上/缺失则重读该文件刷新。mapRoot 用于拼绝对路径。 */
+  async getOrRefreshCard({ mapRoot, relativePath }) {
+    const absolute = (0, import_node_path9.join)(this.projectRoot, relativePath);
+    let stat8;
+    try {
+      stat8 = await this.fs.stat(absolute);
+    } catch (error3) {
+      if (error3?.code === "ENOENT") {
+        this.#cards.delete(relativePath);
+        this.#dirty = true;
+        return null;
+      }
+      throw error3;
+    }
+    const existing = this.#cards.get(relativePath);
+    const fresh = !existing || existing.mtimeMs !== stat8.mtimeMs || existing.bytes !== stat8.size;
+    if (!fresh) return existing;
+    const content = await this.fs.readFile(absolute, "utf8");
+    const card = {
+      path: relativePath,
+      etag: digest2(content),
+      mtimeMs: stat8.mtimeMs,
+      bytes: stat8.size,
+      title: firstHeading(content) || "",
+      summary: visibleSummary(content),
+      ownerKind: typeof existing?.ownerKind === "string" ? existing.ownerKind : inferOwnerKind(relativePath),
+      ownerId: typeof existing?.ownerId === "string" ? existing.ownerId : inferOwnerId(relativePath),
+      assets: existing?.assets ?? [],
+      updatedAt: stat8.mtime?.toISOString?.() ?? new Date(stat8.mtimeMs).toISOString()
+    };
+    this.#cards.set(relativePath, card);
+    this.#dirty = true;
+    return card;
+  }
+  /** 按 owner 目录重扫全部 md + 资产清单，刷新该对象所有卡片。 */
+  async refreshOwner({ mapRoot, ownerKind, ownerId }) {
+    const directory = (0, import_node_path9.join)(mapRoot, ownerKind, ownerId);
+    let entries = [];
+    try {
+      entries = await this.fs.readdir(directory, { withFileTypes: true });
+    } catch (error3) {
+      if (error3?.code === "ENOENT") return;
+      throw error3;
+    }
+    const assets = entries.filter((entry) => !entry.isDirectory() && !/\.md$/i.test(entry.name)).map((entry) => entry.name).sort();
+    const mdFiles = entries.filter((entry) => !entry.isDirectory() && /\.md$/i.test(entry.name));
+    const ownerRelative = (0, import_node_path9.join)(".live-dot-map", "maps", this.mapKey, relativeOwner(ownerKind), ownerId).replace(/\\/g, "/");
+    for (const entry of mdFiles) {
+      const relativePath = `${ownerRelative}/${entry.name}`;
+      try {
+        const absolute = (0, import_node_path9.join)(directory, entry.name);
+        const stat8 = await this.fs.stat(absolute);
+        const content = await this.fs.readFile(absolute, "utf8");
+        this.#cards.set(relativePath, {
+          path: relativePath,
+          etag: digest2(content),
+          mtimeMs: stat8.mtimeMs,
+          bytes: stat8.size,
+          title: firstHeading(content) || "",
+          summary: visibleSummary(content),
+          ownerKind: ownerKind === "nodes" ? "node" : "route",
+          ownerId,
+          assets,
+          updatedAt: stat8.mtime?.toISOString?.() ?? new Date(stat8.mtimeMs).toISOString()
+        });
+      } catch {
+      }
+    }
+    this.#dirty = true;
+  }
+  /** 首次迁移：全量扫描当前地图所有 owner 目录建卡（只跑一次）。 */
+  async buildAll({ mapRoot }) {
+    for (const [directoryKind, ownerKind] of [["nodes", "nodes"], ["routes", "routes"]]) {
+      let owners = [];
+      try {
+        owners = await this.fs.readdir((0, import_node_path9.join)(mapRoot, directoryKind), { withFileTypes: true });
+      } catch (error3) {
+        if (error3?.code === "ENOENT") continue;
+        throw error3;
+      }
+      for (const owner2 of owners) {
+        if (!owner2.isDirectory() || owner2.name.startsWith(".")) continue;
+        await this.refreshOwner({ mapRoot, ownerKind, ownerId: owner2.name });
+      }
+    }
+  }
+  has(path) {
+    return this.#cards.has(path);
+  }
+  get(path) {
+    return this.#cards.get(path);
+  }
+  entries() {
+    return this.#cards.entries();
+  }
+  size() {
+    return this.#cards.size;
+  }
+  /** 校验某张卡是否仍新鲜（只 lstat，不读内容）。返回 null 表示已失效。 */
+  async isFresh(path, stat8) {
+    const card = this.#cards.get(path);
+    if (!card) return false;
+    return card.mtimeMs === stat8.mtimeMs && card.bytes === stat8.size;
+  }
+  async #withLock(operation) {
+    await ensureDirectory((0, import_node_path9.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
+    return withFileLock(this.lockPath, operation, { timeoutMs: 5e3, staleMs: 3e4 });
+  }
+  /** 供写路径调用：刷完立刻落盘（保存/建节点等关键动作后）。 */
+  async refreshOwnerAndPersist(input) {
+    await this.#withLock(async () => {
+      await this.refreshOwner(input);
+      await this.persist();
+    });
+  }
+  /** 从相对路径推断 owner 并刷其卡片（保存 hook 用，路径形如 .live-dot-map/maps/<mapKey>/nodes|routes/<id>/<file>）。 */
+  async refreshPathAndPersist({ relativePath }) {
+    const parts = String(relativePath).replace(/\\/g, "/").split("/").filter(Boolean);
+    const kindIndex = parts.findIndex((part) => part === "nodes" || part === "routes");
+    if (kindIndex < 0 || kindIndex + 1 >= parts.length) return;
+    const mapRoot = (0, import_node_path9.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey);
+    await this.refreshOwnerAndPersist({ mapRoot, ownerKind: parts[kindIndex], ownerId: parts[kindIndex + 1] });
+  }
+};
+function inferOwnerKind(relativePath) {
+  const parts = relativePath.split("/");
+  return parts.length >= 3 && parts[parts.length - 3] === "routes" ? "route" : "node";
+}
+function inferOwnerId(relativePath) {
+  const parts = relativePath.split("/");
+  return parts.length >= 3 ? parts[parts.length - 2] : "";
+}
+function relativeOwner(ownerKind) {
+  return ownerKind === "routes" ? "routes" : "nodes";
+}
+
+// src/bridge/map-manager.mjs
+var import_node_crypto6 = require("node:crypto");
+var import_node_path11 = require("node:path");
 
 // src/bridge/bundle-store.mjs
 var import_node_fs = require("node:fs");
-var import_promises7 = require("node:fs/promises");
-var import_node_crypto4 = require("node:crypto");
-var import_node_path8 = require("node:path");
+var import_promises9 = require("node:fs/promises");
+var import_node_crypto5 = require("node:crypto");
+var import_node_path10 = require("node:path");
 var MAX_ASSET_BYTES = 20 * 1024 * 1024;
 var MAX_BUNDLE_FILES = 200;
 var MAX_MAP_ASSET_BYTES = 1024 * 1024 * 1024;
@@ -2853,15 +3111,15 @@ function asOptions(args, keys) {
   if (args.length === 1 && args[0] && typeof args[0] === "object" && !Buffer.isBuffer(args[0])) return { ...args[0] };
   return Object.fromEntries(keys.map((key, index) => [key, args[index]]));
 }
-function digest2(value) {
-  return (0, import_node_crypto4.createHash)("sha256").update(value).digest("hex");
+function digest3(value) {
+  return (0, import_node_crypto5.createHash)("sha256").update(value).digest("hex");
 }
 function caseKey(value) {
   return String(value).normalize("NFKC").toLocaleLowerCase("en-US");
 }
 function within(root, candidate) {
-  const value = (0, import_node_path8.relative)(root, candidate);
-  return value === "" || value !== ".." && !value.startsWith(`..${import_node_path8.sep}`) && !/^[A-Za-z]:[\\/]/.test(value);
+  const value = (0, import_node_path10.relative)(root, candidate);
+  return value === "" || value !== ".." && !value.startsWith(`..${import_node_path10.sep}`) && !/^[A-Za-z]:[\\/]/.test(value);
 }
 function decodeForSecurity(input) {
   let current = String(input);
@@ -2911,19 +3169,19 @@ function normalizeFileName(fileName, { asset = false } = {}) {
   if (value.startsWith(".")) throw bridgeError("BUNDLE_NAME_INVALID", "\u8D44\u6599\u5305\u6587\u4EF6\u540D\u4E0D\u80FD\u4EE5\u70B9\u5F00\u5934", 400);
   if (caseKey(value) === "index.md") return "index.md";
   if (!/\.md$/i.test(value) && !asset) throw bridgeError("BUNDLE_MARKDOWN_REQUIRED", "\u8865\u5145\u8D44\u6599\u5FC5\u987B\u662F .md \u6587\u4EF6", 415);
-  if (asset && !ASSET_EXTENSIONS.has((0, import_node_path8.extname)(value).toLowerCase())) {
+  if (asset && !ASSET_EXTENSIONS.has((0, import_node_path10.extname)(value).toLowerCase())) {
     throw bridgeError("BUNDLE_ASSET_TYPE_UNSUPPORTED", "\u9644\u4EF6\u7C7B\u578B\u4E0D\u5728\u5141\u8BB8\u6E05\u5355\u5185", 415);
   }
   return value;
 }
 function titleMarkdown(name, title) {
-  const fallback = (0, import_node_path8.basename)(name, (0, import_node_path8.extname)(name)).slice(0, 80) || "\u672A\u547D\u540D\u8D44\u6599";
+  const fallback = (0, import_node_path10.basename)(name, (0, import_node_path10.extname)(name)).slice(0, 80) || "\u672A\u547D\u540D\u8D44\u6599";
   return `# ${String(title || fallback).slice(0, 80)}
 
 `;
 }
 function contentTypeFor(fileName) {
-  const type = ASSET_TYPES[(0, import_node_path8.extname)(fileName).toLowerCase()];
+  const type = ASSET_TYPES[(0, import_node_path10.extname)(fileName).toLowerCase()];
   if (!type) throw bridgeError("BUNDLE_ASSET_TYPE_UNSUPPORTED", "\u9644\u4EF6\u7C7B\u578B\u4E0D\u5728\u5141\u8BB8\u6E05\u5355\u5185", 415);
   return type;
 }
@@ -2948,7 +3206,7 @@ function compareStats(left, right) {
   return Number(left.size) === Number(right.size) && Number(left.mtimeMs) === Number(right.mtimeMs) && (left.ino === void 0 || right.ino === void 0 || Number(left.ino) === Number(right.ino));
 }
 async function safeLstat(path) {
-  return (0, import_promises7.lstat)(path).catch((error3) => {
+  return (0, import_promises9.lstat)(path).catch((error3) => {
     if (error3?.code === "ENOENT") return null;
     throw error3;
   });
@@ -2957,14 +3215,14 @@ var BundleStore = class _BundleStore {
   constructor(options = {}, legacyMapKey = "default") {
     const value = typeof options === "string" ? { projectRoot: options, mapKey: legacyMapKey } : options;
     if (!value?.projectRoot) throw bridgeError("BUNDLE_PROJECT_REQUIRED", "\u8D44\u6599\u5305\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
-    this.projectRoot = (0, import_node_path8.resolve)(value.projectRoot);
+    this.projectRoot = (0, import_node_path10.resolve)(value.projectRoot);
     this.mapKey = value.mapKey ?? legacyMapKey;
     if (!isSafeMapId(this.mapKey)) throw bridgeError("INVALID_MAP_ID", "\u5730\u56FE ID \u65E0\u6548", 400, { mapKey: this.mapKey });
-    this.mapRoot = (0, import_node_path8.resolve)(value.mapDirectory ?? mapDirectory(this.projectRoot, this.mapKey));
+    this.mapRoot = (0, import_node_path10.resolve)(value.mapDirectory ?? mapDirectory(this.projectRoot, this.mapKey));
     this.clock = value.clock ?? (() => /* @__PURE__ */ new Date());
     this.faultInjector = value.faultInjector ?? (() => void 0);
-    this.lockRoot = (0, import_node_path8.join)(this.mapRoot, ".bridge", "bundle-locks");
-    this.commandRoot = (0, import_node_path8.join)(this.mapRoot, ".bridge", "bundle-commands");
+    this.lockRoot = (0, import_node_path10.join)(this.mapRoot, ".bridge", "bundle-locks");
+    this.commandRoot = (0, import_node_path10.join)(this.mapRoot, ".bridge", "bundle-commands");
   }
   static async open(options) {
     const store = new _BundleStore(options);
@@ -2982,22 +3240,22 @@ var BundleStore = class _BundleStore {
     await this.#assertSafePath(this.projectRoot, this.mapRoot, { allowMissing: false });
   }
   async #assertSafePath(root, candidate, { allowMissing = true } = {}) {
-    const rootReal = await (0, import_promises7.realpath)(root).catch((error3) => {
-      if (error3?.code === "ENOENT" && allowMissing) return (0, import_node_path8.resolve)(root);
+    const rootReal = await (0, import_promises9.realpath)(root).catch((error3) => {
+      if (error3?.code === "ENOENT" && allowMissing) return (0, import_node_path10.resolve)(root);
       throw error3;
     });
-    if (!within(rootReal, (0, import_node_path8.resolve)(candidate))) throw bridgeError("BUNDLE_PATH_OUTSIDE_PROJECT", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5728\u9879\u76EE\u5185", 403, { path: candidate });
-    let cursor = (0, import_node_path8.resolve)(candidate);
+    if (!within(rootReal, (0, import_node_path10.resolve)(candidate))) throw bridgeError("BUNDLE_PATH_OUTSIDE_PROJECT", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5728\u9879\u76EE\u5185", 403, { path: candidate });
+    let cursor = (0, import_node_path10.resolve)(candidate);
     while (true) {
       const metadata = await safeLstat(cursor);
       if (metadata) {
         if (metadata.isSymbolicLink()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "\u8D44\u6599\u5305\u62D2\u7EDD\u901A\u8FC7\u7B26\u53F7\u94FE\u63A5\u6216 junction \u8BBF\u95EE", 403, { path: cursor });
-        if (cursor !== (0, import_node_path8.resolve)(candidate) && !metadata.isDirectory()) throw bridgeError("BUNDLE_PATH_INVALID", "\u8D44\u6599\u5305\u7236\u8DEF\u5F84\u4E0D\u662F\u76EE\u5F55", 409, { path: cursor });
+        if (cursor !== (0, import_node_path10.resolve)(candidate) && !metadata.isDirectory()) throw bridgeError("BUNDLE_PATH_INVALID", "\u8D44\u6599\u5305\u7236\u8DEF\u5F84\u4E0D\u662F\u76EE\u5F55", 409, { path: cursor });
         if (cursor === rootReal) break;
       } else if (!allowMissing) {
         throw bridgeError("BUNDLE_NOT_FOUND", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5B58\u5728", 404, { path: cursor });
       }
-      const parent = (0, import_node_path8.dirname)(cursor);
+      const parent = (0, import_node_path10.dirname)(cursor);
       if (parent === cursor || !within(rootReal, parent)) break;
       cursor = parent;
     }
@@ -3005,11 +3263,11 @@ var BundleStore = class _BundleStore {
   #ownerInfo(input) {
     const ownerKind = normalizeOwnerKind(input.ownerKind);
     const ownerId = validateOwnerId(input.ownerId);
-    const directory = (0, import_node_path8.join)(this.mapRoot, ownerKind, ownerId);
+    const directory = (0, import_node_path10.join)(this.mapRoot, ownerKind, ownerId);
     return { ownerKind, ownerId, directory };
   }
   #lockPath(ownerKind, ownerId) {
-    return (0, import_node_path8.join)(this.lockRoot, `${digest2(`${ownerKind}/${ownerId}`)}.lock`);
+    return (0, import_node_path10.join)(this.lockRoot, `${digest3(`${ownerKind}/${ownerId}`)}.lock`);
   }
   async #withOwnerLock(info, operation) {
     await this.#ensureMapRoot();
@@ -3025,12 +3283,12 @@ var BundleStore = class _BundleStore {
   }
   async #prepareOwner(info) {
     await this.#assertSafePath(this.projectRoot, info.directory, { allowMissing: true });
-    await (0, import_promises7.mkdir)(info.directory, { recursive: true });
+    await (0, import_promises9.mkdir)(info.directory, { recursive: true });
     await this.#assertSafePath(this.projectRoot, info.directory, { allowMissing: false });
   }
   async #entries(info, { includeArchived = false } = {}) {
     await this.#assertSafePath(this.projectRoot, info.directory, { allowMissing: true });
-    const active = await (0, import_promises7.readdir)(info.directory, { withFileTypes: true }).catch((error3) => {
+    const active = await (0, import_promises9.readdir)(info.directory, { withFileTypes: true }).catch((error3) => {
       if (error3?.code === "ENOENT") return [];
       throw error3;
     });
@@ -3038,35 +3296,35 @@ var BundleStore = class _BundleStore {
     for (const entry of active) {
       if (entry.name === ".archive") continue;
       if (entry.name.startsWith(".")) continue;
-      const path = (0, import_node_path8.join)(info.directory, entry.name);
+      const path = (0, import_node_path10.join)(info.directory, entry.name);
       await this.#assertSafePath(this.projectRoot, path, { allowMissing: false });
       if (!entry.isFile()) continue;
-      if (!/\.md$/i.test(entry.name) && !ASSET_EXTENSIONS.has((0, import_node_path8.extname)(entry.name).toLowerCase())) continue;
+      if (!/\.md$/i.test(entry.name) && !ASSET_EXTENSIONS.has((0, import_node_path10.extname)(entry.name).toLowerCase())) continue;
       output.push({ name: entry.name, path, archived: false });
     }
     if (!includeArchived) return output;
-    const archivedRoot = (0, import_node_path8.join)(info.directory, ".archive");
-    const archived = await (0, import_promises7.readdir)(archivedRoot, { withFileTypes: true }).catch((error3) => {
+    const archivedRoot = (0, import_node_path10.join)(info.directory, ".archive");
+    const archived = await (0, import_promises9.readdir)(archivedRoot, { withFileTypes: true }).catch((error3) => {
       if (error3?.code === "ENOENT") return [];
       throw error3;
     });
     await this.#assertSafePath(this.projectRoot, archivedRoot, { allowMissing: true });
     for (const entry of archived) {
       if (entry.name.startsWith(".") || entry.name.endsWith(".meta.json")) continue;
-      const path = (0, import_node_path8.join)(archivedRoot, entry.name);
+      const path = (0, import_node_path10.join)(archivedRoot, entry.name);
       await this.#assertSafePath(this.projectRoot, path, { allowMissing: false });
-      if (entry.isFile() && (/\.md$/i.test(entry.name) || ASSET_EXTENSIONS.has((0, import_node_path8.extname)(entry.name).toLowerCase()))) {
+      if (entry.isFile() && (/\.md$/i.test(entry.name) || ASSET_EXTENSIONS.has((0, import_node_path10.extname)(entry.name).toLowerCase()))) {
         output.push({ name: entry.name, path, archived: true });
       }
     }
     return output;
   }
   async #fileInfo(info, entry) {
-    const metadata = await (0, import_promises7.stat)(entry.path);
+    const metadata = await (0, import_promises9.stat)(entry.path);
     const isIndex = entry.name === "index.md";
     const isMarkdown = isIndex || /\.md$/i.test(entry.name);
     const type = isMarkdown ? { mime: "text/markdown; charset=utf-8", kind: "markdown" } : contentTypeFor(entry.name);
-    const markdownContent = isMarkdown ? entry.content === void 0 ? await (0, import_promises7.readFile)(entry.path) : Buffer.from(entry.content) : void 0;
+    const markdownContent = isMarkdown ? entry.content === void 0 ? await (0, import_promises9.readFile)(entry.path) : Buffer.from(entry.content) : void 0;
     return {
       ownerKind: info.ownerKind === "nodes" ? "node" : "route",
       ownerId: info.ownerId,
@@ -3080,7 +3338,7 @@ var BundleStore = class _BundleStore {
       disposition: type.disposition ?? "inline",
       size: metadata.size,
       updatedAt: metadata.mtime?.toISOString?.() ?? null,
-      ...isMarkdown ? { etag: digest2(markdownContent) } : {}
+      ...isMarkdown ? { etag: digest3(markdownContent) } : {}
     };
   }
   async list(...args) {
@@ -3109,7 +3367,7 @@ var BundleStore = class _BundleStore {
       archived: Boolean(input.archived ?? options.archived),
       asset: Boolean(input.asset ?? options.asset)
     });
-    const data = await (0, import_promises7.readFile)(entry.path);
+    const data = await (0, import_promises9.readFile)(entry.path);
     const metadata = await this.#fileInfo(info, { ...entry, content: data });
     return { ...metadata, content: metadata.kind === "markdown" ? data.toString("utf8") : data, buffer: data };
   }
@@ -3138,7 +3396,7 @@ var BundleStore = class _BundleStore {
       if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
       const names = new Set(entries.map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = (0, import_node_path8.join)(info.directory, finalName);
+      const target = (0, import_node_path10.join)(info.directory, finalName);
       await atomicWriteFile(target, content);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
@@ -3148,7 +3406,7 @@ var BundleStore = class _BundleStore {
     const info = this.#ownerInfo(input);
     return this.#withOwnerLock(info, async () => {
       await this.#prepareOwner(info);
-      const target = (0, import_node_path8.join)(info.directory, "index.md");
+      const target = (0, import_node_path10.join)(info.directory, "index.md");
       const current = await safeLstat(target);
       if (current) {
         if (current.isSymbolicLink() || !current.isFile()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "index.md \u4E0D\u662F\u5B89\u5168\u666E\u901A\u6587\u4EF6", 403);
@@ -3176,12 +3434,12 @@ var BundleStore = class _BundleStore {
       await this.#prepareOwner(info);
       let current;
       try {
-        current = await (0, import_promises7.readFile)(entry.path);
+        current = await (0, import_promises9.readFile)(entry.path);
       } catch (error3) {
         if (error3?.code === "ENOENT") throw bridgeError("BUNDLE_NOT_FOUND", "\u8D44\u6599\u5305\u6587\u4EF6\u4E0D\u5B58\u5728", 404, { ownerKind: info.ownerKind, ownerId: info.ownerId, fileName: name });
         throw error3;
       }
-      const currentEtag = digest2(current);
+      const currentEtag = digest3(current);
       if (String(input.baseEtag) !== currentEtag) {
         const currentMetadata = await this.#fileInfo(info, { ...entry, content: current });
         throw bridgeError("MARKDOWN_CONFLICT", "Markdown \u5DF2\u88AB\u5176\u4ED6\u7A97\u53E3\u6216 Agent \u4FEE\u6539", 409, {
@@ -3207,22 +3465,22 @@ var BundleStore = class _BundleStore {
     return this.#withOwnerLock(info, async () => {
       await this.#prepareOwner(info);
       const commandId = input.commandId;
-      const requestDigest = digest2(JSON.stringify({ name, content: input.content }));
+      const requestDigest = digest3(JSON.stringify({ name, content: input.content }));
       await this.#assertSafePath(this.projectRoot, this.commandRoot, { allowMissing: true });
       await ensureDirectory(this.commandRoot);
-      const receiptPath = (0, import_node_path8.join)(this.commandRoot, `${digest2(`${info.ownerKind}/${info.ownerId}/${name}/${commandId}`)}.json`);
+      const receiptPath = (0, import_node_path10.join)(this.commandRoot, `${digest3(`${info.ownerKind}/${info.ownerId}/${name}/${commandId}`)}.json`);
       const receipt = await readJson(receiptPath).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
         throw error3;
       })());
       if (receipt?.requestDigest !== void 0 && receipt.requestDigest !== requestDigest) {
         throw bridgeError("BUNDLE_COMMAND_REUSE", "commandId \u5DF2\u7528\u4E8E\u5176\u4ED6 Markdown \u8FFD\u52A0", 409);
       }
-      const target = (0, import_node_path8.join)(info.directory, name);
+      const target = (0, import_node_path10.join)(info.directory, name);
       const current = await safeLstat(target);
       let existing = "";
       if (current) {
         if (current.isSymbolicLink() || !current.isFile()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "Markdown \u76EE\u6807\u4E0D\u662F\u5B89\u5168\u666E\u901A\u6587\u4EF6", 403);
-        existing = await (0, import_promises7.readFile)(target, "utf8");
+        existing = await (0, import_promises9.readFile)(target, "utf8");
       } else {
         const entries = await this.#entries(info, { includeArchived: true });
         if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
@@ -3233,8 +3491,8 @@ var BundleStore = class _BundleStore {
       const next = left.length === 0 ? right : right.length === 0 ? left : `${left}
 ${right}`;
       if (Buffer.byteLength(next, "utf8") > MAX_MARKDOWN_BYTES2) throw bridgeError("BUNDLE_MARKDOWN_TOO_LARGE", "Markdown \u5185\u5BB9\u8D85\u8FC7 2 MiB", 413);
-      const beforeEtag = digest2(Buffer.from(existing));
-      const afterEtag = digest2(Buffer.from(next));
+      const beforeEtag = digest3(Buffer.from(existing));
+      const afterEtag = digest3(Buffer.from(next));
       if (receipt && receipt.state !== "prepared") {
         return this.#fileInfo(info, { name, path: target, archived: false });
       }
@@ -3277,9 +3535,9 @@ ${right}`;
       }
       const names = new Set((await this.#entries(info, { includeArchived: true })).filter((entry) => caseKey(entry.name) !== caseKey(from)).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(to, names);
-      const target = (0, import_node_path8.join)(info.directory, finalName);
+      const target = (0, import_node_path10.join)(info.directory, finalName);
       await this.#assertSafePath(this.projectRoot, source.path, { allowMissing: false });
-      await (0, import_promises7.rename)(source.path, target);
+      await (0, import_promises9.rename)(source.path, target);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
   }
@@ -3290,14 +3548,14 @@ ${right}`;
     if (name === "index.md") throw bridgeError("BUNDLE_INDEX_IMMUTABLE", "index.md \u4E0D\u5141\u8BB8\u5F52\u6863", 409);
     return this.#withOwnerLock(info, async () => {
       const source = await this.#resolveEntry(info, name, { asset: !/\.md$/i.test(name) });
-      const archiveRoot = (0, import_node_path8.join)(info.directory, ".archive");
+      const archiveRoot = (0, import_node_path10.join)(info.directory, ".archive");
       await this.#assertSafePath(this.projectRoot, archiveRoot, { allowMissing: true });
       await ensureDirectory(archiveRoot);
       await this.#assertSafePath(this.projectRoot, archiveRoot, { allowMissing: false });
       const names = new Set((await this.#entries(info, { includeArchived: true })).filter((entry) => entry.archived).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = (0, import_node_path8.join)(archiveRoot, finalName);
-      await (0, import_promises7.rename)(source.path, target);
+      const target = (0, import_node_path10.join)(archiveRoot, finalName);
+      await (0, import_promises9.rename)(source.path, target);
       await writeJsonAtomic(`${target}.meta.json`, { archivedAt: this.clock().toISOString(), originalName: name });
       return this.#fileInfo(info, { name: finalName, path: target, archived: true });
     });
@@ -3312,15 +3570,15 @@ ${right}`;
       await this.#prepareOwner(info);
       const names = new Set((await this.#entries(info)).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = (0, import_node_path8.join)(info.directory, finalName);
-      await (0, import_promises7.rename)(source.path, target);
-      await (0, import_promises7.rm)(`${source.path}.meta.json`, { force: true }).catch(() => void 0);
+      const target = (0, import_node_path10.join)(info.directory, finalName);
+      await (0, import_promises9.rename)(source.path, target);
+      await (0, import_promises9.rm)(`${source.path}.meta.json`, { force: true }).catch(() => void 0);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
   }
   #allocateName(requested, occupied) {
     if (!occupied.has(caseKey(requested))) return requested;
-    const extension = (0, import_node_path8.extname)(requested);
+    const extension = (0, import_node_path10.extname)(requested);
     const stem = requested.slice(0, requested.length - extension.length);
     for (let suffix = 2; suffix < 1e5; suffix += 1) {
       const candidate = `${stem}-${suffix}${extension}`;
@@ -3333,20 +3591,20 @@ ${right}`;
     if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
     const mapEntries = [];
     for (const ownerKind of ["nodes", "routes"]) {
-      const kindRoot = (0, import_node_path8.join)(this.mapRoot, ownerKind);
+      const kindRoot = (0, import_node_path10.join)(this.mapRoot, ownerKind);
       await this.#assertSafePath(this.projectRoot, kindRoot, { allowMissing: true });
-      const owners = await (0, import_promises7.readdir)(kindRoot, { withFileTypes: true }).catch((error3) => error3?.code === "ENOENT" ? [] : (() => {
+      const owners = await (0, import_promises9.readdir)(kindRoot, { withFileTypes: true }).catch((error3) => error3?.code === "ENOENT" ? [] : (() => {
         throw error3;
       })());
       for (const owner2 of owners) {
         if (!owner2.isDirectory() || owner2.name.startsWith(".")) continue;
-        const ownerInfo = { ownerKind, ownerId: owner2.name, directory: (0, import_node_path8.join)(kindRoot, owner2.name) };
+        const ownerInfo = { ownerKind, ownerId: owner2.name, directory: (0, import_node_path10.join)(kindRoot, owner2.name) };
         const ownerEntries = await this.#entries(ownerInfo, { includeArchived: true });
         mapEntries.push(...ownerEntries.filter((entry) => !/\.md$/i.test(entry.name)));
       }
     }
     let total = incomingBytes;
-    for (const entry of mapEntries) total += (await (0, import_promises7.stat)(entry.path)).size;
+    for (const entry of mapEntries) total += (await (0, import_promises9.stat)(entry.path)).size;
     if (total > MAX_MAP_ASSET_BYTES) throw bridgeError("BUNDLE_SIZE_QUOTA", "\u5355\u5730\u56FE\u9644\u4EF6\u603B\u91CF\u8D85\u8FC7 1 GiB", 413);
   }
   async #withMapLock(operation) {
@@ -3354,7 +3612,7 @@ ${right}`;
     await this.#assertSafePath(this.projectRoot, this.lockRoot, { allowMissing: true });
     await ensureDirectory(this.lockRoot);
     try {
-      return await withFileLock((0, import_node_path8.join)(this.lockRoot, "map-assets.lock"), operation, { timeoutMs: 1e4, staleMs: 3e4 });
+      return await withFileLock((0, import_node_path10.join)(this.lockRoot, "map-assets.lock"), operation, { timeoutMs: 1e4, staleMs: 3e4 });
     } catch (error3) {
       if (error3?.code === "LOCK_TIMEOUT") throw bridgeError("BUNDLE_BUSY", "\u5730\u56FE\u9644\u4EF6\u6B63\u5728\u88AB\u5176\u4ED6\u5199\u5165\u5360\u7528\uFF0C\u8BF7\u91CD\u8BD5", 409);
       throw error3;
@@ -3362,8 +3620,8 @@ ${right}`;
   }
   async #consumeStream(stream, temporary) {
     if (!stream || typeof stream[Symbol.asyncIterator] !== "function") throw bridgeError("BUNDLE_STREAM_REQUIRED", "\u9644\u4EF6\u5FC5\u987B\u901A\u8FC7\u53EF\u8BFB\u6D41\u5BFC\u5165", 400);
-    await ensureDirectory((0, import_node_path8.dirname)(temporary));
-    const handle = await (0, import_promises7.open)(temporary, "wx", 384);
+    await ensureDirectory((0, import_node_path10.dirname)(temporary));
+    const handle = await (0, import_promises9.open)(temporary, "wx", 384);
     let size = 0;
     const chunks = [];
     let headerSize = 0;
@@ -3385,19 +3643,19 @@ ${right}`;
     return { size, header: Buffer.concat(chunks).subarray(0, 8192) };
   }
   async #copySource(sourcePath, temporary) {
-    const candidate = (0, import_node_path8.resolve)(this.projectRoot, sourcePath);
+    const candidate = (0, import_node_path10.resolve)(this.projectRoot, sourcePath);
     await this.#assertSafePath(this.projectRoot, candidate, { allowMissing: false });
-    const before = await (0, import_promises7.stat)(candidate);
+    const before = await (0, import_promises9.stat)(candidate);
     if (!before.isFile()) throw bridgeError("BUNDLE_SOURCE_NOT_FILE", "\u9644\u4EF6\u6E90\u5FC5\u987B\u662F\u666E\u901A\u6587\u4EF6", 400);
     if (before.size > MAX_ASSET_BYTES) throw bridgeError("BUNDLE_ASSET_TOO_LARGE", "\u5355\u9644\u4EF6\u8D85\u8FC7 20 MiB", 413, { limit: MAX_ASSET_BYTES });
     let handle;
     try {
       const flags = import_node_fs.constants.O_RDONLY | (import_node_fs.constants.O_NOFOLLOW ?? 0);
-      handle = await (0, import_promises7.open)(candidate, flags);
+      handle = await (0, import_promises9.open)(candidate, flags);
       const opened = await handle.stat();
       if (!opened.isFile() || !compareStats(before, opened)) throw bridgeError("BUNDLE_SOURCE_CHANGED", "\u9644\u4EF6\u6E90\u5728\u5BFC\u5165\u524D\u5DF2\u53D8\u5316", 409);
       const result2 = await this.#consumeStream(handle.createReadStream(), temporary);
-      const after = await (0, import_promises7.stat)(candidate);
+      const after = await (0, import_promises9.stat)(candidate);
       if (!compareStats(before, after) || result2.size !== before.size) throw bridgeError("BUNDLE_SOURCE_CHANGED", "\u9644\u4EF6\u6E90\u5728\u5BFC\u5165\u8FC7\u7A0B\u4E2D\u53D1\u751F\u53D8\u5316", 409);
       return result2;
     } catch (error3) {
@@ -3416,7 +3674,7 @@ ${right}`;
     if (declaredMime && declaredMime !== type.mime) throw bridgeError("BUNDLE_MIME_MISMATCH", "\u58F0\u660E MIME \u4E0E\u6269\u5C55\u540D\u4E0D\u4E00\u81F4", 415, { expected: type.mime, received: declaredMime });
     if (!input.sourcePath && !input.stream) throw bridgeError("BUNDLE_SOURCE_REQUIRED", "\u9644\u4EF6\u5BFC\u5165\u9700\u8981 sourcePath \u6216 stream", 400);
     await this.#prepareOwner(info);
-    const temporary = (0, import_node_path8.join)(info.directory, `.${(0, import_node_crypto4.randomBytes)(12).toString("hex")}.upload.tmp`);
+    const temporary = (0, import_node_path10.join)(info.directory, `.${(0, import_node_crypto5.randomBytes)(12).toString("hex")}.upload.tmp`);
     let imported;
     try {
       imported = input.sourcePath ? await this.#copySource(input.sourcePath, temporary) : await this.#consumeStream(input.stream, temporary);
@@ -3426,14 +3684,14 @@ ${right}`;
         await this.#quota(info, imported.size);
         const names = new Set((await this.#entries(info, { includeArchived: true })).map((entry) => caseKey(entry.name)));
         const finalName = this.#allocateName(requestedName, names);
-        const target = (0, import_node_path8.join)(info.directory, finalName);
+        const target = (0, import_node_path10.join)(info.directory, finalName);
         await this.#assertSafePath(this.projectRoot, target, { allowMissing: true });
-        await (0, import_promises7.rename)(temporary, target);
+        await (0, import_promises9.rename)(temporary, target);
         const result2 = await this.#fileInfo(info, { name: finalName, path: target, archived: false });
         return { ...result2, mimeType: type.mime, disposition: type.disposition ?? "inline" };
       }));
     } finally {
-      await (0, import_promises7.rm)(temporary, { force: true }).catch(() => void 0);
+      await (0, import_promises9.rm)(temporary, { force: true }).catch(() => void 0);
     }
   }
   async createReadStream(...args) {
@@ -3451,7 +3709,7 @@ var MapManager = class _MapManager {
   constructor(options = {}) {
     if (!options.projectRoot) throw new BridgeError("PROJECT_ROOT_REQUIRED", "MapManager \u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", { status: 400 });
     if (!options.shared) throw new BridgeError("SHARED_ADAPTER_REQUIRED", "MapManager \u9700\u8981 shared adapter", { status: 500 });
-    this.projectRoot = (0, import_node_path9.resolve)(options.projectRoot);
+    this.projectRoot = (0, import_node_path11.resolve)(options.projectRoot);
     this.shared = options.shared;
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.snapshotEvery = options.snapshotEvery;
@@ -3464,7 +3722,7 @@ var MapManager = class _MapManager {
     this.stores = /* @__PURE__ */ new Map();
     this.bundles = /* @__PURE__ */ new Map();
     this.lastImplicitKey = null;
-    this.lockPath = (0, import_node_path9.join)(this.projectRoot, ".live-dot-map", ".bridge", "map-manager.lock");
+    this.lockPath = (0, import_node_path11.join)(this.projectRoot, ".live-dot-map", ".bridge", "map-manager.lock");
   }
   static async open(options) {
     const manager = new _MapManager(options);
@@ -3566,9 +3824,9 @@ var MapManager = class _MapManager {
     return context.store.execute({
       projectId: context.documentId,
       baseRevision: context.snapshot.revision,
-      commandId: `map-rename-${(0, import_node_crypto5.randomUUID)()}`,
+      commandId: `map-rename-${(0, import_node_crypto6.randomUUID)()}`,
       actor,
-      sessionId: `map-manager-${(0, import_node_crypto5.randomUUID)()}`,
+      sessionId: `map-manager-${(0, import_node_crypto6.randomUUID)()}`,
       commands: [{ op: "set_meta", patch: { name: displayName } }]
     });
   }
@@ -3581,13 +3839,13 @@ var MapManager = class _MapManager {
 };
 
 // src/bridge/tool-service.mjs
-var import_node_crypto7 = require("node:crypto");
-var import_node_path11 = require("node:path");
+var import_node_crypto8 = require("node:crypto");
+var import_node_path13 = require("node:path");
 
 // src/bridge/context-document-provider.mjs
-var import_node_crypto6 = require("node:crypto");
-var import_promises8 = require("node:fs/promises");
-var import_node_path10 = require("node:path");
+var import_node_crypto7 = require("node:crypto");
+var import_promises10 = require("node:fs/promises");
+var import_node_path12 = require("node:path");
 var MAX_MARKDOWN_BYTES3 = 2 * 1024 * 1024;
 var SAFE_OWNER_ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
 var ASSET_TYPES2 = Object.freeze({
@@ -3612,14 +3870,14 @@ function textPath(value) {
   return value.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 function within2(root, candidate) {
-  const value = (0, import_node_path10.relative)(root, candidate);
-  return value === "" || value !== ".." && !value.startsWith(`..${import_node_path10.sep}`) && !/^[A-Za-z]:[\\/]/.test(value);
+  const value = (0, import_node_path12.relative)(root, candidate);
+  return value === "" || value !== ".." && !value.startsWith(`..${import_node_path12.sep}`) && !/^[A-Za-z]:[\\/]/.test(value);
 }
 function projectRelative(root, candidate) {
-  return (0, import_node_path10.relative)(root, candidate).replace(/\\/g, "/");
+  return (0, import_node_path12.relative)(root, candidate).replace(/\\/g, "/");
 }
-function digest3(content) {
-  return (0, import_node_crypto6.createHash)("sha256").update(content).digest("hex");
+function digest4(content) {
+  return (0, import_node_crypto7.createHash)("sha256").update(content).digest("hex");
 }
 function collectionOwner(collection, item) {
   const ownerId = String(item?.id ?? "");
@@ -3661,18 +3919,18 @@ function activeObjects(document, includeHistory) {
   return { owners, routeVisible, nodeVisible, edgeVisible };
 }
 async function requireRegularPath(root, candidate, { allowMissing = false } = {}) {
-  const rootReal = await (0, import_promises8.realpath)(root).catch((error3) => {
+  const rootReal = await (0, import_promises10.realpath)(root).catch((error3) => {
     if (error3?.code === "ENOENT") throw contextError("CONTEXT_PROJECT_NOT_FOUND", "\u4E0A\u4E0B\u6587\u9879\u76EE\u6839\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
     throw error3;
   });
-  const resolved = (0, import_node_path10.resolve)(candidate);
+  const resolved = (0, import_node_path12.resolve)(candidate);
   if (!within2(rootReal, resolved)) throw contextError("CONTEXT_PATH_OUTSIDE_PROJECT", "\u4E0A\u4E0B\u6587\u6587\u4EF6\u4E0D\u5728\u9879\u76EE\u6839\u76EE\u5F55\u5185", 403, { path: candidate });
   let cursor = resolved;
   let target;
   while (true) {
     let metadata;
     try {
-      metadata = await (0, import_promises8.lstat)(cursor);
+      metadata = await (0, import_promises10.lstat)(cursor);
     } catch (error3) {
       if (error3?.code !== "ENOENT") throw error3;
       if (!allowMissing) throw contextError("CONTEXT_FILE_NOT_FOUND", "\u4E0A\u4E0B\u6587\u6587\u4EF6\u4E0D\u5B58\u5728", 404, { path: candidate });
@@ -3689,17 +3947,17 @@ async function requireRegularPath(root, candidate, { allowMissing = false } = {}
   return { rootReal, resolved, metadata: target };
 }
 async function requireSafeDirectory(root, candidate, { allowMissing = true } = {}) {
-  const rootReal = await (0, import_promises8.realpath)(root).catch((error3) => {
+  const rootReal = await (0, import_promises10.realpath)(root).catch((error3) => {
     if (error3?.code === "ENOENT") throw contextError("CONTEXT_PROJECT_NOT_FOUND", "\u4E0A\u4E0B\u6587\u9879\u76EE\u6839\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
     throw error3;
   });
-  const resolved = (0, import_node_path10.resolve)(candidate);
+  const resolved = (0, import_node_path12.resolve)(candidate);
   if (!within2(rootReal, resolved)) throw contextError("CONTEXT_PATH_OUTSIDE_PROJECT", "\u4E0A\u4E0B\u6587\u76EE\u5F55\u4E0D\u5728\u9879\u76EE\u6839\u76EE\u5F55\u5185", 403, { path: candidate });
   let cursor = resolved;
   while (true) {
     let metadata;
     try {
-      metadata = await (0, import_promises8.lstat)(cursor);
+      metadata = await (0, import_promises10.lstat)(cursor);
     } catch (error3) {
       if (error3?.code !== "ENOENT") throw error3;
       if (!allowMissing) throw contextError("CONTEXT_DIRECTORY_NOT_FOUND", "\u4E0A\u4E0B\u6587\u76EE\u5F55\u4E0D\u5B58\u5728", 404, { path: candidate });
@@ -3714,8 +3972,8 @@ async function requireSafeDirectory(root, candidate, { allowMissing = true } = {
   return { rootReal, resolved };
 }
 function dirnameSafe(value) {
-  const normalized = (0, import_node_path10.resolve)(value);
-  const parent = (0, import_node_path10.resolve)(normalized, "..");
+  const normalized = (0, import_node_path12.resolve)(value);
+  const parent = (0, import_node_path12.resolve)(normalized, "..");
   return parent === normalized ? normalized : parent;
 }
 function isReservedRelative(relativePath) {
@@ -3727,7 +3985,7 @@ function isReservedRelative(relativePath) {
   return false;
 }
 function normalizedMapRoot(root, mapKey) {
-  return (0, import_node_path10.resolve)(root, ".live-dot-map", "maps", mapKey);
+  return (0, import_node_path12.resolve)(root, ".live-dot-map", "maps", mapKey);
 }
 function isInsideMap(root, mapRoot, candidate) {
   const mapRelative = projectRelative(root, mapRoot).toLowerCase().replace(/\\/g, "/");
@@ -3744,18 +4002,18 @@ function mergeOwner(entry, owner2) {
     entry.ownerId = owner2.ownerId;
   }
 }
-async function collect({ projectRoot, mapKey, document, includeHistory = false } = {}) {
+async function collect({ projectRoot, mapKey, document, includeHistory = false, mdIndex = null } = {}) {
   if (typeof projectRoot !== "string" || !projectRoot.trim()) throw contextError("CONTEXT_PROJECT_REQUIRED", "\u4E0A\u4E0B\u6587\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
   if (!isSafeMapId(mapKey)) throw contextError("CONTEXT_MAP_INVALID", "\u4E0A\u4E0B\u6587\u5730\u56FE ID \u65E0\u6548", 400, { mapKey });
   if (!document || typeof document !== "object") throw contextError("CONTEXT_DOCUMENT_REQUIRED", "\u4E0A\u4E0B\u6587\u9700\u8981\u5F53\u524D\u5730\u56FE\u6587\u6863", 400);
-  const root = (0, import_node_path10.resolve)(projectRoot);
+  const root = (0, import_node_path12.resolve)(projectRoot);
   const mapRoot = normalizedMapRoot(root, mapKey);
   const mapDir = `.live-dot-map/maps/${mapKey}`;
   const result2 = { mapKey, mapDir, markdown: [], assets: [] };
   const markdownByPath = /* @__PURE__ */ new Map();
   const assetsByPath = /* @__PURE__ */ new Map();
   const { owners } = activeObjects(document, includeHistory === true);
-  const mapMetadata = await (0, import_promises8.lstat)(mapRoot).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
+  const mapMetadata = await (0, import_promises10.lstat)(mapRoot).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
     throw error3;
   })());
   if (mapMetadata?.isSymbolicLink()) throw contextError("CONTEXT_SYMLINK_FORBIDDEN", "\u5F53\u524D\u5730\u56FE\u76EE\u5F55\u4E0D\u5141\u8BB8\u662F\u7B26\u53F7\u94FE\u63A5", 403, { path: mapRoot });
@@ -3766,7 +4024,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false }
     const safety = await requireRegularPath(root, candidate, { allowMissing });
     if (!safety.metadata) return;
     if (safety.metadata.size > MAX_MARKDOWN_BYTES3) throw contextError("CONTEXT_MARKDOWN_TOO_LARGE", "\u4E0A\u4E0B\u6587 Markdown \u8D85\u8FC7 2 MiB", 413, { path: candidate, size: safety.metadata.size });
-    const content = await (0, import_promises8.readFile)(safety.resolved, "utf8");
+    const content = await (0, import_promises10.readFile)(safety.resolved, "utf8");
     const path = projectRelative(root, safety.resolved);
     const existing = markdownByPath.get(path.toLowerCase());
     if (existing) {
@@ -3783,7 +4041,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false }
       isIndex: source === "bundle" && path.toLowerCase().endsWith("/index.md"),
       archived: false,
       size: Buffer.byteLength(content, "utf8"),
-      etag: digest3(Buffer.from(content, "utf8")),
+      etag: digest4(Buffer.from(content, "utf8")),
       updatedAt: safety.metadata.mtime?.toISOString?.() ?? null,
       owners: [{ ownerKind: owner2.ownerKind, ownerId: owner2.ownerId }]
     };
@@ -3799,7 +4057,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false }
       mergeOwner(existing, owner2);
       return;
     }
-    const type = ASSET_TYPES2[(0, import_node_path10.extname)(name).toLowerCase()] ?? { kind: "file", mimeType: "application/octet-stream" };
+    const type = ASSET_TYPES2[(0, import_node_path12.extname)(name).toLowerCase()] ?? { kind: "file", mimeType: "application/octet-stream" };
     const info = {
       path: relativePath,
       fileName: name,
@@ -3817,33 +4075,70 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false }
     assetsByPath.set(relativePath.toLowerCase(), info);
     result2.assets.push(info);
   };
+  const addMarkdownFromCard = (card, owner2) => {
+    const path = String(card?.path ?? "").replace(/\\/g, "/");
+    if (!path) return;
+    const existing = markdownByPath.get(path.toLowerCase());
+    if (existing) {
+      mergeOwner(existing, owner2);
+      if (existing.source === "custom") existing.source = "bundle";
+      return;
+    }
+    const info = {
+      path,
+      text: String(card.summary ?? ""),
+      source: "bundle",
+      ownerKind: owner2.ownerKind,
+      ownerId: owner2.ownerId,
+      isIndex: path.toLowerCase().endsWith("/index.md"),
+      archived: false,
+      size: Number(card.bytes ?? 0),
+      etag: String(card.etag ?? ""),
+      updatedAt: String(card.updatedAt ?? ""),
+      summaryOnly: true,
+      assets: Array.isArray(card.assets) ? card.assets : [],
+      owners: [{ ownerKind: owner2.ownerKind, ownerId: owner2.ownerId }]
+    };
+    markdownByPath.set(path.toLowerCase(), info);
+    result2.markdown.push(info);
+  };
   const scanOwner = async (owner2) => {
-    const directory = (0, import_node_path10.join)(mapRoot, owner2.directoryKind, owner2.ownerId);
-    const ownerMetadata = await (0, import_promises8.lstat)(directory).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
+    const directory = (0, import_node_path12.join)(mapRoot, owner2.directoryKind, owner2.ownerId);
+    const ownerMetadata = await (0, import_promises10.lstat)(directory).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
       throw error3;
     })());
     if (!ownerMetadata) return;
     if (ownerMetadata.isSymbolicLink()) throw contextError("CONTEXT_SYMLINK_FORBIDDEN", "\u8D44\u6599\u5305\u5BF9\u8C61\u76EE\u5F55\u4E0D\u5141\u8BB8\u662F\u7B26\u53F7\u94FE\u63A5", 403, { path: directory });
     if (!ownerMetadata.isDirectory()) throw contextError("CONTEXT_NOT_DIRECTORY", "\u8D44\u6599\u5305\u5BF9\u8C61\u8DEF\u5F84\u4E0D\u662F\u76EE\u5F55", 409, { path: directory });
-    const entries = await (0, import_promises8.readdir)(directory, { withFileTypes: true });
+    const entries = await (0, import_promises10.readdir)(directory, { withFileTypes: true });
+    const useIndex = mdIndex && typeof mdIndex.getOrRefreshCard === "function";
     for (const entry of entries) {
       if (entry.name === ".archive" || entry.name.startsWith(".")) continue;
-      const candidate = (0, import_node_path10.join)(directory, entry.name);
-      const metadata = await (0, import_promises8.lstat)(candidate).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
+      const candidate = (0, import_node_path12.join)(directory, entry.name);
+      const metadata = await (0, import_promises10.lstat)(candidate).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
         throw error3;
       })());
       if (!metadata) continue;
       if (metadata.isSymbolicLink()) throw contextError("CONTEXT_SYMLINK_FORBIDDEN", "\u8D44\u6599\u5305\u6587\u4EF6\u4E0D\u5141\u8BB8\u662F\u7B26\u53F7\u94FE\u63A5", 403, { path: candidate });
       if (metadata.isDirectory()) continue;
-      if (/\.md$/i.test(entry.name)) await addMarkdown(candidate, owner2, "bundle");
-      else if (ASSET_TYPES2[(0, import_node_path10.extname)(entry.name).toLowerCase()]) await addAsset(candidate, owner2, entry.name);
+      if (/\.md$/i.test(entry.name)) {
+        if (useIndex) {
+          const card = await mdIndex.getOrRefreshCard({ mapRoot, relativePath: projectRelative(root, candidate) });
+          if (card) await addMarkdownFromCard(card, owner2);
+          else await addMarkdown(candidate, owner2, "bundle");
+        } else {
+          await addMarkdown(candidate, owner2, "bundle");
+        }
+      } else if (ASSET_TYPES2[(0, import_node_path12.extname)(entry.name).toLowerCase()]) {
+        await addAsset(candidate, owner2, entry.name);
+      }
     }
   };
   for (const owner2 of owners) await scanOwner(owner2);
   for (const owner2 of owners) {
     const pointer = textPath(owner2.item?.md);
     if (!pointer || !/\.md$/i.test(pointer)) continue;
-    const candidate = (0, import_node_path10.resolve)(root, pointer);
+    const candidate = (0, import_node_path12.resolve)(root, pointer);
     const relativePath = projectRelative(root, candidate);
     if (isReservedRelative(relativePath)) continue;
     if (!within2(root, candidate)) continue;
@@ -3855,6 +4150,10 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false }
   }
   result2.markdown.sort((left, right) => left.path.localeCompare(right.path, "en"));
   result2.assets.sort((left, right) => left.path.localeCompare(right.path, "en"));
+  if (mdIndex && typeof mdIndex.persist === "function") {
+    await mdIndex.persist().catch(() => {
+    });
+  }
   return result2;
 }
 var ContextDocumentProvider = class {
@@ -3902,7 +4201,8 @@ var TOOL_DEFINITIONS = Object.freeze([
   schema("map_list_assets", "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u9644\u4EF6\u5143\u6570\u636E\u3002", { ...owner, includeArchived: { type: "boolean" } }, ["ownerKind", "ownerId"]),
   schema("map_import_asset", "\u4ECE\u9879\u76EE\u5185 sourcePath \u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\u3002", { ...owner, sourcePath: { type: "string" }, fileName: { type: "string" }, mimeType: { type: "string" } }, ["ownerKind", "ownerId", "sourcePath"]),
   schema("map_archive_asset", "\u5F52\u6863\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
-  schema("map_restore_asset", "\u6062\u590D\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"])
+  schema("map_restore_asset", "\u6062\u590D\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
+  schema("map_read_asset", "\u8FD4\u56DE\u5BF9\u8C61\u9644\u4EF6\u8DEF\u5F84\u4E0E\u5143\u6570\u636E\uFF08\u4E0D\u642C\u8FD0\u4E8C\u8FDB\u5236\uFF09\u3002\u6587\u672C\u7C7B\u9644 content\uFF0C\u4E8C\u8FDB\u5236\u53EF\u4F20 includeContent \u53D6 base64\u3002", { ...owner, fileName: { type: "string" }, includeContent: { type: "boolean" } }, ["ownerKind", "ownerId", "fileName"])
 ]);
 var TOOL_NAMES = Object.freeze(TOOL_DEFINITIONS.map((tool) => tool.name));
 var TOOL_NAME_SET = new Set(TOOL_NAMES);
@@ -3980,13 +4280,23 @@ function markdownSection(text, headings) {
   }
   return "";
 }
-function attemptEvidence(document, markdown) {
-  const docs = new Map(markdown.map((item) => [String(item.path).replace(/\\/g, "/"), String(item.text ?? "")]));
+async function attemptEvidence(document, markdown, { readFull } = {}) {
   const mapDir = typeof document.mapDir === "string" && document.mapDir ? document.mapDir : ".live-dot-map";
-  return (Array.isArray(document.edges) ? document.edges : []).filter((edge) => ["failed", "success", "pending"].includes(String(edge.status)) && edge.archived !== true && edge.shelved !== true).map((edge) => {
+  const edges = (Array.isArray(document.edges) ? document.edges : []).filter((edge) => ["failed", "success", "pending"].includes(String(edge.status)) && edge.archived !== true && edge.shelved !== true);
+  const result2 = [];
+  for (const edge of edges) {
     const path = String(edge.md || `${mapDir}/routes/${edge.id}/index.md`).replace(/\\/g, "/");
-    const text = docs.get(path) || "";
-    return {
+    let text = "";
+    const hit = (markdown || []).find((item) => String(item.path).replace(/\\/g, "/") === path);
+    if (hit) text = String(hit.text ?? "");
+    if (!text.trim() && typeof readFull === "function") {
+      try {
+        text = await readFull(path);
+      } catch {
+        text = "";
+      }
+    }
+    result2.push({
       id: String(edge.id),
       status: String(edge.status),
       name: String(edge.name || edge.id),
@@ -3996,8 +4306,9 @@ function attemptEvidence(document, markdown) {
       failureReason: markdownSection(text, ["\u5931\u8D25\u539F\u56E0", "\u5931\u8D25\u539F\u56E0/\u6392\u9664\u6761\u4EF6"]).slice(0, 360),
       nextStep: markdownSection(text, ["\u4E0B\u4E00\u6B65", "\u540E\u7EED\u5EFA\u8BAE"]).slice(0, 360),
       hasMarkdown: Boolean(text)
-    };
-  }).sort((left, right) => (left.status === "failed" ? -1 : 0) - (right.status === "failed" ? -1 : 0) || left.id.localeCompare(right.id)).slice(0, 8);
+    });
+  }
+  return result2.sort((left, right) => (left.status === "failed" ? -1 : 0) - (right.status === "failed" ? -1 : 0) || left.id.localeCompare(right.id)).slice(0, 8);
 }
 var ToolService = class {
   constructor(options = {}) {
@@ -4008,6 +4319,32 @@ var ToolService = class {
     this.actor = String(options.actor || "agent:generic").startsWith("agent:") ? String(options.actor || "agent:generic") : "agent:generic";
     this.projectHandle = String(options.projectHandle || "stdio");
     this.contextProvider = options.contextProvider ?? new ContextDocumentProvider();
+    this.mdIndexes = /* @__PURE__ */ new Map();
+  }
+  /** per-map 卡片索引：懒创建 + load + 首次全量建卡。 */
+  async #mdIndexFor(context) {
+    const key = `${context.projectRoot}/${context.mapKey}`;
+    let index = this.mdIndexes.get(key);
+    if (!index) {
+      index = new MdIndex({ projectRoot: context.projectRoot, mapKey: context.mapKey });
+      await index.load();
+      this.mdIndexes.set(key, index);
+    }
+    await index.ensureBuilt({ mapRoot: (0, import_node_path13.join)(context.projectRoot, ".live-dot-map", "maps", context.mapKey) });
+    return index;
+  }
+  /** 写路径成功后刷单 owner 卡片（保存/改名/归档/资产/建节点等，双写全覆盖）。 */
+  async #refreshCard(ownerKindNodeOrRoute, ownerId, context) {
+    if (!ownerKindNodeOrRoute || !ownerId) return;
+    try {
+      const index = await this.#mdIndexFor(context);
+      await index.refreshOwnerAndPersist({
+        mapRoot: (0, import_node_path13.join)(context.projectRoot, ".live-dot-map", "maps", context.mapKey),
+        ownerKind: ownerKindNodeOrRoute === "route" ? "routes" : "nodes",
+        ownerId: String(ownerId)
+      });
+    } catch {
+    }
   }
   async #context(args = {}) {
     return this.mapManager.resolve({ ...typeof args.mapKey === "string" && args.mapKey ? { mapKey: args.mapKey } : {} });
@@ -4020,9 +4357,9 @@ var ToolService = class {
     return {
       projectId: context.documentId,
       baseRevision: Number.isInteger(args.baseRevision) ? args.baseRevision : context.snapshot.revision,
-      commandId: typeof args.commandId === "string" ? args.commandId : `${prefix}-${(0, import_node_crypto7.randomUUID)()}`,
+      commandId: typeof args.commandId === "string" ? args.commandId : `${prefix}-${(0, import_node_crypto8.randomUUID)()}`,
       actor: this.actor,
-      sessionId: typeof args.sessionId === "string" ? args.sessionId : `tool-${(0, import_node_crypto7.randomUUID)()}`,
+      sessionId: typeof args.sessionId === "string" ? args.sessionId : `tool-${(0, import_node_crypto8.randomUUID)()}`,
       commands
     };
   }
@@ -4035,11 +4372,13 @@ var ToolService = class {
     const context = await this.#context(args);
     const { store, bundleStore, snapshot, mapKey } = context;
     const document = snapshot.document;
+    const mdIndex = await this.#mdIndexFor(context);
     const collected = async () => this.contextProvider.collect({
       projectRoot: context.projectRoot,
       mapKey,
       document,
-      includeHistory: args.includeHistory === true
+      includeHistory: args.includeHistory === true,
+      mdIndex
     });
     if (name === "map_get_context" || name === "map_next_candidates") {
       const documents = await collected();
@@ -4051,7 +4390,16 @@ var ToolService = class {
         includeHistory: args.includeHistory === true,
         markdown
       });
-      const evidence = attemptEvidence(document, markdown);
+      const evidence = await attemptEvidence(document, markdown, {
+        readFull: async (path) => {
+          try {
+            const file2 = ownerArgs({ path }, mapKey);
+            return String((await bundleStore.readMarkdown(file2)).content ?? "");
+          } catch {
+            return "";
+          }
+        }
+      });
       const projection = await mergeHumanMdUpdates(context, { ...this.shared.buildProjectProjection(document, { now: typeof args.now === "string" ? args.now : void 0 }), attemptEvidence: evidence });
       if (name === "map_get_context") return { projectHandle: this.projectHandle, mapKey, documentId: context.documentId, revision: snapshot.revision, projection, attemptEvidence: evidence, assets: documents.assets, ...retrieved, markdown: queryText ? retrieved.markdown : recentMarkdown(markdown) };
       return { projectHandle: this.projectHandle, mapKey, documentId: context.documentId, revision: snapshot.revision, projection, attemptEvidence: evidence, assets: documents.assets, alternatives: this.shared.findExplorationAlternatives(document, args.currentNodeId == null ? null : String(args.currentNodeId), { limit: 3 }), ...retrieved, autonomy: this.shared.autonomyDecision(document, retrieved.objects) };
@@ -4084,6 +4432,13 @@ var ToolService = class {
     if (name === "map_apply_commands") {
       const result2 = await store.execute(this.#envelope(context, args, Array.isArray(args.commands) ? args.commands : [], "mcp-apply"));
       await ensureNodeIndexes(bundleStore, Array.isArray(args.commands) ? args.commands : []);
+      if (Array.isArray(args.commands)) {
+        for (const command2 of args.commands) {
+          if (command2?.op === "create" && command2?.collection === "nodes" && typeof command2?.value?.id === "string") {
+            await this.#refreshCard("node", command2.value.id, context);
+          }
+        }
+      }
       return result2;
     }
     if (name === "map_validate") {
@@ -4102,29 +4457,72 @@ var ToolService = class {
     if (name === "map_read_markdown") return cleanResult(await bundleStore.readMarkdown(file));
     if (name === "map_write_markdown") {
       const result2 = await bundleStore.replaceMarkdown({ ...file, content: args.content, baseEtag: args.baseEtag });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return { ...result2, content: String(args.content) };
     }
-    if (name === "map_append_markdown") return bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
+    if (name === "map_append_markdown") {
+      const result2 = await bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
     if (name === "map_list_bundle_files") return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
-    if (name === "map_create_markdown") return bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
-    if (name === "map_rename_bundle_file") return bundleStore.rename({ ownerKind: file.ownerKind, ownerId: file.ownerId, from: args.from, to: args.to });
-    if (name === "map_archive_bundle_file" || name === "map_archive_asset") return bundleStore.archive(file);
-    if (name === "map_restore_bundle_file" || name === "map_restore_asset") return bundleStore.restore(file);
+    if (name === "map_create_markdown") {
+      const result2 = await bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
+    if (name === "map_rename_bundle_file") {
+      const result2 = await bundleStore.rename({ ownerKind: file.ownerKind, ownerId: file.ownerId, from: args.from, to: args.to });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
+    if (name === "map_archive_bundle_file" || name === "map_archive_asset") {
+      const result2 = await bundleStore.archive(file);
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
+    if (name === "map_restore_bundle_file" || name === "map_restore_asset") {
+      const result2 = await bundleStore.restore(file);
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
     if (name === "map_list_assets") {
       const files = await bundleStore.list({ ...file, includeArchived: args.includeArchived === true });
       return { mapKey, assets: files.filter((entry) => entry.kind !== "markdown") };
     }
     if (name === "map_import_asset") {
-      return bundleStore.importAsset({ ...file, fileName: String(args.fileName || (0, import_node_path11.basename)(String(args.sourcePath || ""))), sourcePath: String(args.sourcePath || ""), mimeType: args.mimeType });
+      const result2 = await bundleStore.importAsset({ ...file, fileName: String(args.fileName || (0, import_node_path13.basename)(String(args.sourcePath || ""))), sourcePath: String(args.sourcePath || ""), mimeType: args.mimeType });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
+    if (name === "map_read_asset") {
+      const metadata = await bundleStore.readAsset({ ...file, archived: args.archived === true });
+      const bytes = metadata?.buffer ?? Buffer.alloc(0);
+      const entry = {
+        ownerKind: metadata.ownerKind,
+        ownerId: metadata.ownerId,
+        fileName: metadata.fileName,
+        path: metadata.path,
+        archived: Boolean(metadata.archived),
+        kind: metadata.kind,
+        mimeType: metadata.mimeType,
+        disposition: metadata.disposition,
+        size: Number(metadata.size ?? 0),
+        updatedAt: metadata.updatedAt ?? null
+      };
+      const isText = /^(text\/|application\/(json|xml|javascript))/.test(String(entry.mimeType ?? ""));
+      if (bytes.length && isText) entry.content = bytes.toString("utf8");
+      if (args.includeContent === true && bytes.length) entry.base64 = bytes.toString("base64");
+      return { mapKey, ...entry };
     }
     throw new BridgeError("UNKNOWN_MCP_TOOL", `\u672A\u77E5\u5730\u56FE\u5DE5\u5177\uFF1A${name}`, { status: 404 });
   }
 };
 
 // src/bridge/archive-lifecycle.mjs
-var import_node_crypto8 = require("node:crypto");
-var import_promises9 = require("node:fs/promises");
-var import_node_path12 = require("node:path");
+var import_node_crypto9 = require("node:crypto");
+var import_promises11 = require("node:fs/promises");
+var import_node_path14 = require("node:path");
 var PURGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
 var PURGE_COLLECTIONS = /* @__PURE__ */ new Set(["nodes", "routes", "edges", "anns"]);
 var ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
@@ -4210,7 +4608,7 @@ function applyPhysicalPurge(document, { collection, id }, now) {
   return next;
 }
 function packagePath(mapRoot, collection, id) {
-  return (0, import_node_path12.join)(mapRoot, collection, id);
+  return (0, import_node_path14.join)(mapRoot, collection, id);
 }
 function purgePackageOwners(document, collection, id) {
   const owners = collection === "nodes" ? [{ collection: "nodes", id }] : collection === "edges" ? [{ collection: "routes", id }] : [];
@@ -4225,7 +4623,7 @@ function purgePackageOwners(document, collection, id) {
   return owners;
 }
 async function assertPackagePath(path) {
-  const metadata = await (0, import_promises9.lstat)(path).catch((cause) => {
+  const metadata = await (0, import_promises11.lstat)(path).catch((cause) => {
     if (cause?.code === "ENOENT") return null;
     throw cause;
   });
@@ -4241,16 +4639,16 @@ var ArchiveLifecycle = class {
   constructor(options = {}) {
     if (!options.store) throw error("PURGE_STORE_REQUIRED", "\u5F52\u6863\u751F\u547D\u5468\u671F\u9700\u8981 ProjectStore", 500);
     this.store = options.store;
-    this.projectRoot = (0, import_node_path12.resolve)(options.projectRoot ?? this.store.projectRoot);
-    this.mapRoot = (0, import_node_path12.resolve)(options.mapRoot ?? this.store.dataDirectory);
+    this.projectRoot = (0, import_node_path14.resolve)(options.projectRoot ?? this.store.projectRoot);
+    this.mapRoot = (0, import_node_path14.resolve)(options.mapRoot ?? this.store.dataDirectory);
     this.shared = options.shared ?? this.store.shared;
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.retentionMs = Number(options.retentionMs ?? PURGE_RETENTION_MS);
     this.recycleBin = options.recycleBin;
     this.faultInjector = options.faultInjector ?? (() => {
     });
-    this.stagingRoot = (0, import_node_path12.join)(this.mapRoot, ".bridge", "purge-staging");
-    this.lockPath = (0, import_node_path12.join)(this.mapRoot, ".bridge", "purge.lock");
+    this.stagingRoot = (0, import_node_path14.join)(this.mapRoot, ".bridge", "purge-staging");
+    this.lockPath = (0, import_node_path14.join)(this.mapRoot, ".bridge", "purge.lock");
   }
   eligible(item, options = {}) {
     return isPurgeEligible(item, { retentionMs: this.retentionMs, ...options });
@@ -4295,8 +4693,8 @@ var ArchiveLifecycle = class {
         const target = packagePath(txnRoot, collection, id);
         await assertPackagePath(target);
         if (await exists(target)) throw error("PURGE_STAGING_CONFLICT", "\u6E05\u9664\u6682\u5B58\u76EE\u5F55\u5DF2\u6709\u540C\u540D\u8D44\u6599\u5305", 409, { collection, id });
-        await ensureDirectory((0, import_node_path12.join)(txnRoot, collection));
-        await (0, import_promises9.rename)(source, target);
+        await ensureDirectory((0, import_node_path14.join)(txnRoot, collection));
+        await (0, import_promises11.rename)(source, target);
         moved.push({ collection, id, source, target });
       }
       return moved;
@@ -4314,8 +4712,8 @@ var ArchiveLifecycle = class {
         throw error("PURGE_PACKAGE_ROLLBACK_FAILED", "\u8D44\u6599\u5305\u5DF2\u4E0D\u5728\u6682\u5B58\u76EE\u5F55\uFF0C\u65E0\u6CD5\u6062\u590D", 500, item);
       }
       if (sourceExists) throw error("PURGE_PACKAGE_ROLLBACK_CONFLICT", "\u8D44\u6599\u5305\u6062\u590D\u76EE\u6807\u5DF2\u88AB\u5360\u7528\uFF0C\u62D2\u7EDD\u8986\u76D6", 409, item);
-      await ensureDirectory((0, import_node_path12.join)(this.mapRoot, item.collection));
-      await (0, import_promises9.rename)(item.target, item.source);
+      await ensureDirectory((0, import_node_path14.join)(this.mapRoot, item.collection));
+      await (0, import_promises11.rename)(item.target, item.source);
     }
   }
   async #rollback(snapshotName, moved, mapAttempted) {
@@ -4361,8 +4759,8 @@ var ArchiveLifecycle = class {
       }
       const snapshot = await this.store.createSnapshot();
       const snapshotName = String(snapshot.path).split(/[\\/]/).pop();
-      const transactionId = `${now.toISOString().replace(/[:.]/g, "-")}-${(0, import_node_crypto8.randomUUID)()}`;
-      const txnRoot = (0, import_node_path12.join)(this.stagingRoot, transactionId);
+      const transactionId = `${now.toISOString().replace(/[:.]/g, "-")}-${(0, import_node_crypto9.randomUUID)()}`;
+      const txnRoot = (0, import_node_path14.join)(this.stagingRoot, transactionId);
       const packageOwners = purgePackageOwners(before.document, collection, id);
       let moved = [];
       let mapAttempted = false;
@@ -4376,7 +4774,7 @@ var ArchiveLifecycle = class {
           const committed = await purgeStore.execute({
             projectId: String(before.document.mapId),
             baseRevision: before.revision,
-            commandId: String(options.commandId ?? `purge-${(0, import_node_crypto8.randomUUID)()}`),
+            commandId: String(options.commandId ?? `purge-${(0, import_node_crypto9.randomUUID)()}`),
             actor: "system:purge",
             sessionId: "archive-lifecycle",
             commands: [{ op: "purge", collection, id }]
@@ -4403,7 +4801,7 @@ var ArchiveLifecycle = class {
         await this.#rollback(snapshotName, moved, mapAttempted).catch((rollbackError) => {
           throw rollbackError;
         });
-        await (0, import_promises9.rm)(txnRoot, { recursive: true, force: true }).catch(() => void 0);
+        await (0, import_promises11.rm)(txnRoot, { recursive: true, force: true }).catch(() => void 0);
         if (cause instanceof BridgeError && cause.code.startsWith("PURGE_")) throw cause;
         if (cause?.code === "RECYCLE_BIN_FAILED") throw cause;
         throw new BridgeError("PURGE_FAILED", "\u6C38\u4E45\u6E05\u9664\u5931\u8D25\uFF0C\u5DF2\u6062\u590D\u5F52\u6863\u5BF9\u8C61\u548C\u8D44\u6599\u5305", { status: 500, cause });
@@ -4417,8 +4815,8 @@ var ArchiveLifecycle = class {
 
 // src/bridge/recycle-bin.mjs
 var import_node_child_process = require("node:child_process");
-var import_promises10 = require("node:fs/promises");
-var import_node_path13 = require("node:path");
+var import_promises12 = require("node:fs/promises");
+var import_node_path15 = require("node:path");
 var TRANSACTION_ID = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function failure(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
@@ -4426,28 +4824,28 @@ function failure(code, message, status = 503, details) {
 function defaultNativeHelperPath(options = {}) {
   const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
   if (!localAppData) return null;
-  return (0, import_node_path13.join)((0, import_node_path13.resolve)(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+  return (0, import_node_path15.join)((0, import_node_path15.resolve)(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
 }
 async function assertPurgeStagingPath(value) {
-  const target = (0, import_node_path13.resolve)(String(value ?? ""));
-  const parts = target.split(import_node_path13.sep);
+  const target = (0, import_node_path15.resolve)(String(value ?? ""));
+  const parts = target.split(import_node_path15.sep);
   const marker = parts.findIndex((part) => part.toLowerCase() === ".live-dot-map");
   const suffix = marker >= 0 ? parts.slice(marker) : [];
   if (suffix.length !== 7 || suffix[1].toLowerCase() !== "maps" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(suffix[2]) || suffix[3].toLowerCase() !== ".bridge" || suffix[4].toLowerCase() !== "purge-staging" || !TRANSACTION_ID.test(suffix[5]) || suffix[6] !== "") {
     if (suffix.length !== 6 || suffix[1].toLowerCase() !== "maps" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(suffix[2]) || suffix[3].toLowerCase() !== ".bridge" || suffix[4].toLowerCase() !== "purge-staging" || !TRANSACTION_ID.test(suffix[5])) throw failure("PURGE_STAGING_PATH_INVALID", "\u56DE\u6536\u7AD9\u6682\u5B58\u8DEF\u5F84\u4E0D\u7B26\u5408\u4EA7\u54C1\u76EE\u5F55\u7EA6\u675F", 400, { path: target });
   }
-  let current = parts[0].endsWith(":") ? `${parts[0]}${import_node_path13.sep}` : parts[0] || import_node_path13.sep;
+  let current = parts[0].endsWith(":") ? `${parts[0]}${import_node_path15.sep}` : parts[0] || import_node_path15.sep;
   for (const part of parts.slice(1)) {
     if (!part) continue;
-    current = (0, import_node_path13.join)(current, part);
-    const metadata = await (0, import_promises10.lstat)(current).catch((cause) => {
+    current = (0, import_node_path15.join)(current, part);
+    const metadata = await (0, import_promises12.lstat)(current).catch((cause) => {
       if (cause?.code === "ENOENT") return null;
       throw cause;
     });
     if (!metadata) throw failure("PURGE_STAGING_MISSING", "\u56DE\u6536\u7AD9\u6682\u5B58\u76EE\u5F55\u4E0D\u5B58\u5728", 404, { path: current });
     if (metadata.isSymbolicLink()) throw failure("PURGE_STAGING_REPARSE_FORBIDDEN", "\u56DE\u6536\u7AD9\u6682\u5B58\u8DEF\u5F84\u4E0D\u80FD\u7ECF\u8FC7\u7B26\u53F7\u94FE\u63A5\u6216\u8054\u63A5", 403, { path: current });
   }
-  const leaf = await (0, import_promises10.lstat)(target);
+  const leaf = await (0, import_promises12.lstat)(target);
   if (!leaf.isDirectory()) throw failure("PURGE_STAGING_NOT_DIRECTORY", "\u56DE\u6536\u7AD9\u6682\u5B58\u76EE\u6807\u4E0D\u662F\u76EE\u5F55", 400, { path: target });
   return target;
 }
@@ -4508,7 +4906,7 @@ function runHelper(spawnImpl, executable, args, timeoutMs) {
 var NativeRecycleBin = class {
   constructor(options = {}) {
     const candidate = options.helperPath ?? defaultNativeHelperPath(options);
-    this.helperPath = candidate ? (0, import_node_path13.resolve)(candidate) : null;
+    this.helperPath = candidate ? (0, import_node_path15.resolve)(candidate) : null;
     this.spawnImpl = options.spawnImpl ?? import_node_child_process.spawn;
     this.timeoutMs = Math.max(1e3, Number(options.timeoutMs) || 3e4);
   }
@@ -4517,7 +4915,7 @@ var NativeRecycleBin = class {
       throw failure("RECYCLE_BIN_UNSUPPORTED", "\u7CFB\u7EDF\u56DE\u6536\u7AD9 helper \u4EC5\u5728 Windows \u5B89\u88C5\u7248\u53EF\u7528");
     }
     if (!this.helperPath) throw failure("RECYCLE_BIN_UNAVAILABLE", "\u672A\u627E\u5230\u7CFB\u7EDF\u56DE\u6536\u7AD9 helper");
-    await (0, import_promises10.access)(this.helperPath).catch(() => {
+    await (0, import_promises12.access)(this.helperPath).catch(() => {
       throw failure("RECYCLE_BIN_UNAVAILABLE", "\u672A\u627E\u5230\u7CFB\u7EDF\u56DE\u6536\u7AD9 helper");
     });
     const safePath = await assertPurgeStagingPath(stagingPath);
@@ -4527,10 +4925,10 @@ var NativeRecycleBin = class {
 
 // src/bridge/editor-service.mjs
 var import_node_child_process2 = require("node:child_process");
-var import_node_crypto9 = require("node:crypto");
-var import_node_os2 = require("node:os");
-var import_promises11 = require("node:fs/promises");
-var import_node_path14 = require("node:path");
+var import_node_crypto10 = require("node:crypto");
+var import_node_os3 = require("node:os");
+var import_promises13 = require("node:fs/promises");
+var import_node_path16 = require("node:path");
 var SETTINGS_VERSION = 1;
 var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "system", "folder", "manual"]);
 var EXE_NAME = /^(Code|Antigravity|pycharm64)\.exe$/i;
@@ -4544,8 +4942,8 @@ var EXTRA_EDITORS = [
       const out = [];
       const local = process.env.LOCALAPPDATA;
       const programFiles = process.env.ProgramFiles;
-      if (local) out.push((0, import_node_path14.join)(local, "Programs", "Antigravity", "Antigravity.exe"));
-      if (programFiles) out.push((0, import_node_path14.join)(programFiles, "Antigravity", "Antigravity.exe"));
+      if (local) out.push((0, import_node_path16.join)(local, "Programs", "Antigravity", "Antigravity.exe"));
+      if (programFiles) out.push((0, import_node_path16.join)(programFiles, "Antigravity", "Antigravity.exe"));
       return out;
     }
   },
@@ -4557,12 +4955,12 @@ var EXTRA_EDITORS = [
       const out = [];
       const local = process.env.LOCALAPPDATA;
       if (local) {
-        out.push((0, import_node_path14.join)(local, "Programs", "PyCharm", "bin", "pycharm64.exe"));
-        const toolbox = (0, import_node_path14.join)(local, "JetBrains", "Toolbox", "apps");
+        out.push((0, import_node_path16.join)(local, "Programs", "PyCharm", "bin", "pycharm64.exe"));
+        const toolbox = (0, import_node_path16.join)(local, "JetBrains", "Toolbox", "apps");
         out.push(...await scanVersionedEditors(toolbox, 3));
       }
       const programFiles = process.env.ProgramFiles;
-      if (programFiles) out.push(...await scanVersionedEditors((0, import_node_path14.join)(programFiles, "JetBrains"), 1));
+      if (programFiles) out.push(...await scanVersionedEditors((0, import_node_path16.join)(programFiles, "JetBrains"), 1));
       return out;
     }
   }
@@ -4571,15 +4969,15 @@ async function scanVersionedEditors(root, depth) {
   const found = [];
   let entries;
   try {
-    entries = await (0, import_promises11.readdir)(root, { withFileTypes: true });
+    entries = await (0, import_promises13.readdir)(root, { withFileTypes: true });
   } catch {
     return found;
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const dir = (0, import_node_path14.join)(root, entry.name);
+    const dir = (0, import_node_path16.join)(root, entry.name);
     if (depth <= 1) {
-      found.push((0, import_node_path14.join)(dir, "bin", "pycharm64.exe"));
+      found.push((0, import_node_path16.join)(dir, "bin", "pycharm64.exe"));
     } else {
       found.push(...await scanVersionedEditors(dir, depth - 1));
     }
@@ -4590,22 +4988,22 @@ function bridgeError2(code, message, status = 400, details) {
   return new BridgeError(code, message, { status, details });
 }
 function defaultSettingsPath() {
-  const localAppData = process.env.LOCALAPPDATA || (0, import_node_path14.join)((0, import_node_os2.homedir)(), "AppData", "Local");
-  return (0, import_node_path14.join)(localAppData, "live-dot-map", "settings.json");
+  const localAppData = process.env.LOCALAPPDATA || (0, import_node_path16.join)((0, import_node_os3.homedir)(), "AppData", "Local");
+  return (0, import_node_path16.join)(localAppData, "live-dot-map", "settings.json");
 }
 function normalizePathForCompare(path) {
-  const value = (0, import_node_path14.resolve)(path);
+  const value = (0, import_node_path16.resolve)(path);
   return process.platform === "win32" ? value.toLowerCase() : value;
 }
 function isInside(root, candidate, { allowRoot = false } = {}) {
   const rootPath = normalizePathForCompare(root);
   const candidatePath = normalizePathForCompare(candidate);
-  const rest = (0, import_node_path14.relative)(rootPath, candidatePath);
+  const rest = (0, import_node_path16.relative)(rootPath, candidatePath);
   if (!rest) return allowRoot;
-  return !rest.startsWith("..") && !(0, import_node_path14.isAbsolute)(rest) && !import_node_path14.win32.isAbsolute(rest);
+  return !rest.startsWith("..") && !(0, import_node_path16.isAbsolute)(rest) && !import_node_path16.win32.isAbsolute(rest);
 }
 function isAbsoluteAny(path) {
-  return (0, import_node_path14.isAbsolute)(path) || import_node_path14.win32.isAbsolute(path);
+  return (0, import_node_path16.isAbsolute)(path) || import_node_path16.win32.isAbsolute(path);
 }
 function isRegularFile(metadata) {
   return Boolean(metadata?.isFile?.());
@@ -4674,9 +5072,9 @@ function knownVSCodePaths() {
   const local = process.env.LOCALAPPDATA;
   const programFiles = process.env.ProgramFiles;
   const programFilesX86 = process.env["ProgramFiles(x86)"];
-  if (local) candidates.push((0, import_node_path14.join)(local, "Programs", "Microsoft VS Code", "Code.exe"));
-  if (programFiles) candidates.push((0, import_node_path14.join)(programFiles, "Microsoft VS Code", "Code.exe"));
-  if (programFilesX86) candidates.push((0, import_node_path14.join)(programFilesX86, "Microsoft VS Code", "Code.exe"));
+  if (local) candidates.push((0, import_node_path16.join)(local, "Programs", "Microsoft VS Code", "Code.exe"));
+  if (programFiles) candidates.push((0, import_node_path16.join)(programFiles, "Microsoft VS Code", "Code.exe"));
+  if (programFilesX86) candidates.push((0, import_node_path16.join)(programFilesX86, "Microsoft VS Code", "Code.exe"));
   return candidates;
 }
 function safeSettings(value) {
@@ -4693,7 +5091,7 @@ function safeSettings(value) {
 }
 async function readSettingsFile(path) {
   try {
-    return safeSettings(JSON.parse(await (0, import_promises11.readFile)(path, "utf8")));
+    return safeSettings(JSON.parse(await (0, import_promises13.readFile)(path, "utf8")));
   } catch (error3) {
     if (error3?.code === "ENOENT" || error3 instanceof SyntaxError) return safeSettings({});
     throw error3;
@@ -4702,8 +5100,8 @@ async function readSettingsFile(path) {
 var EditorService = class _EditorService {
   constructor(options = {}) {
     if (!options.projectRoot) throw bridgeError2("PROJECT_ROOT_REQUIRED", "\u7F16\u8F91\u5668\u670D\u52A1\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
-    this.projectRoot = (0, import_node_path14.resolve)(options.projectRoot);
-    this.settingsPath = (0, import_node_path14.resolve)(options.settingsPath || defaultSettingsPath());
+    this.projectRoot = (0, import_node_path16.resolve)(options.projectRoot);
+    this.settingsPath = (0, import_node_path16.resolve)(options.settingsPath || defaultSettingsPath());
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.spawn = options.spawn ?? import_node_child_process2.spawn;
     this.nativeHelper = options.nativeHelper ?? null;
@@ -4734,34 +5132,34 @@ var EditorService = class _EditorService {
   async #assertProjectRoot() {
     let metadata;
     try {
-      metadata = await (0, import_promises11.lstat)(this.projectRoot);
+      metadata = await (0, import_promises13.lstat)(this.projectRoot);
     } catch (error3) {
       if (error3?.code === "ENOENT") throw bridgeError2("PROJECT_NOT_FOUND", "\u9879\u76EE\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
       throw error3;
     }
     if (isLink(metadata) || !isDirectory(metadata)) throw bridgeError2("PROJECT_ROOT_INVALID", "\u9879\u76EE\u76EE\u5F55\u4E0D\u662F\u5B89\u5168\u7684\u666E\u901A\u76EE\u5F55", 403);
-    const canonical = await (0, import_promises11.realpath)(this.projectRoot);
-    if (!isInside((0, import_node_path14.resolve)(this.projectRoot, ".."), canonical, { allowRoot: true })) {
+    const canonical = await (0, import_promises13.realpath)(this.projectRoot);
+    if (!isInside((0, import_node_path16.resolve)(this.projectRoot, ".."), canonical, { allowRoot: true })) {
       throw bridgeError2("PROJECT_ROOT_INVALID", "\u9879\u76EE\u76EE\u5F55\u65E0\u6CD5\u5B89\u5168\u89E3\u6790", 403);
     }
   }
   async #assertNoSymlinkEscape(candidate, { allowMissing = false, root = this.projectRoot } = {}) {
-    const canonicalRoot = await (0, import_promises11.realpath)(root);
-    let current = (0, import_node_path14.resolve)(candidate);
+    const canonicalRoot = await (0, import_promises13.realpath)(root);
+    let current = (0, import_node_path16.resolve)(candidate);
     let metadata = null;
     while (true) {
       try {
-        metadata = await (0, import_promises11.lstat)(current);
+        metadata = await (0, import_promises13.lstat)(current);
         break;
       } catch (error3) {
         if (!allowMissing || error3?.code !== "ENOENT") throw error3;
-        const parent = (0, import_node_path14.dirname)(current);
+        const parent = (0, import_node_path16.dirname)(current);
         if (parent === current) throw error3;
         current = parent;
       }
     }
     if (isLink(metadata)) throw bridgeError2("SYMLINK_ESCAPE", "\u62D2\u7EDD\u901A\u8FC7\u7B26\u53F7\u94FE\u63A5\u6216\u91CD\u89E3\u6790\u70B9\u6253\u5F00\u6587\u4EF6", 403);
-    const canonicalCandidate = await (0, import_promises11.realpath)(current);
+    const canonicalCandidate = await (0, import_promises13.realpath)(current);
     if (!isInside(canonicalRoot, canonicalCandidate, { allowRoot: true })) {
       throw bridgeError2("SYMLINK_ESCAPE", "\u8DEF\u5F84\u89E3\u6790\u540E\u5DF2\u8D8A\u51FA\u9879\u76EE\u76EE\u5F55", 403);
     }
@@ -4772,14 +5170,14 @@ var EditorService = class _EditorService {
       throw bridgeError2("INVALID_EDITOR_PATH", "\u7F16\u8F91\u5668\u76EE\u6807\u8DEF\u5F84\u65E0\u6548", 400);
     }
     if (isAbsoluteAny(relativePath)) throw bridgeError2("EDITOR_PATH_OUTSIDE_PROJECT", "\u7F16\u8F91\u5668\u53EA\u80FD\u6253\u5F00\u9879\u76EE\u5185\u6587\u4EF6", 403);
-    const candidate = (0, import_node_path14.resolve)(this.projectRoot, relativePath);
+    const candidate = (0, import_node_path16.resolve)(this.projectRoot, relativePath);
     if (!isInside(this.projectRoot, candidate, { allowRoot: kind === "directory" })) {
       throw bridgeError2("EDITOR_PATH_OUTSIDE_PROJECT", "\u7F16\u8F91\u5668\u53EA\u80FD\u6253\u5F00\u9879\u76EE\u5185\u6587\u4EF6", 403);
     }
     await this.#assertNoSymlinkEscape(candidate, { allowMissing });
     let metadata;
     try {
-      metadata = await (0, import_promises11.lstat)(candidate);
+      metadata = await (0, import_promises13.lstat)(candidate);
     } catch (error3) {
       if (allowMissing && error3?.code === "ENOENT") return candidate;
       if (error3?.code === "ENOENT") throw bridgeError2("EDITOR_TARGET_NOT_FOUND", "\u7F16\u8F91\u5668\u76EE\u6807\u4E0D\u5B58\u5728", 404);
@@ -4796,17 +5194,17 @@ var EditorService = class _EditorService {
     }
     let metadata;
     try {
-      metadata = await (0, import_promises11.lstat)(path);
+      metadata = await (0, import_promises13.lstat)(path);
     } catch (error3) {
       if (error3?.code === "ENOENT") throw bridgeError2("EDITOR_NOT_FOUND", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u4E0D\u5B58\u5728", 404);
       throw error3;
     }
     if (isLink(metadata) || !isRegularFile(metadata)) throw bridgeError2("EDITOR_EXECUTABLE_INVALID", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u4E0D\u662F\u5B89\u5168\u7684\u666E\u901A\u6587\u4EF6", 403);
-    const canonical = await (0, import_promises11.realpath)(path);
-    if (!isInside((0, import_node_path14.resolve)(path, ".."), canonical, { allowRoot: true })) {
+    const canonical = await (0, import_promises13.realpath)(path);
+    if (!isInside((0, import_node_path16.resolve)(path, ".."), canonical, { allowRoot: true })) {
       throw bridgeError2("EDITOR_EXECUTABLE_INVALID", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u65E0\u6CD5\u5B89\u5168\u89E3\u6790", 403);
     }
-    return (0, import_node_path14.resolve)(path);
+    return (0, import_node_path16.resolve)(path);
   }
   async #assertManualExecutable(path) {
     if (typeof path !== "string" || !isAbsoluteAny(path) || !/\.exe$/i.test(path)) {
@@ -4818,17 +5216,17 @@ var EditorService = class _EditorService {
     }
     let metadata;
     try {
-      metadata = await (0, import_promises11.lstat)(path);
+      metadata = await (0, import_promises13.lstat)(path);
     } catch (error3) {
       if (error3?.code === "ENOENT") throw bridgeError2("EDITOR_NOT_FOUND", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u4E0D\u5B58\u5728", 404);
       throw error3;
     }
     if (isLink(metadata) || !isRegularFile(metadata)) throw bridgeError2("MANUAL_EDITOR_INVALID", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u5FC5\u987B\u662F\u666E\u901A .exe \u6587\u4EF6", 403);
-    const canonical = await (0, import_promises11.realpath)(path);
+    const canonical = await (0, import_promises13.realpath)(path);
     if (normalizePathForCompare(canonical) !== normalizePathForCompare(path)) {
       throw bridgeError2("MANUAL_EDITOR_INVALID", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u4E0D\u80FD\u662F\u7B26\u53F7\u94FE\u63A5\u6216\u91CD\u89E3\u6790\u70B9", 403);
     }
-    return (0, import_node_path14.resolve)(path);
+    return (0, import_node_path16.resolve)(path);
   }
   async #resolveVSCode() {
     if (this.vscodePath) {
@@ -4937,7 +5335,7 @@ var EditorService = class _EditorService {
   }
   async pickManualEditor() {
     await this.#ensureInitialized();
-    const pickerToken = (0, import_node_crypto9.randomUUID)();
+    const pickerToken = (0, import_node_crypto10.randomUUID)();
     this.pendingPickerToken = pickerToken;
     let picked;
     try {
@@ -4968,7 +5366,7 @@ var EditorService = class _EditorService {
     return { id: "manual", label: "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F", available: true };
   }
   async #writeSettings() {
-    await (0, import_promises11.mkdir)((0, import_node_path14.dirname)(this.settingsPath), { recursive: true });
+    await (0, import_promises13.mkdir)((0, import_node_path16.dirname)(this.settingsPath), { recursive: true });
     const output = {
       version: SETTINGS_VERSION,
       preferredEditorId: this.settings.preferredEditorId || null,
@@ -5001,8 +5399,8 @@ var EditorService = class _EditorService {
     }
     if (editorId === "folder") {
       const candidate = await this.#projectPath(relativePath, { kind: targetKind === "directory" ? "directory" : "file" });
-      const metadata = await (0, import_promises11.stat)(candidate);
-      const folder = isDirectory(metadata) ? candidate : (0, import_node_path14.dirname)(candidate);
+      const metadata = await (0, import_promises13.stat)(candidate);
+      const folder = isDirectory(metadata) ? candidate : (0, import_node_path16.dirname)(candidate);
       await this.#assertNoSymlinkEscape(folder);
       await this.#callNative("open-folder", { targetPath: folder });
       return { editorId, launched: true };
@@ -5045,22 +5443,22 @@ var EditorService = class _EditorService {
 
 // src/bridge/native-helper.mjs
 var import_node_child_process3 = require("node:child_process");
-var import_promises12 = require("node:fs/promises");
-var import_node_path15 = require("node:path");
+var import_promises14 = require("node:fs/promises");
+var import_node_path17 = require("node:path");
 function error2(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
 }
 var MODES = Object.freeze({
   "pick-editor": (request) => ["--pick-editor"],
-  "save-as": (request) => ["--save-as", (0, import_node_path15.resolve)(String(request.sourcePath || ""))],
-  "open-default": (request) => ["--open-default", (0, import_node_path15.resolve)(String(request.targetPath || ""))],
-  "open-folder": (request) => ["--open-folder", (0, import_node_path15.resolve)(String(request.targetPath || ""))],
-  "open-manual": (request) => ["--open-manual", (0, import_node_path15.resolve)(String(request.executablePath || "")), (0, import_node_path15.resolve)(String(request.targetPath || ""))]
+  "save-as": (request) => ["--save-as", (0, import_node_path17.resolve)(String(request.sourcePath || ""))],
+  "open-default": (request) => ["--open-default", (0, import_node_path17.resolve)(String(request.targetPath || ""))],
+  "open-folder": (request) => ["--open-folder", (0, import_node_path17.resolve)(String(request.targetPath || ""))],
+  "open-manual": (request) => ["--open-manual", (0, import_node_path17.resolve)(String(request.executablePath || "")), (0, import_node_path17.resolve)(String(request.targetPath || ""))]
 });
 var NativeWindowsHelper = class {
   constructor(options = {}) {
     const candidate = options.helperPath ?? defaultNativeHelperPath(options);
-    this.helperPath = candidate ? (0, import_node_path15.resolve)(candidate) : null;
+    this.helperPath = candidate ? (0, import_node_path17.resolve)(candidate) : null;
     this.spawnImpl = options.spawnImpl ?? import_node_child_process3.spawn;
     this.timeoutMs = Math.max(1e3, Number(options.timeoutMs) || 12e4);
   }
@@ -5068,11 +5466,11 @@ var NativeWindowsHelper = class {
     const buildArgs = MODES[request.operation];
     if (!buildArgs) throw error2("NATIVE_HELPER_OPERATION_INVALID", "\u539F\u751F\u52A9\u624B\u64CD\u4F5C\u65E0\u6548", 400);
     if (!this.helperPath) throw error2("NATIVE_HELPER_UNAVAILABLE", "\u672A\u627E\u5230\u672C\u4EA7\u54C1\u539F\u751F\u52A9\u624B");
-    await (0, import_promises12.access)(this.helperPath).catch(() => {
+    await (0, import_promises14.access)(this.helperPath).catch(() => {
       throw error2("NATIVE_HELPER_UNAVAILABLE", "\u672A\u627E\u5230\u672C\u4EA7\u54C1\u539F\u751F\u52A9\u624B");
     });
     const args = buildArgs(request);
-    if (args.some((value, index) => index > 0 && (!value || value === (0, import_node_path15.resolve)("")))) {
+    if (args.some((value, index) => index > 0 && (!value || value === (0, import_node_path17.resolve)("")))) {
       throw error2("NATIVE_HELPER_ARGUMENT_REQUIRED", "\u539F\u751F\u52A9\u624B\u7F3A\u5C11\u76EE\u6807\u8DEF\u5F84", 400);
     }
     return new Promise((resolvePromise, reject) => {
@@ -5171,16 +5569,16 @@ var sharedBridgeContract = Object.freeze({
 });
 
 // agent-kit/lib/installer.mjs
-var import_node_crypto11 = require("node:crypto");
+var import_node_crypto12 = require("node:crypto");
 var import_node_child_process5 = require("node:child_process");
-var import_promises13 = require("node:fs/promises");
+var import_promises15 = require("node:fs/promises");
 var import_node_fs2 = require("node:fs");
-var import_node_path17 = require("node:path");
-var import_node_os4 = require("node:os");
+var import_node_path19 = require("node:path");
+var import_node_os5 = require("node:os");
 var import_node_url = require("node:url");
 
 // agent-kit/lib/bridge-client.mjs
-var import_node_crypto10 = require("node:crypto");
+var import_node_crypto11 = require("node:crypto");
 
 // agent-kit/lib/tool-definitions.generated.mjs
 var MCP_TOOL_DEFINITIONS = Object.freeze([
@@ -5777,6 +6175,37 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       ],
       "additionalProperties": true
     }
+  },
+  {
+    "name": "map_read_asset",
+    "description": "\u8FD4\u56DE\u5BF9\u8C61\u9644\u4EF6\u8DEF\u5F84\u4E0E\u5143\u6570\u636E\uFF08\u4E0D\u642C\u8FD0\u4E8C\u8FDB\u5236\uFF09\u3002\u6587\u672C\u7C7B\u9644 content\uFF0C\u4E8C\u8FDB\u5236\u53EF\u4F20 includeContent \u53D6 base64\u3002",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ownerKind": {
+          "type": "string",
+          "enum": [
+            "node",
+            "route"
+          ]
+        },
+        "ownerId": {
+          "type": "string"
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "includeContent": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ownerKind",
+        "ownerId",
+        "fileName"
+      ],
+      "additionalProperties": true
+    }
   }
 ]);
 var MCP_TOOL_NAMES = Object.freeze(MCP_TOOL_DEFINITIONS.map((tool) => tool.name));
@@ -5814,23 +6243,23 @@ function assertLoopbackUrl(value) {
   return url;
 }
 function projectIdForRoot(projectRoot) {
-  const digest5 = (0, import_node_crypto10.createHash)("sha256").update(String(projectRoot)).digest("hex").slice(0, 32);
-  return `project:${digest5}`;
+  const digest6 = (0, import_node_crypto11.createHash)("sha256").update(String(projectRoot)).digest("hex").slice(0, 32);
+  return `project:${digest6}`;
 }
 
 // agent-kit/lib/shortcut.mjs
 var import_node_child_process4 = require("node:child_process");
-var import_node_os3 = require("node:os");
-var import_node_path16 = require("node:path");
+var import_node_os4 = require("node:os");
+var import_node_path18 = require("node:path");
 function windowsDesktopDirectory({ platform = process.platform, env = process.env, exec = import_node_child_process4.execFileSync } = {}) {
-  if (platform !== "win32") return (0, import_node_path16.join)((0, import_node_os3.homedir)(), "Desktop");
+  if (platform !== "win32") return (0, import_node_path18.join)((0, import_node_os4.homedir)(), "Desktop");
   try {
     const output = exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "[Environment]::GetFolderPath('Desktop')"], { encoding: "utf8", timeout: 5e3 });
     const path = String(output || "").trim();
     if (path) return path;
   } catch {
   }
-  return (0, import_node_path16.join)(env.USERPROFILE || (0, import_node_os3.homedir)(), "Desktop");
+  return (0, import_node_path18.join)(env.USERPROFILE || (0, import_node_os4.homedir)(), "Desktop");
 }
 
 // agent-kit/lib/portable-node.mjs
@@ -5915,9 +6344,9 @@ var map_template_default = {
 var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code"]);
 var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
-var skillTargetPaths = (home, id) => id === "codex" ? (0, import_node_path17.join)(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? (0, import_node_path17.join)(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? (0, import_node_path17.join)(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : (0, import_node_path17.join)(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
-var kimiPluginRoot = (home) => (0, import_node_path17.join)(home, ".kimi-code", "plugins", "live-dot-map");
-var codebuddyPluginRoot = (home) => (0, import_node_path17.join)(home, ".codebuddy", "plugins", "live-dot-map");
+var skillTargetPaths = (home, id) => id === "codex" ? (0, import_node_path19.join)(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? (0, import_node_path19.join)(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? (0, import_node_path19.join)(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : (0, import_node_path19.join)(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
+var kimiPluginRoot = (home) => (0, import_node_path19.join)(home, ".kimi-code", "plugins", "live-dot-map");
+var codebuddyPluginRoot = (home) => (0, import_node_path19.join)(home, ".codebuddy", "plugins", "live-dot-map");
 var ADAPTER_PROBES = Object.freeze({
   codex: ["codex"],
   "claude-code": ["claude", "claude-code"],
@@ -5926,17 +6355,17 @@ var ADAPTER_PROBES = Object.freeze({
 });
 async function exists2(path) {
   try {
-    await (0, import_promises13.access)(path, import_node_fs2.constants.F_OK);
+    await (0, import_promises15.access)(path, import_node_fs2.constants.F_OK);
     return true;
   } catch {
     return false;
   }
 }
 async function atomicText(path, text) {
-  await (0, import_promises13.mkdir)((0, import_node_path17.dirname)(path), { recursive: true });
-  const temp = `${path}.tmp-${process.pid}-${(0, import_node_crypto11.randomUUID)()}`;
-  await (0, import_promises13.writeFile)(temp, text, { encoding: "utf8", flag: "wx" });
-  await (0, import_promises13.rename)(temp, path);
+  await (0, import_promises15.mkdir)((0, import_node_path19.dirname)(path), { recursive: true });
+  const temp = `${path}.tmp-${process.pid}-${(0, import_node_crypto12.randomUUID)()}`;
+  await (0, import_promises15.writeFile)(temp, text, { encoding: "utf8", flag: "wx" });
+  await (0, import_promises15.rename)(temp, path);
 }
 async function atomicJson(path, value) {
   await atomicText(path, `${JSON.stringify(value, null, 2)}
@@ -5944,20 +6373,20 @@ async function atomicJson(path, value) {
 }
 async function readJson2(path, fallback = {}) {
   try {
-    const value = JSON.parse(await (0, import_promises13.readFile)(path, "utf8"));
+    const value = JSON.parse(await (0, import_promises15.readFile)(path, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
   } catch {
     return fallback;
   }
 }
 function sha256(bytes) {
-  return (0, import_node_crypto11.createHash)("sha256").update(bytes).digest("hex");
+  return (0, import_node_crypto12.createHash)("sha256").update(bytes).digest("hex");
 }
 async function captureFile(path) {
   try {
-    const metadata = await (0, import_promises13.stat)(path);
+    const metadata = await (0, import_promises15.stat)(path);
     if (metadata.isDirectory()) return { path, exists: true, kind: "directory", sha256: null, content: null };
-    const bytes = await (0, import_promises13.readFile)(path);
+    const bytes = await (0, import_promises15.readFile)(path);
     return { path, exists: true, kind: "file", sha256: sha256(bytes), content: bytes.toString("base64") };
   } catch {
     return { path, exists: false, kind: "missing", sha256: null, content: null };
@@ -5966,13 +6395,13 @@ async function captureFile(path) {
 async function restoreCapturedFile(entry) {
   if (entry?.kind === "directory") return;
   if (entry?.exists) {
-    await (0, import_promises13.mkdir)((0, import_node_path17.dirname)(entry.path), { recursive: true });
-    await (0, import_promises13.writeFile)(entry.path, Buffer.from(String(entry.content || ""), "base64"));
+    await (0, import_promises15.mkdir)((0, import_node_path19.dirname)(entry.path), { recursive: true });
+    await (0, import_promises15.writeFile)(entry.path, Buffer.from(String(entry.content || ""), "base64"));
   } else {
-    await (0, import_promises13.rm)(entry.path, { force: true }).catch(() => void 0);
+    await (0, import_promises15.rm)(entry.path, { force: true }).catch(() => void 0);
   }
 }
-var adapterConfigPaths = (home, id) => id === "codex" ? [(0, import_node_path17.join)(home, ".codex", "config.toml"), (0, import_node_path17.join)(home, ".codex", "hooks.json")] : id === "claude-code" ? [(0, import_node_path17.join)(home, ".claude", "settings.json")] : id === "kimi-code" ? [(0, import_node_path17.join)(home, ".kimi-code", "mcp.json"), (0, import_node_path17.join)(kimiPluginRoot(home), "kimi.plugin.json")] : [(0, import_node_path17.join)(home, ".codebuddy", "settings.json"), (0, import_node_path17.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), (0, import_node_path17.join)(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), (0, import_node_path17.join)(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+var adapterConfigPaths = (home, id) => id === "codex" ? [(0, import_node_path19.join)(home, ".codex", "config.toml"), (0, import_node_path19.join)(home, ".codex", "hooks.json")] : id === "claude-code" ? [(0, import_node_path19.join)(home, ".claude", "settings.json")] : id === "kimi-code" ? [(0, import_node_path19.join)(home, ".kimi-code", "mcp.json"), (0, import_node_path19.join)(kimiPluginRoot(home), "kimi.plugin.json")] : [(0, import_node_path19.join)(home, ".codebuddy", "settings.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), "hooks", "hooks.json")];
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === "1";
 }
@@ -5984,16 +6413,16 @@ function command(nodeCommand, runtime, agent, event) {
   return process.platform === "win32" ? ["cmd", "/d", "/s", "/c", invocation].join(" ") : invocation;
 }
 function execProbe(file, args = []) {
-  return new Promise((resolve16) => {
+  return new Promise((resolve18) => {
     (0, import_node_child_process5.execFile)(file, args, { windowsHide: true, timeout: 4e3 }, (error3, stdout = "") => {
-      resolve16(!error3 && String(stdout).trim().length > 0);
+      resolve18(!error3 && String(stdout).trim().length > 0);
     });
   });
 }
 function execText(file, args = [], timeout = 2500) {
-  return new Promise((resolve16) => {
+  return new Promise((resolve18) => {
     (0, import_node_child_process5.execFile)(file, args, { windowsHide: true, timeout, encoding: "utf8" }, (error3, stdout = "") => {
-      resolve16(error3 ? "" : String(stdout));
+      resolve18(error3 ? "" : String(stdout));
     });
   });
 }
@@ -6016,19 +6445,19 @@ async function discoverEmbeddedCodeBuddy({ platform = process.platform } = {}) {
     return [match[1].trim().replace(/^"|"$/g, "").replace(/,\d+$/, "")];
   }));
   for (const iconPath of iconPaths) {
-    const installRoot = (0, import_node_path17.dirname)(iconPath);
-    const candidate = (0, import_node_path17.join)(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
+    const installRoot = (0, import_node_path19.dirname)(iconPath);
+    const candidate = (0, import_node_path19.join)(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
     if (await exists2(candidate)) return candidate;
   }
   return null;
 }
-async function detectInstalledAdapters({ projectRoot = process.cwd(), platform = process.platform, homeRoot = (0, import_node_os4.homedir)() } = {}) {
-  const root = (0, import_node_path17.resolve)(projectRoot);
-  const home = (0, import_node_path17.resolve)(homeRoot);
+async function detectInstalledAdapters({ projectRoot = process.cwd(), platform = process.platform, homeRoot = (0, import_node_os5.homedir)() } = {}) {
+  const root = (0, import_node_path19.resolve)(projectRoot);
+  const home = (0, import_node_path19.resolve)(homeRoot);
   const checks = await Promise.all(ALL_ADAPTERS.map(async (id) => {
     const configPaths = adapterConfigPaths(home, id);
     const configured = (await Promise.all(configPaths.map(async (path) => {
-      const text = await (0, import_promises13.readFile)(path, "utf8").catch(() => "");
+      const text = await (0, import_promises15.readFile)(path, "utf8").catch(() => "");
       return text.includes("livedot-map");
     }))).some(Boolean);
     const probes = platform === "win32" || platform === "darwin" || platform === "linux" ? ADAPTER_PROBES[id] : [];
@@ -6098,22 +6527,22 @@ function tomlString(value) {
   return JSON.stringify(String(value));
 }
 async function writeCodexConfig(home, nodeCommand, runtime) {
-  const path = (0, import_node_path17.join)(home, ".codex", "config.toml");
+  const path = (0, import_node_path19.join)(home, ".codex", "config.toml");
   const begin = "# BEGIN LIVE-DOT-MAP";
   const end = "# END LIVE-DOT-MAP";
-  const old = await (0, import_promises13.readFile)(path, "utf8").catch(() => "");
+  const old = await (0, import_promises15.readFile)(path, "utf8").catch(() => "");
   const stripped = old.replace(new RegExp(`${begin}[\\s\\S]*?${end}\\s*`, "g"), "").trimEnd();
   const block = [begin, '[mcp_servers."livedot-map"]', `command = ${tomlString(nodeCommand)}`, `args = [${[...runtimeArgs(runtime), "mcp", "--agent", "codex"].map(tomlString).join(", ")}]`, "required = false", end].join("\n");
   await atomicText(path, `${stripped ? `${stripped}
 
 ` : ""}${block}
 `);
-  const hooksPath = (0, import_node_path17.join)(home, ".codex", "hooks.json");
+  const hooksPath = (0, import_node_path19.join)(home, ".codex", "hooks.json");
   await atomicJson(hooksPath, mergeHooks(await readJson2(hooksPath), hooksFor(nodeCommand, runtime, "codex")));
   return [path, hooksPath];
 }
 async function writeClaudeConfig(home, nodeCommand, runtime) {
-  const settingsPath = (0, import_node_path17.join)(home, ".claude", "settings.json");
+  const settingsPath = (0, import_node_path19.join)(home, ".claude", "settings.json");
   const settings = await readJson2(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, "claude");
@@ -6123,14 +6552,14 @@ async function writeClaudeConfig(home, nodeCommand, runtime) {
   return [settingsPath];
 }
 async function writeKimiConfig(home, nodeCommand, runtime) {
-  const mcpPath = (0, import_node_path17.join)(home, ".kimi-code", "mcp.json");
+  const mcpPath = (0, import_node_path19.join)(home, ".kimi-code", "mcp.json");
   const mcp = await readJson2(mcpPath);
   mcp.mcpServers = { ...mcp.mcpServers || {}, "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "kimi"] } };
   await atomicJson(mcpPath, mcp);
   const plugin = kimiPluginRoot(home);
-  const pluginRuntime = (0, import_node_path17.join)(plugin, "runtime", "livedot.mjs");
-  await (0, import_promises13.mkdir)((0, import_node_path17.dirname)(pluginRuntime), { recursive: true });
-  if (!seaRuntime()) await (0, import_promises13.copyFile)(runtime, pluginRuntime);
+  const pluginRuntime = (0, import_node_path19.join)(plugin, "runtime", "livedot.mjs");
+  await (0, import_promises15.mkdir)((0, import_node_path19.dirname)(pluginRuntime), { recursive: true });
+  if (!seaRuntime()) await (0, import_promises15.copyFile)(runtime, pluginRuntime);
   const manifest = {
     name: "livedot-map",
     version: "2.0.0",
@@ -6142,11 +6571,11 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
       { event: "Stop", command: command(nodeCommand, runtime, "kimi", "stop"), timeout: 30 }
     ]
   };
-  await atomicJson((0, import_node_path17.join)(plugin, "kimi.plugin.json"), manifest);
-  return [mcpPath, (0, import_node_path17.join)(plugin, "kimi.plugin.json")];
+  await atomicJson((0, import_node_path19.join)(plugin, "kimi.plugin.json"), manifest);
+  return [mcpPath, (0, import_node_path19.join)(plugin, "kimi.plugin.json")];
 }
 async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
-  const settingsPath = (0, import_node_path17.join)(home, ".codebuddy", "settings.json");
+  const settingsPath = (0, import_node_path19.join)(home, ".codebuddy", "settings.json");
   const settings = await readJson2(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, "codebuddy");
@@ -6161,10 +6590,10 @@ async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
     hooks: "./hooks/hooks.json",
     mcpServers: { "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "codebuddy"] } }
   };
-  await atomicJson((0, import_node_path17.join)(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
-  await atomicJson((0, import_node_path17.join)(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
-  await atomicJson((0, import_node_path17.join)(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
-  return [settingsPath, (0, import_node_path17.join)(plugin, ".codebuddy-plugin", "plugin.json"), (0, import_node_path17.join)(plugin, ".workbuddy-plugin", "plugin.json"), (0, import_node_path17.join)(plugin, "hooks", "hooks.json")];
+  await atomicJson((0, import_node_path19.join)(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
+  await atomicJson((0, import_node_path19.join)(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
+  await atomicJson((0, import_node_path19.join)(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
+  return [settingsPath, (0, import_node_path19.join)(plugin, ".codebuddy-plugin", "plugin.json"), (0, import_node_path19.join)(plugin, ".workbuddy-plugin", "plugin.json"), (0, import_node_path19.join)(plugin, "hooks", "hooks.json")];
 }
 async function installProject({
   projectRoot = process.cwd(),
@@ -6181,14 +6610,14 @@ async function installProject({
   exec,
   discoverAgents = true,
   detectedAgents = null,
-  homeRoot = (0, import_node_os4.homedir)()
+  homeRoot = (0, import_node_os5.homedir)()
 } = {}) {
-  const root = (0, import_node_path17.resolve)(projectRoot);
-  const home = (0, import_node_path17.resolve)(homeRoot);
+  const root = (0, import_node_path19.resolve)(projectRoot);
+  const home = (0, import_node_path19.resolve)(homeRoot);
   if (!await exists2(root)) throw new Error(`\u9879\u76EE\u76EE\u5F55\u4E0D\u5B58\u5728: ${root}`);
-  const source = (0, import_node_path17.resolve)(sourceRoot instanceof URL ? (0, import_node_url.fileURLToPath)(sourceRoot) : sourceRoot || process.cwd());
-  const sourceRuntime = (0, import_node_path17.resolve)(runtimeSource || (0, import_node_path17.resolve)(source, "livedot.mjs"));
-  const canonicalCandidates = [(0, import_node_path17.resolve)(source, "skills", "live-dot-map", "SKILL.md"), (0, import_node_path17.resolve)(source, "agent-kit", "skills", "live-dot-map", "SKILL.md")];
+  const source = (0, import_node_path19.resolve)(sourceRoot instanceof URL ? (0, import_node_url.fileURLToPath)(sourceRoot) : sourceRoot || process.cwd());
+  const sourceRuntime = (0, import_node_path19.resolve)(runtimeSource || (0, import_node_path19.resolve)(source, "livedot.mjs"));
+  const canonicalCandidates = [(0, import_node_path19.resolve)(source, "skills", "live-dot-map", "SKILL.md"), (0, import_node_path19.resolve)(source, "agent-kit", "skills", "live-dot-map", "SKILL.md")];
   let canonicalSkill = null;
   for (const candidate of canonicalCandidates) if (await exists2(candidate)) {
     canonicalSkill = candidate;
@@ -6196,13 +6625,13 @@ async function installProject({
   }
   if (!canonicalSkill || !await exists2(canonicalSkill)) throw new Error(`\u7F3A\u5C11 canonical Skill: ${canonicalCandidates[0]}`);
   if (!seaRuntime() && !await exists2(sourceRuntime)) throw new Error(`\u7F3A\u5C11\u5DF2\u6784\u5EFA\u8FD0\u884C\u65F6: ${sourceRuntime}`);
-  const dataDir = (0, import_node_path17.join)(root, ".live-dot-map");
-  const globalDataDir = (0, import_node_path17.join)(home, ".live-dot-map");
-  const runtime = seaRuntime() ? null : (0, import_node_path17.join)(globalDataDir, "livedot.mjs");
-  await (0, import_promises13.mkdir)(dataDir, { recursive: true });
+  const dataDir = (0, import_node_path19.join)(root, ".live-dot-map");
+  const globalDataDir = (0, import_node_path19.join)(home, ".live-dot-map");
+  const runtime = seaRuntime() ? null : (0, import_node_path19.join)(globalDataDir, "livedot.mjs");
+  await (0, import_promises15.mkdir)(dataDir, { recursive: true });
   const projectId = projectIdForRoot(root);
-  const mapPath = (0, import_node_path17.join)(dataDir, "map.json");
-  const configPath = (0, import_node_path17.join)(dataDir, "agent-kit.json");
+  const mapPath = (0, import_node_path19.join)(dataDir, "map.json");
+  const configPath = (0, import_node_path19.join)(dataDir, "agent-kit.json");
   const old = await readJson2(configPath);
   const url = bridgeUrl || old?.bridge?.url || "http://127.0.0.1:0";
   assertLoopbackUrl(url);
@@ -6210,11 +6639,11 @@ async function installProject({
   const detected = detectedAgents && typeof detectedAgents === "object" ? detectedAgents : discoverAgents ? await detectInstalledAdapters({ projectRoot: root, platform, homeRoot: home }) : Object.fromEntries(ALL_ADAPTERS.map((id) => [id, { id, configured: false, executable: false, discovered: true }]));
   const installed = {};
   for (const id of ALL_ADAPTERS) if (detected[id]?.discovered) installed[id] = true;
-  const backupPath = (0, import_node_path17.join)(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
+  const backupPath = (0, import_node_path19.join)(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
   const beforeBackup = await captureFile(backupPath);
   const oldRuntime = runtime ? await captureFile(runtime) : { exists: false, kind: "missing", path: null };
   const oldMap = await captureFile(mapPath);
-  const mapsLayoutExists = await exists2((0, import_node_path17.join)(dataDir, "maps"));
+  const mapsLayoutExists = await exists2((0, import_node_path19.join)(dataDir, "maps"));
   let createdMapsLayout = false;
   const touched = /* @__PURE__ */ new Set([configPath, ...runtime ? [runtime] : []]);
   for (const id of /* @__PURE__ */ new Set([...Object.keys(old.installed || {}), ...Object.keys(installed)])) for (const path of adapterConfigPaths(home, id)) touched.add(path);
@@ -6226,30 +6655,30 @@ async function installProject({
   const rollback = async () => {
     for (const entry of backup.files) await restoreCapturedFile(entry);
     await restoreCapturedFile(beforeBackup);
-    if (!oldMap.exists) await (0, import_promises13.rm)(mapPath, { force: true }).catch(() => void 0);
+    if (!oldMap.exists) await (0, import_promises15.rm)(mapPath, { force: true }).catch(() => void 0);
     if (createdMapsLayout) {
-      await (0, import_promises13.rm)((0, import_node_path17.join)(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
-      await (0, import_promises13.rm)((0, import_node_path17.join)(dataDir, "active-map"), { force: true }).catch(() => void 0);
+      await (0, import_promises15.rm)((0, import_node_path19.join)(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
+      await (0, import_promises15.rm)((0, import_node_path19.join)(dataDir, "active-map"), { force: true }).catch(() => void 0);
     }
-    if (runtime && !oldRuntime.exists) await (0, import_promises13.rm)(runtime, { force: true }).catch(() => void 0);
+    if (runtime && !oldRuntime.exists) await (0, import_promises15.rm)(runtime, { force: true }).catch(() => void 0);
   };
   try {
     await atomicJson(backupPath, backup);
-    if (runtime && (0, import_node_path17.resolve)(sourceRuntime) !== (0, import_node_path17.resolve)(runtime)) {
-      await (0, import_promises13.mkdir)(globalDataDir, { recursive: true });
-      await (0, import_promises13.copyFile)(sourceRuntime, runtime);
+    if (runtime && (0, import_node_path19.resolve)(sourceRuntime) !== (0, import_node_path19.resolve)(runtime)) {
+      await (0, import_promises15.mkdir)(globalDataDir, { recursive: true });
+      await (0, import_promises15.copyFile)(sourceRuntime, runtime);
     }
     for (const id of Object.keys(installed)) {
       const target = skillTargetPaths(home, id);
-      await (0, import_promises13.mkdir)((0, import_node_path17.dirname)(target), { recursive: true });
-      await (0, import_promises13.copyFile)(canonicalSkill, target);
+      await (0, import_promises15.mkdir)((0, import_node_path19.dirname)(target), { recursive: true });
+      await (0, import_promises15.copyFile)(canonicalSkill, target);
     }
     if (!oldMap.exists && !mapsLayoutExists) {
       const map = structuredClone(map_template_default);
       if (map.version !== 2) throw new Error("\u5185\u7F6E map.json \u6A21\u677F\u4E0D\u662F v2");
       const now = (/* @__PURE__ */ new Date()).toISOString();
       map.mapId = projectId;
-      map.name = (0, import_node_path17.basename)(root);
+      map.name = (0, import_node_path19.basename)(root);
       map.createdAt = now;
       map.updatedAt = now;
       map.mapDir = ".live-dot-map/maps/default";
@@ -6261,8 +6690,8 @@ async function installProject({
           item.md = `.live-dot-map/maps/default${item.md.slice(".live-dot-map".length)}`;
         }
       }
-      await atomicJson((0, import_node_path17.join)(dataDir, "maps", "default", "map.json"), map);
-      await atomicText((0, import_node_path17.join)(dataDir, "active-map"), "default\n");
+      await atomicJson((0, import_node_path19.join)(dataDir, "maps", "default", "map.json"), map);
+      await atomicText((0, import_node_path19.join)(dataDir, "active-map"), "default\n");
       createdMapsLayout = true;
     }
     if (installed.codex) await writeCodexConfig(home, nodeCommand, runtime);
@@ -6319,18 +6748,18 @@ async function installProject({
   }
 }
 async function uninstallProject({ projectRoot = process.cwd(), platform = process.platform, env = process.env, exec } = {}) {
-  const root = (0, import_node_path17.resolve)(projectRoot);
-  const dataDir = (0, import_node_path17.join)(root, ".live-dot-map");
-  const configPath = (0, import_node_path17.join)(dataDir, "agent-kit.json");
+  const root = (0, import_node_path19.resolve)(projectRoot);
+  const dataDir = (0, import_node_path19.join)(root, ".live-dot-map");
+  const configPath = (0, import_node_path19.join)(dataDir, "agent-kit.json");
   const config = await readJson2(configPath, null);
-  if (!config || typeof config !== "object") return { ok: false, reason: "not-installed", projectRoot: root, mapPreserved: await exists2((0, import_node_path17.join)(dataDir, "map.json")) || await exists2((0, import_node_path17.join)(dataDir, "maps")) };
-  const backupPath = typeof config.installBackup === "string" ? config.installBackup : (0, import_node_path17.join)(dataDir, "backups", "agent-kit-install.json");
+  if (!config || typeof config !== "object") return { ok: false, reason: "not-installed", projectRoot: root, mapPreserved: await exists2((0, import_node_path19.join)(dataDir, "map.json")) || await exists2((0, import_node_path19.join)(dataDir, "maps")) };
+  const backupPath = typeof config.installBackup === "string" ? config.installBackup : (0, import_node_path19.join)(dataDir, "backups", "agent-kit-install.json");
   const backup = await readJson2(backupPath, null);
   const installedFiles = config.installedFiles && typeof config.installedFiles === "object" ? config.installedFiles : {};
   const restored = [];
   const skipped = [];
   for (const entry of Array.isArray(backup?.files) ? backup.files : []) {
-    if (!entry?.path || entry.path === (0, import_node_path17.join)(dataDir, "map.json") || entry.path === backupPath) continue;
+    if (!entry?.path || entry.path === (0, import_node_path19.join)(dataDir, "map.json") || entry.path === backupPath) continue;
     const current = await captureFile(entry.path);
     const expected = installedFiles[entry.path];
     let configOwned = false;
@@ -6353,40 +6782,40 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
       skipped.push({ path: entry.path, reason: "after-install-change" });
     }
   }
-  const launcherPaths = [(0, import_node_path17.join)(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), (0, import_node_path17.join)(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
+  const launcherPaths = [(0, import_node_path19.join)(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), (0, import_node_path19.join)(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
   if (platform === "win32") {
     const desktop = windowsDesktopDirectory({ platform, env, exec });
-    launcherPaths.push((0, import_node_path17.join)(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), (0, import_node_path17.join)(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
+    launcherPaths.push((0, import_node_path19.join)(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), (0, import_node_path19.join)(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
   }
   for (const path of launcherPaths) {
     const current = await captureFile(path);
     if (!current.exists) continue;
     const looksOwned = path.includes(dataDir) || current.content?.includes(Buffer.from("livedot.mjs").toString("base64"));
     if (looksOwned) {
-      await (0, import_promises13.rm)(path, { force: true });
+      await (0, import_promises15.rm)(path, { force: true });
       restored.push(path);
     }
   }
-  const mapPreserved = await exists2((0, import_node_path17.join)(dataDir, "map.json")) || await exists2((0, import_node_path17.join)(dataDir, "maps"));
+  const mapPreserved = await exists2((0, import_node_path19.join)(dataDir, "map.json")) || await exists2((0, import_node_path19.join)(dataDir, "maps"));
   return { ok: skipped.length === 0, projectRoot: root, restored, skipped, mapPreserved, backupPath };
 }
-async function doctorProject({ projectRoot = process.cwd(), checkBridge = false, bridgeClient, offline = true, homeRoot = (0, import_node_os4.homedir)() } = {}) {
-  const root = (0, import_node_path17.resolve)(projectRoot);
-  const home = (0, import_node_path17.resolve)(homeRoot);
-  const configPath = (0, import_node_path17.join)(root, ".live-dot-map", "agent-kit.json");
+async function doctorProject({ projectRoot = process.cwd(), checkBridge = false, bridgeClient, offline = true, homeRoot = (0, import_node_os5.homedir)() } = {}) {
+  const root = (0, import_node_path19.resolve)(projectRoot);
+  const home = (0, import_node_path19.resolve)(homeRoot);
+  const configPath = (0, import_node_path19.join)(root, ".live-dot-map", "agent-kit.json");
   const config = await readJson2(configPath, null);
   const installed = config?.installed && typeof config.installed === "object" ? config.installed : {};
   const expected = [
     ["agent-kit-config", configPath]
   ];
-  if (config?.runtimeMode !== "sea" && config?.runtime !== null) expected.push(["runtime", (0, import_node_path17.join)(home, ".live-dot-map", "livedot.mjs")]);
-  if (installed.codex) expected.push(["codex-hooks", (0, import_node_path17.join)(home, ".codex", "hooks.json")], ["codex-mcp", (0, import_node_path17.join)(home, ".codex", "config.toml")]);
-  if (installed["claude-code"]) expected.push(["claude-hooks", (0, import_node_path17.join)(home, ".claude", "settings.json")]);
-  if (installed["kimi-code"]) expected.push(["kimi-mcp", (0, import_node_path17.join)(home, ".kimi-code", "mcp.json")], ["kimi-plugin", (0, import_node_path17.join)(kimiPluginRoot(home), "kimi.plugin.json")]);
-  if (installed.codebuddy) expected.push(["codebuddy-hooks", (0, import_node_path17.join)(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", (0, import_node_path17.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
+  if (config?.runtimeMode !== "sea" && config?.runtime !== null) expected.push(["runtime", (0, import_node_path19.join)(home, ".live-dot-map", "livedot.mjs")]);
+  if (installed.codex) expected.push(["codex-hooks", (0, import_node_path19.join)(home, ".codex", "hooks.json")], ["codex-mcp", (0, import_node_path19.join)(home, ".codex", "config.toml")]);
+  if (installed["claude-code"]) expected.push(["claude-hooks", (0, import_node_path19.join)(home, ".claude", "settings.json")]);
+  if (installed["kimi-code"]) expected.push(["kimi-mcp", (0, import_node_path19.join)(home, ".kimi-code", "mcp.json")], ["kimi-plugin", (0, import_node_path19.join)(kimiPluginRoot(home), "kimi.plugin.json")]);
+  if (installed.codebuddy) expected.push(["codebuddy-hooks", (0, import_node_path19.join)(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", (0, import_node_path19.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
-  checks.push({ name: "map", ok: await exists2((0, import_node_path17.join)(root, ".live-dot-map", "map.json")) || await exists2((0, import_node_path17.join)(root, ".live-dot-map", "maps")), detail: (0, import_node_path17.join)(root, ".live-dot-map") });
+  checks.push({ name: "map", ok: await exists2((0, import_node_path19.join)(root, ".live-dot-map", "map.json")) || await exists2((0, import_node_path19.join)(root, ".live-dot-map", "maps")), detail: (0, import_node_path19.join)(root, ".live-dot-map") });
   const detectedAgents = await detectInstalledAdapters({ projectRoot: root, homeRoot: home });
   checks.push({ name: "agent-discovery", ok: Object.values(detectedAgents).every((item) => !item.discovered || Boolean(installed[item.id])), detail: detectedAgents });
   checks.push({ name: "node", ok: runtimePlan({ offline }).use === "system-node", detail: process.versions.node });
@@ -6406,22 +6835,22 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
 var SESSION_COOKIE = "ldm_bridge_session";
 var DEFAULT_BODY_LIMIT = 16 * 1024 * 1024;
 var DEFAULT_SESSION_TTL = 8 * 60 * 60 * 1e3;
-var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || (0, import_node_path18.join)((0, import_node_os5.homedir)(), ".live-dot-map", "recent-projects.json");
+var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || (0, import_node_path20.join)((0, import_node_os6.homedir)(), ".live-dot-map", "recent-projects.json");
 async function recordRecentProject(root) {
   let recent = [];
   try {
-    const parsed = JSON.parse(await (0, import_promises14.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
+    const parsed = JSON.parse(await (0, import_promises16.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
     if (Array.isArray(parsed)) recent = parsed.filter((item) => typeof item === "string");
   } catch {
   }
   recent = [root, ...recent.filter((item) => item !== root)].slice(0, 15);
-  await (0, import_promises14.mkdir)((0, import_node_path18.dirname)(RECENT_PROJECTS_FILE()), { recursive: true });
-  await (0, import_promises14.writeFile)(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
+  await (0, import_promises16.mkdir)((0, import_node_path20.dirname)(RECENT_PROJECTS_FILE()), { recursive: true });
+  await (0, import_promises16.writeFile)(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
 `, "utf8");
 }
 async function readRecentProjects() {
   try {
-    const parsed = JSON.parse(await (0, import_promises14.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
+    const parsed = JSON.parse(await (0, import_promises16.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
     const list = Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
     const valid = [];
     for (const item of list) {
@@ -6552,9 +6981,9 @@ if ($path) {
 `;
 }
 async function pickProjectFolder({ logger = noopLogger } = {}) {
-  const tmpDir = (0, import_node_path18.join)((0, import_node_os5.homedir)(), ".live-dot-map", "tmp");
-  await (0, import_promises14.mkdir)(tmpDir, { recursive: true });
-  const marker = (0, import_node_path18.join)(tmpDir, `pick-${(0, import_node_crypto12.randomUUID)()}.txt`);
+  const tmpDir = (0, import_node_path20.join)((0, import_node_os6.homedir)(), ".live-dot-map", "tmp");
+  await (0, import_promises16.mkdir)(tmpDir, { recursive: true });
+  const marker = (0, import_node_path20.join)(tmpDir, `pick-${(0, import_node_crypto13.randomUUID)()}.txt`);
   const script = buildPickFolderScript(marker);
   const run = await new Promise((resolveRun, rejectRun) => {
     const child = (0, import_node_child_process6.spawn)("powershell.exe", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script], { windowsHide: true });
@@ -6583,12 +7012,12 @@ async function pickProjectFolder({ logger = noopLogger } = {}) {
   const diag = run.stdout.split(/\r?\n/).filter((line) => line.startsWith("PICK:DIAG")).join(" | ");
   if (run.code !== 0) {
     await logger.warn("project.pick", { outcome: "error", exitCode: run.code, stderr: run.stderr.slice(0, 400), diag });
-    await (0, import_promises14.rm)(marker, { force: true }).catch(() => void 0);
+    await (0, import_promises16.rm)(marker, { force: true }).catch(() => void 0);
     return { cancelled: true };
   }
   try {
-    const text = (await (0, import_promises14.readFile)(marker, "utf8")).trim();
-    await (0, import_promises14.rm)(marker, { force: true }).catch(() => void 0);
+    const text = (await (0, import_promises16.readFile)(marker, "utf8")).trim();
+    await (0, import_promises16.rm)(marker, { force: true }).catch(() => void 0);
     if (text) {
       await logger.info("project.pick", { outcome: "ok", mode, path: text, diag });
       return { cancelled: false, path: text };
@@ -6601,11 +7030,11 @@ async function pickProjectFolder({ logger = noopLogger } = {}) {
   }
 }
 function randomToken(bytes = 32) {
-  return (0, import_node_crypto12.randomBytes)(bytes).toString("base64url");
+  return (0, import_node_crypto13.randomBytes)(bytes).toString("base64url");
 }
 async function recordAgentHealth(root, actor, event, status, error3) {
-  const path = (0, import_node_path18.join)(root, ".live-dot-map", ".bridge", "agent-health.json");
-  const prior = await (0, import_promises14.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
+  const path = (0, import_node_path20.join)(root, ".live-dot-map", ".bridge", "agent-health.json");
+  const prior = await (0, import_promises16.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   records[String(actor).replace(/^agent:/, "")] = {
     status,
@@ -6615,44 +7044,44 @@ async function recordAgentHealth(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: error3?.code || "BRIDGE_MCP_FAILED", message: String(error3?.message || error3 || "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await (0, import_promises14.mkdir)((0, import_node_path18.join)(root, ".live-dot-map", ".bridge"), { recursive: true });
+  await (0, import_promises16.mkdir)((0, import_node_path20.join)(root, ".live-dot-map", ".bridge"), { recursive: true });
   const temporary = `${path}.${process.pid}.${randomToken(8)}.tmp`;
   try {
-    await (0, import_promises14.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
+    await (0, import_promises16.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
 `, "utf8");
-    await (0, import_promises14.rename)(temporary, path);
+    await (0, import_promises16.rename)(temporary, path);
   } catch {
   }
 }
 async function readAgentHealth(root) {
-  return (0, import_promises14.readFile)((0, import_node_path18.join)(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
+  return (0, import_promises16.readFile)((0, import_node_path20.join)(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
     const value = JSON.parse(text);
     return value && typeof value.records === "object" && !Array.isArray(value.records) ? value.records : {};
   }).catch(() => ({}));
 }
 async function readObject(path) {
   try {
-    const value = JSON.parse(await (0, import_promises14.readFile)(path, "utf8"));
+    const value = JSON.parse(await (0, import_promises16.readFile)(path, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
   } catch {
     return null;
   }
 }
 function runtimeSources({ sourceRoot, runtimeSource } = {}) {
-  const entry = process.argv[1] ? (0, import_node_path18.resolve)(process.argv[1]) : "";
-  const entryRoot = entry ? (0, import_node_path18.dirname)(entry) : "";
+  const entry = process.argv[1] ? (0, import_node_path20.resolve)(process.argv[1]) : "";
+  const entryRoot = entry ? (0, import_node_path20.dirname)(entry) : "";
   const roots = [
     sourceRoot,
     process.env.LIVEDOT_AGENT_KIT_SOURCE,
     process.cwd(),
     entryRoot
-  ].filter(Boolean).map((value) => (0, import_node_path18.resolve)(value));
+  ].filter(Boolean).map((value) => (0, import_node_path20.resolve)(value));
   const uniqueRoots = [...new Set(roots)];
   const runtimes = [
     runtimeSource,
     process.env.LIVEDOT_RUNTIME_SOURCE,
-    ...uniqueRoots.map((root) => (0, import_node_path18.join)(root, "livedot.mjs"))
-  ].filter(Boolean).map((value) => (0, import_node_path18.resolve)(value));
+    ...uniqueRoots.map((root) => (0, import_node_path20.join)(root, "livedot.mjs"))
+  ].filter(Boolean).map((value) => (0, import_node_path20.resolve)(value));
   return { sourceRoot: uniqueRoots[0] || process.cwd(), runtimeSource: runtimes[0] || "" };
 }
 async function ensureProjectAgentConfig(projectRoot, {
@@ -6663,11 +7092,11 @@ async function ensureProjectAgentConfig(projectRoot, {
   detect = detectInstalledAdapters,
   install = installProject
 } = {}) {
-  const root = (0, import_node_path18.resolve)(projectRoot);
+  const root = (0, import_node_path20.resolve)(projectRoot);
   try {
     const detected = await detect({ projectRoot: root, platform, ...homeRoot ? { homeRoot } : {} });
     const available = Object.values(detected || {}).filter((item) => item?.discovered === true);
-    const configPath = (0, import_node_path18.join)(root, ".live-dot-map", "agent-kit.json");
+    const configPath = (0, import_node_path20.join)(root, ".live-dot-map", "agent-kit.json");
     const existing = await readObject(configPath);
     if (!available.length) {
       return { ok: true, status: "none", changed: false, projectRoot: root, detectedAgents: detected || {}, configured: existing?.installed || {} };
@@ -6714,7 +7143,7 @@ async function ensureProjectAgentConfig(projectRoot, {
 function constantEqual(left, right) {
   const a = Buffer.from(String(left));
   const b = Buffer.from(String(right));
-  return a.length === b.length && (0, import_node_crypto12.timingSafeEqual)(a, b);
+  return a.length === b.length && (0, import_node_crypto13.timingSafeEqual)(a, b);
 }
 function parseCookies(header = "") {
   if (header.length > 8192) throw new BridgeError("COOKIE_HEADER_TOO_LARGE", "Cookie header is too large", { status: 400 });
@@ -6875,6 +7304,7 @@ async function createBridgeServer({
   const knownActiveMaps = /* @__PURE__ */ new Map();
   const markdownStores = /* @__PURE__ */ new Map();
   const humanMdLogs = /* @__PURE__ */ new Map();
+  const mdIndexes = /* @__PURE__ */ new Map();
   const editorServices = /* @__PURE__ */ new Map();
   const events = new EventHub(heartbeatMs);
   const configuredOrigins = new Set(allowedOrigins);
@@ -7082,10 +7512,21 @@ async function createBridgeServer({
     }
     return log;
   }
+  async function mdIndexFor(session) {
+    const mapKey = session.activeMapId ?? await resolveActiveMap(session.projectRoot);
+    const key = `${session.projectRoot}/${mapKey}`;
+    let index = mdIndexes.get(key);
+    if (!index) {
+      index = new MdIndex({ projectRoot: session.projectRoot, mapKey });
+      await index.load();
+      mdIndexes.set(key, index);
+    }
+    return index;
+  }
   const UPDATE_BASE = (process.env.LIVEDOT_UPDATE_BASE || "https://livedotmap.top/windows-installer").replace(/\/+$/, "");
   async function readLocalPayloadVersion() {
     try {
-      const parsed = JSON.parse(await (0, import_promises14.readFile)((0, import_node_path18.join)(process.cwd(), "payload-manifest.json"), "utf8"));
+      const parsed = JSON.parse(await (0, import_promises16.readFile)((0, import_node_path20.join)(process.cwd(), "payload-manifest.json"), "utf8"));
       return typeof parsed.version === "string" ? parsed.version : null;
     } catch {
       return null;
@@ -7127,15 +7568,15 @@ async function createBridgeServer({
     if (current !== null && compareVersions(manifest.version, current) <= 0) {
       throw new BridgeError("ALREADY_UP_TO_DATE", `Current version ${current} is up to date`, { status: 409 });
     }
-    const updater = (0, import_node_path18.resolve)((0, import_node_path18.join)(process.cwd(), "..", "LiveDotMapSetup.exe"));
+    const updater = (0, import_node_path20.resolve)((0, import_node_path20.join)(process.cwd(), "..", "LiveDotMapSetup.exe"));
     try {
-      await (0, import_promises14.access)(updater);
+      await (0, import_promises16.access)(updater);
     } catch {
       throw new BridgeError("UPDATER_UNAVAILABLE", "Installer entry not found; updates are only available in installed mode", { status: 501 });
     }
-    const tempRoot = (0, import_node_path18.join)(process.env.TEMP || process.env.TMP || (0, import_node_os5.homedir)(), `livedot-update-${manifest.version}-${(0, import_node_crypto12.randomUUID)()}`);
-    const payloadDir = (0, import_node_path18.join)(tempRoot, "payload");
-    await (0, import_promises14.mkdir)(payloadDir, { recursive: true });
+    const tempRoot = (0, import_node_path20.join)(process.env.TEMP || process.env.TMP || (0, import_node_os6.homedir)(), `livedot-update-${manifest.version}-${(0, import_node_crypto13.randomUUID)()}`);
+    const payloadDir = (0, import_node_path20.join)(tempRoot, "payload");
+    await (0, import_promises16.mkdir)(payloadDir, { recursive: true });
     try {
       for (const [relative6, meta] of Object.entries(manifest.files)) {
         if (!meta || typeof meta !== "object" || typeof meta.sha256 !== "string" || typeof meta.url !== "string") {
@@ -7144,17 +7585,17 @@ async function createBridgeServer({
         if (relative6.includes("..") || relative6.startsWith("/") || /^[a-zA-Z]:/.test(relative6)) {
           throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file path: ${relative6}`, { status: 502 });
         }
-        const target = (0, import_node_path18.join)(payloadDir, relative6);
-        await (0, import_promises14.mkdir)((0, import_node_path18.dirname)(target), { recursive: true });
+        const target = (0, import_node_path20.join)(payloadDir, relative6);
+        await (0, import_promises16.mkdir)((0, import_node_path20.dirname)(target), { recursive: true });
         const response = await fetch(`${UPDATE_BASE}/${meta.url}`, { signal: AbortSignal.timeout(6e5) });
         if (!response.ok) throw new BridgeError("UPDATE_DOWNLOAD_FAILED", `Download failed for ${relative6} (HTTP ${response.status})`, { status: 502 });
         const buffer = Buffer.from(await response.arrayBuffer());
-        const actual = (0, import_node_crypto12.createHash)("sha256").update(buffer).digest("hex");
+        const actual = (0, import_node_crypto13.createHash)("sha256").update(buffer).digest("hex");
         if (actual !== meta.sha256.toLowerCase()) throw new BridgeError("UPDATE_CHECKSUM_MISMATCH", `Checksum mismatch for ${relative6}`, { status: 502 });
-        await (0, import_promises14.writeFile)(target, buffer);
+        await (0, import_promises16.writeFile)(target, buffer);
       }
     } catch (error3) {
-      await (0, import_promises14.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
+      await (0, import_promises16.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
       throw error3;
     }
     const child = (0, import_node_child_process6.spawn)(updater, ["--update", tempRoot], { detached: true, stdio: "ignore", windowsHide: true });
@@ -7425,6 +7866,7 @@ async function createBridgeServer({
         const binding = await authorizeOpenedProject(session, root);
         session.projectRoot = root;
         session.activeMapId = mapId;
+        await recordCurrentProject(root).catch(() => void 0);
         const snapshot = await store.snapshot();
         const setup = typeof agentSetup === "function" ? await agentSetup(root).catch((error3) => ({ ok: false, status: "error", changed: false, code: error3?.code || "AGENT_SETUP_FAILED", message: String(error3?.message || error3).slice(0, 400) })) : { ok: true, status: "none", changed: false, projectRoot: root, detectedAgents: {} };
         sendJson(response, 200, { cancelled: false, projectRoot: root, activeMap: mapId, projectId: snapshot.document.mapId, agentSetup: setup, ...binding, ...snapshot });
@@ -7487,6 +7929,7 @@ async function createBridgeServer({
         const binding = await authorizeOpenedProject(session, root);
         session.projectRoot = root;
         session.activeMapId = mapId;
+        await recordCurrentProject(root).catch(() => void 0);
         const snapshot = await store.snapshot();
         const setup = typeof agentSetup === "function" ? await agentSetup(root).catch((error3) => ({ ok: false, status: "error", changed: false, code: error3?.code || "AGENT_SETUP_FAILED", message: String(error3?.message || error3).slice(0, 400) })) : { ok: true, status: "none", changed: false, projectRoot: root, detectedAgents: {} };
         sendJson(response, 200, { projectRoot: root, activeMap: mapId, projectId: snapshot.document.mapId, agentSetup: setup, ...binding, ...snapshot });
@@ -7517,7 +7960,7 @@ async function createBridgeServer({
         const detected = await detectInstalledAdapters({ projectRoot: root });
         let config = {};
         try {
-          const parsed = JSON.parse(await (0, import_promises14.readFile)((0, import_node_path18.join)(root, ".live-dot-map", "agent-kit.json"), "utf8"));
+          const parsed = JSON.parse(await (0, import_promises16.readFile)((0, import_node_path20.join)(root, ".live-dot-map", "agent-kit.json"), "utf8"));
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) config = parsed;
         } catch {
         }
@@ -7583,7 +8026,7 @@ async function createBridgeServer({
         const result2 = await store.execute({
           projectId: String(snapshot.document.mapId),
           baseRevision: snapshot.revision,
-          commandId: `human-restore-${(0, import_node_crypto12.randomUUID)()}`,
+          commandId: `human-restore-${(0, import_node_crypto13.randomUUID)()}`,
           actor: "human",
           sessionId: "browser-archive-settings",
           commands: [{ op: "restore", collection, id }]
@@ -7606,7 +8049,7 @@ async function createBridgeServer({
           id,
           actor: "human",
           confirmed: true,
-          commandId: `human-purge-${(0, import_node_crypto12.randomUUID)()}`
+          commandId: `human-purge-${(0, import_node_crypto13.randomUUID)()}`
         });
         sendJson(response, 200, result2);
         return;
@@ -7672,6 +8115,11 @@ async function createBridgeServer({
             });
           } catch (error3) {
             logger.warn("human-md-updates.record", { path: saved.path, error: error3?.message });
+          }
+          try {
+            await (await mdIndexFor(session)).refreshPathAndPersist({ relativePath: saved.path });
+          } catch (error3) {
+            logger.warn("md-index.refresh", { path: saved.path, error: error3?.message });
           }
           sendJson(response, 200, saved);
           return;
@@ -7786,10 +8234,18 @@ async function createBridgeServer({
         if (Array.isArray(body.commands)) {
           try {
             const bundle = await activeBundleStore(session);
+            const index = await mdIndexFor(session);
             for (const command2 of body.commands) {
               if (command2?.op === "create" && command2?.collection === "nodes" && typeof command2?.value?.id === "string") {
                 await bundle.ensureIndex({ ownerKind: "node", ownerId: command2.value.id, title: String(command2.value.name || "") }).catch((error3) => {
                   logger.warn("bundle.ensureIndex", { ownerId: command2.value.id, error: error3?.message });
+                });
+                await index.refreshOwnerAndPersist({
+                  mapRoot: (0, import_node_path20.join)(session.projectRoot, ".live-dot-map", "maps", session.activeMapId ?? await resolveActiveMap(session.projectRoot)),
+                  ownerKind: "nodes",
+                  ownerId: command2.value.id
+                }).catch((error3) => {
+                  logger.warn("md-index.refresh-on-create", { ownerId: command2.value.id, error: error3?.message });
                 });
               }
             }
@@ -7866,9 +8322,9 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
   server.headersTimeout = 1e4;
   server.requestTimeout = 15e3;
   server.keepAliveTimeout = 5e3;
-  await new Promise((resolve16, reject) => {
+  await new Promise((resolve18, reject) => {
     server.once("error", reject);
-    server.listen(listenPort, host, resolve16);
+    server.listen(listenPort, host, resolve18);
   });
   port = server.address().port;
   async function pollActiveMaps() {
@@ -7911,7 +8367,7 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
           const context = await manager.resolve({ mapKey: map.id });
           const lifecycle = new ArchiveLifecycle({ store: context.store, projectRoot, shared: adapter, clock, recycleBin: recycleService });
           for (const item of await lifecycle.listEligible({ now: clock() })) {
-            await lifecycle.purge({ ...item, actor: "system:retention", now: clock(), commandId: `retention-purge-${(0, import_node_crypto12.randomUUID)()}` });
+            await lifecycle.purge({ ...item, actor: "system:retention", now: clock(), commandId: `retention-purge-${(0, import_node_crypto13.randomUUID)()}` });
           }
         }
       } catch (error3) {
@@ -7941,8 +8397,8 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
       await Promise.all([...mapManagers.values()].map((manager) => manager.close()));
       if (sessionStore) await sessionStore.flush();
       else sessions.clear();
-      await new Promise((resolve16, reject) => {
-        server.close((error3) => error3 ? reject(error3) : resolve16());
+      await new Promise((resolve18, reject) => {
+        server.close((error3) => error3 ? reject(error3) : resolve18());
         server.closeAllConnections?.();
       });
     }
@@ -7950,52 +8406,52 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
 }
 
 // src/bridge/project-registry.mjs
-var import_node_crypto14 = require("node:crypto");
-var import_promises16 = require("node:fs/promises");
-var import_node_path20 = require("node:path");
+var import_node_crypto15 = require("node:crypto");
+var import_promises18 = require("node:fs/promises");
+var import_node_path22 = require("node:path");
 
 // src/bridge/runtime-state.mjs
-var import_node_crypto13 = require("node:crypto");
+var import_node_crypto14 = require("node:crypto");
 var import_node_child_process7 = require("node:child_process");
-var import_promises15 = require("node:fs/promises");
-var import_node_path19 = require("node:path");
-var import_node_os6 = require("node:os");
+var import_promises17 = require("node:fs/promises");
+var import_node_path21 = require("node:path");
+var import_node_os7 = require("node:os");
 var import_node_util = require("node:util");
 var execFileAsync = (0, import_node_util.promisify)(import_node_child_process7.execFile);
 var SCHEMA_VERSION = 1;
 function defaultRuntimeStateDir() {
-  if (process.env.LIVEDOT_RUNTIME_STATE_DIR) return (0, import_node_path19.resolve)(process.env.LIVEDOT_RUNTIME_STATE_DIR);
-  const localAppData = process.env.LOCALAPPDATA || (0, import_node_path19.join)((0, import_node_os6.homedir)(), "AppData", "Local");
-  return (0, import_node_path19.join)(localAppData, "live-dot-map", "run");
+  if (process.env.LIVEDOT_RUNTIME_STATE_DIR) return (0, import_node_path21.resolve)(process.env.LIVEDOT_RUNTIME_STATE_DIR);
+  const localAppData = process.env.LOCALAPPDATA || (0, import_node_path21.join)((0, import_node_os7.homedir)(), "AppData", "Local");
+  return (0, import_node_path21.join)(localAppData, "live-dot-map", "run");
 }
 async function privateDirectory(path) {
-  await (0, import_promises15.mkdir)(path, { recursive: true, mode: 448 });
-  await (0, import_promises15.chmod)(path, 448).catch(() => void 0);
+  await (0, import_promises17.mkdir)(path, { recursive: true, mode: 448 });
+  await (0, import_promises17.chmod)(path, 448).catch(() => void 0);
 }
 async function atomicPrivateWrite(path, value) {
-  await privateDirectory((0, import_node_path19.dirname)(path));
-  const temporary = `${path}.${process.pid}.${(0, import_node_crypto13.randomUUID)()}.tmp`;
-  await (0, import_promises15.writeFile)(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
-  await (0, import_promises15.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises15.rename)(temporary, path);
-  await (0, import_promises15.chmod)(path, 384).catch(() => void 0);
+  await privateDirectory((0, import_node_path21.dirname)(path));
+  const temporary = `${path}.${process.pid}.${(0, import_node_crypto14.randomUUID)()}.tmp`;
+  await (0, import_promises17.writeFile)(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
+  await (0, import_promises17.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises17.rename)(temporary, path);
+  await (0, import_promises17.chmod)(path, 384).catch(() => void 0);
 }
 function runtimePaths(runtimeStateDir = defaultRuntimeStateDir()) {
-  const root = (0, import_node_path19.resolve)(runtimeStateDir);
+  const root = (0, import_node_path21.resolve)(runtimeStateDir);
   return {
     root,
-    bridge: (0, import_node_path19.join)(root, "bridge.json"),
-    controlToken: (0, import_node_path19.join)(root, "control.token"),
-    lock: (0, import_node_path19.join)(root, "singleton.lock"),
-    sessions: (0, import_node_path19.join)(root, "sessions.json"),
-    projects: (0, import_node_path19.join)(root, "projects.json")
+    bridge: (0, import_node_path21.join)(root, "bridge.json"),
+    controlToken: (0, import_node_path21.join)(root, "control.token"),
+    lock: (0, import_node_path21.join)(root, "singleton.lock"),
+    sessions: (0, import_node_path21.join)(root, "sessions.json"),
+    projects: (0, import_node_path21.join)(root, "projects.json")
   };
 }
 async function readBridgeState(runtimeStateDir) {
   const paths = runtimePaths(runtimeStateDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises15.readFile)(paths.bridge, "utf8"));
+    parsed = JSON.parse(await (0, import_promises17.readFile)(paths.bridge, "utf8"));
   } catch (error3) {
     if (error3?.code === "ENOENT") return null;
     throw new BridgeError("BRIDGE_STATE_CORRUPT", "Bridge runtime state is unreadable", { cause: error3 });
@@ -8017,7 +8473,7 @@ async function writeBridgeState(runtimeStateDir, { pid, port, startedAt = (/* @_
 async function readOrCreateControlToken(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).controlToken;
   try {
-    const value = (await (0, import_promises15.readFile)(path, "utf8")).trim();
+    const value = (await (0, import_promises17.readFile)(path, "utf8")).trim();
     if (!/^[A-Za-z0-9_-]{43,}$/.test(value)) throw new Error("invalid token");
     return value;
   } catch (error3) {
@@ -8025,26 +8481,26 @@ async function readOrCreateControlToken(runtimeStateDir) {
       throw new BridgeError("CONTROL_TOKEN_CORRUPT", "Bridge control token is unreadable or invalid", { cause: error3 });
     }
   }
-  const token = (0, import_node_crypto13.randomBytes)(32).toString("base64url");
+  const token = (0, import_node_crypto14.randomBytes)(32).toString("base64url");
   try {
-    await privateDirectory((0, import_node_path19.dirname)(path));
-    await (0, import_promises15.writeFile)(path, `${token}
+    await privateDirectory((0, import_node_path21.dirname)(path));
+    await (0, import_promises17.writeFile)(path, `${token}
 `, { encoding: "utf8", mode: 384, flag: "wx" });
-    await (0, import_promises15.chmod)(path, 384).catch(() => void 0);
+    await (0, import_promises17.chmod)(path, 384).catch(() => void 0);
     return token;
   } catch (error3) {
     if (error3?.code !== "EEXIST") throw error3;
-    const existing = (await (0, import_promises15.readFile)(path, "utf8")).trim();
+    const existing = (await (0, import_promises17.readFile)(path, "utf8")).trim();
     if (!/^[A-Za-z0-9_-]{43,}$/.test(existing)) throw new BridgeError("CONTROL_TOKEN_CORRUPT", "Bridge control token is invalid");
     return existing;
   }
 }
 async function acquireSingletonLock(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).lock;
-  await privateDirectory((0, import_node_path19.dirname)(path));
+  await privateDirectory((0, import_node_path21.dirname)(path));
   let handle;
   try {
-    handle = await (0, import_promises15.open)(path, "wx", 384);
+    handle = await (0, import_promises17.open)(path, "wx", 384);
     await handle.writeFile(`${JSON.stringify({ pid: process.pid, acquiredAt: (/* @__PURE__ */ new Date()).toISOString() })}
 `, "utf8");
   } catch (error3) {
@@ -8057,7 +8513,7 @@ async function acquireSingletonLock(runtimeStateDir) {
     if (released) return;
     released = true;
     await handle.close().catch(() => void 0);
-    await (0, import_promises15.rm)(path, { force: true }).catch(() => void 0);
+    await (0, import_promises17.rm)(path, { force: true }).catch(() => void 0);
   };
 }
 function isProcessAlive(pid) {
@@ -8097,35 +8553,35 @@ async function clearStaleSingletonLock(runtimeStateDir, expectedPid, options = {
   const path = runtimePaths(runtimeStateDir).lock;
   let lock;
   try {
-    lock = JSON.parse(await (0, import_promises15.readFile)(path, "utf8"));
+    lock = JSON.parse(await (0, import_promises17.readFile)(path, "utf8"));
   } catch (error3) {
     if (error3?.code === "ENOENT") return true;
     throw new BridgeError("BRIDGE_LOCK_CORRUPT", "Bridge singleton lock is unreadable", { cause: error3 });
   }
   if (lock?.pid !== expectedPid) return false;
-  await (0, import_promises15.rm)(path, { force: true });
+  await (0, import_promises17.rm)(path, { force: true });
   return true;
 }
 async function removeBridgeState(runtimeStateDir, expectedPid) {
   const paths = runtimePaths(runtimeStateDir);
   const current = await readBridgeState(runtimeStateDir).catch(() => null);
   if (current && expectedPid && current.pid !== expectedPid) return false;
-  await (0, import_promises15.rm)(paths.bridge, { force: true });
+  await (0, import_promises17.rm)(paths.bridge, { force: true });
   return true;
 }
 
 // src/bridge/project-registry.mjs
 var SCHEMA_VERSION2 = 1;
 function handleValue() {
-  return `ph_${(0, import_node_crypto14.randomBytes)(24).toString("base64url")}`;
+  return `ph_${(0, import_node_crypto15.randomBytes)(24).toString("base64url")}`;
 }
 async function atomicWrite(path, data) {
-  await (0, import_promises16.mkdir)((0, import_node_path20.dirname)(path), { recursive: true, mode: 448 });
-  const temporary = `${path}.${process.pid}.${(0, import_node_crypto14.randomUUID)()}.tmp`;
-  await (0, import_promises16.writeFile)(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
-  await (0, import_promises16.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises16.rename)(temporary, path);
-  await (0, import_promises16.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises18.mkdir)((0, import_node_path22.dirname)(path), { recursive: true, mode: 448 });
+  const temporary = `${path}.${process.pid}.${(0, import_node_crypto15.randomUUID)()}.tmp`;
+  await (0, import_promises18.writeFile)(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
+  await (0, import_promises18.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises18.rename)(temporary, path);
+  await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
 }
 var ProjectRegistry = class _ProjectRegistry {
   constructor({ filePath, entries = [], canonicalize = canonicalDirectory } = {}) {
@@ -8138,7 +8594,7 @@ var ProjectRegistry = class _ProjectRegistry {
   static async open({ runtimeStateDir, filePath = runtimePaths(runtimeStateDir).projects, canonicalize } = {}) {
     let entries = [];
     try {
-      const parsed = JSON.parse(await (0, import_promises16.readFile)(filePath, "utf8"));
+      const parsed = JSON.parse(await (0, import_promises18.readFile)(filePath, "utf8"));
       if (parsed?.schemaVersion !== SCHEMA_VERSION2 || !Array.isArray(parsed.projects)) throw new Error("invalid shape");
       entries = parsed.projects;
       for (const entry of entries) {
@@ -8185,7 +8641,7 @@ var ProjectRegistry = class _ProjectRegistry {
   async refresh() {
     let parsed;
     try {
-      parsed = JSON.parse(await (0, import_promises16.readFile)(this.filePath, "utf8"));
+      parsed = JSON.parse(await (0, import_promises18.readFile)(this.filePath, "utf8"));
     } catch (error3) {
       if (error3?.code === "ENOENT") return;
       throw new BridgeError("PROJECT_REGISTRY_CORRUPT", "Project authorization registry is unreadable or invalid", { cause: error3 });
@@ -8210,20 +8666,20 @@ var ProjectRegistry = class _ProjectRegistry {
 };
 
 // src/bridge/session-store.mjs
-var import_node_crypto15 = require("node:crypto");
-var import_promises17 = require("node:fs/promises");
-var import_node_path21 = require("node:path");
+var import_node_crypto16 = require("node:crypto");
+var import_promises19 = require("node:fs/promises");
+var import_node_path23 = require("node:path");
 var SCHEMA_VERSION3 = 1;
 var DAY = 24 * 60 * 60 * 1e3;
-var secret = () => (0, import_node_crypto15.randomBytes)(32).toString("base64url");
-var digest4 = (value) => (0, import_node_crypto15.createHash)("sha256").update(String(value)).digest("base64url");
+var secret = () => (0, import_node_crypto16.randomBytes)(32).toString("base64url");
+var digest5 = (value) => (0, import_node_crypto16.createHash)("sha256").update(String(value)).digest("base64url");
 async function atomicWrite2(path, content) {
-  await (0, import_promises17.mkdir)((0, import_node_path21.dirname)(path), { recursive: true, mode: 448 });
-  const temporary = `${path}.${process.pid}.${(0, import_node_crypto15.randomUUID)()}.tmp`;
-  await (0, import_promises17.writeFile)(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
-  await (0, import_promises17.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises17.rename)(temporary, path);
-  await (0, import_promises17.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises19.mkdir)((0, import_node_path23.dirname)(path), { recursive: true, mode: 448 });
+  const temporary = `${path}.${process.pid}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
+  await (0, import_promises19.writeFile)(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
+  await (0, import_promises19.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises19.rename)(temporary, path);
+  await (0, import_promises19.chmod)(path, 384).catch(() => void 0);
 }
 var SessionStore = class _SessionStore {
   constructor({ filePath, sessions = [], clock = () => /* @__PURE__ */ new Date(), ttlMs = 7 * DAY, persistIntervalMs = 6e4, maxSessions = 64 } = {}) {
@@ -8243,7 +8699,7 @@ var SessionStore = class _SessionStore {
     const filePath = options.filePath || runtimePaths(options.runtimeStateDir).sessions;
     let sessions = [];
     try {
-      const parsed = JSON.parse(await (0, import_promises17.readFile)(filePath, "utf8"));
+      const parsed = JSON.parse(await (0, import_promises19.readFile)(filePath, "utf8"));
       if (parsed?.schemaVersion !== SCHEMA_VERSION3 || !Array.isArray(parsed.sessions)) throw new Error("invalid shape");
       sessions = parsed.sessions;
       for (const session of sessions) {
@@ -8265,13 +8721,13 @@ var SessionStore = class _SessionStore {
     const now = this.now();
     const record = {
       schemaVersion: SCHEMA_VERSION3,
-      sessionIdHash: digest4(sessionId),
+      sessionIdHash: digest5(sessionId),
       csrfToken: secret(),
       projectHandles: projectHandle ? [projectHandle] : [],
       createdAt: new Date(now).toISOString(),
       lastSeenAt: new Date(now).toISOString(),
       expiresAt: new Date(now + this.ttlMs).toISOString(),
-      reconnectTicketHash: digest4(reconnectTicket),
+      reconnectTicketHash: digest5(reconnectTicket),
       revokedAt: null
     };
     this.sessions.set(record.sessionIdHash, record);
@@ -8280,7 +8736,7 @@ var SessionStore = class _SessionStore {
     return { sessionId, reconnectTicket, record: structuredClone(record) };
   }
   get(sessionId, { touch: touch2 = true } = {}) {
-    const record = this.sessions.get(digest4(sessionId));
+    const record = this.sessions.get(digest5(sessionId));
     if (!record || record.revokedAt) return null;
     const now = this.now();
     if (Date.parse(record.expiresAt) <= now) {
@@ -8297,14 +8753,14 @@ var SessionStore = class _SessionStore {
     return structuredClone(record);
   }
   authorize(sessionId, projectHandle) {
-    const key = digest4(sessionId);
+    const key = digest5(sessionId);
     const record = this.sessions.get(key);
     if (!record || record.revokedAt || Date.parse(record.expiresAt) <= this.now()) return null;
     if (!record.projectHandles.includes(projectHandle)) record.projectHandles.push(projectHandle);
     record.lastSeenAt = new Date(this.now()).toISOString();
     record.expiresAt = new Date(this.now() + this.ttlMs).toISOString();
     const reconnectTicket = secret();
-    record.reconnectTicketHash = digest4(reconnectTicket);
+    record.reconnectTicketHash = digest5(reconnectTicket);
     this.dirty = true;
     return { ...structuredClone(record), reconnectTicket };
   }
@@ -8315,7 +8771,7 @@ var SessionStore = class _SessionStore {
     if (recent.length >= 5) throw new BridgeError("RECONNECT_RATE_LIMITED", "Too many reconnect attempts", { status: 429 });
     recent.push(now);
     this.reconnectAttempts.set(rateKey, recent);
-    const ticketHash = digest4(reconnectTicket);
+    const ticketHash = digest5(reconnectTicket);
     const current = [...this.sessions.values()].find((record) => record.reconnectTicketHash === ticketHash && !record.revokedAt);
     if (!current || Date.parse(current.expiresAt) <= now || !current.projectHandles.includes(projectHandle)) {
       throw new BridgeError("INVALID_RECONNECT_TICKET", "Reconnect ticket is invalid or expired", { status: 401 });
@@ -8425,8 +8881,8 @@ async function openThroughRunningBridgeWithRetry(state, controlToken, projectRoo
   throw lastError;
 }
 async function recordAgentHealth2(root, actor, event, status, error3) {
-  const path = (0, import_node_path22.join)(root, ".live-dot-map", ".bridge", "agent-health.json");
-  const prior = await (0, import_promises18.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
+  const path = (0, import_node_path24.join)(root, ".live-dot-map", ".bridge", "agent-health.json");
+  const prior = await (0, import_promises20.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   const value = error3;
   records[actor.replace(/^agent:/, "")] = {
@@ -8437,40 +8893,40 @@ async function recordAgentHealth2(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: value?.code ?? "HOOK_FAILED", message: String(value?.message ?? value ?? "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await (0, import_promises18.mkdir)((0, import_node_path22.dirname)(path), { recursive: true });
-  const temporary = `${path}.${process.pid}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
+  await (0, import_promises20.mkdir)((0, import_node_path24.dirname)(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.${(0, import_node_crypto17.randomUUID)()}.tmp`;
   try {
-    await (0, import_promises18.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
+    await (0, import_promises20.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
 `, "utf8");
-    await (0, import_promises18.rename)(temporary, path);
+    await (0, import_promises20.rename)(temporary, path);
   } catch {
   }
 }
 async function inspectProjectQualification(projectRoot) {
-  const root = (0, import_node_path22.resolve)(projectRoot);
-  const rootMetadata = await (0, import_promises18.lstat)(root).catch(() => null);
+  const root = (0, import_node_path24.resolve)(projectRoot);
+  const rootMetadata = await (0, import_promises20.lstat)(root).catch(() => null);
   if (!rootMetadata || !rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
     return { ok: false, code: "PROJECT_NOT_FOUND", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u6709\u6548\u9879\u76EE\u76EE\u5F55\u3002" };
   }
-  const dataDirectory = (0, import_node_path22.join)(root, ".live-dot-map");
-  const dataMetadata = await (0, import_promises18.lstat)(dataDirectory).catch(() => null);
+  const dataDirectory = (0, import_node_path24.join)(root, ".live-dot-map");
+  const dataMetadata = await (0, import_promises20.lstat)(dataDirectory).catch(() => null);
   if (!dataMetadata) return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u8FD8\u6CA1\u6709\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
   if (!dataMetadata.isDirectory() || dataMetadata.isSymbolicLink()) {
     return { ok: false, code: "PROJECT_LAYOUT_INVALID", message: "\u6D3B\u70B9\u5730\u56FE\u6570\u636E\u76EE\u5F55\u4E0D\u662F\u53EF\u5B89\u5168\u8BFB\u53D6\u7684\u76EE\u5F55\u3002" };
   }
   const marker = async (path) => {
-    const metadata = await (0, import_promises18.lstat)(path).catch(() => null);
+    const metadata = await (0, import_promises20.lstat)(path).catch(() => null);
     return Boolean(metadata && (metadata.isFile() || metadata.isSymbolicLink()));
   };
-  const legacy = await marker((0, import_node_path22.join)(dataDirectory, "map.json"));
-  const mapsPath = (0, import_node_path22.join)(dataDirectory, "maps");
-  const mapsMetadata = await (0, import_promises18.lstat)(mapsPath).catch(() => null);
+  const legacy = await marker((0, import_node_path24.join)(dataDirectory, "map.json"));
+  const mapsPath = (0, import_node_path24.join)(dataDirectory, "maps");
+  const mapsMetadata = await (0, import_promises20.lstat)(mapsPath).catch(() => null);
   let packageMap = false;
   if (mapsMetadata?.isDirectory() && !mapsMetadata.isSymbolicLink()) {
-    const entries = await (0, import_promises18.readdir)(mapsPath, { withFileTypes: true }).catch(() => []);
+    const entries = await (0, import_promises20.readdir)(mapsPath, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-      if (await marker((0, import_node_path22.join)(mapsPath, entry.name, "map.json"))) {
+      if (await marker((0, import_node_path24.join)(mapsPath, entry.name, "map.json"))) {
         packageMap = true;
         break;
       }
@@ -8479,7 +8935,7 @@ async function inspectProjectQualification(projectRoot) {
   if (!legacy && !packageMap) {
     return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u662F\u5DF2\u521D\u59CB\u5316\u7684\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
   }
-  const writableTarget = packageMap ? await (0, import_promises18.access)(mapsPath, import_node_fs3.constants.W_OK).then(() => true).catch(() => false) : await (0, import_promises18.access)(dataDirectory, import_node_fs3.constants.W_OK).then(() => true).catch(() => false);
+  const writableTarget = packageMap ? await (0, import_promises20.access)(mapsPath, import_node_fs3.constants.W_OK).then(() => true).catch(() => false) : await (0, import_promises20.access)(dataDirectory, import_node_fs3.constants.W_OK).then(() => true).catch(() => false);
   if (!writableTarget) return { ok: false, code: "PROJECT_READONLY", message: "\u5F53\u524D\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u76EE\u5F55\u4E0D\u53EF\u5199\u3002" };
   return { ok: true };
 }
@@ -8493,7 +8949,7 @@ function unavailableToolResult(qualification) {
   };
 }
 function envelope(projectId, revision, actor, sessionId, commands) {
-  return { projectId, baseRevision: revision, commandId: `cmd-${(0, import_node_crypto16.randomUUID)()}`, actor, sessionId, commands };
+  return { projectId, baseRevision: revision, commandId: `cmd-${(0, import_node_crypto17.randomUUID)()}`, actor, sessionId, commands };
 }
 function compactHookContext(value) {
   const context = value && typeof value === "object" ? value : {};
@@ -8520,11 +8976,11 @@ function compactHookContext(value) {
 }
 var toolDefinitions = TOOL_DEFINITIONS;
 async function runMcp(projectRoot, actor) {
-  const root = (0, import_node_path22.resolve)(projectRoot);
+  const root = (0, import_node_path24.resolve)(projectRoot);
   const qualification = await inspectProjectQualification(root);
   const logger = qualification.ok ? createLogger({ source: "agent" }) : noopLogger;
-  let manager = null;
-  let tools = null;
+  let currentRoot = root;
+  const entries = /* @__PURE__ */ new Map();
   if (qualification.ok) await logger.info("agent.mcp.start", { project: root, actor, pid: process.pid });
   const lines = (0, import_node_readline.createInterface)({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
@@ -8545,12 +9001,17 @@ async function runMcp(projectRoot, actor) {
           result2 = unavailableToolResult(qualification);
         } else {
           const params = request.params;
-          if (!manager) {
+          const targetRoot = await resolveProjectRootToUse(null, currentRoot);
+          let entry = entries.get(targetRoot);
+          if (!entry) {
             const shared = await loadSharedAdapter();
-            manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
-            tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: "stdio" });
+            const manager = await MapManager.open({ projectRoot: targetRoot, shared, pollIntervalMs: 0 });
+            const tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: "stdio" });
+            entry = { manager, tools };
+            entries.set(targetRoot, entry);
           }
-          const value = await tools.dispatch(String(params.name), params.arguments ?? {});
+          currentRoot = targetRoot;
+          const value = await entry.tools.dispatch(String(params.name), params.arguments ?? {});
           result2 = { content: [{ type: "text", text: JSON.stringify(value, null, 2) }], structuredContent: value };
         }
       } else throw Object.assign(new Error(`\u672A\u77E5\u65B9\u6CD5 ${String(request.method)}`), { code: -32601 });
@@ -8567,12 +9028,12 @@ async function runMcp(projectRoot, actor) {
 `);
     }
   }
-  await manager?.close().catch(() => void 0);
+  for (const entry of entries.values()) await entry.manager.close().catch(() => void 0);
 }
 async function runHook(kind, args) {
-  const root = (0, import_node_path22.resolve)(required(args, "project"));
+  const root = (0, import_node_path24.resolve)(required(args, "project"));
   const actor = `agent:${String(args.agent || "generic")}`;
-  const sessionId = String(args.session || `session-${(0, import_node_crypto16.randomUUID)()}`);
+  const sessionId = String(args.session || `session-${(0, import_node_crypto17.randomUUID)()}`);
   const qualification = await inspectProjectQualification(root);
   if (!qualification.ok) return;
   const logger = createLogger({ source: "agent" });
@@ -8585,10 +9046,10 @@ async function runHook(kind, args) {
   const snapshot = await store.snapshot();
   const document = snapshot.document;
   if (kind === "session-start") {
-    const watermarkPath = (0, import_node_path22.join)(root, ".live-dot-map", "agent-read.json");
+    const watermarkPath = (0, import_node_path24.join)(root, ".live-dot-map", "agent-read.json");
     let watermark = 0;
     try {
-      const parsed = JSON.parse(await (0, import_promises18.readFile)(watermarkPath, "utf8"));
+      const parsed = JSON.parse(await (0, import_promises20.readFile)(watermarkPath, "utf8"));
       if (typeof parsed?.updatedAt === "string") watermark = Date.parse(parsed.updatedAt);
     } catch {
     }
@@ -8616,8 +9077,8 @@ async function runHook(kind, args) {
       deliveredIds = newAnns.map((ann) => String(ann.id));
     }
     if (changes.length || deliveredIds.length) {
-      await (0, import_promises18.mkdir)((0, import_node_path22.dirname)(watermarkPath), { recursive: true });
-      await (0, import_promises18.writeFile)(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+      await (0, import_promises20.mkdir)((0, import_node_path24.dirname)(watermarkPath), { recursive: true });
+      await (0, import_promises20.writeFile)(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
 `, "utf8");
       const newCount = changes.filter((item) => item.label === "\u6807\u6CE8" && item.attention === "new").length;
       const lines = changes.slice(0, 20).map((item) => `${item.label} ${item.id}${item.name ? `\u300C${item.name}\u300D` : ""}${item.status ? `(${item.status})` : ""}`);
@@ -8691,8 +9152,8 @@ async function main() {
   const { command: command2, args } = parseArgs(process.argv.slice(2));
   if (command2 === "serve") {
     const logger = createLogger({ source: "bridge" });
-    const projectRoot = (0, import_node_path22.resolve)(required(args, "project"));
-    const runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? (0, import_node_path22.resolve)(args["runtime-state-dir"]) : void 0;
+    const projectRoot = (0, import_node_path24.resolve)(required(args, "project"));
+    const runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? (0, import_node_path24.resolve)(args["runtime-state-dir"]) : void 0;
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });
     const sessionStore = await SessionStore.open({ runtimeStateDir });
@@ -8736,18 +9197,18 @@ async function main() {
       }
       throw new Error("Bridge \u6B63\u5728\u542F\u52A8\uFF0C\u4F46\u5728 2 \u79D2\u5185\u6CA1\u6709\u8FDB\u5165\u53EF\u590D\u7528\u72B6\u6001");
     }
-    const appPath = (0, import_node_path22.resolve)(typeof args.app === "string" ? args.app : (0, import_node_path22.join)(process.cwd(), "app.html"));
-    const appHtml = await (0, import_promises18.readFile)(appPath, "utf8");
-    const assetRoot = (0, import_node_path22.dirname)(appPath);
+    const appPath = (0, import_node_path24.resolve)(typeof args.app === "string" ? args.app : (0, import_node_path24.join)(process.cwd(), "app.html"));
+    const appHtml = await (0, import_promises20.readFile)(appPath, "utf8");
+    const assetRoot = (0, import_node_path24.dirname)(appPath);
     const staticAssets = {};
     for (const [urlPath, file, type] of [
       ["/sw.js", "sw.js", "text/javascript; charset=utf-8"],
       ["/manifest.webmanifest", "manifest.webmanifest", "application/manifest+json; charset=utf-8"],
-      ["/icons/icon-192.png", (0, import_node_path22.join)("icons", "icon-192.png"), "image/png"],
-      ["/icons/icon-512.png", (0, import_node_path22.join)("icons", "icon-512.png"), "image/png"]
+      ["/icons/icon-192.png", (0, import_node_path24.join)("icons", "icon-192.png"), "image/png"],
+      ["/icons/icon-512.png", (0, import_node_path24.join)("icons", "icon-512.png"), "image/png"]
     ]) {
       try {
-        staticAssets[urlPath] = { body: await (0, import_promises18.readFile)((0, import_node_path22.join)(assetRoot, file)), type };
+        staticAssets[urlPath] = { body: await (0, import_promises20.readFile)((0, import_node_path24.join)(assetRoot, file)), type };
       } catch {
       }
     }
@@ -8788,17 +9249,17 @@ async function main() {
     return;
   }
   if (command2 === "mcp") {
-    const project = (0, import_node_path22.resolve)(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
+    const project = (0, import_node_path24.resolve)(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
     return runMcp(project, `agent:${String(args.agent || "generic")}`);
   }
   if (command2 === "hook") {
-    const project = (0, import_node_path22.resolve)(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
+    const project = (0, import_node_path24.resolve)(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
     return runHook(String(args.event || "session-start"), { ...args, project });
   }
   if (command2 === "install") {
-    const root = (0, import_node_path22.resolve)(typeof args.project === "string" ? args.project : process.cwd());
+    const root = (0, import_node_path24.resolve)(typeof args.project === "string" ? args.project : process.cwd());
     const runtimeSource = process.env.LIVEDOT_RUNTIME_SOURCE || process.argv[1] || process.cwd();
-    const appPath = (0, import_node_path22.resolve)(typeof args.app === "string" ? args.app : (0, import_node_path22.join)((0, import_node_path22.dirname)(runtimeSource), "app.html"));
+    const appPath = (0, import_node_path24.resolve)(typeof args.app === "string" ? args.app : (0, import_node_path24.join)((0, import_node_path24.dirname)(runtimeSource), "app.html"));
     const install = installProject;
     const result2 = await install({ projectRoot: root, runtimeSource, appPath, createDesktopShortcut: args["no-shortcut"] !== true, register: false });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
@@ -8806,7 +9267,7 @@ async function main() {
     return;
   }
   if (command2 === "doctor") {
-    const root = (0, import_node_path22.resolve)(required(args, "project"));
+    const root = (0, import_node_path24.resolve)(required(args, "project"));
     const result2 = await doctorProject({ projectRoot: root });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
 `);
@@ -8814,7 +9275,7 @@ async function main() {
     return;
   }
   if (command2 === "uninstall") {
-    const root = (0, import_node_path22.resolve)(required(args, "project"));
+    const root = (0, import_node_path24.resolve)(required(args, "project"));
     const result2 = await uninstallProject({ projectRoot: root });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
 `);
@@ -8826,7 +9287,7 @@ async function main() {
 void main().catch(async (error3) => {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed.command === "hook" || parsed.command === "mcp") {
-    const project = (0, import_node_path22.resolve)(typeof parsed.args.project === "string" && parsed.args.project.trim() ? parsed.args.project : process.cwd());
+    const project = (0, import_node_path24.resolve)(typeof parsed.args.project === "string" && parsed.args.project.trim() ? parsed.args.project : process.cwd());
     await recordAgentHealth2(project, `agent:${String(parsed.args.agent || "generic")}`, `${parsed.command === "hook" ? `hook:${String(parsed.args.event || "unknown")}` : "mcp:process"}`, "error", error3).catch(() => void 0);
   }
   await createLogger({ source: parsed.command === "serve" ? "bridge" : "agent" }).error("process.error", { command: parsed.command, error: error3 });

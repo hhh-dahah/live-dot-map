@@ -39,10 +39,10 @@ async function addNode(service, mapKey, id = 'n1') {
   });
 }
 
-test('ToolService 暴露固定 24 项工具，未知工具返回结构化 BridgeError', async (t) => {
+test('ToolService 暴露固定 25 项工具，未知工具返回结构化 BridgeError', async (t) => {
   const { service } = await openService(t);
-  assert.equal(TOOL_NAMES.length, 24);
-  assert.equal(new Set(TOOL_NAMES).size, 24);
+  assert.equal(TOOL_NAMES.length, 25);
+  assert.equal(new Set(TOOL_NAMES).size, 25);
   await assert.rejects(
     service.dispatch('map_not_a_real_tool'),
     (error) => error?.code === 'UNKNOWN_MCP_TOOL' && error?.status === 404 && typeof error.message === 'string',
@@ -135,6 +135,29 @@ test('Bundle Markdown 经 ToolService 完成 read/write/append/create/rename/arc
   assert.equal(restored.archived, false);
   listed = await service.dispatch('map_list_bundle_files', { ...owner });
   assert.equal(listed.files.some((file) => file.name === 'renamed.md'), true);
+});
+
+test('map_read_asset 返回路径+元数据；文本带 content；includeContent 出 base64', async (t) => {
+  const { root, manager, service } = await openService(t);
+  const mapKey = await createMap(manager, '资产读取地图');
+  await manager.switch(mapKey);
+  await addNode(service, mapKey, 'asset-read-node');
+  const owner = { ownerKind: 'node', ownerId: 'asset-read-node' };
+  const sourcePath = '.live-dot-map-test-asset.png';
+  await writeFile(join(root, sourcePath), PNG_1X1);
+  t.after(() => import('node:fs/promises').then(({ rm }) => rm(join(root, sourcePath), { force: true })));
+  await service.dispatch('map_import_asset', { ...owner, sourcePath, fileName: 'evidence.png', mimeType: 'image/png' });
+
+  // 二进制默认只给路径+元数据，不搬运内容
+  const read = await service.dispatch('map_read_asset', { ...owner, fileName: 'evidence.png' });
+  assert.equal(read.path, 'nodes/asset-read-node/evidence.png');
+  assert.equal(read.mimeType, 'image/png');
+  assert.equal('content' in read, false);
+  assert.equal('base64' in read, false);
+  // 显式 includeContent 才出 base64
+  const withContent = await service.dispatch('map_read_asset', { ...owner, fileName: 'evidence.png', includeContent: true });
+  assert.equal(typeof withContent.base64, 'string');
+  assert.ok(withContent.base64.length > 40);
 });
 
 test('Bundle Asset 经 ToolService 完成 list/import/archive/restore', async (t) => {

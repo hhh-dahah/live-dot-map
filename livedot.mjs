@@ -1223,9 +1223,9 @@ var init_shared = __esm({
 
 // src/cli/livedot.ts
 import { randomUUID as randomUUID12 } from "node:crypto";
-import { access as access5, lstat as lstat9, mkdir as mkdir13, readFile as readFile14, readdir as readdir7, rename as rename10, writeFile as writeFile7 } from "node:fs/promises";
+import { access as access5, lstat as lstat9, mkdir as mkdir13, readFile as readFile15, readdir as readdir7, rename as rename10, writeFile as writeFile7 } from "node:fs/promises";
 import { constants as constants3 } from "node:fs";
-import { dirname as dirname12, join as join17, resolve as resolve15 } from "node:path";
+import { dirname as dirname12, join as join20, resolve as resolve17 } from "node:path";
 import { createInterface } from "node:readline";
 import { isSea } from "node:sea";
 
@@ -1385,7 +1385,7 @@ async function withFileLock(path, operation, { timeoutMs = 5e3, staleMs = 3e4 } 
         timeout.code = "LOCK_TIMEOUT";
         throw timeout;
       }
-      await new Promise((resolve16) => setTimeout(resolve16, 20));
+      await new Promise((resolve18) => setTimeout(resolve18, 20));
     }
   }
   try {
@@ -2440,21 +2440,60 @@ var ProjectStore = class _ProjectStore {
 };
 
 // src/bridge/server.mjs
-import { randomBytes as randomBytes3, randomUUID as randomUUID8, createHash as createHash7, timingSafeEqual } from "node:crypto";
+import { randomBytes as randomBytes3, randomUUID as randomUUID8, createHash as createHash8, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
-import { access as access4, mkdir as mkdir9, readFile as readFile10, rename as rename6, rm as rm6, writeFile as writeFile3 } from "node:fs/promises";
-import { dirname as dirname8, join as join15, resolve as resolve13 } from "node:path";
+import { access as access4, mkdir as mkdir9, readFile as readFile11, rename as rename6, rm as rm6, writeFile as writeFile3 } from "node:fs/promises";
+import { dirname as dirname8, join as join18, resolve as resolve15 } from "node:path";
 import { spawn as spawn3 } from "node:child_process";
-import { homedir as homedir5 } from "node:os";
+import { homedir as homedir6 } from "node:os";
+
+// src/bridge/current-project.mjs
+import { readFile as readFile4 } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join as join4, resolve as resolve2 } from "node:path";
+function currentProjectFile() {
+  return process.env.LIVEDOT_CURRENT_PROJECT_FILE || join4(homedir(), ".live-dot-map", "current-project.json");
+}
+async function recordCurrentProject(projectRoot, options = {}) {
+  try {
+    const target = options.file ?? currentProjectFile();
+    const payload = { projectRoot: resolve2(projectRoot), updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    await atomicWriteFile(target, `${JSON.stringify(payload)}
+`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function readCurrentProject(options = {}) {
+  const target = options.file ?? currentProjectFile();
+  try {
+    const text = await readFile4(target, "utf8");
+    const parsed = JSON.parse(text);
+    if (typeof parsed?.projectRoot === "string" && parsed.projectRoot.trim()) return parsed.projectRoot.trim();
+  } catch {
+  }
+  return null;
+}
+async function resolveProjectRootToUse(pointerRoot, fallbackRoot, options = {}) {
+  const candidate = pointerRoot ?? await readCurrentProject(options).catch(() => null);
+  if (!candidate) return fallbackRoot;
+  try {
+    const resolved = await canonicalDirectory(candidate);
+    return resolved;
+  } catch {
+    return fallbackRoot;
+  }
+}
 
 // src/bridge/logger.mjs
 import { appendFile, mkdir as mkdir3, readdir as readdir3, rm as rm2 } from "node:fs/promises";
-import { join as join4 } from "node:path";
-import { homedir } from "node:os";
+import { join as join5 } from "node:path";
+import { homedir as homedir2 } from "node:os";
 var KEEP_DAYS = 14;
 var MAX_STRING = 1e3;
 function logDirectory() {
-  return process.env.LIVEDOT_LOG_DIR || join4(homedir(), ".live-dot-map", "logs");
+  return process.env.LIVEDOT_LOG_DIR || join5(homedir2(), ".live-dot-map", "logs");
 }
 function clean(value, depth = 0) {
   if (value === null || value === void 0) return value;
@@ -2487,14 +2526,14 @@ function createLogger({ source = "bridge", dir, clock = () => /* @__PURE__ */ ne
     for (const entry of entries) {
       const match = /^livedot-(\d{4}-\d{2}-\d{2})\.log$/.exec(entry);
       if (match && Date.parse(`${match[1]}T00:00:00Z`) < cutoff) {
-        await rm2(join4(root, entry), { force: true }).catch(() => void 0);
+        await rm2(join5(root, entry), { force: true }).catch(() => void 0);
       }
     }
   }
   function write(level, event, fields = {}, entrySource = source) {
     const at = clock();
     const entry = { at: at.toISOString(), level, source: entrySource, event: String(event).slice(0, 120), ...clean(fields) };
-    const file = join4(root, `livedot-${at.toISOString().slice(0, 10)}.log`);
+    const file = join5(root, `livedot-${at.toISOString().slice(0, 10)}.log`);
     chain = chain.then(async () => {
       if (!prepared) {
         prepared = true;
@@ -2537,11 +2576,11 @@ import { createHash as createHash2 } from "node:crypto";
 import {
   lstat as lstat3,
   mkdir as mkdir4,
-  readFile as readFile4,
+  readFile as readFile5,
   realpath as realpath3,
   stat as stat3
 } from "node:fs/promises";
-import { dirname as dirname3, isAbsolute as isAbsolute2, join as join5, relative as relative2, resolve as resolve2, sep } from "node:path";
+import { dirname as dirname3, isAbsolute as isAbsolute2, join as join6, relative as relative2, resolve as resolve3, sep } from "node:path";
 var MAX_MARKDOWN_BYTES = 2 * 1024 * 1024;
 var MAX_MARKDOWN_PATH = 1024;
 function inRoot(root, candidate) {
@@ -2625,17 +2664,17 @@ function result(path, content, metadata, { created = false } = {}) {
 }
 var MarkdownStore = class {
   constructor(projectRoot) {
-    this.projectRoot = resolve2(projectRoot);
+    this.projectRoot = resolve3(projectRoot);
   }
   async #target(requestedPath, options = {}) {
     const path = normalizeRelativePath(requestedPath);
-    const candidate = resolve2(this.projectRoot, path);
+    const candidate = resolve3(this.projectRoot, path);
     await ensureNoSymlink(this.projectRoot, candidate, options);
     return { path, candidate };
   }
   #lockPath(path) {
     const lockId = createHash2("sha256").update(path, "utf8").digest("hex");
-    return join5(this.projectRoot, ".live-dot-map", ".bridge", "markdown-locks", `${lockId}.lock`);
+    return join6(this.projectRoot, ".live-dot-map", ".bridge", "markdown-locks", `${lockId}.lock`);
   }
   async #readUnlocked(requestedPath, { create = false, title = "" } = {}) {
     const { path, candidate } = await this.#target(requestedPath, { allowMissing: true });
@@ -2668,7 +2707,7 @@ var MarkdownStore = class {
     if (metadata.size > MAX_MARKDOWN_BYTES) throw new BridgeError("MARKDOWN_TOO_LARGE", "Markdown \u6587\u4EF6\u8D85\u8FC7 2 MiB \u9650\u5236", { status: 413, details: { size: metadata.size, limit: MAX_MARKDOWN_BYTES } });
     let content;
     try {
-      content = await readFile4(candidate, "utf8");
+      content = await readFile5(candidate, "utf8");
     } catch (error3) {
       throw new BridgeError("MARKDOWN_READ_FAILED", "Markdown \u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5", { status: 503, cause: error3 });
     }
@@ -2737,16 +2776,16 @@ var MarkdownStore = class {
 };
 
 // src/bridge/human-md-updates.mjs
-import { readFile as readFile5, stat as stat4 } from "node:fs/promises";
-import { join as join6, resolve as resolve3 } from "node:path";
+import { readFile as readFile6, stat as stat4 } from "node:fs/promises";
+import { join as join7, resolve as resolve4 } from "node:path";
 var DEFAULT_MAX_LOG_BYTES = 512 * 1024;
 var HumanMdUpdateLog = class {
   constructor(options = {}) {
     if (!options?.projectRoot) throw new TypeError("HumanMdUpdateLog \u9700\u8981 projectRoot");
-    this.projectRoot = resolve3(options.projectRoot);
+    this.projectRoot = resolve4(options.projectRoot);
     this.mapKey = String(options.mapKey ?? "default");
     this.maxBytes = Number.isSafeInteger(options.maxBytes) && options.maxBytes > 0 ? options.maxBytes : DEFAULT_MAX_LOG_BYTES;
-    this.logPath = join6(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge", "human-md-updates.ndjson");
+    this.logPath = join7(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge", "human-md-updates.ndjson");
     this.lockPath = `${this.logPath}.lock`;
   }
   async record({ path, etag, mtime, snippet }) {
@@ -2788,7 +2827,7 @@ var HumanMdUpdateLog = class {
     const states = /* @__PURE__ */ new Map();
     let text = "";
     try {
-      text = await readFile5(this.logPath, "utf8");
+      text = await readFile6(this.logPath, "utf8");
     } catch (error3) {
       if (error3?.code === "ENOENT") return states;
       throw error3;
@@ -2812,7 +2851,7 @@ var HumanMdUpdateLog = class {
     return states;
   }
   async #withLock(operation) {
-    await ensureDirectory(join6(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
+    await ensureDirectory(join7(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
     return withFileLock(this.lockPath, operation, { timeoutMs: 5e3, staleMs: 3e4 });
   }
   async #compactIfNeeded() {
@@ -2830,9 +2869,228 @@ var HumanMdUpdateLog = class {
   }
 };
 
+// src/bridge/md-index.mjs
+import { createHash as createHash3 } from "node:crypto";
+import { readFile as nodeReadFile, stat as nodeStat, readdir as nodeReaddir } from "node:fs/promises";
+import { join as join8, resolve as resolve5 } from "node:path";
+var SUMMARIZED_WINDOW = 300;
+function digest2(content) {
+  return createHash3("sha256").update(content).digest("hex");
+}
+function visibleSummary(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim().slice(0, SUMMARIZED_WINDOW);
+}
+function firstHeading(text) {
+  const match = String(text ?? "").match(/^\s*#{1,6}\s+(.*?)\s*$/m);
+  return match ? match[1].trim() : "";
+}
+var MdIndex = class {
+  /**
+   * @param {{projectRoot:string, mapKey:string, fs?:object}} options
+   * @param {object} options.fs 可注入 { readFile, stat, readdir }，测试用它计数全文读取。
+   */
+  constructor(options = {}) {
+    if (!options?.projectRoot) throw new TypeError("MdIndex \u9700\u8981 projectRoot");
+    this.projectRoot = resolve5(options.projectRoot);
+    this.mapKey = String(options.mapKey ?? "default");
+    this.fs = options.fs ?? { readFile: nodeReadFile, stat: nodeStat, readdir: nodeReaddir };
+    this.indexPath = join8(
+      this.projectRoot,
+      ".live-dot-map",
+      "maps",
+      this.mapKey,
+      ".bridge",
+      "md-index.json"
+    );
+    this.lockPath = `${this.indexPath}.lock`;
+    this.#cards = /* @__PURE__ */ new Map();
+    this.#dirty = false;
+  }
+  #cards;
+  #dirty;
+  #fromFile = false;
+  async load() {
+    this.#cards = /* @__PURE__ */ new Map();
+    this.#dirty = false;
+    this.#fromFile = false;
+    let text = "";
+    try {
+      text = await this.fs.readFile(this.indexPath, "utf8");
+    } catch (error3) {
+      if (error3?.code === "ENOENT") return this;
+      throw error3;
+    }
+    this.#fromFile = true;
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      this.#fromFile = false;
+      return this;
+    }
+    const map = parsed && typeof parsed === "object" ? parsed.cards : null;
+    if (map && typeof map === "object") {
+      for (const [path, card] of Object.entries(map)) {
+        if (card && typeof card.path === "string") this.#cards.set(path, card);
+      }
+    }
+    return this;
+  }
+  /** 首次使用（无索引文件）时一次性全量建卡；之后增量。 */
+  async ensureBuilt({ mapRoot }) {
+    if (this.#fromFile) return this;
+    await this.buildAll({ mapRoot });
+    await this.persist();
+    return this;
+  }
+  async persist() {
+    if (!this.#dirty) return this;
+    const payload = `${JSON.stringify({ schema: 1, mapKey: this.mapKey, cards: Object.fromEntries(this.#cards) }, null, 0)}
+`;
+    await ensureDirectory(join8(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
+    await atomicWriteFile(this.indexPath, payload);
+    this.#dirty = false;
+    return this;
+  }
+  /** 取一张卡；指纹对不上/缺失则重读该文件刷新。mapRoot 用于拼绝对路径。 */
+  async getOrRefreshCard({ mapRoot, relativePath }) {
+    const absolute = join8(this.projectRoot, relativePath);
+    let stat8;
+    try {
+      stat8 = await this.fs.stat(absolute);
+    } catch (error3) {
+      if (error3?.code === "ENOENT") {
+        this.#cards.delete(relativePath);
+        this.#dirty = true;
+        return null;
+      }
+      throw error3;
+    }
+    const existing = this.#cards.get(relativePath);
+    const fresh = !existing || existing.mtimeMs !== stat8.mtimeMs || existing.bytes !== stat8.size;
+    if (!fresh) return existing;
+    const content = await this.fs.readFile(absolute, "utf8");
+    const card = {
+      path: relativePath,
+      etag: digest2(content),
+      mtimeMs: stat8.mtimeMs,
+      bytes: stat8.size,
+      title: firstHeading(content) || "",
+      summary: visibleSummary(content),
+      ownerKind: typeof existing?.ownerKind === "string" ? existing.ownerKind : inferOwnerKind(relativePath),
+      ownerId: typeof existing?.ownerId === "string" ? existing.ownerId : inferOwnerId(relativePath),
+      assets: existing?.assets ?? [],
+      updatedAt: stat8.mtime?.toISOString?.() ?? new Date(stat8.mtimeMs).toISOString()
+    };
+    this.#cards.set(relativePath, card);
+    this.#dirty = true;
+    return card;
+  }
+  /** 按 owner 目录重扫全部 md + 资产清单，刷新该对象所有卡片。 */
+  async refreshOwner({ mapRoot, ownerKind, ownerId }) {
+    const directory = join8(mapRoot, ownerKind, ownerId);
+    let entries = [];
+    try {
+      entries = await this.fs.readdir(directory, { withFileTypes: true });
+    } catch (error3) {
+      if (error3?.code === "ENOENT") return;
+      throw error3;
+    }
+    const assets = entries.filter((entry) => !entry.isDirectory() && !/\.md$/i.test(entry.name)).map((entry) => entry.name).sort();
+    const mdFiles = entries.filter((entry) => !entry.isDirectory() && /\.md$/i.test(entry.name));
+    const ownerRelative = join8(".live-dot-map", "maps", this.mapKey, relativeOwner(ownerKind), ownerId).replace(/\\/g, "/");
+    for (const entry of mdFiles) {
+      const relativePath = `${ownerRelative}/${entry.name}`;
+      try {
+        const absolute = join8(directory, entry.name);
+        const stat8 = await this.fs.stat(absolute);
+        const content = await this.fs.readFile(absolute, "utf8");
+        this.#cards.set(relativePath, {
+          path: relativePath,
+          etag: digest2(content),
+          mtimeMs: stat8.mtimeMs,
+          bytes: stat8.size,
+          title: firstHeading(content) || "",
+          summary: visibleSummary(content),
+          ownerKind: ownerKind === "nodes" ? "node" : "route",
+          ownerId,
+          assets,
+          updatedAt: stat8.mtime?.toISOString?.() ?? new Date(stat8.mtimeMs).toISOString()
+        });
+      } catch {
+      }
+    }
+    this.#dirty = true;
+  }
+  /** 首次迁移：全量扫描当前地图所有 owner 目录建卡（只跑一次）。 */
+  async buildAll({ mapRoot }) {
+    for (const [directoryKind, ownerKind] of [["nodes", "nodes"], ["routes", "routes"]]) {
+      let owners = [];
+      try {
+        owners = await this.fs.readdir(join8(mapRoot, directoryKind), { withFileTypes: true });
+      } catch (error3) {
+        if (error3?.code === "ENOENT") continue;
+        throw error3;
+      }
+      for (const owner2 of owners) {
+        if (!owner2.isDirectory() || owner2.name.startsWith(".")) continue;
+        await this.refreshOwner({ mapRoot, ownerKind, ownerId: owner2.name });
+      }
+    }
+  }
+  has(path) {
+    return this.#cards.has(path);
+  }
+  get(path) {
+    return this.#cards.get(path);
+  }
+  entries() {
+    return this.#cards.entries();
+  }
+  size() {
+    return this.#cards.size;
+  }
+  /** 校验某张卡是否仍新鲜（只 lstat，不读内容）。返回 null 表示已失效。 */
+  async isFresh(path, stat8) {
+    const card = this.#cards.get(path);
+    if (!card) return false;
+    return card.mtimeMs === stat8.mtimeMs && card.bytes === stat8.size;
+  }
+  async #withLock(operation) {
+    await ensureDirectory(join8(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
+    return withFileLock(this.lockPath, operation, { timeoutMs: 5e3, staleMs: 3e4 });
+  }
+  /** 供写路径调用：刷完立刻落盘（保存/建节点等关键动作后）。 */
+  async refreshOwnerAndPersist(input) {
+    await this.#withLock(async () => {
+      await this.refreshOwner(input);
+      await this.persist();
+    });
+  }
+  /** 从相对路径推断 owner 并刷其卡片（保存 hook 用，路径形如 .live-dot-map/maps/<mapKey>/nodes|routes/<id>/<file>）。 */
+  async refreshPathAndPersist({ relativePath }) {
+    const parts = String(relativePath).replace(/\\/g, "/").split("/").filter(Boolean);
+    const kindIndex = parts.findIndex((part) => part === "nodes" || part === "routes");
+    if (kindIndex < 0 || kindIndex + 1 >= parts.length) return;
+    const mapRoot = join8(this.projectRoot, ".live-dot-map", "maps", this.mapKey);
+    await this.refreshOwnerAndPersist({ mapRoot, ownerKind: parts[kindIndex], ownerId: parts[kindIndex + 1] });
+  }
+};
+function inferOwnerKind(relativePath) {
+  const parts = relativePath.split("/");
+  return parts.length >= 3 && parts[parts.length - 3] === "routes" ? "route" : "node";
+}
+function inferOwnerId(relativePath) {
+  const parts = relativePath.split("/");
+  return parts.length >= 3 ? parts[parts.length - 2] : "";
+}
+function relativeOwner(ownerKind) {
+  return ownerKind === "routes" ? "routes" : "nodes";
+}
+
 // src/bridge/map-manager.mjs
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { join as join8, resolve as resolve5 } from "node:path";
+import { join as join10, resolve as resolve7 } from "node:path";
 
 // src/bridge/bundle-store.mjs
 import { constants, createReadStream } from "node:fs";
@@ -2843,12 +3101,12 @@ import {
   readdir as readdir4,
   rename as rename3,
   rm as rm3,
-  readFile as readFile6,
+  readFile as readFile7,
   realpath as realpath4,
   stat as stat5
 } from "node:fs/promises";
-import { randomBytes as randomBytes2, createHash as createHash3 } from "node:crypto";
-import { basename as basename2, dirname as dirname4, extname, join as join7, relative as relative3, resolve as resolve4, sep as sep2 } from "node:path";
+import { randomBytes as randomBytes2, createHash as createHash4 } from "node:crypto";
+import { basename as basename2, dirname as dirname4, extname, join as join9, relative as relative3, resolve as resolve6, sep as sep2 } from "node:path";
 var MAX_ASSET_BYTES = 20 * 1024 * 1024;
 var MAX_BUNDLE_FILES = 200;
 var MAX_MAP_ASSET_BYTES = 1024 * 1024 * 1024;
@@ -2879,8 +3137,8 @@ function asOptions(args, keys) {
   if (args.length === 1 && args[0] && typeof args[0] === "object" && !Buffer.isBuffer(args[0])) return { ...args[0] };
   return Object.fromEntries(keys.map((key, index) => [key, args[index]]));
 }
-function digest2(value) {
-  return createHash3("sha256").update(value).digest("hex");
+function digest3(value) {
+  return createHash4("sha256").update(value).digest("hex");
 }
 function caseKey(value) {
   return String(value).normalize("NFKC").toLocaleLowerCase("en-US");
@@ -2983,14 +3241,14 @@ var BundleStore = class _BundleStore {
   constructor(options = {}, legacyMapKey = "default") {
     const value = typeof options === "string" ? { projectRoot: options, mapKey: legacyMapKey } : options;
     if (!value?.projectRoot) throw bridgeError("BUNDLE_PROJECT_REQUIRED", "\u8D44\u6599\u5305\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
-    this.projectRoot = resolve4(value.projectRoot);
+    this.projectRoot = resolve6(value.projectRoot);
     this.mapKey = value.mapKey ?? legacyMapKey;
     if (!isSafeMapId(this.mapKey)) throw bridgeError("INVALID_MAP_ID", "\u5730\u56FE ID \u65E0\u6548", 400, { mapKey: this.mapKey });
-    this.mapRoot = resolve4(value.mapDirectory ?? mapDirectory(this.projectRoot, this.mapKey));
+    this.mapRoot = resolve6(value.mapDirectory ?? mapDirectory(this.projectRoot, this.mapKey));
     this.clock = value.clock ?? (() => /* @__PURE__ */ new Date());
     this.faultInjector = value.faultInjector ?? (() => void 0);
-    this.lockRoot = join7(this.mapRoot, ".bridge", "bundle-locks");
-    this.commandRoot = join7(this.mapRoot, ".bridge", "bundle-commands");
+    this.lockRoot = join9(this.mapRoot, ".bridge", "bundle-locks");
+    this.commandRoot = join9(this.mapRoot, ".bridge", "bundle-commands");
   }
   static async open(options) {
     const store = new _BundleStore(options);
@@ -3009,16 +3267,16 @@ var BundleStore = class _BundleStore {
   }
   async #assertSafePath(root, candidate, { allowMissing = true } = {}) {
     const rootReal = await realpath4(root).catch((error3) => {
-      if (error3?.code === "ENOENT" && allowMissing) return resolve4(root);
+      if (error3?.code === "ENOENT" && allowMissing) return resolve6(root);
       throw error3;
     });
-    if (!within(rootReal, resolve4(candidate))) throw bridgeError("BUNDLE_PATH_OUTSIDE_PROJECT", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5728\u9879\u76EE\u5185", 403, { path: candidate });
-    let cursor = resolve4(candidate);
+    if (!within(rootReal, resolve6(candidate))) throw bridgeError("BUNDLE_PATH_OUTSIDE_PROJECT", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5728\u9879\u76EE\u5185", 403, { path: candidate });
+    let cursor = resolve6(candidate);
     while (true) {
       const metadata = await safeLstat(cursor);
       if (metadata) {
         if (metadata.isSymbolicLink()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "\u8D44\u6599\u5305\u62D2\u7EDD\u901A\u8FC7\u7B26\u53F7\u94FE\u63A5\u6216 junction \u8BBF\u95EE", 403, { path: cursor });
-        if (cursor !== resolve4(candidate) && !metadata.isDirectory()) throw bridgeError("BUNDLE_PATH_INVALID", "\u8D44\u6599\u5305\u7236\u8DEF\u5F84\u4E0D\u662F\u76EE\u5F55", 409, { path: cursor });
+        if (cursor !== resolve6(candidate) && !metadata.isDirectory()) throw bridgeError("BUNDLE_PATH_INVALID", "\u8D44\u6599\u5305\u7236\u8DEF\u5F84\u4E0D\u662F\u76EE\u5F55", 409, { path: cursor });
         if (cursor === rootReal) break;
       } else if (!allowMissing) {
         throw bridgeError("BUNDLE_NOT_FOUND", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5B58\u5728", 404, { path: cursor });
@@ -3031,11 +3289,11 @@ var BundleStore = class _BundleStore {
   #ownerInfo(input) {
     const ownerKind = normalizeOwnerKind(input.ownerKind);
     const ownerId = validateOwnerId(input.ownerId);
-    const directory = join7(this.mapRoot, ownerKind, ownerId);
+    const directory = join9(this.mapRoot, ownerKind, ownerId);
     return { ownerKind, ownerId, directory };
   }
   #lockPath(ownerKind, ownerId) {
-    return join7(this.lockRoot, `${digest2(`${ownerKind}/${ownerId}`)}.lock`);
+    return join9(this.lockRoot, `${digest3(`${ownerKind}/${ownerId}`)}.lock`);
   }
   async #withOwnerLock(info, operation) {
     await this.#ensureMapRoot();
@@ -3064,14 +3322,14 @@ var BundleStore = class _BundleStore {
     for (const entry of active) {
       if (entry.name === ".archive") continue;
       if (entry.name.startsWith(".")) continue;
-      const path = join7(info.directory, entry.name);
+      const path = join9(info.directory, entry.name);
       await this.#assertSafePath(this.projectRoot, path, { allowMissing: false });
       if (!entry.isFile()) continue;
       if (!/\.md$/i.test(entry.name) && !ASSET_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
       output.push({ name: entry.name, path, archived: false });
     }
     if (!includeArchived) return output;
-    const archivedRoot = join7(info.directory, ".archive");
+    const archivedRoot = join9(info.directory, ".archive");
     const archived = await readdir4(archivedRoot, { withFileTypes: true }).catch((error3) => {
       if (error3?.code === "ENOENT") return [];
       throw error3;
@@ -3079,7 +3337,7 @@ var BundleStore = class _BundleStore {
     await this.#assertSafePath(this.projectRoot, archivedRoot, { allowMissing: true });
     for (const entry of archived) {
       if (entry.name.startsWith(".") || entry.name.endsWith(".meta.json")) continue;
-      const path = join7(archivedRoot, entry.name);
+      const path = join9(archivedRoot, entry.name);
       await this.#assertSafePath(this.projectRoot, path, { allowMissing: false });
       if (entry.isFile() && (/\.md$/i.test(entry.name) || ASSET_EXTENSIONS.has(extname(entry.name).toLowerCase()))) {
         output.push({ name: entry.name, path, archived: true });
@@ -3092,7 +3350,7 @@ var BundleStore = class _BundleStore {
     const isIndex = entry.name === "index.md";
     const isMarkdown = isIndex || /\.md$/i.test(entry.name);
     const type = isMarkdown ? { mime: "text/markdown; charset=utf-8", kind: "markdown" } : contentTypeFor(entry.name);
-    const markdownContent = isMarkdown ? entry.content === void 0 ? await readFile6(entry.path) : Buffer.from(entry.content) : void 0;
+    const markdownContent = isMarkdown ? entry.content === void 0 ? await readFile7(entry.path) : Buffer.from(entry.content) : void 0;
     return {
       ownerKind: info.ownerKind === "nodes" ? "node" : "route",
       ownerId: info.ownerId,
@@ -3106,7 +3364,7 @@ var BundleStore = class _BundleStore {
       disposition: type.disposition ?? "inline",
       size: metadata.size,
       updatedAt: metadata.mtime?.toISOString?.() ?? null,
-      ...isMarkdown ? { etag: digest2(markdownContent) } : {}
+      ...isMarkdown ? { etag: digest3(markdownContent) } : {}
     };
   }
   async list(...args) {
@@ -3135,7 +3393,7 @@ var BundleStore = class _BundleStore {
       archived: Boolean(input.archived ?? options.archived),
       asset: Boolean(input.asset ?? options.asset)
     });
-    const data = await readFile6(entry.path);
+    const data = await readFile7(entry.path);
     const metadata = await this.#fileInfo(info, { ...entry, content: data });
     return { ...metadata, content: metadata.kind === "markdown" ? data.toString("utf8") : data, buffer: data };
   }
@@ -3164,7 +3422,7 @@ var BundleStore = class _BundleStore {
       if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
       const names = new Set(entries.map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = join7(info.directory, finalName);
+      const target = join9(info.directory, finalName);
       await atomicWriteFile(target, content);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
@@ -3174,7 +3432,7 @@ var BundleStore = class _BundleStore {
     const info = this.#ownerInfo(input);
     return this.#withOwnerLock(info, async () => {
       await this.#prepareOwner(info);
-      const target = join7(info.directory, "index.md");
+      const target = join9(info.directory, "index.md");
       const current = await safeLstat(target);
       if (current) {
         if (current.isSymbolicLink() || !current.isFile()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "index.md \u4E0D\u662F\u5B89\u5168\u666E\u901A\u6587\u4EF6", 403);
@@ -3202,12 +3460,12 @@ var BundleStore = class _BundleStore {
       await this.#prepareOwner(info);
       let current;
       try {
-        current = await readFile6(entry.path);
+        current = await readFile7(entry.path);
       } catch (error3) {
         if (error3?.code === "ENOENT") throw bridgeError("BUNDLE_NOT_FOUND", "\u8D44\u6599\u5305\u6587\u4EF6\u4E0D\u5B58\u5728", 404, { ownerKind: info.ownerKind, ownerId: info.ownerId, fileName: name });
         throw error3;
       }
-      const currentEtag = digest2(current);
+      const currentEtag = digest3(current);
       if (String(input.baseEtag) !== currentEtag) {
         const currentMetadata = await this.#fileInfo(info, { ...entry, content: current });
         throw bridgeError("MARKDOWN_CONFLICT", "Markdown \u5DF2\u88AB\u5176\u4ED6\u7A97\u53E3\u6216 Agent \u4FEE\u6539", 409, {
@@ -3233,22 +3491,22 @@ var BundleStore = class _BundleStore {
     return this.#withOwnerLock(info, async () => {
       await this.#prepareOwner(info);
       const commandId = input.commandId;
-      const requestDigest = digest2(JSON.stringify({ name, content: input.content }));
+      const requestDigest = digest3(JSON.stringify({ name, content: input.content }));
       await this.#assertSafePath(this.projectRoot, this.commandRoot, { allowMissing: true });
       await ensureDirectory(this.commandRoot);
-      const receiptPath = join7(this.commandRoot, `${digest2(`${info.ownerKind}/${info.ownerId}/${name}/${commandId}`)}.json`);
+      const receiptPath = join9(this.commandRoot, `${digest3(`${info.ownerKind}/${info.ownerId}/${name}/${commandId}`)}.json`);
       const receipt = await readJson(receiptPath).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
         throw error3;
       })());
       if (receipt?.requestDigest !== void 0 && receipt.requestDigest !== requestDigest) {
         throw bridgeError("BUNDLE_COMMAND_REUSE", "commandId \u5DF2\u7528\u4E8E\u5176\u4ED6 Markdown \u8FFD\u52A0", 409);
       }
-      const target = join7(info.directory, name);
+      const target = join9(info.directory, name);
       const current = await safeLstat(target);
       let existing = "";
       if (current) {
         if (current.isSymbolicLink() || !current.isFile()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "Markdown \u76EE\u6807\u4E0D\u662F\u5B89\u5168\u666E\u901A\u6587\u4EF6", 403);
-        existing = await readFile6(target, "utf8");
+        existing = await readFile7(target, "utf8");
       } else {
         const entries = await this.#entries(info, { includeArchived: true });
         if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
@@ -3259,8 +3517,8 @@ var BundleStore = class _BundleStore {
       const next = left.length === 0 ? right : right.length === 0 ? left : `${left}
 ${right}`;
       if (Buffer.byteLength(next, "utf8") > MAX_MARKDOWN_BYTES2) throw bridgeError("BUNDLE_MARKDOWN_TOO_LARGE", "Markdown \u5185\u5BB9\u8D85\u8FC7 2 MiB", 413);
-      const beforeEtag = digest2(Buffer.from(existing));
-      const afterEtag = digest2(Buffer.from(next));
+      const beforeEtag = digest3(Buffer.from(existing));
+      const afterEtag = digest3(Buffer.from(next));
       if (receipt && receipt.state !== "prepared") {
         return this.#fileInfo(info, { name, path: target, archived: false });
       }
@@ -3303,7 +3561,7 @@ ${right}`;
       }
       const names = new Set((await this.#entries(info, { includeArchived: true })).filter((entry) => caseKey(entry.name) !== caseKey(from)).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(to, names);
-      const target = join7(info.directory, finalName);
+      const target = join9(info.directory, finalName);
       await this.#assertSafePath(this.projectRoot, source.path, { allowMissing: false });
       await rename3(source.path, target);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
@@ -3316,13 +3574,13 @@ ${right}`;
     if (name === "index.md") throw bridgeError("BUNDLE_INDEX_IMMUTABLE", "index.md \u4E0D\u5141\u8BB8\u5F52\u6863", 409);
     return this.#withOwnerLock(info, async () => {
       const source = await this.#resolveEntry(info, name, { asset: !/\.md$/i.test(name) });
-      const archiveRoot = join7(info.directory, ".archive");
+      const archiveRoot = join9(info.directory, ".archive");
       await this.#assertSafePath(this.projectRoot, archiveRoot, { allowMissing: true });
       await ensureDirectory(archiveRoot);
       await this.#assertSafePath(this.projectRoot, archiveRoot, { allowMissing: false });
       const names = new Set((await this.#entries(info, { includeArchived: true })).filter((entry) => entry.archived).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = join7(archiveRoot, finalName);
+      const target = join9(archiveRoot, finalName);
       await rename3(source.path, target);
       await writeJsonAtomic(`${target}.meta.json`, { archivedAt: this.clock().toISOString(), originalName: name });
       return this.#fileInfo(info, { name: finalName, path: target, archived: true });
@@ -3338,7 +3596,7 @@ ${right}`;
       await this.#prepareOwner(info);
       const names = new Set((await this.#entries(info)).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = join7(info.directory, finalName);
+      const target = join9(info.directory, finalName);
       await rename3(source.path, target);
       await rm3(`${source.path}.meta.json`, { force: true }).catch(() => void 0);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
@@ -3359,14 +3617,14 @@ ${right}`;
     if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
     const mapEntries = [];
     for (const ownerKind of ["nodes", "routes"]) {
-      const kindRoot = join7(this.mapRoot, ownerKind);
+      const kindRoot = join9(this.mapRoot, ownerKind);
       await this.#assertSafePath(this.projectRoot, kindRoot, { allowMissing: true });
       const owners = await readdir4(kindRoot, { withFileTypes: true }).catch((error3) => error3?.code === "ENOENT" ? [] : (() => {
         throw error3;
       })());
       for (const owner2 of owners) {
         if (!owner2.isDirectory() || owner2.name.startsWith(".")) continue;
-        const ownerInfo = { ownerKind, ownerId: owner2.name, directory: join7(kindRoot, owner2.name) };
+        const ownerInfo = { ownerKind, ownerId: owner2.name, directory: join9(kindRoot, owner2.name) };
         const ownerEntries = await this.#entries(ownerInfo, { includeArchived: true });
         mapEntries.push(...ownerEntries.filter((entry) => !/\.md$/i.test(entry.name)));
       }
@@ -3380,7 +3638,7 @@ ${right}`;
     await this.#assertSafePath(this.projectRoot, this.lockRoot, { allowMissing: true });
     await ensureDirectory(this.lockRoot);
     try {
-      return await withFileLock(join7(this.lockRoot, "map-assets.lock"), operation, { timeoutMs: 1e4, staleMs: 3e4 });
+      return await withFileLock(join9(this.lockRoot, "map-assets.lock"), operation, { timeoutMs: 1e4, staleMs: 3e4 });
     } catch (error3) {
       if (error3?.code === "LOCK_TIMEOUT") throw bridgeError("BUNDLE_BUSY", "\u5730\u56FE\u9644\u4EF6\u6B63\u5728\u88AB\u5176\u4ED6\u5199\u5165\u5360\u7528\uFF0C\u8BF7\u91CD\u8BD5", 409);
       throw error3;
@@ -3411,7 +3669,7 @@ ${right}`;
     return { size, header: Buffer.concat(chunks).subarray(0, 8192) };
   }
   async #copySource(sourcePath, temporary) {
-    const candidate = resolve4(this.projectRoot, sourcePath);
+    const candidate = resolve6(this.projectRoot, sourcePath);
     await this.#assertSafePath(this.projectRoot, candidate, { allowMissing: false });
     const before = await stat5(candidate);
     if (!before.isFile()) throw bridgeError("BUNDLE_SOURCE_NOT_FILE", "\u9644\u4EF6\u6E90\u5FC5\u987B\u662F\u666E\u901A\u6587\u4EF6", 400);
@@ -3442,7 +3700,7 @@ ${right}`;
     if (declaredMime && declaredMime !== type.mime) throw bridgeError("BUNDLE_MIME_MISMATCH", "\u58F0\u660E MIME \u4E0E\u6269\u5C55\u540D\u4E0D\u4E00\u81F4", 415, { expected: type.mime, received: declaredMime });
     if (!input.sourcePath && !input.stream) throw bridgeError("BUNDLE_SOURCE_REQUIRED", "\u9644\u4EF6\u5BFC\u5165\u9700\u8981 sourcePath \u6216 stream", 400);
     await this.#prepareOwner(info);
-    const temporary = join7(info.directory, `.${randomBytes2(12).toString("hex")}.upload.tmp`);
+    const temporary = join9(info.directory, `.${randomBytes2(12).toString("hex")}.upload.tmp`);
     let imported;
     try {
       imported = input.sourcePath ? await this.#copySource(input.sourcePath, temporary) : await this.#consumeStream(input.stream, temporary);
@@ -3452,7 +3710,7 @@ ${right}`;
         await this.#quota(info, imported.size);
         const names = new Set((await this.#entries(info, { includeArchived: true })).map((entry) => caseKey(entry.name)));
         const finalName = this.#allocateName(requestedName, names);
-        const target = join7(info.directory, finalName);
+        const target = join9(info.directory, finalName);
         await this.#assertSafePath(this.projectRoot, target, { allowMissing: true });
         await rename3(temporary, target);
         const result2 = await this.#fileInfo(info, { name: finalName, path: target, archived: false });
@@ -3477,7 +3735,7 @@ var MapManager = class _MapManager {
   constructor(options = {}) {
     if (!options.projectRoot) throw new BridgeError("PROJECT_ROOT_REQUIRED", "MapManager \u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", { status: 400 });
     if (!options.shared) throw new BridgeError("SHARED_ADAPTER_REQUIRED", "MapManager \u9700\u8981 shared adapter", { status: 500 });
-    this.projectRoot = resolve5(options.projectRoot);
+    this.projectRoot = resolve7(options.projectRoot);
     this.shared = options.shared;
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.snapshotEvery = options.snapshotEvery;
@@ -3490,7 +3748,7 @@ var MapManager = class _MapManager {
     this.stores = /* @__PURE__ */ new Map();
     this.bundles = /* @__PURE__ */ new Map();
     this.lastImplicitKey = null;
-    this.lockPath = join8(this.projectRoot, ".live-dot-map", ".bridge", "map-manager.lock");
+    this.lockPath = join10(this.projectRoot, ".live-dot-map", ".bridge", "map-manager.lock");
   }
   static async open(options) {
     const manager = new _MapManager(options);
@@ -3608,17 +3866,17 @@ var MapManager = class _MapManager {
 
 // src/bridge/tool-service.mjs
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { basename as basename3 } from "node:path";
+import { basename as basename3, join as join12 } from "node:path";
 
 // src/bridge/context-document-provider.mjs
-import { createHash as createHash4 } from "node:crypto";
+import { createHash as createHash5 } from "node:crypto";
 import {
   lstat as lstat5,
   readdir as readdir5,
-  readFile as readFile7,
+  readFile as readFile8,
   realpath as realpath5
 } from "node:fs/promises";
-import { extname as extname2, join as join9, relative as relative4, resolve as resolve6, sep as sep3 } from "node:path";
+import { extname as extname2, join as join11, relative as relative4, resolve as resolve8, sep as sep3 } from "node:path";
 var MAX_MARKDOWN_BYTES3 = 2 * 1024 * 1024;
 var SAFE_OWNER_ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
 var ASSET_TYPES2 = Object.freeze({
@@ -3649,8 +3907,8 @@ function within2(root, candidate) {
 function projectRelative(root, candidate) {
   return relative4(root, candidate).replace(/\\/g, "/");
 }
-function digest3(content) {
-  return createHash4("sha256").update(content).digest("hex");
+function digest4(content) {
+  return createHash5("sha256").update(content).digest("hex");
 }
 function collectionOwner(collection, item) {
   const ownerId = String(item?.id ?? "");
@@ -3696,7 +3954,7 @@ async function requireRegularPath(root, candidate, { allowMissing = false } = {}
     if (error3?.code === "ENOENT") throw contextError("CONTEXT_PROJECT_NOT_FOUND", "\u4E0A\u4E0B\u6587\u9879\u76EE\u6839\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
     throw error3;
   });
-  const resolved = resolve6(candidate);
+  const resolved = resolve8(candidate);
   if (!within2(rootReal, resolved)) throw contextError("CONTEXT_PATH_OUTSIDE_PROJECT", "\u4E0A\u4E0B\u6587\u6587\u4EF6\u4E0D\u5728\u9879\u76EE\u6839\u76EE\u5F55\u5185", 403, { path: candidate });
   let cursor = resolved;
   let target;
@@ -3724,7 +3982,7 @@ async function requireSafeDirectory(root, candidate, { allowMissing = true } = {
     if (error3?.code === "ENOENT") throw contextError("CONTEXT_PROJECT_NOT_FOUND", "\u4E0A\u4E0B\u6587\u9879\u76EE\u6839\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
     throw error3;
   });
-  const resolved = resolve6(candidate);
+  const resolved = resolve8(candidate);
   if (!within2(rootReal, resolved)) throw contextError("CONTEXT_PATH_OUTSIDE_PROJECT", "\u4E0A\u4E0B\u6587\u76EE\u5F55\u4E0D\u5728\u9879\u76EE\u6839\u76EE\u5F55\u5185", 403, { path: candidate });
   let cursor = resolved;
   while (true) {
@@ -3745,8 +4003,8 @@ async function requireSafeDirectory(root, candidate, { allowMissing = true } = {
   return { rootReal, resolved };
 }
 function dirnameSafe(value) {
-  const normalized = resolve6(value);
-  const parent = resolve6(normalized, "..");
+  const normalized = resolve8(value);
+  const parent = resolve8(normalized, "..");
   return parent === normalized ? normalized : parent;
 }
 function isReservedRelative(relativePath) {
@@ -3758,7 +4016,7 @@ function isReservedRelative(relativePath) {
   return false;
 }
 function normalizedMapRoot(root, mapKey) {
-  return resolve6(root, ".live-dot-map", "maps", mapKey);
+  return resolve8(root, ".live-dot-map", "maps", mapKey);
 }
 function isInsideMap(root, mapRoot, candidate) {
   const mapRelative = projectRelative(root, mapRoot).toLowerCase().replace(/\\/g, "/");
@@ -3775,11 +4033,11 @@ function mergeOwner(entry, owner2) {
     entry.ownerId = owner2.ownerId;
   }
 }
-async function collect({ projectRoot, mapKey, document, includeHistory = false } = {}) {
+async function collect({ projectRoot, mapKey, document, includeHistory = false, mdIndex = null } = {}) {
   if (typeof projectRoot !== "string" || !projectRoot.trim()) throw contextError("CONTEXT_PROJECT_REQUIRED", "\u4E0A\u4E0B\u6587\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
   if (!isSafeMapId(mapKey)) throw contextError("CONTEXT_MAP_INVALID", "\u4E0A\u4E0B\u6587\u5730\u56FE ID \u65E0\u6548", 400, { mapKey });
   if (!document || typeof document !== "object") throw contextError("CONTEXT_DOCUMENT_REQUIRED", "\u4E0A\u4E0B\u6587\u9700\u8981\u5F53\u524D\u5730\u56FE\u6587\u6863", 400);
-  const root = resolve6(projectRoot);
+  const root = resolve8(projectRoot);
   const mapRoot = normalizedMapRoot(root, mapKey);
   const mapDir = `.live-dot-map/maps/${mapKey}`;
   const result2 = { mapKey, mapDir, markdown: [], assets: [] };
@@ -3797,7 +4055,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false }
     const safety = await requireRegularPath(root, candidate, { allowMissing });
     if (!safety.metadata) return;
     if (safety.metadata.size > MAX_MARKDOWN_BYTES3) throw contextError("CONTEXT_MARKDOWN_TOO_LARGE", "\u4E0A\u4E0B\u6587 Markdown \u8D85\u8FC7 2 MiB", 413, { path: candidate, size: safety.metadata.size });
-    const content = await readFile7(safety.resolved, "utf8");
+    const content = await readFile8(safety.resolved, "utf8");
     const path = projectRelative(root, safety.resolved);
     const existing = markdownByPath.get(path.toLowerCase());
     if (existing) {
@@ -3814,7 +4072,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false }
       isIndex: source === "bundle" && path.toLowerCase().endsWith("/index.md"),
       archived: false,
       size: Buffer.byteLength(content, "utf8"),
-      etag: digest3(Buffer.from(content, "utf8")),
+      etag: digest4(Buffer.from(content, "utf8")),
       updatedAt: safety.metadata.mtime?.toISOString?.() ?? null,
       owners: [{ ownerKind: owner2.ownerKind, ownerId: owner2.ownerId }]
     };
@@ -3848,8 +4106,35 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false }
     assetsByPath.set(relativePath.toLowerCase(), info);
     result2.assets.push(info);
   };
+  const addMarkdownFromCard = (card, owner2) => {
+    const path = String(card?.path ?? "").replace(/\\/g, "/");
+    if (!path) return;
+    const existing = markdownByPath.get(path.toLowerCase());
+    if (existing) {
+      mergeOwner(existing, owner2);
+      if (existing.source === "custom") existing.source = "bundle";
+      return;
+    }
+    const info = {
+      path,
+      text: String(card.summary ?? ""),
+      source: "bundle",
+      ownerKind: owner2.ownerKind,
+      ownerId: owner2.ownerId,
+      isIndex: path.toLowerCase().endsWith("/index.md"),
+      archived: false,
+      size: Number(card.bytes ?? 0),
+      etag: String(card.etag ?? ""),
+      updatedAt: String(card.updatedAt ?? ""),
+      summaryOnly: true,
+      assets: Array.isArray(card.assets) ? card.assets : [],
+      owners: [{ ownerKind: owner2.ownerKind, ownerId: owner2.ownerId }]
+    };
+    markdownByPath.set(path.toLowerCase(), info);
+    result2.markdown.push(info);
+  };
   const scanOwner = async (owner2) => {
-    const directory = join9(mapRoot, owner2.directoryKind, owner2.ownerId);
+    const directory = join11(mapRoot, owner2.directoryKind, owner2.ownerId);
     const ownerMetadata = await lstat5(directory).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
       throw error3;
     })());
@@ -3857,24 +4142,34 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false }
     if (ownerMetadata.isSymbolicLink()) throw contextError("CONTEXT_SYMLINK_FORBIDDEN", "\u8D44\u6599\u5305\u5BF9\u8C61\u76EE\u5F55\u4E0D\u5141\u8BB8\u662F\u7B26\u53F7\u94FE\u63A5", 403, { path: directory });
     if (!ownerMetadata.isDirectory()) throw contextError("CONTEXT_NOT_DIRECTORY", "\u8D44\u6599\u5305\u5BF9\u8C61\u8DEF\u5F84\u4E0D\u662F\u76EE\u5F55", 409, { path: directory });
     const entries = await readdir5(directory, { withFileTypes: true });
+    const useIndex = mdIndex && typeof mdIndex.getOrRefreshCard === "function";
     for (const entry of entries) {
       if (entry.name === ".archive" || entry.name.startsWith(".")) continue;
-      const candidate = join9(directory, entry.name);
+      const candidate = join11(directory, entry.name);
       const metadata = await lstat5(candidate).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
         throw error3;
       })());
       if (!metadata) continue;
       if (metadata.isSymbolicLink()) throw contextError("CONTEXT_SYMLINK_FORBIDDEN", "\u8D44\u6599\u5305\u6587\u4EF6\u4E0D\u5141\u8BB8\u662F\u7B26\u53F7\u94FE\u63A5", 403, { path: candidate });
       if (metadata.isDirectory()) continue;
-      if (/\.md$/i.test(entry.name)) await addMarkdown(candidate, owner2, "bundle");
-      else if (ASSET_TYPES2[extname2(entry.name).toLowerCase()]) await addAsset(candidate, owner2, entry.name);
+      if (/\.md$/i.test(entry.name)) {
+        if (useIndex) {
+          const card = await mdIndex.getOrRefreshCard({ mapRoot, relativePath: projectRelative(root, candidate) });
+          if (card) await addMarkdownFromCard(card, owner2);
+          else await addMarkdown(candidate, owner2, "bundle");
+        } else {
+          await addMarkdown(candidate, owner2, "bundle");
+        }
+      } else if (ASSET_TYPES2[extname2(entry.name).toLowerCase()]) {
+        await addAsset(candidate, owner2, entry.name);
+      }
     }
   };
   for (const owner2 of owners) await scanOwner(owner2);
   for (const owner2 of owners) {
     const pointer = textPath(owner2.item?.md);
     if (!pointer || !/\.md$/i.test(pointer)) continue;
-    const candidate = resolve6(root, pointer);
+    const candidate = resolve8(root, pointer);
     const relativePath = projectRelative(root, candidate);
     if (isReservedRelative(relativePath)) continue;
     if (!within2(root, candidate)) continue;
@@ -3886,6 +4181,10 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false }
   }
   result2.markdown.sort((left, right) => left.path.localeCompare(right.path, "en"));
   result2.assets.sort((left, right) => left.path.localeCompare(right.path, "en"));
+  if (mdIndex && typeof mdIndex.persist === "function") {
+    await mdIndex.persist().catch(() => {
+    });
+  }
   return result2;
 }
 var ContextDocumentProvider = class {
@@ -3933,7 +4232,8 @@ var TOOL_DEFINITIONS = Object.freeze([
   schema("map_list_assets", "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u9644\u4EF6\u5143\u6570\u636E\u3002", { ...owner, includeArchived: { type: "boolean" } }, ["ownerKind", "ownerId"]),
   schema("map_import_asset", "\u4ECE\u9879\u76EE\u5185 sourcePath \u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\u3002", { ...owner, sourcePath: { type: "string" }, fileName: { type: "string" }, mimeType: { type: "string" } }, ["ownerKind", "ownerId", "sourcePath"]),
   schema("map_archive_asset", "\u5F52\u6863\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
-  schema("map_restore_asset", "\u6062\u590D\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"])
+  schema("map_restore_asset", "\u6062\u590D\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
+  schema("map_read_asset", "\u8FD4\u56DE\u5BF9\u8C61\u9644\u4EF6\u8DEF\u5F84\u4E0E\u5143\u6570\u636E\uFF08\u4E0D\u642C\u8FD0\u4E8C\u8FDB\u5236\uFF09\u3002\u6587\u672C\u7C7B\u9644 content\uFF0C\u4E8C\u8FDB\u5236\u53EF\u4F20 includeContent \u53D6 base64\u3002", { ...owner, fileName: { type: "string" }, includeContent: { type: "boolean" } }, ["ownerKind", "ownerId", "fileName"])
 ]);
 var TOOL_NAMES = Object.freeze(TOOL_DEFINITIONS.map((tool) => tool.name));
 var TOOL_NAME_SET = new Set(TOOL_NAMES);
@@ -4011,13 +4311,23 @@ function markdownSection(text, headings) {
   }
   return "";
 }
-function attemptEvidence(document, markdown) {
-  const docs = new Map(markdown.map((item) => [String(item.path).replace(/\\/g, "/"), String(item.text ?? "")]));
+async function attemptEvidence(document, markdown, { readFull } = {}) {
   const mapDir = typeof document.mapDir === "string" && document.mapDir ? document.mapDir : ".live-dot-map";
-  return (Array.isArray(document.edges) ? document.edges : []).filter((edge) => ["failed", "success", "pending"].includes(String(edge.status)) && edge.archived !== true && edge.shelved !== true).map((edge) => {
+  const edges = (Array.isArray(document.edges) ? document.edges : []).filter((edge) => ["failed", "success", "pending"].includes(String(edge.status)) && edge.archived !== true && edge.shelved !== true);
+  const result2 = [];
+  for (const edge of edges) {
     const path = String(edge.md || `${mapDir}/routes/${edge.id}/index.md`).replace(/\\/g, "/");
-    const text = docs.get(path) || "";
-    return {
+    let text = "";
+    const hit = (markdown || []).find((item) => String(item.path).replace(/\\/g, "/") === path);
+    if (hit) text = String(hit.text ?? "");
+    if (!text.trim() && typeof readFull === "function") {
+      try {
+        text = await readFull(path);
+      } catch {
+        text = "";
+      }
+    }
+    result2.push({
       id: String(edge.id),
       status: String(edge.status),
       name: String(edge.name || edge.id),
@@ -4027,8 +4337,9 @@ function attemptEvidence(document, markdown) {
       failureReason: markdownSection(text, ["\u5931\u8D25\u539F\u56E0", "\u5931\u8D25\u539F\u56E0/\u6392\u9664\u6761\u4EF6"]).slice(0, 360),
       nextStep: markdownSection(text, ["\u4E0B\u4E00\u6B65", "\u540E\u7EED\u5EFA\u8BAE"]).slice(0, 360),
       hasMarkdown: Boolean(text)
-    };
-  }).sort((left, right) => (left.status === "failed" ? -1 : 0) - (right.status === "failed" ? -1 : 0) || left.id.localeCompare(right.id)).slice(0, 8);
+    });
+  }
+  return result2.sort((left, right) => (left.status === "failed" ? -1 : 0) - (right.status === "failed" ? -1 : 0) || left.id.localeCompare(right.id)).slice(0, 8);
 }
 var ToolService = class {
   constructor(options = {}) {
@@ -4039,6 +4350,32 @@ var ToolService = class {
     this.actor = String(options.actor || "agent:generic").startsWith("agent:") ? String(options.actor || "agent:generic") : "agent:generic";
     this.projectHandle = String(options.projectHandle || "stdio");
     this.contextProvider = options.contextProvider ?? new ContextDocumentProvider();
+    this.mdIndexes = /* @__PURE__ */ new Map();
+  }
+  /** per-map 卡片索引：懒创建 + load + 首次全量建卡。 */
+  async #mdIndexFor(context) {
+    const key = `${context.projectRoot}/${context.mapKey}`;
+    let index = this.mdIndexes.get(key);
+    if (!index) {
+      index = new MdIndex({ projectRoot: context.projectRoot, mapKey: context.mapKey });
+      await index.load();
+      this.mdIndexes.set(key, index);
+    }
+    await index.ensureBuilt({ mapRoot: join12(context.projectRoot, ".live-dot-map", "maps", context.mapKey) });
+    return index;
+  }
+  /** 写路径成功后刷单 owner 卡片（保存/改名/归档/资产/建节点等，双写全覆盖）。 */
+  async #refreshCard(ownerKindNodeOrRoute, ownerId, context) {
+    if (!ownerKindNodeOrRoute || !ownerId) return;
+    try {
+      const index = await this.#mdIndexFor(context);
+      await index.refreshOwnerAndPersist({
+        mapRoot: join12(context.projectRoot, ".live-dot-map", "maps", context.mapKey),
+        ownerKind: ownerKindNodeOrRoute === "route" ? "routes" : "nodes",
+        ownerId: String(ownerId)
+      });
+    } catch {
+    }
   }
   async #context(args = {}) {
     return this.mapManager.resolve({ ...typeof args.mapKey === "string" && args.mapKey ? { mapKey: args.mapKey } : {} });
@@ -4066,11 +4403,13 @@ var ToolService = class {
     const context = await this.#context(args);
     const { store, bundleStore, snapshot, mapKey } = context;
     const document = snapshot.document;
+    const mdIndex = await this.#mdIndexFor(context);
     const collected = async () => this.contextProvider.collect({
       projectRoot: context.projectRoot,
       mapKey,
       document,
-      includeHistory: args.includeHistory === true
+      includeHistory: args.includeHistory === true,
+      mdIndex
     });
     if (name === "map_get_context" || name === "map_next_candidates") {
       const documents = await collected();
@@ -4082,7 +4421,16 @@ var ToolService = class {
         includeHistory: args.includeHistory === true,
         markdown
       });
-      const evidence = attemptEvidence(document, markdown);
+      const evidence = await attemptEvidence(document, markdown, {
+        readFull: async (path) => {
+          try {
+            const file2 = ownerArgs({ path }, mapKey);
+            return String((await bundleStore.readMarkdown(file2)).content ?? "");
+          } catch {
+            return "";
+          }
+        }
+      });
       const projection = await mergeHumanMdUpdates(context, { ...this.shared.buildProjectProjection(document, { now: typeof args.now === "string" ? args.now : void 0 }), attemptEvidence: evidence });
       if (name === "map_get_context") return { projectHandle: this.projectHandle, mapKey, documentId: context.documentId, revision: snapshot.revision, projection, attemptEvidence: evidence, assets: documents.assets, ...retrieved, markdown: queryText ? retrieved.markdown : recentMarkdown(markdown) };
       return { projectHandle: this.projectHandle, mapKey, documentId: context.documentId, revision: snapshot.revision, projection, attemptEvidence: evidence, assets: documents.assets, alternatives: this.shared.findExplorationAlternatives(document, args.currentNodeId == null ? null : String(args.currentNodeId), { limit: 3 }), ...retrieved, autonomy: this.shared.autonomyDecision(document, retrieved.objects) };
@@ -4115,6 +4463,13 @@ var ToolService = class {
     if (name === "map_apply_commands") {
       const result2 = await store.execute(this.#envelope(context, args, Array.isArray(args.commands) ? args.commands : [], "mcp-apply"));
       await ensureNodeIndexes(bundleStore, Array.isArray(args.commands) ? args.commands : []);
+      if (Array.isArray(args.commands)) {
+        for (const command2 of args.commands) {
+          if (command2?.op === "create" && command2?.collection === "nodes" && typeof command2?.value?.id === "string") {
+            await this.#refreshCard("node", command2.value.id, context);
+          }
+        }
+      }
       return result2;
     }
     if (name === "map_validate") {
@@ -4133,20 +4488,63 @@ var ToolService = class {
     if (name === "map_read_markdown") return cleanResult(await bundleStore.readMarkdown(file));
     if (name === "map_write_markdown") {
       const result2 = await bundleStore.replaceMarkdown({ ...file, content: args.content, baseEtag: args.baseEtag });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return { ...result2, content: String(args.content) };
     }
-    if (name === "map_append_markdown") return bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
+    if (name === "map_append_markdown") {
+      const result2 = await bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
     if (name === "map_list_bundle_files") return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
-    if (name === "map_create_markdown") return bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
-    if (name === "map_rename_bundle_file") return bundleStore.rename({ ownerKind: file.ownerKind, ownerId: file.ownerId, from: args.from, to: args.to });
-    if (name === "map_archive_bundle_file" || name === "map_archive_asset") return bundleStore.archive(file);
-    if (name === "map_restore_bundle_file" || name === "map_restore_asset") return bundleStore.restore(file);
+    if (name === "map_create_markdown") {
+      const result2 = await bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
+    if (name === "map_rename_bundle_file") {
+      const result2 = await bundleStore.rename({ ownerKind: file.ownerKind, ownerId: file.ownerId, from: args.from, to: args.to });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
+    if (name === "map_archive_bundle_file" || name === "map_archive_asset") {
+      const result2 = await bundleStore.archive(file);
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
+    if (name === "map_restore_bundle_file" || name === "map_restore_asset") {
+      const result2 = await bundleStore.restore(file);
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
     if (name === "map_list_assets") {
       const files = await bundleStore.list({ ...file, includeArchived: args.includeArchived === true });
       return { mapKey, assets: files.filter((entry) => entry.kind !== "markdown") };
     }
     if (name === "map_import_asset") {
-      return bundleStore.importAsset({ ...file, fileName: String(args.fileName || basename3(String(args.sourcePath || ""))), sourcePath: String(args.sourcePath || ""), mimeType: args.mimeType });
+      const result2 = await bundleStore.importAsset({ ...file, fileName: String(args.fileName || basename3(String(args.sourcePath || ""))), sourcePath: String(args.sourcePath || ""), mimeType: args.mimeType });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result2;
+    }
+    if (name === "map_read_asset") {
+      const metadata = await bundleStore.readAsset({ ...file, archived: args.archived === true });
+      const bytes = metadata?.buffer ?? Buffer.alloc(0);
+      const entry = {
+        ownerKind: metadata.ownerKind,
+        ownerId: metadata.ownerId,
+        fileName: metadata.fileName,
+        path: metadata.path,
+        archived: Boolean(metadata.archived),
+        kind: metadata.kind,
+        mimeType: metadata.mimeType,
+        disposition: metadata.disposition,
+        size: Number(metadata.size ?? 0),
+        updatedAt: metadata.updatedAt ?? null
+      };
+      const isText = /^(text\/|application\/(json|xml|javascript))/.test(String(entry.mimeType ?? ""));
+      if (bytes.length && isText) entry.content = bytes.toString("utf8");
+      if (args.includeContent === true && bytes.length) entry.base64 = bytes.toString("base64");
+      return { mapKey, ...entry };
     }
     throw new BridgeError("UNKNOWN_MCP_TOOL", `\u672A\u77E5\u5730\u56FE\u5DE5\u5177\uFF1A${name}`, { status: 404 });
   }
@@ -4160,7 +4558,7 @@ import {
   rename as rename4,
   rm as rm4
 } from "node:fs/promises";
-import { join as join10, resolve as resolve7 } from "node:path";
+import { join as join13, resolve as resolve9 } from "node:path";
 var PURGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
 var PURGE_COLLECTIONS = /* @__PURE__ */ new Set(["nodes", "routes", "edges", "anns"]);
 var ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
@@ -4246,7 +4644,7 @@ function applyPhysicalPurge(document, { collection, id }, now) {
   return next;
 }
 function packagePath(mapRoot, collection, id) {
-  return join10(mapRoot, collection, id);
+  return join13(mapRoot, collection, id);
 }
 function purgePackageOwners(document, collection, id) {
   const owners = collection === "nodes" ? [{ collection: "nodes", id }] : collection === "edges" ? [{ collection: "routes", id }] : [];
@@ -4277,16 +4675,16 @@ var ArchiveLifecycle = class {
   constructor(options = {}) {
     if (!options.store) throw error("PURGE_STORE_REQUIRED", "\u5F52\u6863\u751F\u547D\u5468\u671F\u9700\u8981 ProjectStore", 500);
     this.store = options.store;
-    this.projectRoot = resolve7(options.projectRoot ?? this.store.projectRoot);
-    this.mapRoot = resolve7(options.mapRoot ?? this.store.dataDirectory);
+    this.projectRoot = resolve9(options.projectRoot ?? this.store.projectRoot);
+    this.mapRoot = resolve9(options.mapRoot ?? this.store.dataDirectory);
     this.shared = options.shared ?? this.store.shared;
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.retentionMs = Number(options.retentionMs ?? PURGE_RETENTION_MS);
     this.recycleBin = options.recycleBin;
     this.faultInjector = options.faultInjector ?? (() => {
     });
-    this.stagingRoot = join10(this.mapRoot, ".bridge", "purge-staging");
-    this.lockPath = join10(this.mapRoot, ".bridge", "purge.lock");
+    this.stagingRoot = join13(this.mapRoot, ".bridge", "purge-staging");
+    this.lockPath = join13(this.mapRoot, ".bridge", "purge.lock");
   }
   eligible(item, options = {}) {
     return isPurgeEligible(item, { retentionMs: this.retentionMs, ...options });
@@ -4331,7 +4729,7 @@ var ArchiveLifecycle = class {
         const target = packagePath(txnRoot, collection, id);
         await assertPackagePath(target);
         if (await exists(target)) throw error("PURGE_STAGING_CONFLICT", "\u6E05\u9664\u6682\u5B58\u76EE\u5F55\u5DF2\u6709\u540C\u540D\u8D44\u6599\u5305", 409, { collection, id });
-        await ensureDirectory(join10(txnRoot, collection));
+        await ensureDirectory(join13(txnRoot, collection));
         await rename4(source, target);
         moved.push({ collection, id, source, target });
       }
@@ -4350,7 +4748,7 @@ var ArchiveLifecycle = class {
         throw error("PURGE_PACKAGE_ROLLBACK_FAILED", "\u8D44\u6599\u5305\u5DF2\u4E0D\u5728\u6682\u5B58\u76EE\u5F55\uFF0C\u65E0\u6CD5\u6062\u590D", 500, item);
       }
       if (sourceExists) throw error("PURGE_PACKAGE_ROLLBACK_CONFLICT", "\u8D44\u6599\u5305\u6062\u590D\u76EE\u6807\u5DF2\u88AB\u5360\u7528\uFF0C\u62D2\u7EDD\u8986\u76D6", 409, item);
-      await ensureDirectory(join10(this.mapRoot, item.collection));
+      await ensureDirectory(join13(this.mapRoot, item.collection));
       await rename4(item.target, item.source);
     }
   }
@@ -4398,7 +4796,7 @@ var ArchiveLifecycle = class {
       const snapshot = await this.store.createSnapshot();
       const snapshotName = String(snapshot.path).split(/[\\/]/).pop();
       const transactionId = `${now.toISOString().replace(/[:.]/g, "-")}-${randomUUID4()}`;
-      const txnRoot = join10(this.stagingRoot, transactionId);
+      const txnRoot = join13(this.stagingRoot, transactionId);
       const packageOwners = purgePackageOwners(before.document, collection, id);
       let moved = [];
       let mapAttempted = false;
@@ -4454,7 +4852,7 @@ var ArchiveLifecycle = class {
 // src/bridge/recycle-bin.mjs
 import { spawn } from "node:child_process";
 import { access, lstat as lstat7 } from "node:fs/promises";
-import { join as join11, resolve as resolve8, sep as sep4 } from "node:path";
+import { join as join14, resolve as resolve10, sep as sep4 } from "node:path";
 var TRANSACTION_ID = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function failure(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
@@ -4462,10 +4860,10 @@ function failure(code, message, status = 503, details) {
 function defaultNativeHelperPath(options = {}) {
   const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
   if (!localAppData) return null;
-  return join11(resolve8(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+  return join14(resolve10(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
 }
 async function assertPurgeStagingPath(value) {
-  const target = resolve8(String(value ?? ""));
+  const target = resolve10(String(value ?? ""));
   const parts = target.split(sep4);
   const marker = parts.findIndex((part) => part.toLowerCase() === ".live-dot-map");
   const suffix = marker >= 0 ? parts.slice(marker) : [];
@@ -4475,7 +4873,7 @@ async function assertPurgeStagingPath(value) {
   let current = parts[0].endsWith(":") ? `${parts[0]}${sep4}` : parts[0] || sep4;
   for (const part of parts.slice(1)) {
     if (!part) continue;
-    current = join11(current, part);
+    current = join14(current, part);
     const metadata = await lstat7(current).catch((cause) => {
       if (cause?.code === "ENOENT") return null;
       throw cause;
@@ -4544,7 +4942,7 @@ function runHelper(spawnImpl, executable, args, timeoutMs) {
 var NativeRecycleBin = class {
   constructor(options = {}) {
     const candidate = options.helperPath ?? defaultNativeHelperPath(options);
-    this.helperPath = candidate ? resolve8(candidate) : null;
+    this.helperPath = candidate ? resolve10(candidate) : null;
     this.spawnImpl = options.spawnImpl ?? spawn;
     this.timeoutMs = Math.max(1e3, Number(options.timeoutMs) || 3e4);
   }
@@ -4564,9 +4962,9 @@ var NativeRecycleBin = class {
 // src/bridge/editor-service.mjs
 import { execFile as childExecFile, spawn as childSpawn } from "node:child_process";
 import { randomUUID as randomUUID5 } from "node:crypto";
-import { homedir as homedir2 } from "node:os";
-import { lstat as lstat8, mkdir as mkdir7, readdir as readdir6, readFile as readFile8, realpath as realpath6, stat as stat6 } from "node:fs/promises";
-import { dirname as dirname5, isAbsolute as isAbsolute3, join as join12, relative as relative5, resolve as resolve9, win32 } from "node:path";
+import { homedir as homedir3 } from "node:os";
+import { lstat as lstat8, mkdir as mkdir7, readdir as readdir6, readFile as readFile9, realpath as realpath6, stat as stat6 } from "node:fs/promises";
+import { dirname as dirname5, isAbsolute as isAbsolute3, join as join15, relative as relative5, resolve as resolve11, win32 } from "node:path";
 var SETTINGS_VERSION = 1;
 var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "system", "folder", "manual"]);
 var EXE_NAME = /^(Code|Antigravity|pycharm64)\.exe$/i;
@@ -4580,8 +4978,8 @@ var EXTRA_EDITORS = [
       const out = [];
       const local = process.env.LOCALAPPDATA;
       const programFiles = process.env.ProgramFiles;
-      if (local) out.push(join12(local, "Programs", "Antigravity", "Antigravity.exe"));
-      if (programFiles) out.push(join12(programFiles, "Antigravity", "Antigravity.exe"));
+      if (local) out.push(join15(local, "Programs", "Antigravity", "Antigravity.exe"));
+      if (programFiles) out.push(join15(programFiles, "Antigravity", "Antigravity.exe"));
       return out;
     }
   },
@@ -4593,12 +4991,12 @@ var EXTRA_EDITORS = [
       const out = [];
       const local = process.env.LOCALAPPDATA;
       if (local) {
-        out.push(join12(local, "Programs", "PyCharm", "bin", "pycharm64.exe"));
-        const toolbox = join12(local, "JetBrains", "Toolbox", "apps");
+        out.push(join15(local, "Programs", "PyCharm", "bin", "pycharm64.exe"));
+        const toolbox = join15(local, "JetBrains", "Toolbox", "apps");
         out.push(...await scanVersionedEditors(toolbox, 3));
       }
       const programFiles = process.env.ProgramFiles;
-      if (programFiles) out.push(...await scanVersionedEditors(join12(programFiles, "JetBrains"), 1));
+      if (programFiles) out.push(...await scanVersionedEditors(join15(programFiles, "JetBrains"), 1));
       return out;
     }
   }
@@ -4613,9 +5011,9 @@ async function scanVersionedEditors(root, depth) {
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const dir = join12(root, entry.name);
+    const dir = join15(root, entry.name);
     if (depth <= 1) {
-      found.push(join12(dir, "bin", "pycharm64.exe"));
+      found.push(join15(dir, "bin", "pycharm64.exe"));
     } else {
       found.push(...await scanVersionedEditors(dir, depth - 1));
     }
@@ -4626,11 +5024,11 @@ function bridgeError2(code, message, status = 400, details) {
   return new BridgeError(code, message, { status, details });
 }
 function defaultSettingsPath() {
-  const localAppData = process.env.LOCALAPPDATA || join12(homedir2(), "AppData", "Local");
-  return join12(localAppData, "live-dot-map", "settings.json");
+  const localAppData = process.env.LOCALAPPDATA || join15(homedir3(), "AppData", "Local");
+  return join15(localAppData, "live-dot-map", "settings.json");
 }
 function normalizePathForCompare(path) {
-  const value = resolve9(path);
+  const value = resolve11(path);
   return process.platform === "win32" ? value.toLowerCase() : value;
 }
 function isInside(root, candidate, { allowRoot = false } = {}) {
@@ -4710,9 +5108,9 @@ function knownVSCodePaths() {
   const local = process.env.LOCALAPPDATA;
   const programFiles = process.env.ProgramFiles;
   const programFilesX86 = process.env["ProgramFiles(x86)"];
-  if (local) candidates.push(join12(local, "Programs", "Microsoft VS Code", "Code.exe"));
-  if (programFiles) candidates.push(join12(programFiles, "Microsoft VS Code", "Code.exe"));
-  if (programFilesX86) candidates.push(join12(programFilesX86, "Microsoft VS Code", "Code.exe"));
+  if (local) candidates.push(join15(local, "Programs", "Microsoft VS Code", "Code.exe"));
+  if (programFiles) candidates.push(join15(programFiles, "Microsoft VS Code", "Code.exe"));
+  if (programFilesX86) candidates.push(join15(programFilesX86, "Microsoft VS Code", "Code.exe"));
   return candidates;
 }
 function safeSettings(value) {
@@ -4729,7 +5127,7 @@ function safeSettings(value) {
 }
 async function readSettingsFile(path) {
   try {
-    return safeSettings(JSON.parse(await readFile8(path, "utf8")));
+    return safeSettings(JSON.parse(await readFile9(path, "utf8")));
   } catch (error3) {
     if (error3?.code === "ENOENT" || error3 instanceof SyntaxError) return safeSettings({});
     throw error3;
@@ -4738,8 +5136,8 @@ async function readSettingsFile(path) {
 var EditorService = class _EditorService {
   constructor(options = {}) {
     if (!options.projectRoot) throw bridgeError2("PROJECT_ROOT_REQUIRED", "\u7F16\u8F91\u5668\u670D\u52A1\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
-    this.projectRoot = resolve9(options.projectRoot);
-    this.settingsPath = resolve9(options.settingsPath || defaultSettingsPath());
+    this.projectRoot = resolve11(options.projectRoot);
+    this.settingsPath = resolve11(options.settingsPath || defaultSettingsPath());
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.spawn = options.spawn ?? childSpawn;
     this.nativeHelper = options.nativeHelper ?? null;
@@ -4777,13 +5175,13 @@ var EditorService = class _EditorService {
     }
     if (isLink(metadata) || !isDirectory(metadata)) throw bridgeError2("PROJECT_ROOT_INVALID", "\u9879\u76EE\u76EE\u5F55\u4E0D\u662F\u5B89\u5168\u7684\u666E\u901A\u76EE\u5F55", 403);
     const canonical = await realpath6(this.projectRoot);
-    if (!isInside(resolve9(this.projectRoot, ".."), canonical, { allowRoot: true })) {
+    if (!isInside(resolve11(this.projectRoot, ".."), canonical, { allowRoot: true })) {
       throw bridgeError2("PROJECT_ROOT_INVALID", "\u9879\u76EE\u76EE\u5F55\u65E0\u6CD5\u5B89\u5168\u89E3\u6790", 403);
     }
   }
   async #assertNoSymlinkEscape(candidate, { allowMissing = false, root = this.projectRoot } = {}) {
     const canonicalRoot = await realpath6(root);
-    let current = resolve9(candidate);
+    let current = resolve11(candidate);
     let metadata = null;
     while (true) {
       try {
@@ -4808,7 +5206,7 @@ var EditorService = class _EditorService {
       throw bridgeError2("INVALID_EDITOR_PATH", "\u7F16\u8F91\u5668\u76EE\u6807\u8DEF\u5F84\u65E0\u6548", 400);
     }
     if (isAbsoluteAny(relativePath)) throw bridgeError2("EDITOR_PATH_OUTSIDE_PROJECT", "\u7F16\u8F91\u5668\u53EA\u80FD\u6253\u5F00\u9879\u76EE\u5185\u6587\u4EF6", 403);
-    const candidate = resolve9(this.projectRoot, relativePath);
+    const candidate = resolve11(this.projectRoot, relativePath);
     if (!isInside(this.projectRoot, candidate, { allowRoot: kind === "directory" })) {
       throw bridgeError2("EDITOR_PATH_OUTSIDE_PROJECT", "\u7F16\u8F91\u5668\u53EA\u80FD\u6253\u5F00\u9879\u76EE\u5185\u6587\u4EF6", 403);
     }
@@ -4839,10 +5237,10 @@ var EditorService = class _EditorService {
     }
     if (isLink(metadata) || !isRegularFile(metadata)) throw bridgeError2("EDITOR_EXECUTABLE_INVALID", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u4E0D\u662F\u5B89\u5168\u7684\u666E\u901A\u6587\u4EF6", 403);
     const canonical = await realpath6(path);
-    if (!isInside(resolve9(path, ".."), canonical, { allowRoot: true })) {
+    if (!isInside(resolve11(path, ".."), canonical, { allowRoot: true })) {
       throw bridgeError2("EDITOR_EXECUTABLE_INVALID", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u65E0\u6CD5\u5B89\u5168\u89E3\u6790", 403);
     }
-    return resolve9(path);
+    return resolve11(path);
   }
   async #assertManualExecutable(path) {
     if (typeof path !== "string" || !isAbsoluteAny(path) || !/\.exe$/i.test(path)) {
@@ -4864,7 +5262,7 @@ var EditorService = class _EditorService {
     if (normalizePathForCompare(canonical) !== normalizePathForCompare(path)) {
       throw bridgeError2("MANUAL_EDITOR_INVALID", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u4E0D\u80FD\u662F\u7B26\u53F7\u94FE\u63A5\u6216\u91CD\u89E3\u6790\u70B9", 403);
     }
-    return resolve9(path);
+    return resolve11(path);
   }
   async #resolveVSCode() {
     if (this.vscodePath) {
@@ -5082,21 +5480,21 @@ var EditorService = class _EditorService {
 // src/bridge/native-helper.mjs
 import { spawn as spawn2 } from "node:child_process";
 import { access as access2 } from "node:fs/promises";
-import { resolve as resolve10 } from "node:path";
+import { resolve as resolve12 } from "node:path";
 function error2(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
 }
 var MODES = Object.freeze({
   "pick-editor": (request) => ["--pick-editor"],
-  "save-as": (request) => ["--save-as", resolve10(String(request.sourcePath || ""))],
-  "open-default": (request) => ["--open-default", resolve10(String(request.targetPath || ""))],
-  "open-folder": (request) => ["--open-folder", resolve10(String(request.targetPath || ""))],
-  "open-manual": (request) => ["--open-manual", resolve10(String(request.executablePath || "")), resolve10(String(request.targetPath || ""))]
+  "save-as": (request) => ["--save-as", resolve12(String(request.sourcePath || ""))],
+  "open-default": (request) => ["--open-default", resolve12(String(request.targetPath || ""))],
+  "open-folder": (request) => ["--open-folder", resolve12(String(request.targetPath || ""))],
+  "open-manual": (request) => ["--open-manual", resolve12(String(request.executablePath || "")), resolve12(String(request.targetPath || ""))]
 });
 var NativeWindowsHelper = class {
   constructor(options = {}) {
     const candidate = options.helperPath ?? defaultNativeHelperPath(options);
-    this.helperPath = candidate ? resolve10(candidate) : null;
+    this.helperPath = candidate ? resolve12(candidate) : null;
     this.spawnImpl = options.spawnImpl ?? spawn2;
     this.timeoutMs = Math.max(1e3, Number(options.timeoutMs) || 12e4);
   }
@@ -5108,7 +5506,7 @@ var NativeWindowsHelper = class {
       throw error2("NATIVE_HELPER_UNAVAILABLE", "\u672A\u627E\u5230\u672C\u4EA7\u54C1\u539F\u751F\u52A9\u624B");
     });
     const args = buildArgs(request);
-    if (args.some((value, index) => index > 0 && (!value || value === resolve10("")))) {
+    if (args.some((value, index) => index > 0 && (!value || value === resolve12("")))) {
       throw error2("NATIVE_HELPER_ARGUMENT_REQUIRED", "\u539F\u751F\u52A9\u624B\u7F3A\u5C11\u76EE\u6807\u8DEF\u5F84", 400);
     }
     return new Promise((resolvePromise, reject) => {
@@ -5207,16 +5605,16 @@ var sharedBridgeContract = Object.freeze({
 });
 
 // agent-kit/lib/installer.mjs
-import { createHash as createHash6, randomUUID as randomUUID7 } from "node:crypto";
+import { createHash as createHash7, randomUUID as randomUUID7 } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access as access3, copyFile as copyFile3, mkdir as mkdir8, readFile as readFile9, rename as rename5, rm as rm5, stat as stat7, writeFile as writeFile2 } from "node:fs/promises";
+import { access as access3, copyFile as copyFile3, mkdir as mkdir8, readFile as readFile10, rename as rename5, rm as rm5, stat as stat7, writeFile as writeFile2 } from "node:fs/promises";
 import { constants as constants2 } from "node:fs";
-import { basename as basename4, dirname as dirname7, join as join14, resolve as resolve12 } from "node:path";
-import { homedir as homedir4 } from "node:os";
+import { basename as basename4, dirname as dirname7, join as join17, resolve as resolve14 } from "node:path";
+import { homedir as homedir5 } from "node:os";
 import { fileURLToPath } from "node:url";
 
 // agent-kit/lib/bridge-client.mjs
-import { createHash as createHash5, randomUUID as randomUUID6 } from "node:crypto";
+import { createHash as createHash6, randomUUID as randomUUID6 } from "node:crypto";
 
 // agent-kit/lib/tool-definitions.generated.mjs
 var MCP_TOOL_DEFINITIONS = Object.freeze([
@@ -5813,6 +6211,37 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       ],
       "additionalProperties": true
     }
+  },
+  {
+    "name": "map_read_asset",
+    "description": "\u8FD4\u56DE\u5BF9\u8C61\u9644\u4EF6\u8DEF\u5F84\u4E0E\u5143\u6570\u636E\uFF08\u4E0D\u642C\u8FD0\u4E8C\u8FDB\u5236\uFF09\u3002\u6587\u672C\u7C7B\u9644 content\uFF0C\u4E8C\u8FDB\u5236\u53EF\u4F20 includeContent \u53D6 base64\u3002",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ownerKind": {
+          "type": "string",
+          "enum": [
+            "node",
+            "route"
+          ]
+        },
+        "ownerId": {
+          "type": "string"
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "includeContent": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ownerKind",
+        "ownerId",
+        "fileName"
+      ],
+      "additionalProperties": true
+    }
   }
 ]);
 var MCP_TOOL_NAMES = Object.freeze(MCP_TOOL_DEFINITIONS.map((tool) => tool.name));
@@ -5850,23 +6279,23 @@ function assertLoopbackUrl(value) {
   return url;
 }
 function projectIdForRoot(projectRoot) {
-  const digest5 = createHash5("sha256").update(String(projectRoot)).digest("hex").slice(0, 32);
-  return `project:${digest5}`;
+  const digest6 = createHash6("sha256").update(String(projectRoot)).digest("hex").slice(0, 32);
+  return `project:${digest6}`;
 }
 
 // agent-kit/lib/shortcut.mjs
 import { execFileSync } from "node:child_process";
-import { homedir as homedir3 } from "node:os";
-import { dirname as dirname6, join as join13, resolve as resolve11 } from "node:path";
+import { homedir as homedir4 } from "node:os";
+import { dirname as dirname6, join as join16, resolve as resolve13 } from "node:path";
 function windowsDesktopDirectory({ platform = process.platform, env = process.env, exec = execFileSync } = {}) {
-  if (platform !== "win32") return join13(homedir3(), "Desktop");
+  if (platform !== "win32") return join16(homedir4(), "Desktop");
   try {
     const output = exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "[Environment]::GetFolderPath('Desktop')"], { encoding: "utf8", timeout: 5e3 });
     const path = String(output || "").trim();
     if (path) return path;
   } catch {
   }
-  return join13(env.USERPROFILE || homedir3(), "Desktop");
+  return join16(env.USERPROFILE || homedir4(), "Desktop");
 }
 
 // agent-kit/lib/portable-node.mjs
@@ -5951,9 +6380,9 @@ var map_template_default = {
 var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code"]);
 var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
-var skillTargetPaths = (home, id) => id === "codex" ? join14(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join14(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join14(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : join14(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
-var kimiPluginRoot = (home) => join14(home, ".kimi-code", "plugins", "live-dot-map");
-var codebuddyPluginRoot = (home) => join14(home, ".codebuddy", "plugins", "live-dot-map");
+var skillTargetPaths = (home, id) => id === "codex" ? join17(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join17(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join17(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : join17(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
+var kimiPluginRoot = (home) => join17(home, ".kimi-code", "plugins", "live-dot-map");
+var codebuddyPluginRoot = (home) => join17(home, ".codebuddy", "plugins", "live-dot-map");
 var ADAPTER_PROBES = Object.freeze({
   codex: ["codex"],
   "claude-code": ["claude", "claude-code"],
@@ -5980,20 +6409,20 @@ async function atomicJson(path, value) {
 }
 async function readJson2(path, fallback = {}) {
   try {
-    const value = JSON.parse(await readFile9(path, "utf8"));
+    const value = JSON.parse(await readFile10(path, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
   } catch {
     return fallback;
   }
 }
 function sha256(bytes) {
-  return createHash6("sha256").update(bytes).digest("hex");
+  return createHash7("sha256").update(bytes).digest("hex");
 }
 async function captureFile(path) {
   try {
     const metadata = await stat7(path);
     if (metadata.isDirectory()) return { path, exists: true, kind: "directory", sha256: null, content: null };
-    const bytes = await readFile9(path);
+    const bytes = await readFile10(path);
     return { path, exists: true, kind: "file", sha256: sha256(bytes), content: bytes.toString("base64") };
   } catch {
     return { path, exists: false, kind: "missing", sha256: null, content: null };
@@ -6008,7 +6437,7 @@ async function restoreCapturedFile(entry) {
     await rm5(entry.path, { force: true }).catch(() => void 0);
   }
 }
-var adapterConfigPaths = (home, id) => id === "codex" ? [join14(home, ".codex", "config.toml"), join14(home, ".codex", "hooks.json")] : id === "claude-code" ? [join14(home, ".claude", "settings.json")] : id === "kimi-code" ? [join14(home, ".kimi-code", "mcp.json"), join14(kimiPluginRoot(home), "kimi.plugin.json")] : [join14(home, ".codebuddy", "settings.json"), join14(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join14(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join14(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+var adapterConfigPaths = (home, id) => id === "codex" ? [join17(home, ".codex", "config.toml"), join17(home, ".codex", "hooks.json")] : id === "claude-code" ? [join17(home, ".claude", "settings.json")] : id === "kimi-code" ? [join17(home, ".kimi-code", "mcp.json"), join17(kimiPluginRoot(home), "kimi.plugin.json")] : [join17(home, ".codebuddy", "settings.json"), join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), "hooks", "hooks.json")];
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === "1";
 }
@@ -6020,16 +6449,16 @@ function command(nodeCommand, runtime, agent, event) {
   return process.platform === "win32" ? ["cmd", "/d", "/s", "/c", invocation].join(" ") : invocation;
 }
 function execProbe(file, args = []) {
-  return new Promise((resolve16) => {
+  return new Promise((resolve18) => {
     execFile(file, args, { windowsHide: true, timeout: 4e3 }, (error3, stdout = "") => {
-      resolve16(!error3 && String(stdout).trim().length > 0);
+      resolve18(!error3 && String(stdout).trim().length > 0);
     });
   });
 }
 function execText(file, args = [], timeout = 2500) {
-  return new Promise((resolve16) => {
+  return new Promise((resolve18) => {
     execFile(file, args, { windowsHide: true, timeout, encoding: "utf8" }, (error3, stdout = "") => {
-      resolve16(error3 ? "" : String(stdout));
+      resolve18(error3 ? "" : String(stdout));
     });
   });
 }
@@ -6053,18 +6482,18 @@ async function discoverEmbeddedCodeBuddy({ platform = process.platform } = {}) {
   }));
   for (const iconPath of iconPaths) {
     const installRoot = dirname7(iconPath);
-    const candidate = join14(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
+    const candidate = join17(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
     if (await exists2(candidate)) return candidate;
   }
   return null;
 }
-async function detectInstalledAdapters({ projectRoot = process.cwd(), platform = process.platform, homeRoot = homedir4() } = {}) {
-  const root = resolve12(projectRoot);
-  const home = resolve12(homeRoot);
+async function detectInstalledAdapters({ projectRoot = process.cwd(), platform = process.platform, homeRoot = homedir5() } = {}) {
+  const root = resolve14(projectRoot);
+  const home = resolve14(homeRoot);
   const checks = await Promise.all(ALL_ADAPTERS.map(async (id) => {
     const configPaths = adapterConfigPaths(home, id);
     const configured = (await Promise.all(configPaths.map(async (path) => {
-      const text = await readFile9(path, "utf8").catch(() => "");
+      const text = await readFile10(path, "utf8").catch(() => "");
       return text.includes("livedot-map");
     }))).some(Boolean);
     const probes = platform === "win32" || platform === "darwin" || platform === "linux" ? ADAPTER_PROBES[id] : [];
@@ -6134,22 +6563,22 @@ function tomlString(value) {
   return JSON.stringify(String(value));
 }
 async function writeCodexConfig(home, nodeCommand, runtime) {
-  const path = join14(home, ".codex", "config.toml");
+  const path = join17(home, ".codex", "config.toml");
   const begin = "# BEGIN LIVE-DOT-MAP";
   const end = "# END LIVE-DOT-MAP";
-  const old = await readFile9(path, "utf8").catch(() => "");
+  const old = await readFile10(path, "utf8").catch(() => "");
   const stripped = old.replace(new RegExp(`${begin}[\\s\\S]*?${end}\\s*`, "g"), "").trimEnd();
   const block = [begin, '[mcp_servers."livedot-map"]', `command = ${tomlString(nodeCommand)}`, `args = [${[...runtimeArgs(runtime), "mcp", "--agent", "codex"].map(tomlString).join(", ")}]`, "required = false", end].join("\n");
   await atomicText(path, `${stripped ? `${stripped}
 
 ` : ""}${block}
 `);
-  const hooksPath = join14(home, ".codex", "hooks.json");
+  const hooksPath = join17(home, ".codex", "hooks.json");
   await atomicJson(hooksPath, mergeHooks(await readJson2(hooksPath), hooksFor(nodeCommand, runtime, "codex")));
   return [path, hooksPath];
 }
 async function writeClaudeConfig(home, nodeCommand, runtime) {
-  const settingsPath = join14(home, ".claude", "settings.json");
+  const settingsPath = join17(home, ".claude", "settings.json");
   const settings = await readJson2(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, "claude");
@@ -6159,12 +6588,12 @@ async function writeClaudeConfig(home, nodeCommand, runtime) {
   return [settingsPath];
 }
 async function writeKimiConfig(home, nodeCommand, runtime) {
-  const mcpPath = join14(home, ".kimi-code", "mcp.json");
+  const mcpPath = join17(home, ".kimi-code", "mcp.json");
   const mcp = await readJson2(mcpPath);
   mcp.mcpServers = { ...mcp.mcpServers || {}, "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "kimi"] } };
   await atomicJson(mcpPath, mcp);
   const plugin = kimiPluginRoot(home);
-  const pluginRuntime = join14(plugin, "runtime", "livedot.mjs");
+  const pluginRuntime = join17(plugin, "runtime", "livedot.mjs");
   await mkdir8(dirname7(pluginRuntime), { recursive: true });
   if (!seaRuntime()) await copyFile3(runtime, pluginRuntime);
   const manifest = {
@@ -6178,11 +6607,11 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
       { event: "Stop", command: command(nodeCommand, runtime, "kimi", "stop"), timeout: 30 }
     ]
   };
-  await atomicJson(join14(plugin, "kimi.plugin.json"), manifest);
-  return [mcpPath, join14(plugin, "kimi.plugin.json")];
+  await atomicJson(join17(plugin, "kimi.plugin.json"), manifest);
+  return [mcpPath, join17(plugin, "kimi.plugin.json")];
 }
 async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
-  const settingsPath = join14(home, ".codebuddy", "settings.json");
+  const settingsPath = join17(home, ".codebuddy", "settings.json");
   const settings = await readJson2(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, "codebuddy");
@@ -6197,10 +6626,10 @@ async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
     hooks: "./hooks/hooks.json",
     mcpServers: { "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "codebuddy"] } }
   };
-  await atomicJson(join14(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
-  await atomicJson(join14(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
-  await atomicJson(join14(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
-  return [settingsPath, join14(plugin, ".codebuddy-plugin", "plugin.json"), join14(plugin, ".workbuddy-plugin", "plugin.json"), join14(plugin, "hooks", "hooks.json")];
+  await atomicJson(join17(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
+  await atomicJson(join17(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
+  await atomicJson(join17(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
+  return [settingsPath, join17(plugin, ".codebuddy-plugin", "plugin.json"), join17(plugin, ".workbuddy-plugin", "plugin.json"), join17(plugin, "hooks", "hooks.json")];
 }
 async function installProject({
   projectRoot = process.cwd(),
@@ -6217,14 +6646,14 @@ async function installProject({
   exec,
   discoverAgents = true,
   detectedAgents = null,
-  homeRoot = homedir4()
+  homeRoot = homedir5()
 } = {}) {
-  const root = resolve12(projectRoot);
-  const home = resolve12(homeRoot);
+  const root = resolve14(projectRoot);
+  const home = resolve14(homeRoot);
   if (!await exists2(root)) throw new Error(`\u9879\u76EE\u76EE\u5F55\u4E0D\u5B58\u5728: ${root}`);
-  const source = resolve12(sourceRoot instanceof URL ? fileURLToPath(sourceRoot) : sourceRoot || process.cwd());
-  const sourceRuntime = resolve12(runtimeSource || resolve12(source, "livedot.mjs"));
-  const canonicalCandidates = [resolve12(source, "skills", "live-dot-map", "SKILL.md"), resolve12(source, "agent-kit", "skills", "live-dot-map", "SKILL.md")];
+  const source = resolve14(sourceRoot instanceof URL ? fileURLToPath(sourceRoot) : sourceRoot || process.cwd());
+  const sourceRuntime = resolve14(runtimeSource || resolve14(source, "livedot.mjs"));
+  const canonicalCandidates = [resolve14(source, "skills", "live-dot-map", "SKILL.md"), resolve14(source, "agent-kit", "skills", "live-dot-map", "SKILL.md")];
   let canonicalSkill = null;
   for (const candidate of canonicalCandidates) if (await exists2(candidate)) {
     canonicalSkill = candidate;
@@ -6232,13 +6661,13 @@ async function installProject({
   }
   if (!canonicalSkill || !await exists2(canonicalSkill)) throw new Error(`\u7F3A\u5C11 canonical Skill: ${canonicalCandidates[0]}`);
   if (!seaRuntime() && !await exists2(sourceRuntime)) throw new Error(`\u7F3A\u5C11\u5DF2\u6784\u5EFA\u8FD0\u884C\u65F6: ${sourceRuntime}`);
-  const dataDir = join14(root, ".live-dot-map");
-  const globalDataDir = join14(home, ".live-dot-map");
-  const runtime = seaRuntime() ? null : join14(globalDataDir, "livedot.mjs");
+  const dataDir = join17(root, ".live-dot-map");
+  const globalDataDir = join17(home, ".live-dot-map");
+  const runtime = seaRuntime() ? null : join17(globalDataDir, "livedot.mjs");
   await mkdir8(dataDir, { recursive: true });
   const projectId = projectIdForRoot(root);
-  const mapPath = join14(dataDir, "map.json");
-  const configPath = join14(dataDir, "agent-kit.json");
+  const mapPath = join17(dataDir, "map.json");
+  const configPath = join17(dataDir, "agent-kit.json");
   const old = await readJson2(configPath);
   const url = bridgeUrl || old?.bridge?.url || "http://127.0.0.1:0";
   assertLoopbackUrl(url);
@@ -6246,11 +6675,11 @@ async function installProject({
   const detected = detectedAgents && typeof detectedAgents === "object" ? detectedAgents : discoverAgents ? await detectInstalledAdapters({ projectRoot: root, platform, homeRoot: home }) : Object.fromEntries(ALL_ADAPTERS.map((id) => [id, { id, configured: false, executable: false, discovered: true }]));
   const installed = {};
   for (const id of ALL_ADAPTERS) if (detected[id]?.discovered) installed[id] = true;
-  const backupPath = join14(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
+  const backupPath = join17(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
   const beforeBackup = await captureFile(backupPath);
   const oldRuntime = runtime ? await captureFile(runtime) : { exists: false, kind: "missing", path: null };
   const oldMap = await captureFile(mapPath);
-  const mapsLayoutExists = await exists2(join14(dataDir, "maps"));
+  const mapsLayoutExists = await exists2(join17(dataDir, "maps"));
   let createdMapsLayout = false;
   const touched = /* @__PURE__ */ new Set([configPath, ...runtime ? [runtime] : []]);
   for (const id of /* @__PURE__ */ new Set([...Object.keys(old.installed || {}), ...Object.keys(installed)])) for (const path of adapterConfigPaths(home, id)) touched.add(path);
@@ -6264,14 +6693,14 @@ async function installProject({
     await restoreCapturedFile(beforeBackup);
     if (!oldMap.exists) await rm5(mapPath, { force: true }).catch(() => void 0);
     if (createdMapsLayout) {
-      await rm5(join14(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
-      await rm5(join14(dataDir, "active-map"), { force: true }).catch(() => void 0);
+      await rm5(join17(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
+      await rm5(join17(dataDir, "active-map"), { force: true }).catch(() => void 0);
     }
     if (runtime && !oldRuntime.exists) await rm5(runtime, { force: true }).catch(() => void 0);
   };
   try {
     await atomicJson(backupPath, backup);
-    if (runtime && resolve12(sourceRuntime) !== resolve12(runtime)) {
+    if (runtime && resolve14(sourceRuntime) !== resolve14(runtime)) {
       await mkdir8(globalDataDir, { recursive: true });
       await copyFile3(sourceRuntime, runtime);
     }
@@ -6297,8 +6726,8 @@ async function installProject({
           item.md = `.live-dot-map/maps/default${item.md.slice(".live-dot-map".length)}`;
         }
       }
-      await atomicJson(join14(dataDir, "maps", "default", "map.json"), map);
-      await atomicText(join14(dataDir, "active-map"), "default\n");
+      await atomicJson(join17(dataDir, "maps", "default", "map.json"), map);
+      await atomicText(join17(dataDir, "active-map"), "default\n");
       createdMapsLayout = true;
     }
     if (installed.codex) await writeCodexConfig(home, nodeCommand, runtime);
@@ -6355,18 +6784,18 @@ async function installProject({
   }
 }
 async function uninstallProject({ projectRoot = process.cwd(), platform = process.platform, env = process.env, exec } = {}) {
-  const root = resolve12(projectRoot);
-  const dataDir = join14(root, ".live-dot-map");
-  const configPath = join14(dataDir, "agent-kit.json");
+  const root = resolve14(projectRoot);
+  const dataDir = join17(root, ".live-dot-map");
+  const configPath = join17(dataDir, "agent-kit.json");
   const config = await readJson2(configPath, null);
-  if (!config || typeof config !== "object") return { ok: false, reason: "not-installed", projectRoot: root, mapPreserved: await exists2(join14(dataDir, "map.json")) || await exists2(join14(dataDir, "maps")) };
-  const backupPath = typeof config.installBackup === "string" ? config.installBackup : join14(dataDir, "backups", "agent-kit-install.json");
+  if (!config || typeof config !== "object") return { ok: false, reason: "not-installed", projectRoot: root, mapPreserved: await exists2(join17(dataDir, "map.json")) || await exists2(join17(dataDir, "maps")) };
+  const backupPath = typeof config.installBackup === "string" ? config.installBackup : join17(dataDir, "backups", "agent-kit-install.json");
   const backup = await readJson2(backupPath, null);
   const installedFiles = config.installedFiles && typeof config.installedFiles === "object" ? config.installedFiles : {};
   const restored = [];
   const skipped = [];
   for (const entry of Array.isArray(backup?.files) ? backup.files : []) {
-    if (!entry?.path || entry.path === join14(dataDir, "map.json") || entry.path === backupPath) continue;
+    if (!entry?.path || entry.path === join17(dataDir, "map.json") || entry.path === backupPath) continue;
     const current = await captureFile(entry.path);
     const expected = installedFiles[entry.path];
     let configOwned = false;
@@ -6389,10 +6818,10 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
       skipped.push({ path: entry.path, reason: "after-install-change" });
     }
   }
-  const launcherPaths = [join14(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), join14(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
+  const launcherPaths = [join17(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), join17(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
   if (platform === "win32") {
     const desktop = windowsDesktopDirectory({ platform, env, exec });
-    launcherPaths.push(join14(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), join14(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
+    launcherPaths.push(join17(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), join17(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
   }
   for (const path of launcherPaths) {
     const current = await captureFile(path);
@@ -6403,26 +6832,26 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
       restored.push(path);
     }
   }
-  const mapPreserved = await exists2(join14(dataDir, "map.json")) || await exists2(join14(dataDir, "maps"));
+  const mapPreserved = await exists2(join17(dataDir, "map.json")) || await exists2(join17(dataDir, "maps"));
   return { ok: skipped.length === 0, projectRoot: root, restored, skipped, mapPreserved, backupPath };
 }
-async function doctorProject({ projectRoot = process.cwd(), checkBridge = false, bridgeClient, offline = true, homeRoot = homedir4() } = {}) {
-  const root = resolve12(projectRoot);
-  const home = resolve12(homeRoot);
-  const configPath = join14(root, ".live-dot-map", "agent-kit.json");
+async function doctorProject({ projectRoot = process.cwd(), checkBridge = false, bridgeClient, offline = true, homeRoot = homedir5() } = {}) {
+  const root = resolve14(projectRoot);
+  const home = resolve14(homeRoot);
+  const configPath = join17(root, ".live-dot-map", "agent-kit.json");
   const config = await readJson2(configPath, null);
   const installed = config?.installed && typeof config.installed === "object" ? config.installed : {};
   const expected = [
     ["agent-kit-config", configPath]
   ];
-  if (config?.runtimeMode !== "sea" && config?.runtime !== null) expected.push(["runtime", join14(home, ".live-dot-map", "livedot.mjs")]);
-  if (installed.codex) expected.push(["codex-hooks", join14(home, ".codex", "hooks.json")], ["codex-mcp", join14(home, ".codex", "config.toml")]);
-  if (installed["claude-code"]) expected.push(["claude-hooks", join14(home, ".claude", "settings.json")]);
-  if (installed["kimi-code"]) expected.push(["kimi-mcp", join14(home, ".kimi-code", "mcp.json")], ["kimi-plugin", join14(kimiPluginRoot(home), "kimi.plugin.json")]);
-  if (installed.codebuddy) expected.push(["codebuddy-hooks", join14(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", join14(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
+  if (config?.runtimeMode !== "sea" && config?.runtime !== null) expected.push(["runtime", join17(home, ".live-dot-map", "livedot.mjs")]);
+  if (installed.codex) expected.push(["codex-hooks", join17(home, ".codex", "hooks.json")], ["codex-mcp", join17(home, ".codex", "config.toml")]);
+  if (installed["claude-code"]) expected.push(["claude-hooks", join17(home, ".claude", "settings.json")]);
+  if (installed["kimi-code"]) expected.push(["kimi-mcp", join17(home, ".kimi-code", "mcp.json")], ["kimi-plugin", join17(kimiPluginRoot(home), "kimi.plugin.json")]);
+  if (installed.codebuddy) expected.push(["codebuddy-hooks", join17(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
-  checks.push({ name: "map", ok: await exists2(join14(root, ".live-dot-map", "map.json")) || await exists2(join14(root, ".live-dot-map", "maps")), detail: join14(root, ".live-dot-map") });
+  checks.push({ name: "map", ok: await exists2(join17(root, ".live-dot-map", "map.json")) || await exists2(join17(root, ".live-dot-map", "maps")), detail: join17(root, ".live-dot-map") });
   const detectedAgents = await detectInstalledAdapters({ projectRoot: root, homeRoot: home });
   checks.push({ name: "agent-discovery", ok: Object.values(detectedAgents).every((item) => !item.discovered || Boolean(installed[item.id])), detail: detectedAgents });
   checks.push({ name: "node", ok: runtimePlan({ offline }).use === "system-node", detail: process.versions.node });
@@ -6442,11 +6871,11 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
 var SESSION_COOKIE = "ldm_bridge_session";
 var DEFAULT_BODY_LIMIT = 16 * 1024 * 1024;
 var DEFAULT_SESSION_TTL = 8 * 60 * 60 * 1e3;
-var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || join15(homedir5(), ".live-dot-map", "recent-projects.json");
+var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || join18(homedir6(), ".live-dot-map", "recent-projects.json");
 async function recordRecentProject(root) {
   let recent = [];
   try {
-    const parsed = JSON.parse(await readFile10(RECENT_PROJECTS_FILE(), "utf8"));
+    const parsed = JSON.parse(await readFile11(RECENT_PROJECTS_FILE(), "utf8"));
     if (Array.isArray(parsed)) recent = parsed.filter((item) => typeof item === "string");
   } catch {
   }
@@ -6457,7 +6886,7 @@ async function recordRecentProject(root) {
 }
 async function readRecentProjects() {
   try {
-    const parsed = JSON.parse(await readFile10(RECENT_PROJECTS_FILE(), "utf8"));
+    const parsed = JSON.parse(await readFile11(RECENT_PROJECTS_FILE(), "utf8"));
     const list = Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
     const valid = [];
     for (const item of list) {
@@ -6588,9 +7017,9 @@ if ($path) {
 `;
 }
 async function pickProjectFolder({ logger = noopLogger } = {}) {
-  const tmpDir = join15(homedir5(), ".live-dot-map", "tmp");
+  const tmpDir = join18(homedir6(), ".live-dot-map", "tmp");
   await mkdir9(tmpDir, { recursive: true });
-  const marker = join15(tmpDir, `pick-${randomUUID8()}.txt`);
+  const marker = join18(tmpDir, `pick-${randomUUID8()}.txt`);
   const script = buildPickFolderScript(marker);
   const run = await new Promise((resolveRun, rejectRun) => {
     const child = spawn3("powershell.exe", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script], { windowsHide: true });
@@ -6623,7 +7052,7 @@ async function pickProjectFolder({ logger = noopLogger } = {}) {
     return { cancelled: true };
   }
   try {
-    const text = (await readFile10(marker, "utf8")).trim();
+    const text = (await readFile11(marker, "utf8")).trim();
     await rm6(marker, { force: true }).catch(() => void 0);
     if (text) {
       await logger.info("project.pick", { outcome: "ok", mode, path: text, diag });
@@ -6640,8 +7069,8 @@ function randomToken(bytes = 32) {
   return randomBytes3(bytes).toString("base64url");
 }
 async function recordAgentHealth(root, actor, event, status, error3) {
-  const path = join15(root, ".live-dot-map", ".bridge", "agent-health.json");
-  const prior = await readFile10(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
+  const path = join18(root, ".live-dot-map", ".bridge", "agent-health.json");
+  const prior = await readFile11(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   records[String(actor).replace(/^agent:/, "")] = {
     status,
@@ -6651,7 +7080,7 @@ async function recordAgentHealth(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: error3?.code || "BRIDGE_MCP_FAILED", message: String(error3?.message || error3 || "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await mkdir9(join15(root, ".live-dot-map", ".bridge"), { recursive: true });
+  await mkdir9(join18(root, ".live-dot-map", ".bridge"), { recursive: true });
   const temporary = `${path}.${process.pid}.${randomToken(8)}.tmp`;
   try {
     await writeFile3(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
@@ -6661,34 +7090,34 @@ async function recordAgentHealth(root, actor, event, status, error3) {
   }
 }
 async function readAgentHealth(root) {
-  return readFile10(join15(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
+  return readFile11(join18(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
     const value = JSON.parse(text);
     return value && typeof value.records === "object" && !Array.isArray(value.records) ? value.records : {};
   }).catch(() => ({}));
 }
 async function readObject(path) {
   try {
-    const value = JSON.parse(await readFile10(path, "utf8"));
+    const value = JSON.parse(await readFile11(path, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
   } catch {
     return null;
   }
 }
 function runtimeSources({ sourceRoot, runtimeSource } = {}) {
-  const entry = process.argv[1] ? resolve13(process.argv[1]) : "";
+  const entry = process.argv[1] ? resolve15(process.argv[1]) : "";
   const entryRoot = entry ? dirname8(entry) : "";
   const roots = [
     sourceRoot,
     process.env.LIVEDOT_AGENT_KIT_SOURCE,
     process.cwd(),
     entryRoot
-  ].filter(Boolean).map((value) => resolve13(value));
+  ].filter(Boolean).map((value) => resolve15(value));
   const uniqueRoots = [...new Set(roots)];
   const runtimes = [
     runtimeSource,
     process.env.LIVEDOT_RUNTIME_SOURCE,
-    ...uniqueRoots.map((root) => join15(root, "livedot.mjs"))
-  ].filter(Boolean).map((value) => resolve13(value));
+    ...uniqueRoots.map((root) => join18(root, "livedot.mjs"))
+  ].filter(Boolean).map((value) => resolve15(value));
   return { sourceRoot: uniqueRoots[0] || process.cwd(), runtimeSource: runtimes[0] || "" };
 }
 async function ensureProjectAgentConfig(projectRoot, {
@@ -6699,11 +7128,11 @@ async function ensureProjectAgentConfig(projectRoot, {
   detect = detectInstalledAdapters,
   install = installProject
 } = {}) {
-  const root = resolve13(projectRoot);
+  const root = resolve15(projectRoot);
   try {
     const detected = await detect({ projectRoot: root, platform, ...homeRoot ? { homeRoot } : {} });
     const available = Object.values(detected || {}).filter((item) => item?.discovered === true);
-    const configPath = join15(root, ".live-dot-map", "agent-kit.json");
+    const configPath = join18(root, ".live-dot-map", "agent-kit.json");
     const existing = await readObject(configPath);
     if (!available.length) {
       return { ok: true, status: "none", changed: false, projectRoot: root, detectedAgents: detected || {}, configured: existing?.installed || {} };
@@ -6911,6 +7340,7 @@ async function createBridgeServer({
   const knownActiveMaps = /* @__PURE__ */ new Map();
   const markdownStores = /* @__PURE__ */ new Map();
   const humanMdLogs = /* @__PURE__ */ new Map();
+  const mdIndexes = /* @__PURE__ */ new Map();
   const editorServices = /* @__PURE__ */ new Map();
   const events = new EventHub(heartbeatMs);
   const configuredOrigins = new Set(allowedOrigins);
@@ -7118,10 +7548,21 @@ async function createBridgeServer({
     }
     return log;
   }
+  async function mdIndexFor(session) {
+    const mapKey = session.activeMapId ?? await resolveActiveMap(session.projectRoot);
+    const key = `${session.projectRoot}/${mapKey}`;
+    let index = mdIndexes.get(key);
+    if (!index) {
+      index = new MdIndex({ projectRoot: session.projectRoot, mapKey });
+      await index.load();
+      mdIndexes.set(key, index);
+    }
+    return index;
+  }
   const UPDATE_BASE = (process.env.LIVEDOT_UPDATE_BASE || "https://livedotmap.top/windows-installer").replace(/\/+$/, "");
   async function readLocalPayloadVersion() {
     try {
-      const parsed = JSON.parse(await readFile10(join15(process.cwd(), "payload-manifest.json"), "utf8"));
+      const parsed = JSON.parse(await readFile11(join18(process.cwd(), "payload-manifest.json"), "utf8"));
       return typeof parsed.version === "string" ? parsed.version : null;
     } catch {
       return null;
@@ -7163,14 +7604,14 @@ async function createBridgeServer({
     if (current !== null && compareVersions(manifest.version, current) <= 0) {
       throw new BridgeError("ALREADY_UP_TO_DATE", `Current version ${current} is up to date`, { status: 409 });
     }
-    const updater = resolve13(join15(process.cwd(), "..", "LiveDotMapSetup.exe"));
+    const updater = resolve15(join18(process.cwd(), "..", "LiveDotMapSetup.exe"));
     try {
       await access4(updater);
     } catch {
       throw new BridgeError("UPDATER_UNAVAILABLE", "Installer entry not found; updates are only available in installed mode", { status: 501 });
     }
-    const tempRoot = join15(process.env.TEMP || process.env.TMP || homedir5(), `livedot-update-${manifest.version}-${randomUUID8()}`);
-    const payloadDir = join15(tempRoot, "payload");
+    const tempRoot = join18(process.env.TEMP || process.env.TMP || homedir6(), `livedot-update-${manifest.version}-${randomUUID8()}`);
+    const payloadDir = join18(tempRoot, "payload");
     await mkdir9(payloadDir, { recursive: true });
     try {
       for (const [relative6, meta] of Object.entries(manifest.files)) {
@@ -7180,12 +7621,12 @@ async function createBridgeServer({
         if (relative6.includes("..") || relative6.startsWith("/") || /^[a-zA-Z]:/.test(relative6)) {
           throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file path: ${relative6}`, { status: 502 });
         }
-        const target = join15(payloadDir, relative6);
+        const target = join18(payloadDir, relative6);
         await mkdir9(dirname8(target), { recursive: true });
         const response = await fetch(`${UPDATE_BASE}/${meta.url}`, { signal: AbortSignal.timeout(6e5) });
         if (!response.ok) throw new BridgeError("UPDATE_DOWNLOAD_FAILED", `Download failed for ${relative6} (HTTP ${response.status})`, { status: 502 });
         const buffer = Buffer.from(await response.arrayBuffer());
-        const actual = createHash7("sha256").update(buffer).digest("hex");
+        const actual = createHash8("sha256").update(buffer).digest("hex");
         if (actual !== meta.sha256.toLowerCase()) throw new BridgeError("UPDATE_CHECKSUM_MISMATCH", `Checksum mismatch for ${relative6}`, { status: 502 });
         await writeFile3(target, buffer);
       }
@@ -7461,6 +7902,7 @@ async function createBridgeServer({
         const binding = await authorizeOpenedProject(session, root);
         session.projectRoot = root;
         session.activeMapId = mapId;
+        await recordCurrentProject(root).catch(() => void 0);
         const snapshot = await store.snapshot();
         const setup = typeof agentSetup === "function" ? await agentSetup(root).catch((error3) => ({ ok: false, status: "error", changed: false, code: error3?.code || "AGENT_SETUP_FAILED", message: String(error3?.message || error3).slice(0, 400) })) : { ok: true, status: "none", changed: false, projectRoot: root, detectedAgents: {} };
         sendJson(response, 200, { cancelled: false, projectRoot: root, activeMap: mapId, projectId: snapshot.document.mapId, agentSetup: setup, ...binding, ...snapshot });
@@ -7523,6 +7965,7 @@ async function createBridgeServer({
         const binding = await authorizeOpenedProject(session, root);
         session.projectRoot = root;
         session.activeMapId = mapId;
+        await recordCurrentProject(root).catch(() => void 0);
         const snapshot = await store.snapshot();
         const setup = typeof agentSetup === "function" ? await agentSetup(root).catch((error3) => ({ ok: false, status: "error", changed: false, code: error3?.code || "AGENT_SETUP_FAILED", message: String(error3?.message || error3).slice(0, 400) })) : { ok: true, status: "none", changed: false, projectRoot: root, detectedAgents: {} };
         sendJson(response, 200, { projectRoot: root, activeMap: mapId, projectId: snapshot.document.mapId, agentSetup: setup, ...binding, ...snapshot });
@@ -7553,7 +7996,7 @@ async function createBridgeServer({
         const detected = await detectInstalledAdapters({ projectRoot: root });
         let config = {};
         try {
-          const parsed = JSON.parse(await readFile10(join15(root, ".live-dot-map", "agent-kit.json"), "utf8"));
+          const parsed = JSON.parse(await readFile11(join18(root, ".live-dot-map", "agent-kit.json"), "utf8"));
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) config = parsed;
         } catch {
         }
@@ -7709,6 +8152,11 @@ async function createBridgeServer({
           } catch (error3) {
             logger.warn("human-md-updates.record", { path: saved.path, error: error3?.message });
           }
+          try {
+            await (await mdIndexFor(session)).refreshPathAndPersist({ relativePath: saved.path });
+          } catch (error3) {
+            logger.warn("md-index.refresh", { path: saved.path, error: error3?.message });
+          }
           sendJson(response, 200, saved);
           return;
         }
@@ -7822,10 +8270,18 @@ async function createBridgeServer({
         if (Array.isArray(body.commands)) {
           try {
             const bundle = await activeBundleStore(session);
+            const index = await mdIndexFor(session);
             for (const command2 of body.commands) {
               if (command2?.op === "create" && command2?.collection === "nodes" && typeof command2?.value?.id === "string") {
                 await bundle.ensureIndex({ ownerKind: "node", ownerId: command2.value.id, title: String(command2.value.name || "") }).catch((error3) => {
                   logger.warn("bundle.ensureIndex", { ownerId: command2.value.id, error: error3?.message });
+                });
+                await index.refreshOwnerAndPersist({
+                  mapRoot: join18(session.projectRoot, ".live-dot-map", "maps", session.activeMapId ?? await resolveActiveMap(session.projectRoot)),
+                  ownerKind: "nodes",
+                  ownerId: command2.value.id
+                }).catch((error3) => {
+                  logger.warn("md-index.refresh-on-create", { ownerId: command2.value.id, error: error3?.message });
                 });
               }
             }
@@ -7902,9 +8358,9 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
   server.headersTimeout = 1e4;
   server.requestTimeout = 15e3;
   server.keepAliveTimeout = 5e3;
-  await new Promise((resolve16, reject) => {
+  await new Promise((resolve18, reject) => {
     server.once("error", reject);
-    server.listen(listenPort, host, resolve16);
+    server.listen(listenPort, host, resolve18);
   });
   port = server.address().port;
   async function pollActiveMaps() {
@@ -7977,8 +8433,8 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
       await Promise.all([...mapManagers.values()].map((manager) => manager.close()));
       if (sessionStore) await sessionStore.flush();
       else sessions.clear();
-      await new Promise((resolve16, reject) => {
-        server.close((error3) => error3 ? reject(error3) : resolve16());
+      await new Promise((resolve18, reject) => {
+        server.close((error3) => error3 ? reject(error3) : resolve18());
         server.closeAllConnections?.();
       });
     }
@@ -7987,22 +8443,22 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
 
 // src/bridge/project-registry.mjs
 import { randomBytes as randomBytes5, randomUUID as randomUUID10 } from "node:crypto";
-import { chmod as chmod2, mkdir as mkdir11, readFile as readFile12, rename as rename8, writeFile as writeFile5 } from "node:fs/promises";
+import { chmod as chmod2, mkdir as mkdir11, readFile as readFile13, rename as rename8, writeFile as writeFile5 } from "node:fs/promises";
 import { dirname as dirname10 } from "node:path";
 
 // src/bridge/runtime-state.mjs
 import { randomBytes as randomBytes4, randomUUID as randomUUID9 } from "node:crypto";
 import { execFile as execFile2 } from "node:child_process";
-import { chmod, mkdir as mkdir10, open as open3, readFile as readFile11, rename as rename7, rm as rm7, writeFile as writeFile4 } from "node:fs/promises";
-import { dirname as dirname9, join as join16, resolve as resolve14 } from "node:path";
-import { homedir as homedir6 } from "node:os";
+import { chmod, mkdir as mkdir10, open as open3, readFile as readFile12, rename as rename7, rm as rm7, writeFile as writeFile4 } from "node:fs/promises";
+import { dirname as dirname9, join as join19, resolve as resolve16 } from "node:path";
+import { homedir as homedir7 } from "node:os";
 import { promisify } from "node:util";
 var execFileAsync = promisify(execFile2);
 var SCHEMA_VERSION = 1;
 function defaultRuntimeStateDir() {
-  if (process.env.LIVEDOT_RUNTIME_STATE_DIR) return resolve14(process.env.LIVEDOT_RUNTIME_STATE_DIR);
-  const localAppData = process.env.LOCALAPPDATA || join16(homedir6(), "AppData", "Local");
-  return join16(localAppData, "live-dot-map", "run");
+  if (process.env.LIVEDOT_RUNTIME_STATE_DIR) return resolve16(process.env.LIVEDOT_RUNTIME_STATE_DIR);
+  const localAppData = process.env.LOCALAPPDATA || join19(homedir7(), "AppData", "Local");
+  return join19(localAppData, "live-dot-map", "run");
 }
 async function privateDirectory(path) {
   await mkdir10(path, { recursive: true, mode: 448 });
@@ -8017,21 +8473,21 @@ async function atomicPrivateWrite(path, value) {
   await chmod(path, 384).catch(() => void 0);
 }
 function runtimePaths(runtimeStateDir = defaultRuntimeStateDir()) {
-  const root = resolve14(runtimeStateDir);
+  const root = resolve16(runtimeStateDir);
   return {
     root,
-    bridge: join16(root, "bridge.json"),
-    controlToken: join16(root, "control.token"),
-    lock: join16(root, "singleton.lock"),
-    sessions: join16(root, "sessions.json"),
-    projects: join16(root, "projects.json")
+    bridge: join19(root, "bridge.json"),
+    controlToken: join19(root, "control.token"),
+    lock: join19(root, "singleton.lock"),
+    sessions: join19(root, "sessions.json"),
+    projects: join19(root, "projects.json")
   };
 }
 async function readBridgeState(runtimeStateDir) {
   const paths = runtimePaths(runtimeStateDir);
   let parsed;
   try {
-    parsed = JSON.parse(await readFile11(paths.bridge, "utf8"));
+    parsed = JSON.parse(await readFile12(paths.bridge, "utf8"));
   } catch (error3) {
     if (error3?.code === "ENOENT") return null;
     throw new BridgeError("BRIDGE_STATE_CORRUPT", "Bridge runtime state is unreadable", { cause: error3 });
@@ -8053,7 +8509,7 @@ async function writeBridgeState(runtimeStateDir, { pid, port, startedAt = (/* @_
 async function readOrCreateControlToken(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).controlToken;
   try {
-    const value = (await readFile11(path, "utf8")).trim();
+    const value = (await readFile12(path, "utf8")).trim();
     if (!/^[A-Za-z0-9_-]{43,}$/.test(value)) throw new Error("invalid token");
     return value;
   } catch (error3) {
@@ -8070,7 +8526,7 @@ async function readOrCreateControlToken(runtimeStateDir) {
     return token;
   } catch (error3) {
     if (error3?.code !== "EEXIST") throw error3;
-    const existing = (await readFile11(path, "utf8")).trim();
+    const existing = (await readFile12(path, "utf8")).trim();
     if (!/^[A-Za-z0-9_-]{43,}$/.test(existing)) throw new BridgeError("CONTROL_TOKEN_CORRUPT", "Bridge control token is invalid");
     return existing;
   }
@@ -8133,7 +8589,7 @@ async function clearStaleSingletonLock(runtimeStateDir, expectedPid, options = {
   const path = runtimePaths(runtimeStateDir).lock;
   let lock;
   try {
-    lock = JSON.parse(await readFile11(path, "utf8"));
+    lock = JSON.parse(await readFile12(path, "utf8"));
   } catch (error3) {
     if (error3?.code === "ENOENT") return true;
     throw new BridgeError("BRIDGE_LOCK_CORRUPT", "Bridge singleton lock is unreadable", { cause: error3 });
@@ -8174,7 +8630,7 @@ var ProjectRegistry = class _ProjectRegistry {
   static async open({ runtimeStateDir, filePath = runtimePaths(runtimeStateDir).projects, canonicalize } = {}) {
     let entries = [];
     try {
-      const parsed = JSON.parse(await readFile12(filePath, "utf8"));
+      const parsed = JSON.parse(await readFile13(filePath, "utf8"));
       if (parsed?.schemaVersion !== SCHEMA_VERSION2 || !Array.isArray(parsed.projects)) throw new Error("invalid shape");
       entries = parsed.projects;
       for (const entry of entries) {
@@ -8221,7 +8677,7 @@ var ProjectRegistry = class _ProjectRegistry {
   async refresh() {
     let parsed;
     try {
-      parsed = JSON.parse(await readFile12(this.filePath, "utf8"));
+      parsed = JSON.parse(await readFile13(this.filePath, "utf8"));
     } catch (error3) {
       if (error3?.code === "ENOENT") return;
       throw new BridgeError("PROJECT_REGISTRY_CORRUPT", "Project authorization registry is unreadable or invalid", { cause: error3 });
@@ -8246,13 +8702,13 @@ var ProjectRegistry = class _ProjectRegistry {
 };
 
 // src/bridge/session-store.mjs
-import { createHash as createHash8, randomBytes as randomBytes6, randomUUID as randomUUID11 } from "node:crypto";
-import { chmod as chmod3, mkdir as mkdir12, readFile as readFile13, rename as rename9, writeFile as writeFile6 } from "node:fs/promises";
+import { createHash as createHash9, randomBytes as randomBytes6, randomUUID as randomUUID11 } from "node:crypto";
+import { chmod as chmod3, mkdir as mkdir12, readFile as readFile14, rename as rename9, writeFile as writeFile6 } from "node:fs/promises";
 import { dirname as dirname11 } from "node:path";
 var SCHEMA_VERSION3 = 1;
 var DAY = 24 * 60 * 60 * 1e3;
 var secret = () => randomBytes6(32).toString("base64url");
-var digest4 = (value) => createHash8("sha256").update(String(value)).digest("base64url");
+var digest5 = (value) => createHash9("sha256").update(String(value)).digest("base64url");
 async function atomicWrite2(path, content) {
   await mkdir12(dirname11(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${randomUUID11()}.tmp`;
@@ -8279,7 +8735,7 @@ var SessionStore = class _SessionStore {
     const filePath = options.filePath || runtimePaths(options.runtimeStateDir).sessions;
     let sessions = [];
     try {
-      const parsed = JSON.parse(await readFile13(filePath, "utf8"));
+      const parsed = JSON.parse(await readFile14(filePath, "utf8"));
       if (parsed?.schemaVersion !== SCHEMA_VERSION3 || !Array.isArray(parsed.sessions)) throw new Error("invalid shape");
       sessions = parsed.sessions;
       for (const session of sessions) {
@@ -8301,13 +8757,13 @@ var SessionStore = class _SessionStore {
     const now = this.now();
     const record = {
       schemaVersion: SCHEMA_VERSION3,
-      sessionIdHash: digest4(sessionId),
+      sessionIdHash: digest5(sessionId),
       csrfToken: secret(),
       projectHandles: projectHandle ? [projectHandle] : [],
       createdAt: new Date(now).toISOString(),
       lastSeenAt: new Date(now).toISOString(),
       expiresAt: new Date(now + this.ttlMs).toISOString(),
-      reconnectTicketHash: digest4(reconnectTicket),
+      reconnectTicketHash: digest5(reconnectTicket),
       revokedAt: null
     };
     this.sessions.set(record.sessionIdHash, record);
@@ -8316,7 +8772,7 @@ var SessionStore = class _SessionStore {
     return { sessionId, reconnectTicket, record: structuredClone(record) };
   }
   get(sessionId, { touch: touch2 = true } = {}) {
-    const record = this.sessions.get(digest4(sessionId));
+    const record = this.sessions.get(digest5(sessionId));
     if (!record || record.revokedAt) return null;
     const now = this.now();
     if (Date.parse(record.expiresAt) <= now) {
@@ -8333,14 +8789,14 @@ var SessionStore = class _SessionStore {
     return structuredClone(record);
   }
   authorize(sessionId, projectHandle) {
-    const key = digest4(sessionId);
+    const key = digest5(sessionId);
     const record = this.sessions.get(key);
     if (!record || record.revokedAt || Date.parse(record.expiresAt) <= this.now()) return null;
     if (!record.projectHandles.includes(projectHandle)) record.projectHandles.push(projectHandle);
     record.lastSeenAt = new Date(this.now()).toISOString();
     record.expiresAt = new Date(this.now() + this.ttlMs).toISOString();
     const reconnectTicket = secret();
-    record.reconnectTicketHash = digest4(reconnectTicket);
+    record.reconnectTicketHash = digest5(reconnectTicket);
     this.dirty = true;
     return { ...structuredClone(record), reconnectTicket };
   }
@@ -8351,7 +8807,7 @@ var SessionStore = class _SessionStore {
     if (recent.length >= 5) throw new BridgeError("RECONNECT_RATE_LIMITED", "Too many reconnect attempts", { status: 429 });
     recent.push(now);
     this.reconnectAttempts.set(rateKey, recent);
-    const ticketHash = digest4(reconnectTicket);
+    const ticketHash = digest5(reconnectTicket);
     const current = [...this.sessions.values()].find((record) => record.reconnectTicketHash === ticketHash && !record.revokedAt);
     if (!current || Date.parse(current.expiresAt) <= now || !current.projectHandles.includes(projectHandle)) {
       throw new BridgeError("INVALID_RECONNECT_TICKET", "Reconnect ticket is invalid or expired", { status: 401 });
@@ -8461,8 +8917,8 @@ async function openThroughRunningBridgeWithRetry(state, controlToken, projectRoo
   throw lastError;
 }
 async function recordAgentHealth2(root, actor, event, status, error3) {
-  const path = join17(root, ".live-dot-map", ".bridge", "agent-health.json");
-  const prior = await readFile14(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
+  const path = join20(root, ".live-dot-map", ".bridge", "agent-health.json");
+  const prior = await readFile15(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   const value = error3;
   records[actor.replace(/^agent:/, "")] = {
@@ -8483,12 +8939,12 @@ async function recordAgentHealth2(root, actor, event, status, error3) {
   }
 }
 async function inspectProjectQualification(projectRoot) {
-  const root = resolve15(projectRoot);
+  const root = resolve17(projectRoot);
   const rootMetadata = await lstat9(root).catch(() => null);
   if (!rootMetadata || !rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
     return { ok: false, code: "PROJECT_NOT_FOUND", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u6709\u6548\u9879\u76EE\u76EE\u5F55\u3002" };
   }
-  const dataDirectory = join17(root, ".live-dot-map");
+  const dataDirectory = join20(root, ".live-dot-map");
   const dataMetadata = await lstat9(dataDirectory).catch(() => null);
   if (!dataMetadata) return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u8FD8\u6CA1\u6709\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
   if (!dataMetadata.isDirectory() || dataMetadata.isSymbolicLink()) {
@@ -8498,15 +8954,15 @@ async function inspectProjectQualification(projectRoot) {
     const metadata = await lstat9(path).catch(() => null);
     return Boolean(metadata && (metadata.isFile() || metadata.isSymbolicLink()));
   };
-  const legacy = await marker(join17(dataDirectory, "map.json"));
-  const mapsPath = join17(dataDirectory, "maps");
+  const legacy = await marker(join20(dataDirectory, "map.json"));
+  const mapsPath = join20(dataDirectory, "maps");
   const mapsMetadata = await lstat9(mapsPath).catch(() => null);
   let packageMap = false;
   if (mapsMetadata?.isDirectory() && !mapsMetadata.isSymbolicLink()) {
     const entries = await readdir7(mapsPath, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-      if (await marker(join17(mapsPath, entry.name, "map.json"))) {
+      if (await marker(join20(mapsPath, entry.name, "map.json"))) {
         packageMap = true;
         break;
       }
@@ -8556,11 +9012,11 @@ function compactHookContext(value) {
 }
 var toolDefinitions = TOOL_DEFINITIONS;
 async function runMcp(projectRoot, actor) {
-  const root = resolve15(projectRoot);
+  const root = resolve17(projectRoot);
   const qualification = await inspectProjectQualification(root);
   const logger = qualification.ok ? createLogger({ source: "agent" }) : noopLogger;
-  let manager = null;
-  let tools = null;
+  let currentRoot = root;
+  const entries = /* @__PURE__ */ new Map();
   if (qualification.ok) await logger.info("agent.mcp.start", { project: root, actor, pid: process.pid });
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
@@ -8581,12 +9037,17 @@ async function runMcp(projectRoot, actor) {
           result2 = unavailableToolResult(qualification);
         } else {
           const params = request.params;
-          if (!manager) {
+          const targetRoot = await resolveProjectRootToUse(null, currentRoot);
+          let entry = entries.get(targetRoot);
+          if (!entry) {
             const shared = await loadSharedAdapter();
-            manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
-            tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: "stdio" });
+            const manager = await MapManager.open({ projectRoot: targetRoot, shared, pollIntervalMs: 0 });
+            const tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: "stdio" });
+            entry = { manager, tools };
+            entries.set(targetRoot, entry);
           }
-          const value = await tools.dispatch(String(params.name), params.arguments ?? {});
+          currentRoot = targetRoot;
+          const value = await entry.tools.dispatch(String(params.name), params.arguments ?? {});
           result2 = { content: [{ type: "text", text: JSON.stringify(value, null, 2) }], structuredContent: value };
         }
       } else throw Object.assign(new Error(`\u672A\u77E5\u65B9\u6CD5 ${String(request.method)}`), { code: -32601 });
@@ -8603,10 +9064,10 @@ async function runMcp(projectRoot, actor) {
 `);
     }
   }
-  await manager?.close().catch(() => void 0);
+  for (const entry of entries.values()) await entry.manager.close().catch(() => void 0);
 }
 async function runHook(kind, args) {
-  const root = resolve15(required(args, "project"));
+  const root = resolve17(required(args, "project"));
   const actor = `agent:${String(args.agent || "generic")}`;
   const sessionId = String(args.session || `session-${randomUUID12()}`);
   const qualification = await inspectProjectQualification(root);
@@ -8621,10 +9082,10 @@ async function runHook(kind, args) {
   const snapshot = await store.snapshot();
   const document = snapshot.document;
   if (kind === "session-start") {
-    const watermarkPath = join17(root, ".live-dot-map", "agent-read.json");
+    const watermarkPath = join20(root, ".live-dot-map", "agent-read.json");
     let watermark = 0;
     try {
-      const parsed = JSON.parse(await readFile14(watermarkPath, "utf8"));
+      const parsed = JSON.parse(await readFile15(watermarkPath, "utf8"));
       if (typeof parsed?.updatedAt === "string") watermark = Date.parse(parsed.updatedAt);
     } catch {
     }
@@ -8727,8 +9188,8 @@ async function main() {
   const { command: command2, args } = parseArgs(process.argv.slice(2));
   if (command2 === "serve") {
     const logger = createLogger({ source: "bridge" });
-    const projectRoot = resolve15(required(args, "project"));
-    const runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? resolve15(args["runtime-state-dir"]) : void 0;
+    const projectRoot = resolve17(required(args, "project"));
+    const runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? resolve17(args["runtime-state-dir"]) : void 0;
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });
     const sessionStore = await SessionStore.open({ runtimeStateDir });
@@ -8772,18 +9233,18 @@ async function main() {
       }
       throw new Error("Bridge \u6B63\u5728\u542F\u52A8\uFF0C\u4F46\u5728 2 \u79D2\u5185\u6CA1\u6709\u8FDB\u5165\u53EF\u590D\u7528\u72B6\u6001");
     }
-    const appPath = resolve15(typeof args.app === "string" ? args.app : join17(process.cwd(), "app.html"));
-    const appHtml = await readFile14(appPath, "utf8");
+    const appPath = resolve17(typeof args.app === "string" ? args.app : join20(process.cwd(), "app.html"));
+    const appHtml = await readFile15(appPath, "utf8");
     const assetRoot = dirname12(appPath);
     const staticAssets = {};
     for (const [urlPath, file, type] of [
       ["/sw.js", "sw.js", "text/javascript; charset=utf-8"],
       ["/manifest.webmanifest", "manifest.webmanifest", "application/manifest+json; charset=utf-8"],
-      ["/icons/icon-192.png", join17("icons", "icon-192.png"), "image/png"],
-      ["/icons/icon-512.png", join17("icons", "icon-512.png"), "image/png"]
+      ["/icons/icon-192.png", join20("icons", "icon-192.png"), "image/png"],
+      ["/icons/icon-512.png", join20("icons", "icon-512.png"), "image/png"]
     ]) {
       try {
-        staticAssets[urlPath] = { body: await readFile14(join17(assetRoot, file)), type };
+        staticAssets[urlPath] = { body: await readFile15(join20(assetRoot, file)), type };
       } catch {
       }
     }
@@ -8824,17 +9285,17 @@ async function main() {
     return;
   }
   if (command2 === "mcp") {
-    const project = resolve15(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
+    const project = resolve17(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
     return runMcp(project, `agent:${String(args.agent || "generic")}`);
   }
   if (command2 === "hook") {
-    const project = resolve15(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
+    const project = resolve17(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
     return runHook(String(args.event || "session-start"), { ...args, project });
   }
   if (command2 === "install") {
-    const root = resolve15(typeof args.project === "string" ? args.project : process.cwd());
+    const root = resolve17(typeof args.project === "string" ? args.project : process.cwd());
     const runtimeSource = process.env.LIVEDOT_RUNTIME_SOURCE || process.argv[1] || process.cwd();
-    const appPath = resolve15(typeof args.app === "string" ? args.app : join17(dirname12(runtimeSource), "app.html"));
+    const appPath = resolve17(typeof args.app === "string" ? args.app : join20(dirname12(runtimeSource), "app.html"));
     const install = installProject;
     const result2 = await install({ projectRoot: root, runtimeSource, appPath, createDesktopShortcut: args["no-shortcut"] !== true, register: false });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
@@ -8842,7 +9303,7 @@ async function main() {
     return;
   }
   if (command2 === "doctor") {
-    const root = resolve15(required(args, "project"));
+    const root = resolve17(required(args, "project"));
     const result2 = await doctorProject({ projectRoot: root });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
 `);
@@ -8850,7 +9311,7 @@ async function main() {
     return;
   }
   if (command2 === "uninstall") {
-    const root = resolve15(required(args, "project"));
+    const root = resolve17(required(args, "project"));
     const result2 = await uninstallProject({ projectRoot: root });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
 `);
@@ -8862,7 +9323,7 @@ async function main() {
 void main().catch(async (error3) => {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed.command === "hook" || parsed.command === "mcp") {
-    const project = resolve15(typeof parsed.args.project === "string" && parsed.args.project.trim() ? parsed.args.project : process.cwd());
+    const project = resolve17(typeof parsed.args.project === "string" && parsed.args.project.trim() ? parsed.args.project : process.cwd());
     await recordAgentHealth2(project, `agent:${String(parsed.args.agent || "generic")}`, `${parsed.command === "hook" ? `hook:${String(parsed.args.event || "unknown")}` : "mcp:process"}`, "error", error3).catch(() => void 0);
   }
   await createLogger({ source: parsed.command === "serve" ? "bridge" : "agent" }).error("process.error", { command: parsed.command, error: error3 });

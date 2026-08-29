@@ -16,10 +16,10 @@ test('Markdown 路径兼容旧前缀但拒绝目录穿越', () => {
   assert.throws(() => normalizeMarkdownPath('nodes/a\u0000.md'), /非法字符/);
 });
 
-test('路径规范化按 ID 固定新对象路径并保留未知字段', () => {
+test('v1 旧平铺路径迁移到资料包 index.md 并保留未知字段', () => {
   const input = { version: 1, nodes: [{ id: 'n1', md: 'nodes/old-name.md', future: { keep: true } }] };
   const output = canonicalizeMarkdownFields(input);
-  assert.equal(output.nodes[0].md, '.live-dot-map/nodes/n1.md');
+  assert.equal(output.nodes[0].md, '.live-dot-map/nodes/n1/index.md');
   assert.deepEqual(output.nodes[0].future, { keep: true });
   assert.equal(input.nodes[0].md, 'nodes/old-name.md');
 });

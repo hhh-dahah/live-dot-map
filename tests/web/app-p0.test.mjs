@@ -12,5 +12,6 @@ test('画布 P0/P1 入口和持久化动作仍在发布产物中', () => {
   assert.match(html, /空白开始/);
   assert.match(html, /看看简单示例/);
   assert.match(html, /LiveDotFallback\.prepareFallbackDocument/);
-  assert.match(html, /milestoneSourceLabel/);
+  assert.match(html, /\[\['normal','普通'\],\['problem','问题'\]\]/);
+  assert.doesNotMatch(html, /data-act="milestone-(?:create|status|remove)"/);
 });

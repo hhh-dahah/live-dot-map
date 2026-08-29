@@ -32,6 +32,10 @@ async function mcp(project, agent, calls) {
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: next, method, params })}\n`);
   });
   await request('initialize', {});
+  const listed = await request('tools/list');
+  const toolNames = listed.result?.tools?.map((tool) => tool.name) || [];
+  assert.equal(toolNames.some((name) => /purge/i.test(String(name))), false, `${agent}: purge must not be exposed as an Agent tool`);
+  assert.ok(toolNames.includes('map_archive_bundle_file') && toolNames.includes('map_restore_bundle_file'), `${agent}: bundle archive/restore tools are missing`);
   const results = [];
   for (const [name, args, expectedError] of calls) {
     const response = await request('tools/call', { name, arguments: args });
@@ -55,6 +59,12 @@ for (const agent of ['codex', 'claude', 'kimi', 'codebuddy']) {
     // v2 布局：地图文件在 .live-dot-map/maps/<地图id>/ 下，默认地图为 default。
     const mapPath = join(data, 'maps', 'default', 'map.json'); await cp(TEMPLATE, mapPath);
     const map = JSON.parse(await readFile(mapPath, 'utf8'));
+    map.mapDir = '.live-dot-map/maps/default';
+    map.bundleLayoutVersion = 1;
+    for (const item of [...(map.nodes || []), ...(map.edges || [])]) {
+      const collection = map.nodes?.includes(item) ? 'nodes' : 'routes';
+      item.md = `${map.mapDir}/${collection}/${item.id}/index.md`;
+    }
     map.anns.push({
       id: 'a-human-1', target: { kind: 'canvas' }, text: '先验证真实用户入口', source: 'human', priority: 'high', attention: 'new', acknowledgements: [],
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', updatedBy: 'human', updatedRevision: 0,
@@ -64,13 +74,17 @@ for (const agent of ['codex', 'claude', 'kimi', 'codebuddy']) {
     assert.equal(started.hookSpecificOutput?.hookEventName, 'SessionStart');
     const deliveredMap = JSON.parse(await readFile(mapPath, 'utf8'));
     assert.equal(deliveredMap.anns[0].attention, 'delivered');
-    const [acked, applied, forgedActor] = await mcp(project, agent, [
+    const [acked, applied, archived, restored, forgedActor] = await mcp(project, agent, [
       ['map_ack_human_updates', { ids: ['a-human-1'], summary: '已读取 a-human-1：先验证真实用户入口' }],
-      ['map_apply_commands', { commands: [{ op: 'create', collection: 'nodes', value: { id: `n-${agent}`, num: '02', name: `${agent} 写回`, type: '结果', route: 'r1', x: 240, y: 0, md: `.live-dot-map/nodes/n-${agent}.md` } }] }],
-      ['map_apply_commands', { actor: 'human', commands: [{ op: 'update', collection: 'nodes', id: `n-${agent}`, patch: { archived: true } }] }, 'HUMAN_APPROVAL_REQUIRED'],
+      ['map_apply_commands', { commands: [{ op: 'create', collection: 'nodes', value: { id: `n-${agent}`, num: '02', name: `${agent} 写回`, kind: 'goal', type: '目的', route: 'r1', x: 240, y: 0, md: `.live-dot-map/maps/default/nodes/n-${agent}/index.md` } }] }],
+      ['map_apply_commands', { commands: [{ op: 'archive', collection: 'nodes', id: `n-${agent}`, archiveReason: 'Agent 归档验收' }] }],
+      ['map_apply_commands', { commands: [{ op: 'restore', collection: 'nodes', id: `n-${agent}` }] }],
+      ['map_apply_commands', { commands: [{ op: 'update', collection: 'nodes', id: `n-${agent}`, patch: { shelved: true } }] }, 'HUMAN_APPROVAL_REQUIRED'],
     ]);
     assert.ok(acked.revision >= 2);
     assert.ok(applied.revision > acked.revision);
+    assert.equal(archived.document.nodes.find((node) => node.id === `n-${agent}`)?.archived, true);
+    assert.equal(restored.document.nodes.find((node) => node.id === `n-${agent}`)?.archived, undefined);
     assert.equal(forgedActor.data.code, 'HUMAN_APPROVAL_REQUIRED');
     const persisted = JSON.parse(await readFile(mapPath, 'utf8'));
     assert.equal(persisted.anns[0].attention, 'acknowledged');

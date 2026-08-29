@@ -17,7 +17,11 @@ const TEST_ROOT = 'D:\\LiveDotMap-Test';
 async function startBridge(projectRoot) {
   const child = spawn(process.execPath, [RUNTIME, 'serve', '--project', projectRoot, '--app', APP], {
     cwd: ROOT,
-    env: { ...process.env, LIVEDOT_RECENT_PROJECTS_FILE: join(TEST_ROOT, 'recent-projects.json') },
+    env: {
+      ...process.env,
+      LIVEDOT_RECENT_PROJECTS_FILE: join(projectRoot, 'recent-projects.json'),
+      LIVEDOT_RUNTIME_STATE_DIR: join(projectRoot, '.test-runtime'),
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -91,12 +95,12 @@ for (const [name, descriptor] of Object.entries(engines)) {
     seed.nodes[0].updatedBy = 'agent:codex';
     seed.edges.push({
       id: 'e1', from: 'n1', to: null, route: 'r1', name: '旧失败方案', status: 'failed', score: 20, dx: 180, dy: 0,
-      md: '.live-dot-map/routes/e1.md', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      md: '.live-dot-map/maps/default/routes/e1/index.md', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
       createdBy: 'agent:codex', updatedBy: 'agent:codex', updatedRevision: 0,
     });
     seed.edges.push({
       id: 'e2', from: 'n1', to: null, route: 'r1', name: '另一个旧失败方案', status: 'failed', score: 10, dx: 180, dy: 90,
-      md: '.live-dot-map/routes/e2.md', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      md: '.live-dot-map/maps/default/routes/e2/index.md', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
       createdBy: 'human', updatedBy: 'human', updatedRevision: 0,
     });
   await writeFile(mapPath, `${JSON.stringify(seed, null, 2)}\n`, 'utf8');
@@ -113,7 +117,11 @@ for (const [name, descriptor] of Object.entries(engines)) {
       if (request.url().includes('/api/v1/events')) return;
       errors.push(`request: ${request.url()} ${request.failure()?.errorText}`);
     });
-    page.on('response', (response) => { if (response.status() >= 500) errors.push(`response: ${response.status()} ${response.url()}`); });
+    page.on('response', async (response) => {
+      if (response.status() >= 400) {
+        errors.push(`response: ${response.status()} ${response.url()} ${await response.text().catch(() => '')}`);
+      }
+    });
     await page.addInitScript(() => localStorage.setItem('dotmap-guide-seen', '1'));
     await page.goto(bridge.url, { waitUntil: 'domcontentloaded' });
     try {
@@ -128,12 +136,10 @@ for (const [name, descriptor] of Object.entries(engines)) {
       const state = await page.evaluate(() => ({ label: document.querySelector('#sync-label')?.textContent, title: document.querySelector('#sync-dot')?.getAttribute('title'), pill: document.querySelector('#project-pill')?.innerText }));
       throw new Error(`${name}: save badge mismatch ${JSON.stringify(state)}; ${errors.join('; ')}`, { cause: error });
     }
-    // v2 移除了画布内的 Agent 状态面板，发现能力保留在桥 API：
-    // 直接查 /api/v1/agents，三个第一方适配器（codex / claude-code / kimi-code）必须都在。
-    const agentsPayload = await page.evaluate(async () => {
-      const res = await fetch('/api/v1/agents');
-      return res.ok ? res.json() : { agents: [] };
-    });
+    // v2 移除了画布内的 Agent 状态面板，发现能力保留在桥 API。
+    // 项目 API 必须携带不透明 projectHandle/mapKey，测试也只能通过
+    // BridgeClient 发起，不能用缺路由头的裸 fetch 绕过隔离契约。
+    const agentsPayload = await page.evaluate(() => window.LiveDotBridge.refreshAgentStatus());
     const agentStatusRows = Array.isArray(agentsPayload.agents) ? agentsPayload.agents.length : 0;
     assert.ok(agentStatusRows >= 3, `${name}: agent discovery returned ${agentStatusRows} rows`);
     await page.waitForFunction(() => window.LiveDotApp?.serialize()?.nodes?.[0]?.name === '<img src=x onerror=alert(1)>');
@@ -170,6 +176,12 @@ for (const [name, descriptor] of Object.entries(engines)) {
     await page.waitForSelector('#panel.on');
     await page.locator('#panel-body [data-act="open-md"]').click();
     const markdownEditor = page.getByRole('textbox', { name: /Markdown 详情/ });
+    try {
+      await markdownEditor.waitFor({ state: 'visible', timeout: 8_000 });
+    } catch (error) {
+      const toast = await page.locator('#toast').textContent().catch(() => '');
+      throw new Error(`${name}: Markdown editor did not open (${toast}); ${errors.join('; ')}`, { cause: error });
+    }
     await markdownEditor.fill('# 浏览器记录\n\n可编辑且可保存。');
     await page.evaluate(() => {
       const client = window.LiveDotBridge;
@@ -184,7 +196,7 @@ for (const [name, descriptor] of Object.entries(engines)) {
     await markdownSave.click();
     await page.waitForFunction(() => document.body.textContent?.includes('保存失败：临时保存失败，请重试'));
     await markdownSave.click();
-    const markdownPath = join(data, 'maps', 'default', 'nodes', `${createdNodeId}.md`);
+    const markdownPath = join(data, 'maps', 'default', 'nodes', createdNodeId, 'index.md');
     assert.match(await waitForFileText(markdownPath, '可编辑且可保存。'), /可编辑且可保存。/, `${name}: Markdown retry did not write the document`);
     await page.getByRole('button', { name: '关闭', exact: true }).click();
 
@@ -194,8 +206,7 @@ for (const [name, descriptor] of Object.entries(engines)) {
     await page.locator('#menu button[data-mi="problem"]').click();
     await page.waitForFunction((nodeId) => window.LiveDotApp?.serialize()?.nodes?.find((node) => node.id === nodeId)?.kind === 'problem', createdNodeId);
     await page.waitForFunction(async (nodeId) => {
-      const response = await fetch('/api/v1/snapshot');
-      const snapshot = await response.json();
+      const snapshot = await window.LiveDotBridge.readSnapshot();
       const document = snapshot.document ?? snapshot.map;
       return document?.nodes?.find((node) => node.id === nodeId)?.kind === 'problem';
     }, createdNodeId);
@@ -240,7 +251,7 @@ for (const [name, descriptor] of Object.entries(engines)) {
     await page.waitForFunction(() => document.querySelector('#sync-label')?.textContent === '已保存');
     const curation = await page.evaluate(async () => {
       const plan = await window.LiveDotBridge.planConsolidation({ maxSuggestions: 12 });
-      const validation = await window.LiveDotBridge.request('/api/v1/mcp', { method: 'POST', body: { name: 'map_validate', arguments: {} } });
+      const validation = await window.LiveDotBridge.callTool('map_validate');
       return { revision: plan.revision, suggestions: plan.suggestions?.map((item) => item.id) || [], attemptIssues: validation.result?.attemptIssues || [] };
     });
     assert.equal(curation.revision, saved.revision);
@@ -302,8 +313,8 @@ for (const [name, descriptor] of Object.entries(engines)) {
       const edge = S.edges[0];
       return { node: objectRefText('node', node), edge: objectRefText('edge', edge) };
     });
-    assert.match(refTexts.node, /^\[活点地图\] 节点「.+」n\d+（.+，路线 .+）→ \.live-dot-map\/nodes\/n\d+\.md$/, `${name}: node ref format`);
-    assert.match(refTexts.edge, /^\[活点地图\] 方案「.+」e\d+（.+，路线 .+）→ \.live-dot-map\/routes\/e\d+\.md$/, `${name}: edge ref format`);
+    assert.match(refTexts.node, /^\[活点地图\] 节点「.+」n\d+（.+，路线 .+）→ \.live-dot-map\/maps\/default\/nodes\/n\d+\/index\.md$/, `${name}: node ref format`);
+    assert.match(refTexts.edge, /^\[活点地图\] 方案「.+」e\d+（.+，路线 .+）→ \.live-dot-map\/maps\/default\/routes\/e\d+\/index\.md$/, `${name}: edge ref format`);
     await page.locator(`.node[data-id="${createdNodeId}"]`).click({ button: 'right' });
     await page.waitForSelector('#menu button[data-mi="ref"]');
     assert.match(await page.locator('#menu button[data-mi="ref"]').innerText(), /复制引用给 Agent/, `${name}: copy-ref menu item missing`);
@@ -316,8 +327,8 @@ for (const [name, descriptor] of Object.entries(engines)) {
       ...beforeExternal,
       revision: beforeExternal.revision + 1,
       nodes: [...beforeExternal.nodes, {
-        id: agentNodeId, num: '98', name: 'Agent 刚画的新节点', type: '结果', kind: 'result', route: 'r1', x: 420, y: 60, r: 34,
-        md: `.live-dot-map/nodes/${agentNodeId}.md`, createdAt: '2026-08-15T00:00:00.000Z', updatedAt: '2026-08-15T00:00:00.000Z',
+        id: agentNodeId, num: '98', name: 'Agent 刚画的新节点', type: '目的', kind: 'goal', route: 'r1', x: 420, y: 60, r: 34,
+        md: `.live-dot-map/maps/default/nodes/${agentNodeId}/index.md`, createdAt: '2026-08-15T00:00:00.000Z', updatedAt: '2026-08-15T00:00:00.000Z',
         createdBy: 'agent:codex', updatedBy: 'agent:codex', updatedRevision: 0,
       }],
     };
@@ -337,8 +348,7 @@ for (const [name, descriptor] of Object.entries(engines)) {
       const diag = await page.evaluate(async (nodeId) => {
         let snapshot;
         try {
-          const response = await fetch('/api/v1/snapshot');
-          snapshot = await response.json();
+          snapshot = await window.LiveDotBridge.readSnapshot();
         } catch (error) { snapshot = { fetchError: String(error) }; }
         return {
           hasNode: window.LiveDotApp.serialize().nodes?.some((node) => node.id === nodeId),
@@ -373,7 +383,22 @@ for (const [name, descriptor] of Object.entries(engines)) {
     const bRevisionBefore = JSON.parse(await readFile(mapPathB, 'utf8')).revision;
     await page.locator('#toolbar [data-tool="node"]').click();
     await page.locator('#viewport').click({ position: { x: 500, y: 400 }, force: true });
-    await waitRevision(mapPathB, bRevisionBefore + 1);
+    try {
+      await waitRevision(mapPathB, bRevisionBefore + 1);
+    } catch (error) {
+      const diagnostic = await page.evaluate(() => ({
+        nodes: window.LiveDotApp?.serialize()?.nodes?.length,
+        revision: window.LiveDotBridge?.revision,
+        dirty: window.LiveDotBridge?.dirty,
+        pending: Boolean(window.LiveDotBridge?.pending),
+        inFlight: window.LiveDotBridge?.inFlight,
+        mapKey: window.LiveDotBridge?.mapKey,
+        projectHandle: window.LiveDotBridge?.projectHandle,
+        label: document.querySelector('#sync-label')?.textContent,
+        title: document.querySelector('#sync-dot')?.title,
+      }));
+      throw new Error(`${name}: switched project did not persist ${JSON.stringify(diagnostic)}; ${errors.join('; ')}`, { cause: error });
+    }
     await page.waitForFunction(() => document.querySelector('#sync-label')?.textContent === '已保存');
 
     // ---- T3b（C5/C6）：项目/地图弹层结构、移除导出图片、项目弹层含最近项目 ----
@@ -406,7 +431,7 @@ for (const [name, descriptor] of Object.entries(engines)) {
       const shown = document.querySelector('#first-map-guide').classList.contains('on');
       window.LiveDotApp.load(template);
       const keptOnTemplate = document.querySelector('#first-map-guide').classList.contains('on');
-      const real = { ...template, nodes: [...template.nodes, { id: 'n-guide-2', num: '02', name: '目标', type: '结果', kind: 'result', route: 'r1', x: 200, y: 0, r: 34, md: '.live-dot-map/nodes/n-guide-2.md', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', createdBy: 'human', updatedBy: 'human', updatedRevision: 0 }] };
+      const real = { ...template, nodes: [...template.nodes, { id: 'n-guide-2', num: '02', name: '目标', type: '目的', kind: 'goal', route: 'r1', x: 200, y: 0, r: 34, md: '.live-dot-map/maps/default/nodes/n-guide-2/index.md', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', createdBy: 'human', updatedBy: 'human', updatedRevision: 0 }] };
       window.LiveDotApp.load(real);
       const removedOnReal = !document.querySelector('#first-map-guide').classList.contains('on');
       return { shown, keptOnTemplate, removedOnReal };
@@ -434,7 +459,7 @@ for (const [name, descriptor] of Object.entries(engines)) {
       const observer=new MutationObserver(()=>{ if (/活跃节点已达/.test(toast.textContent||'')) messages.push(toast.textContent); });
       observer.observe(toast,{childList:true,characterData:true,subtree:true});
       const base=window.LiveDotApp.serialize();
-      const make=count=>({...base,revision:base.revision+count,nodes:Array.from({length:count},(_,index)=>index===0?base.nodes[0]:{...base.nodes[0],id:`nt${index}`,num:String(index+1),name:`阈值节点${index+1}`,x:index*10,md:`.live-dot-map/nodes/nt${index}.md`})});
+      const make=count=>({...base,revision:base.revision+count,nodes:Array.from({length:count},(_,index)=>index===0?base.nodes[0]:{...base.nodes[0],id:`nt${index}`,num:String(index+1),name:`阈值节点${index+1}`,x:index*10,md:`.live-dot-map/maps/default/nodes/nt${index}/index.md`})});
       window.LiveDotApp.load(make(15));
       window.LiveDotApp.load(make(20));
       await new Promise(resolve=>setTimeout(resolve,0));
@@ -444,7 +469,7 @@ for (const [name, descriptor] of Object.entries(engines)) {
     });
     assert.deepEqual(hints, ['活跃节点已达 20 个，可打开「整理地图」查看整理建议','活跃节点已达 30 个，请打开「整理地图」后再继续扩张'], `${name}: threshold hints repeated or fired below threshold`);
     await page.screenshot({ path: join(OUTPUT, `bridge-${name}.png`) });
-    const unexpectedErrors = errors.filter((message) => !/status of 409 \(Conflict\)/.test(message));
+    const unexpectedErrors = errors.filter((message) => !/status of 409 \(Conflict\)|"code":"REVISION_CONFLICT"|\/api\/v1\/logs\/client Load request cancelled/.test(message));
     assert.deepEqual(unexpectedErrors, [], `${name}: page errors: ${unexpectedErrors.join('; ')}`);
     results.push({ browser: name, revision: restored.revision, canvasAnnotation: true, agentStatusRows, xssTextOnly: true, curationRecovered: true });
   } finally {

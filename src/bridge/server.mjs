@@ -5,10 +5,12 @@ import { dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { canonicalDirectory } from './fs-utils.mjs';
+import { recordCurrentProject } from './current-project.mjs';
 import { asBridgeError, BridgeError } from './errors.mjs';
 import { noopLogger } from './logger.mjs';
 import { MarkdownStore } from './markdown-store.mjs';
 import { HumanMdUpdateLog } from './human-md-updates.mjs';
+import { MdIndex } from './md-index.mjs';
 import { MapManager } from './map-manager.mjs';
 import { ToolService } from './tool-service.mjs';
 import { ArchiveLifecycle } from './archive-lifecycle.mjs';
@@ -517,6 +519,7 @@ export async function createBridgeServer({
   const knownActiveMaps = new Map();
   const markdownStores = new Map();
   const humanMdLogs = new Map();
+  const mdIndexes = new Map();
   const editorServices = new Map();
   const events = new EventHub(heartbeatMs);
   const configuredOrigins = new Set(allowedOrigins);
@@ -748,6 +751,19 @@ export async function createBridgeServer({
       humanMdLogs.set(key, log);
     }
     return log;
+  }
+
+  /** per-map md 卡片索引（惰性创建，首次查询自动全量建卡）。 */
+  async function mdIndexFor(session) {
+    const mapKey = session.activeMapId ?? await resolveActiveMap(session.projectRoot);
+    const key = `${session.projectRoot}/${mapKey}`;
+    let index = mdIndexes.get(key);
+    if (!index) {
+      index = new MdIndex({ projectRoot: session.projectRoot, mapKey });
+      await index.load();
+      mdIndexes.set(key, index);
+    }
+    return index;
   }
 
   // ---- 产品内更新：/update/check 与 /update/apply ----
@@ -1123,6 +1139,8 @@ export async function createBridgeServer({
         const binding = await authorizeOpenedProject(session, root);
         session.projectRoot = root;
         session.activeMapId = mapId;
+        // 画布切项目 → 广播全局指针，stdio Agent 桥随之下一次调用跟随（bug1）。
+        await recordCurrentProject(root).catch(() => undefined);
         const snapshot = await store.snapshot();
         const setup = typeof agentSetup === 'function'
           ? await agentSetup(root).catch((error) => ({ ok: false, status: 'error', changed: false, code: error?.code || 'AGENT_SETUP_FAILED', message: String(error?.message || error).slice(0, 400) }))
@@ -1189,6 +1207,8 @@ export async function createBridgeServer({
         const binding = await authorizeOpenedProject(session, root);
         session.projectRoot = root;
         session.activeMapId = mapId;
+        // 画布切项目 → 广播全局指针，stdio Agent 桥随之下一次调用跟随（bug1）。
+        await recordCurrentProject(root).catch(() => undefined);
         const snapshot = await store.snapshot();
         // Agent setup is deliberately best-effort: map access must remain
         // available even when no supported Agent is installed or a local
@@ -1396,6 +1416,12 @@ export async function createBridgeServer({
           } catch (error) {
             logger.warn('human-md-updates.record', { path: saved.path, error: error?.message });
           }
+          // 保存即刷该对象卡片（指纹/摘要随写更新，人机双写全覆盖）。
+          try {
+            await (await mdIndexFor(session)).refreshPathAndPersist({ relativePath: saved.path });
+          } catch (error) {
+            logger.warn('md-index.refresh', { path: saved.path, error: error?.message });
+          }
           sendJson(response, 200, saved);
           return;
         }
@@ -1522,10 +1548,19 @@ export async function createBridgeServer({
         if (Array.isArray(body.commands)) {
           try {
             const bundle = await activeBundleStore(session);
+            const index = await mdIndexFor(session);
             for (const command of body.commands) {
               if (command?.op === 'create' && command?.collection === 'nodes' && typeof command?.value?.id === 'string') {
                 await bundle.ensureIndex({ ownerKind: 'node', ownerId: command.value.id, title: String(command.value.name || '') }).catch((error) => {
                   logger.warn('bundle.ensureIndex', { ownerId: command.value.id, error: error?.message });
+                });
+                // 建节点同步建卡片：保证“有节点必有卡”，索引第一时间可用。
+                await index.refreshOwnerAndPersist({
+                  mapRoot: join(session.projectRoot, '.live-dot-map', 'maps', session.activeMapId ?? await resolveActiveMap(session.projectRoot)),
+                  ownerKind: 'nodes',
+                  ownerId: command.value.id,
+                }).catch((error) => {
+                  logger.warn('md-index.refresh-on-create', { ownerId: command.value.id, error: error?.message });
                 });
               }
             }

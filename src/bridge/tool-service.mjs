@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
 import { BridgeError } from './errors.mjs';
 import { ContextDocumentProvider } from './context-document-provider.mjs';
 import { HumanMdUpdateLog } from './human-md-updates.mjs';
+import { MdIndex } from './md-index.mjs';
 
 const schema = (name, description, properties = {}, required = []) => ({
   name,
@@ -46,6 +47,7 @@ export const TOOL_DEFINITIONS = Object.freeze([
   schema('map_import_asset', '从项目内 sourcePath 流式导入附件。', { ...owner, sourcePath: { type: 'string' }, fileName: { type: 'string' }, mimeType: { type: 'string' } }, ['ownerKind', 'ownerId', 'sourcePath']),
   schema('map_archive_asset', '归档对象附件。', { ...owner, fileName: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
   schema('map_restore_asset', '恢复对象附件。', { ...owner, fileName: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
+  schema('map_read_asset', '返回对象附件路径与元数据（不搬运二进制）。文本类附 content，二进制可传 includeContent 取 base64。', { ...owner, fileName: { type: 'string' }, includeContent: { type: 'boolean' } }, ['ownerKind', 'ownerId', 'fileName']),
 ]);
 
 export const TOOL_NAMES = Object.freeze(TOOL_DEFINITIONS.map((tool) => tool.name));
@@ -137,23 +139,30 @@ function markdownSection(text, headings) {
   return '';
 }
 
-function attemptEvidence(document, markdown) {
-  const docs = new Map(markdown.map((item) => [String(item.path).replace(/\\/g, '/'), String(item.text ?? '')]));
+async function attemptEvidence(document, markdown, { readFull } = {}) {
   const mapDir = typeof document.mapDir === 'string' && document.mapDir ? document.mapDir : '.live-dot-map';
-  return (Array.isArray(document.edges) ? document.edges : [])
-    .filter((edge) => ['failed', 'success', 'pending'].includes(String(edge.status)) && edge.archived !== true && edge.shelved !== true)
-    .map((edge) => {
-      const path = String(edge.md || `${mapDir}/routes/${edge.id}/index.md`).replace(/\\/g, '/');
-      const text = docs.get(path) || '';
-      return {
-        id: String(edge.id), status: String(edge.status), name: String(edge.name || edge.id), path,
-        evidence: markdownSection(text, ['关键证据', '证据']).slice(0, 360),
-        result: markdownSection(text, ['结果', '结论']).slice(0, 360),
-        failureReason: markdownSection(text, ['失败原因', '失败原因/排除条件']).slice(0, 360),
-        nextStep: markdownSection(text, ['下一步', '后续建议']).slice(0, 360),
-        hasMarkdown: Boolean(text),
-      };
-    })
+  const edges = (Array.isArray(document.edges) ? document.edges : [])
+    .filter((edge) => ['failed', 'success', 'pending'].includes(String(edge.status)) && edge.archived !== true && edge.shelved !== true);
+  const result = [];
+  for (const edge of edges) {
+    const path = String(edge.md || `${mapDir}/routes/${edge.id}/index.md`).replace(/\\/g, '/');
+    let text = '';
+    const hit = (markdown || []).find((item) => String(item.path).replace(/\\/g, '/') === path);
+    if (hit) text = String(hit.text ?? '');
+    // 摘要足够就用摘要；不够才按需下探读全文（edges 数量受控）。
+    if (!text.trim() && typeof readFull === 'function') {
+      try { text = await readFull(path); } catch { text = ''; }
+    }
+    result.push({
+      id: String(edge.id), status: String(edge.status), name: String(edge.name || edge.id), path,
+      evidence: markdownSection(text, ['关键证据', '证据']).slice(0, 360),
+      result: markdownSection(text, ['结果', '结论']).slice(0, 360),
+      failureReason: markdownSection(text, ['失败原因', '失败原因/排除条件']).slice(0, 360),
+      nextStep: markdownSection(text, ['下一步', '后续建议']).slice(0, 360),
+      hasMarkdown: Boolean(text),
+    });
+  }
+  return result
     .sort((left, right) => (left.status === 'failed' ? -1 : 0) - (right.status === 'failed' ? -1 : 0) || left.id.localeCompare(right.id))
     .slice(0, 8);
 }
@@ -167,6 +176,33 @@ export class ToolService {
     this.actor = String(options.actor || 'agent:generic').startsWith('agent:') ? String(options.actor || 'agent:generic') : 'agent:generic';
     this.projectHandle = String(options.projectHandle || 'stdio');
     this.contextProvider = options.contextProvider ?? new ContextDocumentProvider();
+    this.mdIndexes = new Map();
+  }
+
+  /** per-map 卡片索引：懒创建 + load + 首次全量建卡。 */
+  async #mdIndexFor(context) {
+    const key = `${context.projectRoot}/${context.mapKey}`;
+    let index = this.mdIndexes.get(key);
+    if (!index) {
+      index = new MdIndex({ projectRoot: context.projectRoot, mapKey: context.mapKey });
+      await index.load();
+      this.mdIndexes.set(key, index);
+    }
+    await index.ensureBuilt({ mapRoot: join(context.projectRoot, '.live-dot-map', 'maps', context.mapKey) });
+    return index;
+  }
+
+  /** 写路径成功后刷单 owner 卡片（保存/改名/归档/资产/建节点等，双写全覆盖）。 */
+  async #refreshCard(ownerKindNodeOrRoute, ownerId, context) {
+    if (!ownerKindNodeOrRoute || !ownerId) return;
+    try {
+      const index = await this.#mdIndexFor(context);
+      await index.refreshOwnerAndPersist({
+        mapRoot: join(context.projectRoot, '.live-dot-map', 'maps', context.mapKey),
+        ownerKind: ownerKindNodeOrRoute === 'route' ? 'routes' : 'nodes',
+        ownerId: String(ownerId),
+      });
+    } catch { /* 卡片刷新失败是加速器自愈兜底，不阻断主操作 */ }
   }
 
   async #context(args = {}) {
@@ -198,11 +234,13 @@ export class ToolService {
     const context = await this.#context(args);
     const { store, bundleStore, snapshot, mapKey } = context;
     const document = snapshot.document;
+    const mdIndex = await this.#mdIndexFor(context);
     const collected = async () => this.contextProvider.collect({
       projectRoot: context.projectRoot,
       mapKey,
       document,
       includeHistory: args.includeHistory === true,
+      mdIndex,
     });
 
     if (name === 'map_get_context' || name === 'map_next_candidates') {
@@ -215,7 +253,14 @@ export class ToolService {
         includeHistory: args.includeHistory === true,
         markdown,
       });
-      const evidence = attemptEvidence(document, markdown);
+      const evidence = await attemptEvidence(document, markdown, {
+        readFull: async (path) => {
+          try {
+            const file = ownerArgs({ path }, mapKey);
+            return String((await bundleStore.readMarkdown(file)).content ?? '');
+          } catch { return ''; }
+        },
+      });
       const projection = await mergeHumanMdUpdates(context, { ...this.shared.buildProjectProjection(document, { now: typeof args.now === 'string' ? args.now : undefined }), attemptEvidence: evidence });
       if (name === 'map_get_context') return { projectHandle: this.projectHandle, mapKey, documentId: context.documentId, revision: snapshot.revision, projection, attemptEvidence: evidence, assets: documents.assets, ...retrieved, markdown: queryText ? retrieved.markdown : recentMarkdown(markdown) };
       return { projectHandle: this.projectHandle, mapKey, documentId: context.documentId, revision: snapshot.revision, projection, attemptEvidence: evidence, assets: documents.assets, alternatives: this.shared.findExplorationAlternatives(document, args.currentNodeId == null ? null : String(args.currentNodeId), { limit: 3 }), ...retrieved, autonomy: this.shared.autonomyDecision(document, retrieved.objects) };
@@ -249,6 +294,14 @@ export class ToolService {
       const result = await store.execute(this.#envelope(context, args, Array.isArray(args.commands) ? args.commands : [], 'mcp-apply'));
       // 建节点原子补建资料包主文档：避免“有记录无 index.md”的半状态。
       await ensureNodeIndexes(bundleStore, Array.isArray(args.commands) ? args.commands : []);
+      // 新建节点同步建卡片，保证“有节点必有卡”。
+      if (Array.isArray(args.commands)) {
+        for (const command of args.commands) {
+          if (command?.op === 'create' && command?.collection === 'nodes' && typeof command?.value?.id === 'string') {
+            await this.#refreshCard('node', command.value.id, context);
+          }
+        }
+      }
       return result;
     }
     if (name === 'map_validate') {
@@ -268,20 +321,57 @@ export class ToolService {
     if (name === 'map_read_markdown') return cleanResult(await bundleStore.readMarkdown(file));
     if (name === 'map_write_markdown') {
       const result = await bundleStore.replaceMarkdown({ ...file, content: args.content, baseEtag: args.baseEtag });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return { ...result, content: String(args.content) };
     }
-    if (name === 'map_append_markdown') return bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
+    if (name === 'map_append_markdown') {
+      const result = await bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result;
+    }
     if (name === 'map_list_bundle_files') return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
-    if (name === 'map_create_markdown') return bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
-    if (name === 'map_rename_bundle_file') return bundleStore.rename({ ownerKind: file.ownerKind, ownerId: file.ownerId, from: args.from, to: args.to });
-    if (name === 'map_archive_bundle_file' || name === 'map_archive_asset') return bundleStore.archive(file);
-    if (name === 'map_restore_bundle_file' || name === 'map_restore_asset') return bundleStore.restore(file);
+    if (name === 'map_create_markdown') {
+      const result = await bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result;
+    }
+    if (name === 'map_rename_bundle_file') {
+      const result = await bundleStore.rename({ ownerKind: file.ownerKind, ownerId: file.ownerId, from: args.from, to: args.to });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result;
+    }
+    if (name === 'map_archive_bundle_file' || name === 'map_archive_asset') {
+      const result = await bundleStore.archive(file);
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result;
+    }
+    if (name === 'map_restore_bundle_file' || name === 'map_restore_asset') {
+      const result = await bundleStore.restore(file);
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result;
+    }
     if (name === 'map_list_assets') {
       const files = await bundleStore.list({ ...file, includeArchived: args.includeArchived === true });
       return { mapKey, assets: files.filter((entry) => entry.kind !== 'markdown') };
     }
     if (name === 'map_import_asset') {
-      return bundleStore.importAsset({ ...file, fileName: String(args.fileName || basename(String(args.sourcePath || ''))), sourcePath: String(args.sourcePath || ''), mimeType: args.mimeType });
+      const result = await bundleStore.importAsset({ ...file, fileName: String(args.fileName || basename(String(args.sourcePath || ''))), sourcePath: String(args.sourcePath || ''), mimeType: args.mimeType });
+      await this.#refreshCard(file.ownerKind, file.ownerId, context);
+      return result;
+    }
+    if (name === 'map_read_asset') {
+      // 返回路径 + 元数据（不搬运二进制）。文本类附 content；二进制可传 includeContent 取 base64。
+      const metadata = await bundleStore.readAsset({ ...file, archived: args.archived === true });
+      const bytes = metadata?.buffer ?? Buffer.alloc(0);
+      const entry = {
+        ownerKind: metadata.ownerKind, ownerId: metadata.ownerId, fileName: metadata.fileName, path: metadata.path,
+        archived: Boolean(metadata.archived), kind: metadata.kind, mimeType: metadata.mimeType, disposition: metadata.disposition,
+        size: Number(metadata.size ?? 0), updatedAt: metadata.updatedAt ?? null,
+      };
+      const isText = /^(text\/|application\/(json|xml|javascript))/.test(String(entry.mimeType ?? ''));
+      if (bytes.length && isText) entry.content = bytes.toString('utf8');
+      if (args.includeContent === true && bytes.length) entry.base64 = bytes.toString('base64');
+      return { mapKey, ...entry };
     }
     throw new BridgeError('UNKNOWN_MCP_TOOL', `未知地图工具：${name}`, { status: 404 });
   }
