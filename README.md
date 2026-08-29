@@ -6,7 +6,7 @@ A shared exploration space for humans and agents.
 
 ![活点地图画布](landing/public/media/landing-hero.png)
 
-**[⬇ Download (Windows)](https://github.com/hhh-dahah/live-dot-map/releases/download/v2.0.0/LiveDotMapSetup.exe)** · **[Demo](https://livedotmap.top)** · **[Documentation](agent-kit/setup.md)**
+**[⬇ Download (Windows)](https://github.com/hhh-dahah/live-dot-map/releases/download/v2.0.0-rc.3/LiveDotMapSetup.exe)** · **[Demo](https://livedotmap.top)** · **[Documentation](agent-kit/setup.md)**
 
 ## Why?
 
@@ -41,7 +41,7 @@ Chat is linear. Exploration is not.
 
 ## 安装方式
 
-**普通用户（Windows）**：下载 **[LiveDotMapSetup.exe](https://github.com/hhh-dahah/live-dot-map/releases/download/v2.0.0/LiveDotMapSetup.exe)**（或到 [Releases](../../releases) 选择最新版本），安装后双击桌面图标直达画布，选择一个项目文件夹即可开始。然后在你自己的 Agent（Codex / Claude Code / Kimi Code 等）里打开这个项目文件夹，对它说一句 `/地图自检`，即可完成接入与健康检查——画布本身不含 Agent，协作发生在你信任的 Agent 与本地桥之间。
+**普通用户（Windows）**：下载 **[LiveDotMapSetup.exe](https://github.com/hhh-dahah/live-dot-map/releases/download/v2.0.0-rc.3/LiveDotMapSetup.exe)**（或到 [Releases](../../releases) 选择最新版本），安装后双击桌面图标直达画布，选择一个项目文件夹即可开始。然后在你自己的 Agent（Codex / Claude Code / Kimi Code 等）里打开这个项目文件夹，对它说一句 `/地图自检`，即可完成接入与健康检查——画布本身不含 Agent，协作发生在你信任的 Agent 与本地桥之间。
 
 **开发者**（需要 Node.js ≥ 20.12）：
 
