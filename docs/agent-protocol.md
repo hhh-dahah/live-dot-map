@@ -128,8 +128,10 @@ restore、switch 和 reveal 等副作用操作必须通过 Host/Origin、HttpOnl
 
 - `map_read_markdown({path,create?,title?})` 读取当前地图资料包内 Markdown；`create:true`
   仅可初始化缺失或已知零字节旧文件，返回 path/content/exists/created/size/etag/updatedAt。
-- `map_write_markdown({path,content,baseEtag})` 使用同一路径锁、临时文件和原子替换；
-  etag 不匹配返回 `409 MARKDOWN_CONFLICT` 并保留双方内容。
+- `map_write_markdown({path,content,baseEtag,allowContentRemoval?})` 使用同一路径锁、临时文件和原子替换；
+  etag 不匹配返回 `409 MARKDOWN_CONFLICT` 并保留双方内容。**默认追加式**：删除已有内容行
+  会被拒绝并返回 `409 REWRITE_REMOVES_CONTENT`；仅在明确重写草稿或重构文档时传
+  `allowContentRemoval: true`；日常改写优先用 `map_append_markdown`。
 - `map_append_markdown({path,content,commandId})` 在同一 per-path 锁内追加最新内容，
   commandId 幂等；与 replace 并发时 replace 重新校验 etag。服务端统一换行边界。
 - path 只能是项目根内当前地图资料包的相对 `.md` 路径。主文档固定为

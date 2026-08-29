@@ -640,6 +640,7 @@ function retrieveContext(document, query, options = {}) {
     const id = String(item.id ?? "").toLowerCase();
     const name = String(item.name ?? "").toLowerCase();
     if (id && queryLower.includes(id) || name && queryLower.includes(name)) seeds.add(String(item.id));
+    else if (name && queryLower.length >= 2 && name.includes(queryLower)) seeds.add(String(item.id));
   }
   if (typeof options.currentNodeId === "string" && active.some(({ item }) => String(item.id) === options.currentNodeId)) seeds.add(options.currentNodeId);
   const adjacency = /* @__PURE__ */ new Map();
@@ -678,6 +679,12 @@ function retrieveContext(document, query, options = {}) {
     if (tokenHits) {
       score += Math.min(250, tokenHits * 50);
       reasons.push(`\u6587\u672C\u547D\u4E2D ${tokenHits} \u4E2A\u8BCD\u5143`);
+    }
+    const nameLower = String(item.name ?? "").toLowerCase();
+    const nameHits = nameLower ? terms.filter((term) => nameLower.includes(term)).length : 0;
+    if (nameHits) {
+      score += Math.min(600, nameHits * 300);
+      reasons.push(`\u540D\u79F0\u547D\u4E2D ${nameHits} \u4E2A\u8BCD\u5143`);
     }
     if (kind === "anns" && (item.attention === "new" || item.attention === "delivered")) {
       score += 800;
@@ -4222,7 +4229,7 @@ var TOOL_DEFINITIONS = Object.freeze([
   schema("map_checkpoint", "\u521B\u5EFA\u53EF\u6062\u590D\u68C0\u67E5\u70B9\u3002", { reason: { type: "string" } }),
   schema("map_plan_consolidation", "\u53EA\u8BFB\u751F\u6210\u53EF\u5BA1\u6838\u7684\u6574\u7406\u5EFA\u8BAE\u3002", { maxSuggestions: { type: "integer", minimum: 1, maximum: 20 }, now: { type: "string" } }),
   schema("map_read_markdown", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u8D44\u6599\u5305 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" } }),
-  schema("map_write_markdown", "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, baseEtag: { type: "string" } }, ["content", "baseEtag"]),
+  schema("map_write_markdown", "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, baseEtag: { type: "string" }, allowContentRemoval: { type: "boolean" } }, ["content", "baseEtag"]),
   schema("map_append_markdown", "\u6309\u8DEF\u5F84\u9501\u5E42\u7B49\u8FFD\u52A0 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, commandId: { type: "string" } }, ["content", "commandId"]),
   schema("map_list_bundle_files", "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u6587\u4EF6\u3002", { ...owner, includeArchived: { type: "boolean" } }, ["ownerKind", "ownerId"]),
   schema("map_create_markdown", "\u5728\u5BF9\u8C61\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u8865\u5145 Markdown\u3002", { ...owner, fileName: { type: "string" }, title: { type: "string" }, content: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
@@ -4487,6 +4494,17 @@ var ToolService = class {
     const file = ownerArgs(args, mapKey);
     if (name === "map_read_markdown") return cleanResult(await bundleStore.readMarkdown(file));
     if (name === "map_write_markdown") {
+      if (args.allowContentRemoval !== true) {
+        const current = await bundleStore.readMarkdown(file).catch(() => null);
+        const existing = String(current?.content ?? "");
+        const next = String(args.content ?? "");
+        if (existing.trim()) {
+          const removed = existing.split(/\r?\n/).filter((line) => line.trim() && !next.includes(line.trim()));
+          if (removed.length) {
+            throw new BridgeError("REWRITE_REMOVES_CONTENT", `\u6574\u6587\u66FF\u6362\u4F1A\u5220\u9664 ${removed.length} \u884C\u5DF2\u6709\u5185\u5BB9\uFF0C\u5DF2\u62D2\u7EDD\u3002\u4EBA\u4E0E Agent \u7684\u5199\u5165\u9ED8\u8BA4\u662F\u8FFD\u52A0\u5F0F\uFF1A\u8BF7\u6539\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\uFF0C\u91CD\u4F20 allowContentRemoval: true\u3002`, { status: 409 });
+          }
+        }
+      }
       const result2 = await bundleStore.replaceMarkdown({ ...file, content: args.content, baseEtag: args.baseEtag });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return { ...result2, content: String(args.content) };
@@ -5438,7 +5456,7 @@ var EditorService = class _EditorService {
       const metadata = await stat6(candidate);
       const folder = isDirectory(metadata) ? candidate : dirname5(candidate);
       await this.#assertNoSymlinkEscape(folder);
-      await this.#callNative("open-folder", { targetPath: folder });
+      await this.#callNative("open-folder", { targetPath: isDirectory(metadata) ? folder : candidate });
       return { editorId, launched: true };
     }
     const target = await this.#projectPath(relativePath, { kind: "file" });

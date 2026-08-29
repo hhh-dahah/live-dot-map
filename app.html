@@ -28,6 +28,8 @@
   --ink: oklch(24% 0.01 285);
   --success: oklch(58% 0.15 145);
   --danger: oklch(56% 0.19 27);
+  /* 警示黄 — 仅用于同步状态灯「待保存/未同步」,不作他用 */
+  --warn: oklch(72% 0.14 75);
   --pending: oklch(68% 0.012 285);
   /* 便签黄 — 仅用于标注(人与 Agent 统一),不作他用 */
   --note: oklch(96% 0.09 90);
@@ -2930,7 +2932,7 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   body.append(editor, preview, side);
   const footer = document.createElement('footer'); footer.className = 'mdv-foot';
   const status = document.createElement('span'); status.className = 'mdv-status'; status.textContent = '已打开';
-  const saveButton = document.createElement('button'); saveButton.className = 'mdv-save'; saveButton.type = 'button'; saveButton.textContent = '保存';
+  const saveButton = document.createElement('button'); saveButton.className = 'mdv-save'; saveButton.type = 'button'; saveButton.textContent = '保存（Ctrl+S）'; saveButton.title = '快捷键：Ctrl+S 或 Ctrl+Enter';
   footer.append(status, saveButton); card.append(header, body, footer); ov.appendChild(card);
   let files = Array.isArray(bundle?.files) ? bundle.files : [];
   let currentName = String(path).split(/[\\/]/).pop() || 'index.md';
@@ -2987,7 +2989,13 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   const closeMenu = () => { menu.hidden = true; };
   openBtn.addEventListener('click', () => { menu.hidden = !menu.hidden; });
   ov.addEventListener('pointerdown', e => { if (!openWrap.contains(e.target)) closeMenu(); });
-  ov.addEventListener('keydown', e => { if (e.key === 'Escape'){ if (!menu.hidden) closeMenu(); else closeEditor(); } });
+  ov.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.key === 'Enter')){
+      // 快捷保存：拦在编辑器层并阻止冒泡，避免触发画布全局 Ctrl+S（导出地图）。
+      e.preventDefault(); e.stopPropagation(); saveButton.click(); return;
+    }
+    if (e.key === 'Escape'){ if (!menu.hidden) closeMenu(); else closeEditor(); }
+  });
   const menuIcon = item => {
     const id = String(item?.id || '');
     if (item?.kind === 'folder' || id === 'folder') return I.folder;
@@ -3164,6 +3172,8 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     }
     finally{ saving = false; saveButton.disabled = false; }
   };
+  /* 编辑器内的未保存提示：只动本面板状态栏，不碰全局同步灯（未保存≠冲突）。 */
+  editor.addEventListener('input', () => { if (!saving) status.textContent = editor.value === savedText ? '已保存' : '未保存（Ctrl+S 保存）'; });
   editor.addEventListener('paste', async event => {
     const item = [...(event.clipboardData?.items || [])].find(candidate => candidate.kind === 'file' && /^image\//i.test(candidate.type));
     if (!item) return;
@@ -3480,8 +3490,8 @@ window.LiveDotApp = {
     if (!dot){ syncBadge(); dot = document.querySelector('#sync-dot'); }
     let label = document.querySelector('#sync-label');
     if (!label){ label = document.createElement('span'); label.id='sync-label'; label.style.cssText='font-size:11px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; document.querySelector('#project-pill').insertBefore(label, document.querySelector('#proj-menu-btn')); }
-    const states = {draft:['var(--success)','正常'],saving:['var(--success)','正常'],saved:['var(--success)','正常'],offline:['var(--danger)','断线'],conflict:['var(--danger)','冲突'],error:['var(--danger)','异常'],fallback:['var(--danger)','降级']};
-    const current = states[state] || states.error; dot.style.background=current[0]; dot.title=(detail || current[1]) + (typeof agentActivityLine === 'function' ? agentActivityLine() : ''); label.textContent=current[1];
+    const states = {draft:['var(--success)','正常'],saving:['var(--success)','正常'],saved:['var(--success)','正常'],dirty:['var(--warn)','待保存'],offline:['var(--danger)','断线'],conflict:['var(--danger)','冲突'],error:['var(--danger)','异常'],fallback:['var(--danger)','降级']};
+    const current = states[state] || ['var(--warn)', '未知状态']; dot.style.background=current[0]; dot.title=(detail || current[1]) + (typeof agentActivityLine === 'function' ? agentActivityLine() : ''); label.textContent=current[1];
     try{ window.LiveDotUI?.onStatusChange?.(state, detail); }catch{ /* 状态弹窗是附加能力，不能影响主流程 */ }
   },
   // Agent 刚写回的新对象高亮：给对应画布元素加 pulse 类（动画结束后自动移除）

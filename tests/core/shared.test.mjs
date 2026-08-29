@@ -459,3 +459,17 @@ test('Agent 初始化地图在 15 个活跃节点后必须先压缩', () => {
     projectId: 'project-test', baseRevision: map.revision, commandId: 'cmd-initial-over', actor: 'agent:codex', sessionId: 'session-agent', commands: makeNodes(16, 1),
   }, { now: NOW }), (error) => error.code === 'AGENT_INITIAL_MAP_LIMIT' && error.details.maxInitialNodes === 15);
 });
+
+test('按节点名片段检索时名称命中排最前（n9 复现：不误压过名字本身）', () => {
+  const map = applyCommandEnvelope(createEmptyMap({ name: '检索', now: NOW, mapId: 'map-search' }), {
+    projectId: 'project-test', baseRevision: 0, commandId: 'cmd-search', actor: 'human', sessionId: 'session-1',
+    commands: [
+      { op: 'create', collection: 'nodes', value: { id: 'n6', name: '问题 这个人的新的列表', type: '问题', kind: 'problem', x: 0, y: 0 } },
+      { op: 'create', collection: 'nodes', value: { id: 'n15', name: '修bug 排序计划', type: '目标', kind: 'goal', x: 100, y: 0 } },
+      { op: 'create', collection: 'nodes', value: { id: 'n10', name: '并发性问题', type: '目标', kind: 'goal', x: 200, y: 0 } },
+    ],
+  }, { now: NOW });
+  // query 是节点名的片段：即使有别的高分问题节点，名字本身也必须排第一。
+  assert.equal(retrieveContext(map, '排序计划', { now: NOW }).objects[0]?.id, 'n15');
+  assert.equal(retrieveContext(map, '并发', { now: NOW }).objects[0]?.id, 'n10');
+});

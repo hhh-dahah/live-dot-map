@@ -5,13 +5,13 @@
   "channel": "internal-rc",
   "files": {
     "app.html": {
-      "bytes": 276277,
-      "sha256": "e8bb5b0311b1275b426433b29aca1cb9424941db9c85dbd3b26ba8c2c614a3d5",
+      "bytes": 277025,
+      "sha256": "6a1b36d357416da333716c9b83f2766e6025cae7571b8476e96f142a618593ea",
       "url": "payload/app.html"
     },
     "livedot-bridge-win-x64.exe": {
-      "bytes": 92283392,
-      "sha256": "a1e698f437c776f03c256ce3df6cf2dc6645e45fa357172c307a3cae61dce3ee",
+      "bytes": 92285440,
+      "sha256": "39512599471befea8c6cfc3c83fa5cb57b47f68e6045c507eab76fe17023fc53",
       "url": "payload/livedot-bridge-win-x64.exe"
     },
     "manifest.webmanifest": {

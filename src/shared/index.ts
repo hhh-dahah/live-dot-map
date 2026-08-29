@@ -782,7 +782,9 @@ export function retrieveContext(document: MapDocument, query: string, options: {
   for (const { item } of active) {
     const id = String(item.id ?? '').toLowerCase();
     const name = String(item.name ?? '').toLowerCase();
+    // 名称匹配双向：query 含完整名字，或（长度≥2 的）query 本身是名字的片段，都算"明确提到"。
     if ((id && queryLower.includes(id)) || (name && queryLower.includes(name))) seeds.add(String(item.id));
+    else if (name && queryLower.length >= 2 && name.includes(queryLower)) seeds.add(String(item.id));
   }
   if (typeof options.currentNodeId === 'string' && active.some(({ item }) => String(item.id) === options.currentNodeId)) seeds.add(options.currentNodeId);
   const adjacency = new Map<string, Set<string>>();
@@ -820,6 +822,10 @@ export function retrieveContext(document: MapDocument, query: string, options: {
     }
     const tokenHits = terms.filter((term) => text.includes(term)).length;
     if (tokenHits) { score += Math.min(250, tokenHits * 50); reasons.push(`文本命中 ${tokenHits} 个词元`); }
+    // 名称命中的词元单独加权：找名字时，名字里的命中比正文/类型里的命中更说明问题。
+    const nameLower = String(item.name ?? '').toLowerCase();
+    const nameHits = nameLower ? terms.filter((term) => nameLower.includes(term)).length : 0;
+    if (nameHits) { score += Math.min(600, nameHits * 300); reasons.push(`名称命中 ${nameHits} 个词元`); }
     if (kind === 'anns' && (item.attention === 'new' || item.attention === 'delivered')) { score += 800; reasons.push('人类新标注尚未确认'); }
     if (kind === 'anns' && isObject(item.target) && seeds.has(String(item.target.id))) { score += 800; reasons.push('标注属于明确目标'); }
     if (kind === 'nodes' && normalizeNodeKind(item.kind ?? item.type) === 'problem' && item.resolved !== true) { score += 700; reasons.push('未解决问题节点'); }

@@ -167,7 +167,7 @@ test('系统默认应用、所在文件夹和手动程序都走原生 helper', a
   assert.equal(exported.exported, true);
   assert.deepEqual(calls.map((item) => item.operation), ['pick-editor', 'open-manual', 'open-default', 'open-folder', 'save-as']);
   assert.equal(calls.every((item) => !('command' in item) && !('args' in item)), true);
-  assert.equal(calls.find((item) => item.operation === 'open-folder').targetPath, join(root, 'docs'));
+  assert.equal(calls.find((item) => item.operation === 'open-folder').targetPath, join(root, 'docs', 'note.md'));
   assert.equal(calls.find((item) => item.operation === 'save-as').suggestedName, 'note.md');
 });
 
