@@ -59,8 +59,49 @@ for (const [name, executablePath] of Object.entries(browsers)) {
     assert.equal(state.futureName, '未来只读');
     assert.equal(state.readOnly, true);
     assert.equal(state.syncLabel, '降级模式');
+    const layouts = [];
+    for (const width of [375, 700, 960, 1280, 1920]) {
+      await page.setViewportSize({ width, height: 800 });
+      const layout = await page.evaluate(() => {
+        document.documentElement.style.zoom = '1';
+        const project = document.querySelector('#project-pill')?.getBoundingClientRect();
+        const toolbar = document.querySelector('#toolbar')?.getBoundingClientRect();
+        const status = document.querySelector('#sync-dot');
+        return {
+          viewport: innerWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          separated: Boolean(project && toolbar && project.right <= toolbar.left + 0.5),
+          toolbarInside: Boolean(toolbar && toolbar.left >= 0 && toolbar.right <= innerWidth),
+          statusKeyboard: status instanceof HTMLButtonElement && status.tabIndex >= 0,
+        };
+      });
+      assert.ok(layout.scrollWidth <= layout.viewport + 1, `${name}: ${width}px horizontal overflow`);
+      assert.equal(layout.separated, true, `${name}: ${width}px top controls overlap`);
+      assert.equal(layout.toolbarInside, true, `${name}: ${width}px toolbar escaped viewport`);
+      assert.equal(layout.statusKeyboard, true, `${name}: ${width}px status light is not keyboard reachable`);
+      layouts.push({ width, ...layout });
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const zoomed = await page.evaluate(() => {
+      document.documentElement.style.zoom = '2';
+      const project = document.querySelector('#project-pill')?.getBoundingClientRect();
+      const toolbar = document.querySelector('#toolbar')?.getBoundingClientRect();
+      return {
+        viewport: innerWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        separated: Boolean(project && toolbar && project.right <= toolbar.left + 0.5),
+        toolbarInside: Boolean(toolbar && toolbar.left >= 0 && toolbar.right <= innerWidth),
+      };
+    });
+    assert.ok(zoomed.scrollWidth <= zoomed.viewport + 1, `${name}: 200% zoom horizontal overflow`);
+    assert.equal(zoomed.separated, true, `${name}: 200% zoom top controls overlap`);
+    assert.equal(zoomed.toolbarInside, true, `${name}: 200% zoom toolbar escaped viewport`);
+    await page.locator('#sync-dot').focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => Boolean(document.querySelector('#toast')?.textContent?.trim()));
+    await page.evaluate(() => { document.documentElement.style.zoom = '1'; });
     assert.deepEqual(errors, []);
-    results.push({ browser: name, ...state });
+    results.push({ browser: name, ...state, responsiveWidths: layouts.map((item) => item.width), zoom200: true, keyboardStatus: true });
   } finally {
     await browser.close();
   }

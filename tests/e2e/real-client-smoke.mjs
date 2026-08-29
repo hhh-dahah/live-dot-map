@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { installProject } from '../../agent-kit/lib/installer.mjs';
+import { ensureMapsLayout } from '../../src/bridge/maps.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const clients = {
@@ -11,10 +12,21 @@ const clients = {
   kimi: process.env.LIVEDOT_KIMI_BIN || 'C:\\Users\\Thomas\\.kimi-code\\bin\\kimi.exe',
   codebuddy: process.env.LIVEDOT_CODEBUDDY_BIN || 'D:\\workbuddy\\resources\\app.asar.unpacked\\cli\\bin\\codebuddy',
 };
-const selected = process.argv.slice(2).filter((value) => value in clients);
-if (!selected.length) throw new Error('用法：node tests/e2e/real-client-smoke.mjs codex|claude|kimi|codebuddy');
+const requested = process.argv.slice(2);
+const invalid = requested.filter((value) => !(value in clients));
+if (invalid.length) throw new Error(`未知真实客户端：${invalid.join(', ')}。可选：codex|claude|kimi|codebuddy`);
+if (!requested.length) throw new Error('未选择真实客户端。用法：npm run verify:real-clients -- codex kimi');
+const selected = requested;
 const REAL_TEST_ROOT = resolve(process.env.LIVEDOT_REAL_TEST_ROOT || 'D:\\LiveDotMap-Test');
 await mkdir(REAL_TEST_ROOT, { recursive: true });
+
+for (const agent of selected) {
+  try {
+    await access(clients[agent]);
+  } catch (error) {
+    throw new Error(`[real-client-smoke] 未找到已选择的 ${agent} 客户端：${clients[agent]}。请安装客户端或设置 LIVEDOT_${agent.toUpperCase()}_BIN；本次验收失败，不伪造成功。`, { cause: error });
+  }
+}
 
 async function run(command, args, options = {}) {
   const executable = options.execPath || command;
@@ -47,7 +59,7 @@ async function runClient(agent, project, mcpConfigPath) {
   const prompt = [
     '这是一次活点地图真实客户端接入验收。只做以下事情，不要修改其他文件：',
     '1. 先读取活点地图 MCP 上下文并找到人类标注 a-human-real-client。',
-    '2. 立即调用 map_apply_commands，baseRevision 使用 map_get_context 返回的 revision（首次应为 0）：commands 只包含一个 create，collection=nodes，value 使用 id=real-client-check、num=02、name=真实客户端验收、type=结果、route=r1、x=240、y=0、md=.live-dot-map/nodes/real-client-check.md。必须拿到工具成功响应，不要只描述计划。',
+    '2. 立即调用 map_apply_commands，baseRevision 使用 map_get_context 返回的 revision（首次应为 0）：commands 只包含一个 create，collection=nodes，value 使用 id=real-client-check、num=02、name=真实客户端验收、kind=goal、type=目的、route=r1、x=240、y=0、md=.live-dot-map/maps/default/nodes/real-client-check/index.md。必须拿到工具成功响应，不要只描述计划。',
     '3. 再调用 map_ack_human_updates，ids 只填 a-human-real-client，summary 必须逐字包含 a-human-real-client 和“真实客户端先验证新用户接入”。',
     '4. 最后报告两个工具都成功的结果；如果任一工具失败，继续修正调用，不要提前结束。',
   ].join('\n');
@@ -64,13 +76,24 @@ for (const agent of selected) {
     // CodeBuddy is embedded in WorkBuddy on this machine and is not on PATH;
     // force the optional adapter into this isolated fixture so the real CLI
     // receives its own --agent codebuddy MCP server instead of Claude's server.
-    await installProject({ projectRoot: project, createDesktopShortcut: false, register: false, offline: true, discoverAgents: agent === 'codebuddy' ? false : true });
-    const mapPath = join(project, '.live-dot-map', 'map.json');
-    const mcp = JSON.parse(await readFile(join(project, '.mcp.json'), 'utf8'));
-    const server = Object.values(mcp.mcpServers).find((candidate) => candidate.args?.at(-1) === agent);
-    assert.ok(server, `${agent} MCP server was not generated`);
-    const mcpConfigPath = join(project, `.mcp-${agent}.json`);
-    await writeFile(mcpConfigPath, `${JSON.stringify({ mcpServers: { 'livedot-map': server } }, null, 2)}\n`);
+    const installation = await installProject({ projectRoot: project, createDesktopShortcut: false, register: false, offline: true, discoverAgents: agent === 'codebuddy' ? false : true });
+    await ensureMapsLayout(project);
+    const mapPath = join(project, '.live-dot-map', 'maps', 'default', 'map.json');
+    // Codex/Kimi deliberately use the real global configuration written by
+    // installProject; the project directory is data-only and must not regain
+    // the retired .mcp.json. Claude/CodeBuddy accept an explicit isolated
+    // config, built from the same installed runtime for their CLI flags.
+    let mcpConfigPath = '';
+    if (agent === 'claude' || agent === 'codebuddy') {
+      assert.ok(installation.runtime, `${agent} runtime was not installed`);
+      const server = {
+        type: 'stdio',
+        command: process.execPath,
+        args: [installation.runtime, 'mcp', '--agent', agent],
+      };
+      mcpConfigPath = join(project, `.mcp-${agent}.json`);
+      await writeFile(mcpConfigPath, `${JSON.stringify({ mcpServers: { 'livedot-map': server } }, null, 2)}\n`);
+    }
     const map = JSON.parse(await readFile(mapPath, 'utf8'));
     const now = new Date().toISOString();
     map.anns = [{ id: 'a-human-real-client', target: { kind: 'canvas' }, text: '真实客户端先验证新用户接入', source: 'human', priority: 'high', attention: 'new', acknowledgements: [], createdAt: now, updatedAt: now, updatedBy: 'human', updatedRevision: map.revision }];

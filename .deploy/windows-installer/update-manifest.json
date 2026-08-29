@@ -6,12 +6,12 @@
   "files": {
     "app.html": {
       "bytes": 276277,
-      "sha256": "518258b7f3b96872cc408a3ddfb7c650993ef229e9f1689c3ff148c4bea41d21",
+      "sha256": "e8bb5b0311b1275b426433b29aca1cb9424941db9c85dbd3b26ba8c2c614a3d5",
       "url": "payload/app.html"
     },
     "livedot-bridge-win-x64.exe": {
-      "bytes": 92265472,
-      "sha256": "0b6f318071cae61859f40ab2ee0de20db26570ebcd70f99e52da8bff1307bd67",
+      "bytes": 92283392,
+      "sha256": "a1e698f437c776f03c256ce3df6cf2dc6645e45fa357172c307a3cae61dce3ee",
       "url": "payload/livedot-bridge-win-x64.exe"
     },
     "manifest.webmanifest": {

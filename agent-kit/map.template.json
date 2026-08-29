@@ -3,6 +3,8 @@
   "version": 2,
   "revision": 0,
   "lastEventId": 0,
+  "mapDir": ".live-dot-map/maps/default",
+  "bundleLayoutVersion": 1,
   "name": "未命名地图",
   "createdAt": "2026-01-01T00:00:00.000Z",
   "updatedAt": "2026-01-01T00:00:00.000Z",
@@ -19,7 +21,7 @@
   "nodes": [
     {
       "id": "n1", "num": "01", "name": "开始", "kind": "goal", "type": "目的", "route": "r1",
-      "x": 0, "y": 0, "md": ".live-dot-map/nodes/n1.md",
+      "x": 0, "y": 0, "md": ".live-dot-map/maps/default/nodes/n1/index.md",
       "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z", "createdBy": "migration",
       "updatedBy": "migration", "updatedRevision": 0
     }

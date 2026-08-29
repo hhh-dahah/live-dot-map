@@ -11,12 +11,24 @@ $oldTarget = $env:LIVEDOT_SETUP_TEST_OPEN_PROJECT
 $oldBrowser = $env:LIVEDOT_SETUP_SKIP_BROWSER
 $oldLastProject = $env:LIVEDOT_SETUP_LAST_PROJECT_FILE
 $oldRecentFile = $env:LIVEDOT_RECENT_PROJECTS_FILE
+$oldRuntimeState = $env:LIVEDOT_RUNTIME_STATE_DIR
 New-Item -ItemType Directory -Force -Path $workspace, $targetProject | Out-Null
 $env:LIVEDOT_SETUP_WORKSPACE_ROOT = $workspace
 $env:LIVEDOT_SETUP_TEST_OPEN_PROJECT = $targetProject
 $env:LIVEDOT_SETUP_SKIP_BROWSER = '1'
 $env:LIVEDOT_SETUP_LAST_PROJECT_FILE = $lastProjectFile
 $env:LIVEDOT_RECENT_PROJECTS_FILE = Join-Path $testRoot 'recent-projects.json'
+$env:LIVEDOT_RUNTIME_STATE_DIR = Join-Path $testRoot 'runtime-state'
+$bridgeStateFile = Join-Path $env:LIVEDOT_RUNTIME_STATE_DIR 'bridge.json'
+
+function Get-IsolatedBridge {
+  if (-not (Test-Path -LiteralPath $bridgeStateFile)) { return $null }
+  try {
+    $state = Get-Content -LiteralPath $bridgeStateFile -Raw | ConvertFrom-Json
+    if (-not $state.pid) { return $null }
+    return Get-CimInstance Win32_Process -Filter "ProcessId = $($state.pid)" -ErrorAction SilentlyContinue
+  } catch { return $null }
+}
 $installerOutput = if ([string]::IsNullOrWhiteSpace($env:LIVEDOT_WINDOWS_INSTALLER_OUTPUT)) { 'dist/windows-installer' } else { $env:LIVEDOT_WINDOWS_INSTALLER_OUTPUT }
 $exe = (Resolve-Path (Join-Path $installerOutput 'LiveDotMapSetup.exe')).Path
 try {
@@ -30,9 +42,7 @@ try {
       $proc.Refresh()
       if ($proc.MainWindowHandle -ne 0) { $maxHandle = $proc.MainWindowHandle }
     } else { $exited = $true }
-    $bridge = Get-CimInstance Win32_Process -Filter "Name = 'livedot-bridge-win-x64.exe'" -ErrorAction SilentlyContinue |
-      Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($targetProject, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $_.CommandLine.IndexOf(' serve ', [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
-      Select-Object -First 1
+    $bridge = Get-IsolatedBridge
   }
   if ($maxHandle -ne 0) { throw '产品入口出现了启动器窗口（应无窗口静默启动）' }
   if (-not $bridge) { throw '产品入口没有直接启动默认工作区并切换到本机选择项目的画布会话' }
@@ -62,9 +72,7 @@ try {
   try {
     for ($i = 0; $i -lt 45 -and -not $bridge; $i++) {
       Start-Sleep -Milliseconds 500
-      $bridge = Get-CimInstance Win32_Process -Filter "Name = 'livedot-bridge-win-x64.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($targetProject, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $_.CommandLine.IndexOf(' serve ', [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
-        Select-Object -First 1
+      $bridge = Get-IsolatedBridge
     }
     if (-not $bridge) { throw '二次启动没有恢复上次工作区项目' }
     $deadline = (Get-Date).AddSeconds(15)
@@ -87,6 +95,7 @@ finally {
   $env:LIVEDOT_SETUP_SKIP_BROWSER = $oldBrowser
   $env:LIVEDOT_SETUP_LAST_PROJECT_FILE = $oldLastProject
   $env:LIVEDOT_RECENT_PROJECTS_FILE = $oldRecentFile
+  $env:LIVEDOT_RUNTIME_STATE_DIR = $oldRuntimeState
   $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
   $resolvedBase = [IO.Path]::GetFullPath($testBase).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
   if ($resolvedTestRoot.StartsWith($resolvedBase, [StringComparison]::OrdinalIgnoreCase)) {

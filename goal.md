@@ -36,10 +36,13 @@
 - 首次引导、演示地图、agent-kit、PWA 和一句口令接入已完成；v2 线上分发按 `docs/plans/8-12上线plan.md` 独立复验，不作为本地开发和自动测试前置条件。
 - `livedotmap.top` 保留历史站点并可访问；当前 v2 三源版本/hash 一致性仍未全部通过，细节只保留在 `implement.md`。
 
-### 当前：v2 受控人工验收（记忆策展 V1 技术底座完成）
+### 当前：v2 受控人工验收（可靠协同与资料包契约收口）
 
 - v2 的可靠存储、本地桥、人类标注闭环、确定性图检索、画布强模式与三种 Agent 适配已实现；自动化证据见 `implement.md`。
-- 里程碑状态由来源决定语义：Agent 可以把自身结论写成 `approved`，但不得伪造 `human_created`；画布必须显式展示创建者、更新者、来源和证据。
+- 当前协同契约由一个稳定 origin 的单例 Bridge、`projectHandle + mapKey + documentId` 三层路由和统一 24 工具服务承载；REST、stdio 和 Agent Kit 不得各自实现第二套 reducer、资料包路径或上下文扫描。
+- 节点新写入只允许 `kind:goal|problem`；旧 `result`、旧 milestone 和 `milestoneSuggestion` 只兼容加载并原样保留，不触发新语义。新结果写入 Markdown 和普通目标节点，不再创建活跃里程碑。
+- 普通删除统一为可恢复 `archive`；人和 Agent 对对象、补充 Markdown、附件的 archive/restore 同权。永久 `purge` 仅在人类二次确认或系统 30 天任务执行，失败必须保留归档。
+- 上下文只读取当前项目当前地图的非归档对象及其资料包；其他地图、备份、WAL、归档对象和无关项目文档不得递归混入。附件走二进制流，外部编辑器只接受服务端登记的 opaque id。
 - 2026-08-13 独立审计发现并修复可信 actor、Agent 越权归档、安装包缺 Skill、旧目录假阳性、整理失败仍显示绿色等阻断问题；真实 Codex 受引导长程、重启恢复、20+ 节点整理、三浏览器、全新隔离安装和聚合门禁均已通过，因此项目所有者可以开始核心协作人工实测。下一门禁是“只给高层目标，Agent 是否会自主选择记录粒度、判断失败并回溯”，不能用逐步验收提示词冒充。Claude Code、Kimi Code、CodeBuddy/WorkBuddy 仍需按真实客户端生命周期分别验收，普通小白仍需完成首次地图可读性与全流程验收。Store/Release、生产部署和三源一致性仍是正式公开门禁；不宣称多 Agent 全部正式验收，也不宣称完整仿生直觉完成。
 - 分发准备与开发/自动测试并行：SEA、MSIX、Partner Center 和线上发布不阻塞本地桥、画布、协议开发；计划与门禁见 `docs/plans/8-12上线plan.md`。
 - 通过后继续按 `docs/真实用户实测记录.md` 做新用户实测和对抗性审查；重大方向写本文件，执行与证据追加到 `implement.md`。

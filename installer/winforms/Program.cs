@@ -3,6 +3,8 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Microsoft.VisualBasic.FileIO;
 
 namespace LiveDotMapSetup;
 
@@ -27,6 +29,24 @@ internal static class Program
         }
 
         ApplicationConfiguration.Initialize();
+
+        if (args.Length == 2 && string.Equals(args[0], "--recycle-staging", StringComparison.Ordinal))
+            return NativeHelperActions.RecycleStaging(args[1]);
+
+        if (args.Length == 1 && string.Equals(args[0], "--pick-editor", StringComparison.Ordinal))
+            return NativeHelperActions.PickEditor();
+
+        if (args.Length == 2 && string.Equals(args[0], "--save-as", StringComparison.Ordinal))
+            return NativeHelperActions.SaveAs(args[1]);
+
+        if (args.Length == 2 && string.Equals(args[0], "--open-default", StringComparison.Ordinal))
+            return NativeHelperActions.OpenDefault(args[1]);
+
+        if (args.Length == 2 && string.Equals(args[0], "--open-folder", StringComparison.Ordinal))
+            return NativeHelperActions.OpenFolder(args[1]);
+
+        if (args.Length == 3 && string.Equals(args[0], "--open-manual", StringComparison.Ordinal))
+            return NativeHelperActions.OpenManual(args[1], args[2]);
 
         if (args.Length >= 1 && string.Equals(args[0], "--open", StringComparison.Ordinal))
         {
@@ -63,6 +83,208 @@ internal static class Program
         }
         Application.Run(new LauncherForm());
         return 0;
+    }
+}
+
+/// <summary>
+/// Bridge 只能通过这些固定模式请求少数需要 Windows UI/API 的动作。所有结果
+/// 都是单行 JSON；不接受 shell 命令，也不解释额外参数。
+/// </summary>
+internal static class NativeHelperActions
+{
+    private static readonly Regex PurgeTransaction = new(
+        @"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static void Write(object value) => Console.Out.WriteLine(JsonSerializer.Serialize(value));
+
+    private static bool IsControlledPurgePath(string value, out string fullPath, out string error)
+    {
+        fullPath = string.Empty;
+        error = "";
+        try
+        {
+            fullPath = Path.GetFullPath(value);
+            var leaf = new DirectoryInfo(fullPath);
+            var purge = leaf.Parent;
+            var bridge = purge?.Parent;
+            var map = bridge?.Parent;
+            var maps = map?.Parent;
+            var data = maps?.Parent;
+            if (!leaf.Exists || !PurgeTransaction.IsMatch(leaf.Name)
+                || !string.Equals(purge?.Name, "purge-staging", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(bridge?.Name, ".bridge", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(maps?.Name, "maps", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(data?.Name, ".live-dot-map", StringComparison.OrdinalIgnoreCase))
+            {
+                error = "回收站暂存路径不符合产品目录约束";
+                return false;
+            }
+            for (DirectoryInfo? current = leaf; current is not null; current = current.Parent)
+            {
+                if ((current.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    error = "回收站暂存路径不能经过符号链接或联接";
+                    return false;
+                }
+                if (string.Equals(current.FullName, data!.FullName, StringComparison.OrdinalIgnoreCase)) break;
+            }
+            return true;
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+            return false;
+        }
+    }
+
+    public static int RecycleStaging(string value)
+    {
+        if (!IsControlledPurgePath(value, out var fullPath, out var validationError))
+        {
+            Write(new { ok = false, code = "PURGE_STAGING_PATH_INVALID", message = validationError });
+            return 2;
+        }
+        try
+        {
+            FileSystem.DeleteDirectory(fullPath, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin, UICancelOption.ThrowException);
+            Write(new { ok = true, recycled = true });
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Write(new { ok = false, code = "RECYCLE_BIN_FAILED", message = exception.Message });
+            return 1;
+        }
+    }
+
+    public static int PickEditor()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = "选择 Markdown 编辑程序",
+            Filter = "Windows 程序 (*.exe)|*.exe",
+            CheckFileExists = true,
+            Multiselect = false,
+            RestoreDirectory = true,
+        };
+        if (dialog.ShowDialog() != DialogResult.OK)
+        {
+            Write(new { ok = false, cancelled = true });
+            return 0;
+        }
+        var selected = Path.GetFullPath(dialog.FileName);
+        if (!string.Equals(Path.GetExtension(selected), ".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            Write(new { ok = false, code = "EDITOR_EXECUTABLE_INVALID", message = "只能选择 .exe 程序" });
+            return 2;
+        }
+        Write(new { ok = true, path = selected });
+        return 0;
+    }
+
+    public static int SaveAs(string sourceValue)
+    {
+        try
+        {
+            var source = Path.GetFullPath(sourceValue);
+            var metadata = new FileInfo(source);
+            if (!metadata.Exists || (metadata.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("源文件不存在或不是普通文件");
+            using var dialog = new SaveFileDialog
+            {
+                Title = "另存 Markdown 副本",
+                FileName = metadata.Name,
+                DefaultExt = metadata.Extension.TrimStart('.'),
+                Filter = "Markdown 文件 (*.md)|*.md|所有文件 (*.*)|*.*",
+                AddExtension = true,
+                OverwritePrompt = true,
+                RestoreDirectory = true,
+            };
+            if (dialog.ShowDialog() != DialogResult.OK)
+            {
+                Write(new { ok = false, cancelled = true });
+                return 0;
+            }
+            var target = Path.GetFullPath(dialog.FileName);
+            if (string.Equals(source, target, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("另存目标不能覆盖原资料包文件");
+            File.Copy(source, target, overwrite: false);
+            Write(new { ok = true, path = target });
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Write(new { ok = false, code = "SAVE_AS_FAILED", message = exception.Message });
+            return 1;
+        }
+    }
+
+    private static string RequireOrdinaryFile(string value)
+    {
+        var path = Path.GetFullPath(value);
+        var metadata = new FileInfo(path);
+        if (!metadata.Exists || (metadata.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidOperationException("目标不存在或不是普通文件");
+        return path;
+    }
+
+    public static int OpenDefault(string targetValue)
+    {
+        try
+        {
+            var target = RequireOrdinaryFile(targetValue);
+            Process.Start(new ProcessStartInfo { FileName = target, UseShellExecute = true });
+            Write(new { ok = true, launched = true });
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Write(new { ok = false, code = "OPEN_DEFAULT_FAILED", message = exception.Message });
+            return 1;
+        }
+    }
+
+    public static int OpenFolder(string targetValue)
+    {
+        try
+        {
+            var target = Path.GetFullPath(targetValue);
+            var metadata = new DirectoryInfo(target);
+            if (!metadata.Exists || (metadata.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("目标文件夹不存在或不是普通目录");
+            var info = new ProcessStartInfo { FileName = "explorer.exe", UseShellExecute = false, CreateNoWindow = true };
+            info.ArgumentList.Add(target);
+            Process.Start(info);
+            Write(new { ok = true, launched = true });
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Write(new { ok = false, code = "OPEN_FOLDER_FAILED", message = exception.Message });
+            return 1;
+        }
+    }
+
+    public static int OpenManual(string executableValue, string targetValue)
+    {
+        try
+        {
+            var executable = RequireOrdinaryFile(executableValue);
+            if (!string.Equals(Path.GetExtension(executable), ".exe", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("手动编辑器必须是 .exe 程序");
+            var target = RequireOrdinaryFile(targetValue);
+            var info = new ProcessStartInfo { FileName = executable, UseShellExecute = false };
+            info.ArgumentList.Add(target);
+            Process.Start(info);
+            Write(new { ok = true, launched = true });
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Write(new { ok = false, code = "OPEN_MANUAL_FAILED", message = exception.Message });
+            return 1;
+        }
     }
 }
 
@@ -338,7 +560,10 @@ internal sealed class ProductLauncherLogic
         var bridge = Path.Combine(LauncherForm.SourcePayload, "livedot-bridge-win-x64.exe");
         var app = Path.Combine(LauncherForm.SourcePayload, "app.html");
         if (!File.Exists(bridge) || !File.Exists(app)) throw new InvalidOperationException("安装文件不完整，请重新运行安装包修复。");
-        if (_session is { HasExited: false }) _session.Kill(true);
+        // serve 现在是“首个常驻、后续复用”的用户级单例协调入口。
+        // Process 句柄不代表 Bridge 所有权；再次打开项目时只释放本地句柄，绝不能杀掉常驻桥。
+        _session?.Dispose();
+        _session = null;
         var info = new ProcessStartInfo { FileName = bridge, UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = LauncherForm.SourcePayload };
         info.ArgumentList.Add("serve");
         info.ArgumentList.Add("--project");
@@ -358,7 +583,7 @@ internal sealed class ProductLauncherLogic
         using var response = JsonDocument.Parse(line);
         var url = response.RootElement.GetProperty("url").GetString();
         if (string.IsNullOrWhiteSpace(url) || !url.StartsWith("http://127.0.0.1:", StringComparison.Ordinal)) throw new InvalidOperationException("打开画布失败，请重试。");
-        if (string.Equals(Environment.GetEnvironmentVariable("LIVEDOT_SETUP_SKIP_BROWSER"), "1", StringComparison.Ordinal)) _status("已建立带随机会话 token 的本机画布会话（隔离验证跳过浏览器）。");
+        if (string.Equals(Environment.GetEnvironmentVariable("LIVEDOT_SETUP_SKIP_BROWSER"), "1", StringComparison.Ordinal)) _status("已通过稳定本机 Bridge 建立一次性画布会话（隔离验证跳过浏览器）。");
         else Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
         _status(successMessage + " 画布在浏览器中运行，本进程已退出。");
         WriteLastProject(project);
@@ -366,7 +591,7 @@ internal sealed class ProductLauncherLogic
 
     public void StopSession()
     {
-        if (_session is { HasExited: false }) _session.Kill(true);
+        // 只释放 launcher 持有的进程句柄；全局 Bridge 的退出/更新必须走受认证控制通道。
         _session?.Dispose();
         _session = null;
     }

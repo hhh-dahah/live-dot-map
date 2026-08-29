@@ -1,7 +1,7 @@
 {
   "mapId": "map-it63fn",
   "version": 2,
-  "revision": 47,
+  "revision": 48,
   "lastEventId": 47,
   "name": "目前项目进度",
   "createdAt": "2026-08-16T04:35:27.644Z",
@@ -86,7 +86,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 19,
-      "md": ".live-dot-map/nodes/p-goal.md"
+      "md": ".live-dot-map/maps/default/nodes/p-goal/index.md"
     },
     {
       "id": "p-core",
@@ -102,7 +102,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/nodes/p-core.md"
+      "md": ".live-dot-map/maps/default/nodes/p-core/index.md"
     },
     {
       "id": "p-v2fix",
@@ -118,7 +118,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/nodes/p-v2fix.md"
+      "md": ".live-dot-map/maps/default/nodes/p-v2fix/index.md"
     },
     {
       "id": "p-human",
@@ -134,7 +134,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/nodes/p-human.md"
+      "md": ".live-dot-map/maps/default/nodes/p-human/index.md"
     },
     {
       "id": "p-release",
@@ -150,7 +150,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 22,
-      "md": ".live-dot-map/nodes/p-release.md"
+      "md": ".live-dot-map/maps/default/nodes/p-release/index.md"
     },
     {
       "id": "p-react",
@@ -166,7 +166,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 39,
-      "md": ".live-dot-map/nodes/p-react.md"
+      "md": ".live-dot-map/maps/default/nodes/p-react/index.md"
     },
     {
       "id": "p-excal",
@@ -182,7 +182,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 47,
-      "md": ".live-dot-map/nodes/p-excal.md"
+      "md": ".live-dot-map/maps/default/nodes/p-excal/index.md"
     },
     {
       "id": "p-self",
@@ -198,7 +198,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 23,
-      "md": ".live-dot-map/nodes/p-self.md"
+      "md": ".live-dot-map/maps/default/nodes/p-self/index.md"
     },
     {
       "id": "p-protocol",
@@ -214,7 +214,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/nodes/p-protocol.md"
+      "md": ".live-dot-map/maps/default/nodes/p-protocol/index.md"
     },
     {
       "id": "p-distribution",
@@ -230,7 +230,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 29,
-      "md": ".live-dot-map/nodes/p-distribution.md"
+      "md": ".live-dot-map/maps/default/nodes/p-distribution/index.md"
     },
     {
       "id": "p-compat",
@@ -246,7 +246,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 21,
-      "md": ".live-dot-map/nodes/p-compat.md"
+      "md": ".live-dot-map/maps/default/nodes/p-compat/index.md"
     }
   ],
   "edges": [
@@ -263,7 +263,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/routes/e-core.md"
+      "md": ".live-dot-map/maps/default/routes/e-core/index.md"
     },
     {
       "id": "e-fixes",
@@ -278,7 +278,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/routes/e-fixes.md"
+      "md": ".live-dot-map/maps/default/routes/e-fixes/index.md"
     },
     {
       "id": "e-accept",
@@ -293,7 +293,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/routes/e-accept.md"
+      "md": ".live-dot-map/maps/default/routes/e-accept/index.md"
     },
     {
       "id": "e-release",
@@ -308,7 +308,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/routes/e-release.md"
+      "md": ".live-dot-map/maps/default/routes/e-release/index.md"
     },
     {
       "id": "e-react",
@@ -323,7 +323,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/routes/e-react.md"
+      "md": ".live-dot-map/maps/default/routes/e-react/index.md"
     },
     {
       "id": "e-excal",
@@ -338,7 +338,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/routes/e-excal.md"
+      "md": ".live-dot-map/maps/default/routes/e-excal/index.md"
     },
     {
       "id": "e-self",
@@ -353,7 +353,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/routes/e-self.md"
+      "md": ".live-dot-map/maps/default/routes/e-self/index.md"
     },
     {
       "id": "e-protocol",
@@ -368,7 +368,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/routes/e-protocol.md"
+      "md": ".live-dot-map/maps/default/routes/e-protocol/index.md"
     },
     {
       "id": "e-distribution",
@@ -383,7 +383,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/routes/e-distribution.md"
+      "md": ".live-dot-map/maps/default/routes/e-distribution/index.md"
     },
     {
       "id": "e-compat",
@@ -398,7 +398,7 @@
       "createdBy": "agent:codex",
       "updatedBy": "human",
       "updatedRevision": 17,
-      "md": ".live-dot-map/routes/e-compat.md"
+      "md": ".live-dot-map/maps/default/routes/e-compat/index.md"
     },
     {
       "id": "e3",
@@ -407,7 +407,7 @@
       "name": "方案3",
       "status": "pending",
       "route": "r-architecture",
-      "md": ".live-dot-map/routes/e3.md",
+      "md": ".live-dot-map/maps/default/routes/e3/index.md",
       "dx": 1.6550240938157117,
       "dy": -27.03391954973273,
       "createdAt": "2026-08-16T15:13:01.204Z",
@@ -482,5 +482,6 @@
       "createdBy": "human"
     }
   ],
-  "mapDir": ".live-dot-map/maps/default"
+  "mapDir": ".live-dot-map/maps/default",
+  "bundleLayoutVersion": 1
 }

@@ -442,3 +442,111 @@ pm run verify 全量结果见下。
 - 迁移：打开旧布局项目时先备份再迁入 `maps/default/`，既有 Markdown 路径改写为新前缀；旧 `wal.ndjson` 改名 `wal.ndjson.legacy-migrated` 保留为证据、不再继续使用（有意偏离原计划：迁移改写了路径前缀，旧 WAL 校验和与新文档对不上，重放会被当外部冲突回滚）。agent-kit 安装器对老路径与 maps/ 任一存在的项目不再覆盖写模板，全新项目直接按新布局安装；hooks 增量通知先读指针、失败回退老路径。
 - 前端（app.html）：地图弹窗改为真实列表（桥 `listMaps` / FS `fsListMaps`），新建空白地图三分支（桥建图并切换 / FS 复制式建图 / 演示内存态）；IO 序列化携带 `mapDir`，Markdown 路径统一走 `mdPath(kind,id)`；`attachDir` 按指针打开、缺指针回退 default 或确认后新建；FS 模式迁移为复制式（旧文件保留，无 File System Access 删除语义差异风险）。
 - 验证：新增 `tests/bridge/maps.test.mjs` 7 用例（迁移/备份/幂等/指针回退/四 API/命令按图隔离/旧路径重写）；`tests/agent-kit/installer.test.mjs` 适配新布局断言；`npm run build` 与 `npm test` 全量 113/113 通过。FS 模式无自动化覆盖（Node 无 File System Access API），需人工走查；markdownDocuments 仍为项目级全量扫描不按图限定（路径含 mapDir 前缀天然区分，有意不改）。
+
+## 8-20 鲁棒性与体验收口（2026-08-20，按 `修bug 鲁棒性测试/8-20日修改plan.md`）
+
+- **稳定运行与数据不丢**：桌面入口改为用户级单例 Bridge，固定运行目录和稳定端口；launcher 通过认证控制通道注册项目并签发一次性 ticket。浏览器会话支持七天滑动续期、reconnect 轮换、一个会话授权多个 projectHandle；所有项目/地图请求显式路由。图草稿保存 baseRevision/baseSnapshot/commandId/sessionId，刷新时先用持久回执判定上次提交是否已完成，再做三方合并；Markdown 采用 etag 基线和本地草稿。
+- **真实竞态修复**：项目切换获得新 projectHandle 与 reconnect ticket；在途旧快照按 projectHandle/mapKey 校验后丢弃，不能覆盖新项目。MapManager 首次初始化也进入项目锁，Windows 双实例不会争写 `active-map`。同 revision 的 SSE ready 不再重载画布并清掉用户刚打开的属性面板。
+- **MCP/Hook 与上下文**：无项目、错目录和空目录 fail-open 且零写入；损坏的有效项目仍明确报错。新增唯一 MapManager、ToolService 和 24 项工具 schema，stdio 与 HTTP 共用 dispatcher；长驻 stdio 每次重新解析 active-map。上下文只枚举当前地图的非归档对象资料包，不再递归混入其他地图或项目 Markdown。
+- **资料包、附件与归档**：最终布局固定为 `maps/<mapKey>/nodes|routes/<id>/index.md`；补充 Markdown 和附件具备路径、保留名、ADS、MIME/文件头、symlink、大小与总配额防护。append 必须带 commandId，prepared/committed 回执保证崩溃重试不重复。删除一次到位改成归档/恢复；30 天 purge 走受控 staging、系统回收站和失败回滚。
+- **体验与兼容**：画布提供资料包管理、附件、已归档设置、外部编辑器/系统默认/所在文件夹/手动选择/另存副本；新节点只写 goal/problem，旧 result/milestone 只读兼容，`suggest_milestone` 返回 `FEATURE_RETIRED`。协议、PRD、技术架构、人工清单、canonical Skill、5 个副本和安装 payload 已同步。
+- **自动验收**：`npm test` 连续两次均为 192 项、189 通过、0 失败、3 个 Windows symlink/ACL 环境跳过；`npm run verify` 最终输出 `[verify] all gates passed`，覆盖三浏览器强模式、双系统浏览器降级/响应式与 200% 缩放、性能、四 Agent 周期、安装器 UI、真实产品入口、SEA 和发布清单。`npm run verify:web` 32/32；`npm run verify:agents` 22 通过/1 环境跳过；`npm run verify:agent-skill` 5 个分发目标 hash 一致。真实全局 Codex 初始化及 Codex/Kimi 标注读取、确认、写回 smoke 均通过。
+- **边界**：未生产部署、未清理用户运行态/地图/测试证据；线上更新渠道和产品所有者最终主观体验审核仍单独进行，不能由自动化结果替代。
+
+## 8-20 断线弹窗与 md 查看器收口（2026-08-20 晚，前端体验第四批）
+
+- **断线弹窗（T9 定稿落地）**：build-app.mjs 的 appIntegration.setStatus 末尾新增 `window.LiveDotUI?.onStatusChange(state, detail)` 挂钩（try/catch 不影响主流程）；app.html 新增 `window.LiveDotUI`（onStatusChange/openStatus）与 `.ld-dialog-*` 样式。offline/error 弹「已断线」窗（每次断线 episode 只弹一次，恢复自动复位）；无桥纯文件模式首次弹「单机模式」（localStorage 去重）；conflict 不弹。文案：「画布和电脑的连接断了。你写的内容都在，恢复后会自动保存。」+「重新连接」+「还是连不上？双击桌面上的『活点地图』图标，再回来点这里。」
+- **重连能力**：bridge-client.ts 新增公开 `reconnect()`——清 CSRF、取 IDB ticket、POST /session/reconnect、存新 ticket、reconcileSnapshot + startEvents、置 saved；失败记日志返回 false，弹窗按钮恢复、提示保留。
+- **红灯修复**：syncBadge 在桥活跃时不再用 IO 状态重算灯色/title（此前会把 setStatus 设的红灯覆盖回绿，造成「绿灯+断线文字」）；点红灯改调 `LiveDotUI.openStatus()`，返回 false 才 toast。
+- **工具栏居中**：顶栏删 `#topbar::after` 占位，`#toolbar` 改 `position:absolute;left:50%;transform:translateX(-50%)` 视口居中；≤1100px 媒体查询回退为文档流。
+- **md 查看器重做（Codex 风格）**：showMdEditor 整体重写——header=路径标题+编辑/预览切换+「打开方式」图标下拉+关闭；body=编辑 textarea/预览区+右侧 230px 资料包文件树（新建/重命名/归档/恢复沿用原桥接调用）；下拉含编辑器（图标+名称+首选勾）、用默认应用打开、手动选择程序…、在文件夹中显示、另存副本…、「下次直接用首选打开」勾选。自实现 mdMini 最小渲染（先整体转义再变换，无 XSS 面）。
+- **编辑器检测扩充**：editor-service.mjs 新增 EXTRA_EDITORS 表（Antigravity：注册表 App Paths+常见路径；PyCharm：固定路径+Toolbox/Program Files 版本目录扫描 scanVersionedEditors），readAppPaths 泛化，EXE_NAME 放宽；open() 对 extras 走固定参数直接启动，杜绝拼接命令行。Terminal/Git Bash 刻意不加（不能打开文件）。
+- **踩坑记录**：livedot.mjs 是 esbuild 打包产物，改 src/bridge 后必须 `npm run build:bridge` 重建；app.html 的 integration 区由 build-app.mjs 生成，改 build-app.mjs 后必须重跑 `node scripts/build-app.mjs --output app.html`，否则手改的 LiveDotUI 存在但 setStatus 不调用它（本次断线弹窗首测不弹即此因）。
+- **验证**：npm test 193 项 190 过 0 失败 3 跳过；playwright 实测——md 查看器布局/预览切换/打开方式下拉（VS Code、Antigravity、PyCharm 全检出）、960px 窄屏顶栏不破、杀桥后「已断线」弹窗+红灯、桥未起点重新连接按钮恢复、起桥后点重新连接转绿关窗，全部通过。
+
+## 8-21 「打开画布失败」修复：stale bridge.json 与 pid 复用（2026-08-21 凌晨）
+
+- **症状**：强杀 Bridge（或断电）后双击桌面图标报「打开画布失败」，日志为 `现有 Bridge 进程仍在运行但无法安全复用：fetch failed`。
+- **根因**：`readBridgeState` 读到上一次的 bridge.json 后，复用抓取失败（端口已无监听，符合预期），但 `isProcessAlive(pid)` 用 `process.kill(pid, 0)` 判活——Windows 会回收并复用 pid，无关进程占用了旧 pid 时被误判为“Bridge 还活着”，于是直接抛错、永不恢复。
+- **修复**：`src/bridge/runtime-state.mjs` 新增 `checkBridgeProcess(pid)`（三态 'bridge'/'other'/'unknown'，win32 用 PowerShell `Get-Process .Path`、其他平台 `ps -o comm=` 读进程主程序名，识别 livedot-bridge*/node）；`clearStaleSingletonLock` 增加 `options.force`（仅在调用方已证明 pid 不属于 Bridge 时使用，仍校验锁归属 pid）。`src/cli/livedot.ts` serve 复用分支：只有确认进程是 Bridge 或探测不明时才保持“无法安全复用”硬错误（防双开）；确认是无关进程或进程已死时清理锁与 bridge.json 后正常起新桥。
+- **验证**：`tests/bridge/runtime-state.test.mjs` 新增 2 用例（checkBridgeProcess 识别当前 node 进程与死 pid；force 清理被复用 pid 的锁且不越权清别人的锁），7/7 过；npm test 全量 195 项 192 过 0 失败 3 跳过。端到端复现：伪造 bridge.json 指向 explorer.exe 的 pid + 死端口，`node livedot.mjs serve` 自动清理失效状态并起新桥（此前必现报错）。
+- **注意**：探测不明（如 PowerShell 被策略禁用）时保守报错，不会冒险双开；此种环境需人工删除 `%LOCALAPPDATA%\live-dot-map\run\` 后重试。
+
+## 8-21 「打开画布失败」修复：资料包迁移直写与 WAL 死循环（2026-08-21，v5）
+
+- **症状**：v4 安装后双击桌面图标仍必现「打开画布失败」，画布永远打不开；桥进程活着，`open-project` 每次返回 409。
+- **根因**：`ensureBundleLayout`（`src/bridge/maps.mjs`）每次打开项目时给缺 `bundleLayoutVersion` 的旧 map.json 直写补元数据，但 **revision 不变**。常驻 ProjectStore 只采纳 revision 更高的外部写入；同 revision 不同 checksum 的直写被当成「外部旧版本覆盖」——隔离磁盘文件、从 WAL 恢复不含该字段的旧文档、抛 `EXTERNAL_REVISION_CONFLICT`。下次打开又补字段又冲突，形成死循环。实证：隔离区 stale-external 文件与 WAL 终态仅差一个 `bundleLayoutVersion` 键、revision 相同。
+- **修复（maps.mjs）**：迁移外壳改用与 ProjectStore 同一把写锁（`<mapdir>/.bridge/write.lock`）串行，Store 繁忙（LOCK_TIMEOUT）时本次跳过迁移返回 `deferred`，不阻断打开；两处 `writeJsonAtomic` 直写前一律 `stampBundleMigrationRevision`（revision +1，非法值按 0 起），让 Store 把迁移结果当外部新版本采纳。一旦采纳，字段随后续编辑保留（`createEmptyMap` 已含 `bundleLayoutVersion: 1`），循环永久断开，用户数据无需手工修。
+- **修复（livedot.ts）**：`openThroughRunningBridge` 失败时解析并透传真实错误码（如 `HTTP 409 EXTERNAL_REVISION_CONFLICT：…`），错误对象挂 `httpStatus/errorCode`；新增 `openThroughRunningBridgeWithRetry` 对 409/503 重试 4 次×300ms（迁移与 Store 串行化窗口期的瞬时冲突可自愈），serve 主复用入口换用重试版。
+- **验证**：`tests/bridge/maps.test.mjs` 修正两处断言（迁移后 revision+1；`.bridge` 因写锁存在但无 backups/migrations），新增回归用例「缺 bundleLayoutVersion + WAL 终态同 revision → ensureBundleLayout → ProjectStore 重开采纳且不抛 409」（修复前必现 409 的场景）；npm test 全量 196 项 193 过 0 失败 3 跳过。安装包已重建至 `dist/windows-installer/`（SEA blob 确认含新代码）。旧桥 pid 16732 与 3 个卡死的 setup 弹窗进程已 taskkill。
+
+## 8-21 v6 稳定性修复：MCP 最近书写 / 断线提示分流 / 建节点原子建 index.md（2026-08-21）
+
+- **背景**：第三轮测试暴露两卡点——(A) `map_get_context` 空 query 时返回 `markdown: []`，Agent 进入地图看不到任何节点正文；(B) 新建节点后磁盘只有 map.json 记录、无 index.md（点 md 打开失败且无状态提醒）。排查记录见 `修bug 鲁棒性测试/8-21bug排查记录.md`。
+- **A2（tool-service.mjs）**：`map_get_context` 空 query 时兜底返回「最近更新的非空资料包主文档」（新 helper `recentMarkdown`，按 updatedAt 倒序、过滤空正文、取 6 条、与检索命中同 shape）；带 query 仍走 BM25，`map_next_candidates` 保持检索语义不变。
+- **B1（app.html openMd）**：桥未连接时不再掉进直连文件夹旧逻辑（原会误报「项目未保存」），新增外层分支明确提示「本地桥未连接：请连接/重连后再打开文档」并置 offline 状态；打开 catch 内按「未连接/断线」关键词与 `bridge.active` 分流，断线提示重连、其余才报「打开失败」。
+- **B2（server.mjs /commands + tool-service.mjs map_apply_commands）**：节点 create 命令提交成功后对每个新建 node 调用 `bundleStore.ensureIndex`（幂等，owner 写锁，已存在原样返回），HTTP 与 MCP 双路径覆盖；补建失败仅 log 不阻断已落盘的 WAL/map.json 提交，打开时仍有懒创建兜底。激活了原为死代码的 `BundleStore.ensureIndex`。
+- **测试**：`tests/bridge/tool-service.test.mjs` 新增 A2（空 query 带出最近书写、带 query 仍检索）、B2（建节点即原子建 index.md、ensureIndex 幂等不覆盖）各 1 例。`npm test` 全量 198 项 195 过 0 失败 3 跳过。
+- **构建**：`npm run build:app`（app.html + dist/app.v2.html）→ `build:bridge`（livedot.mjs 含新桥逻辑）→ `build:windows-installer` 打 **v6**：`dist/windows-installer/LiveDotMapSetup.exe`。验证 payload 内 app.html 含断线分流文案、桥 exe 为 13:53 新构建。
+- **注意**：打包前若旧 `LiveDotMapSetup.exe` 正从构建目录运行会锁住输出（EBUSY），先 `taskkill` 该残留进程。
+
+## 8-21 v7 修复：人类 md 输入的「未确认」信号闭环（2026-08-21）
+
+- **症状**：用户在方案线 md 里写「今天上山打老虎」，Agent 完全无感——`humanUpdates` 无条目、检索需碰巧命中。排查确认不是 hook 失灵，而是这条通道从未装 hook（只有标注 ann 有 attention:new → humanUpdates → ack 闭环）。
+- **新模块 `src/bridge/human-md-updates.mjs`（HumanMdUpdateLog）**：per-map `.bridge/human-md-updates.ndjson` 追加式信号日志（u=写入未确认 / a=已确认，按 path 重放取最后状态；超过 512KB compact 只留未确认；损坏行跳过；withFileLock 串行）。
+- **写入侧（server.mjs）**：`PUT /markdown`（人类保存主文档）成功后追加 u 行（path/etag/mtime/内容摘要 160 字）。记录失败仅 warn，不阻断保存响应。MCP（Agent 写）路径不记。
+- **读侧（tool-service.mjs）**：`map_get_context` / `map_next_candidates` 的 `projection.humanUpdates` 合并未确认 md 条目（id=`md:<path>`、text=摘要、attention:new、target={kind:'markdown',path}），与标注并列、最多 12 条；`map_list_human_updates` 同样合并。
+- **ack 侧（tool-service.mjs）**：`map_ack_human_updates` 拆分 `md:<path>` 与标注 id——md 条目写 a 行、标注仍走 `ack_annotations` 命令（避免 findItem 对非 ann id 报错）；ack 后 humanUpdates 不再出现，再次写入则重新亮起。
+- **测试**：新增 `tests/bridge/human-md-updates.test.mjs`（record/覆盖/ack/再写/compact/损坏行 2 例）+ tool-service 集成测试（C3/C4 合并与 ack 闭环、map_list_human_updates 合并）。`npm test` 全量 201 项 198 过 0 失败 3 跳过。
+- **构建**：`build:bridge` + `build:windows-installer` 打 **v7**：`dist/windows-installer/LiveDotMapSetup.exe`（15:22）。打包前再次 taskkill 残留的 LiveDotMapSetup.exe（从构建目录运行锁住输出）。
+- **范围说明**：先覆盖主文档（`PUT /markdown`）；资料包补充 md 的人类保存（`/bundles/markdown/*`）后续同一机制接入。
+## 8-21 v8 实施：「节点记概要 + 后端包记详细信息 + Agent 智能索引」真实落地（2026-08-21）
+
+- **背景**：用户发现宣传（landing：「极度节省上下文 / 节点记概要、后端包记详细信息、Agent 智能索引」）与实现不符——之前 `map_get_context` 每次把当前地图所有 md 全文读进内存做 BM25，索引是假的；且 MCP 无「读资产内容」工具。本次按计划 D 落地（计划文件见 session plans）。
+- **新模块 `src/bridge/md-index.mjs`（MdIndex）**：per-map `.bridge/md-index.json` 卡片索引。卡片只存摘要 + 指纹（etag/mtime/bytes/title/summary 前 300 字/资产清单），不存全文；校验只用 lstat 便宜指纹；损坏索引降级重建；fs 可注入（测试计数全文读取）。
+- **读路径（context-document-provider.collect）**：不再全量 readFile。传 `mdIndex` 时逐卡 lstat 比对——新鲜用摘要（0 次全文读），失效才重读**该文件**刷单卡；上下文条目 `summaryOnly: true` + 摘要 + 资产清单；全文靠 `map_read_markdown` 下探。未传 mdIndex 保留旧全量兜底（兼容独立使用）。
+- **写路径 hooks（人机双写全覆盖）**：`PUT /markdown` 保存（server.mjs，与 v7 人类输入信号同钩）、`map_write/append/create_markdown`、`map_rename_bundle_file`、archive/restore、`map_import_asset`、`map_apply_commands` 新建节点（建节点=建 index.md=建卡片，有节点必有卡）——成功后 `refreshOwnerAndPersist` 刷该 owner；失败仅 warn（卡片可自愈）。
+- **无需异步改 shared**：`attemptEvidence` 改为 async + `readFull` 下探 loader（对受控数量的 edges 按需读全文抽标题段），摘要不误伤证据抽取。
+- **资产路径化下探（新工具 `map_read_asset`，工具 24→25）**：返回路径 + 元数据（kind/mimeType/size/updatedAt），文本类附 content，二进制默认不搬运（本地 Agent 拿路径自己读），显式 `includeContent: true` 才给 base64。同步 agent-kit 生成物与 MCP_TOOL_NAMES。
+- **规模验收（防虚假宣传核心，md-index.test.mjs）**：500 节点图二次 `collect` **全文读取 = 0**（全部命中卡片），首次建卡 ≈ 500 次一次性迁移；外部编辑器改 1 个文件 → 只重读那 1 个；摘要含新内容。4 例全绿。
+- **测试**：新增 `tests/bridge/md-index.test.mjs` 4 例；tool-service 增 `map_read_asset` 例；agent-kit 两处 24→25 工具契约断言更新。`npm test` 206 项 203 过 0 失败 3 跳过。
+- **构建**：build:bridge（工具 25 项同步）→ build:windows-installer 打 **v8**：`dist/windows-installer/LiveDotMapSetup.exe`。打包前 taskkill 残留 LiveDotMapSetup.exe（32463/33456 两次）。
+- **真机验收指引**：装 v8 → 建节点写 md → 改 md（含记事本外部改）→ Agent `map_get_context` 看到摘要+路径，`map_read_markdown` 读到最新全文；挂图片 → `map_list_assets`/`map_read_asset` 拿路径；大图秒回。## 8-21 v8/v8.1 真机验收记录（2026-08-21 深夜，专用验收项目）
+
+- **方式**：kimi-cu 实际操作安装版（卸载→装 v8→发现 2 问题→修复→装 v8.1），专用项目 `D:\8-20livedotmap安装测试\acceptance-0821`，全程未触碰用户真实项目（壁纸制作仅被打开查看，零修改；recent-projects 已复原）。
+- **通过项**：
+  1. 建节点：map.json rev+ / `nodes/n1/index.md` 立即落盘（B2）。
+  2. 打开 md 编辑器（Codex 风格：编辑/预览切换、打开方式、保存同一界面）。
+  3. 保存后 `md-index.json` 卡片自动生成（title=新节点1、summary 含正文前 300 字、etag/mtime/bytes 指纹齐全）；`human-md-updates.ndjson` 同步产生（snippet=保存时最新内容）。
+  4. 外部编辑器绕过桥改文件 → UI 保存被 409 并发保护拦截：提示「资料包有并发修改，请重新读取后合并；你的编辑内容已保留」、草稿保留、关闭时二次确认。
+  5. 重新打开合并草稿 → 保存成功 → **卡片自动刷新为合并后最新摘要**（双写自愈闭环，人机双写极端场景验证通过）。
+  6. 断线弹窗：停桥后页面弹「已断线」+ 文案 +「重新连接」（B1 链路）。
+  7. v8.1 修复 1：前端路径新建节点（`POST /commands`）**立即**补建卡片（此前只有 MCP 路径建卡；真机 n2 创建瞬间 md-index.json 即 2 张卡，无需等待保存）。
+  8. v8.1 修复 2：状态文案区分生效（conflict→「冲突」、error→「异常」、fallback→「降级」、offline→「断线」，均不再是统一的「断线」；真机可见「降级/正常」新文案）。
+- **验收中发现并已修复的 2 个问题**：
+  1. `server.mjs /commands`（前端建节点）未刷 md-index → 补 `refreshOwnerAndPersist`（与 MCP 路径对齐，有节点必有卡）。
+  2. 前端 setStatus 曾把所有异常态显示为「断线」（保存冲突误报断线，用户数次抱怨）→ build-app.mjs states 拆分文案。
+- **规模自动化**（md-index.test.mjs）：500 节点二次查询全文读取 = 0，外部改 1 个只重读 1；首次建卡 ≈500 一次性。
+- **产物**：v8.1 = `dist/windows-installer/LiveDotMapSetup.exe`（含 25 项工具 map_read_asset）。验收环境已装 v8.1，当前画布回到壁纸制作项目，状态正常。
+- **遗留**：资产 UI 导入→map_read_asset 拿路径的端到端留待下轮真机；数据契约与 agent-kit 生成物需随发布同步（build:bridge 已同步 25 项）。## 8-22 v8.2：修复 bug1（切项目 Agent 不知情）+ bug2（写md工具参数被拒）并验证（2026-08-22）
+
+- **bug1 根因**：stdio Agent 桥在进程启动时锁定项目根；画布切项目只改 HTTP 桥会话。实现全局「当前项目」指针贯通：
+  - 新增 `src/bridge/current-project.mjs`：`recordCurrentProject`（原子写 `~/.live-dot-map/current-project.json`）、`readCurrentProject`、`resolveProjectRootToUse`（目录校验 + 失效回退，fail-open）。
+  - server.mjs：`/projects/pick` 与 `/open` 成功后写指针（画布切项目即广播）。
+  - livedot.ts `runMcp`：per-root 缓存 MapManager/ToolService，每次 tools/call 前解析指针并跟随（换项目根自动切实例）。
+- **bug2 根因**：当前会话 stdio 桥为旧构建（会话启动时加载），无 owner 参数分支与「建节点即建主文档」hook → 重建 livedot.mjs + 重启桥即恢复正常（源码 v8.1 已正确）。
+- **验证**：
+  - 单测：`tests/bridge/current-project.test.mjs` 2 例（读写/跟随/损坏回退/目录失效回退）。
+  - 端到端（`scripts/verify-bug1-bug2.mjs`，spawn 新 stdio 子进程）：① 指针切 B 项目 → map_list 跟随（B 只剩 default 图）；② 切回 A → 跟随（activeMap=map-mt421fju）；③ `map_write_markdown` owner 参数成功；④ `map_append_markdown` path 参数成功；⑤ `map_apply_commands` create 后磁盘立即有 index.md + md-index.json 卡片。全部 ✅。
+  - `npm test` 208 项 205 过 0 失败（复跑 2 轮稳定；首轮 1 失败为已知并发抖动）。
+- **部署**：v8.2 安装包 `dist/windows-installer/LiveDotMapSetup.exe` 已生成并装上（桥为 23:52 构建）。运行中 v8.2 桥 33564 端口 50956 正常。
+- **地图记录**：第四轮排查 n1（bug1 切换项目agent不知道？）、n3（bug2 写md工具owner参数被拒）已标记 resolved，index.md 追加验证结论；验证痕迹 e2e-node 已归档。注：current-project 指针文件当前指向测试临时目录（npm test server 套件最后一次 /open 写入），下次画布切项目会被真实项目覆盖，无副作用。
+- **遗留**：画布引导态（无项目 tab）首次点「选择项目」偶发面板不弹出（UI 操作性问题，F5 可恢复，与本次功能无关）；真机「点击切项目→Agent 跟随」日常使用自然演示。
+
+## 8-24 发明专利 n25 图文对应修订与正式件验收
+
+- **内容**：权利要求 1、2、5、6、7 对齐字段触达范围、非重叠重放、重叠冲突、未确认记录实际字段、WAL 和幂等；具体实施方式重写为 [0021]—[0064] 的连续业务实施例。
+- **附图**：技术流程图统一置前；地图命令流程为图 6（601—611），三张未裁切产品图顺延为图 7—9 并置后。图文、权利要求和实现/测试追踪表已追加到地图节点 n25。
+- **测试**：相关自动化 75 项中 73 通过、0 失败、2 项因 Windows 无符号链接权限跳过；覆盖 500 对象局部刷新、Markdown 冲突、人类更新、envelope 非重叠重放/重叠冲突、命令幂等及 WAL 恢复。
+- **文档验收**：完整版最终状态连续编译两次，22 页且无 Overfull/Underfull/未定义引用；拆分件页数 1/1/3/8/9，全部 A4；摘要 297 字；中文正文 SimSun、标题 SimHei；22 页逐页渲染通过。
+- **交付**：`docs/patent-tex/main.pdf` 及 `docs/patent-tex/提交件/` 下完整核对版和五份正式件已覆盖更新。

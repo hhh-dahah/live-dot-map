@@ -1,0 +1,101 @@
+{
+  "mapId": "map-1txscmf",
+  "version": 2,
+  "revision": 28,
+  "lastEventId": 19,
+  "name": "活点地图鲁棒性测试 排查修改",
+  "mapDir": ".live-dot-map/maps/map-mszseg9z",
+  "createdAt": "2026-08-19T07:45:35.228Z",
+  "updatedAt": "2026-08-20T06:04:49.609Z",
+  "view": {
+    "x": -150.63888927125117,
+    "y": -104.21431248288627,
+    "k": 0.9174311926605504
+  },
+  "ui": {
+    "showAnns": true,
+    "showRoutes": true,
+    "showNums": false,
+    "showFailed": true
+  },
+  "counters": {
+    "num": 5,
+    "edge": 1,
+    "ann": 1,
+    "nodeName": 7,
+    "edgeName": 1,
+    "routeName": 1
+  },
+  "routes": [],
+  "nodes": [
+    {
+      "id": "n1",
+      "num": "01",
+      "name": "起点",
+      "type": "目标",
+      "kind": "goal",
+      "route": null,
+      "x": 333.60003662109375,
+      "y": 445.5999755859375,
+      "md": ".live-dot-map/maps/map-mszseg9z/nodes/n1/index.md",
+      "createdBy": "human",
+      "createdAt": "2026-08-19T07:46:00.326Z",
+      "updatedAt": "2026-08-19T08:09:34.026Z",
+      "updatedBy": "human",
+      "updatedRevision": 16
+    },
+    {
+      "id": "n2",
+      "num": "02",
+      "name": "新节点2",
+      "type": "目标",
+      "kind": "goal",
+      "route": null,
+      "x": 1023.3200366210938,
+      "y": 425.0960116577148,
+      "md": ".live-dot-map/maps/map-mszseg9z/nodes/n2/index.md",
+      "createdBy": "human",
+      "createdAt": "2026-08-19T07:46:02.794Z",
+      "updatedAt": "2026-08-19T10:09:33.975Z",
+      "updatedBy": "human",
+      "updatedRevision": 19
+    },
+    {
+      "id": "n3",
+      "num": "03",
+      "name": "问题4",
+      "type": "问题",
+      "kind": "problem",
+      "route": null,
+      "x": 410.9760527038574,
+      "y": 275.8319744873047,
+      "md": ".live-dot-map/maps/map-mszseg9z/nodes/n3/index.md",
+      "createdBy": "human",
+      "createdAt": "2026-08-19T07:46:23.506Z",
+      "updatedAt": "2026-08-19T08:09:32.804Z",
+      "updatedBy": "human",
+      "updatedRevision": 15,
+      "resolved": false
+    },
+    {
+      "id": "n4",
+      "num": "04",
+      "name": "问题1",
+      "type": "问题",
+      "kind": "problem",
+      "route": null,
+      "x": 478.1163893056638,
+      "y": 345.5456039327621,
+      "md": ".live-dot-map/maps/map-mszseg9z/nodes/n4/index.md",
+      "createdBy": "human",
+      "createdAt": "2026-08-20T06:04:40.754Z",
+      "updatedAt": "2026-08-20T06:04:49.609Z",
+      "updatedBy": "human",
+      "updatedRevision": 27,
+      "resolved": false
+    }
+  ],
+  "edges": [],
+  "anns": [],
+  "bundleLayoutVersion": 1
+}

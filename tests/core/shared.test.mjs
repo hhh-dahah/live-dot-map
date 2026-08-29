@@ -31,8 +31,8 @@ function baseMap() {
 
 test('新对象使用稳定 Markdown 路径，名称修改不改变路径', () => {
   const map = baseMap();
-  assert.equal(map.nodes[0].md, '.live-dot-map/nodes/n1.md');
-  assert.equal(map.edges[0].md, '.live-dot-map/routes/e1.md');
+  assert.equal(map.nodes[0].md, '.live-dot-map/nodes/n1/index.md');
+  assert.equal(map.edges[0].md, '.live-dot-map/routes/e1/index.md');
   const changed = applyCommandEnvelope(map, {
     projectId: 'project-test', baseRevision: 1, commandId: 'cmd-2', actor: 'human', sessionId: 'session-1',
     commands: [{ op: 'update', collection: 'nodes', id: 'n1', patch: { name: '新名称' } }],
@@ -75,7 +75,7 @@ test('项目投影提供主路线、当前节点、待验证候选和人类更�
   assert.equal(buildProjectProjection(next).humanUpdates[0].id, 'a1');
 });
 
-test('路线 currentNodeId 必须属于该路线，删除当前节点会清空指针', () => {
+test('路线 currentNodeId 必须属于该路线，兼容 delete 只归档且保留拓扑', () => {
   const map = baseMap();
   const pinned = applyCommandEnvelope(map, {
     projectId: 'project-test', baseRevision: 1, commandId: 'pin-current', actor: 'human', sessionId: 'session-1',
@@ -86,7 +86,10 @@ test('路线 currentNodeId 必须属于该路线，删除当前节点会清空�
     projectId: 'project-test', baseRevision: 2, commandId: 'delete-current', actor: 'human', sessionId: 'session-1',
     commands: [{ op: 'delete', collection: 'nodes', id: 'n1' }],
   }, { now: NOW });
-  assert.equal(deleted.routes[0].currentNodeId, undefined);
+  assert.equal(deleted.routes[0].currentNodeId, 'n1');
+  assert.equal(deleted.nodes[0].archived, true);
+  assert.equal(deleted.legacyTranslated, true);
+  assert.equal(deleted.nodes[0].archivedBy, 'human');
 });
 
 test('整理预览只产生可审核的可逆归档命令，不直接修改地图', () => {
@@ -118,7 +121,7 @@ test('整理预览补齐近义节点、成功链、重复分支重连和 Markdow
     ],
   }, { now: NOW });
   const beforeJson = JSON.stringify(map);
-  const options = { now: '2026-08-20T01:02:03.004Z', maxSuggestions: 20, markdown: [{ path: '.live-dot-map/routes/es1.md', text: 'x'.repeat(4001) }] };
+  const options = { now: '2026-08-20T01:02:03.004Z', maxSuggestions: 20, markdown: [{ path: '.live-dot-map/routes/es1/index.md', text: 'x'.repeat(4001) }] };
   const first = planConsolidation(map, options);
   const second = planConsolidation(map, options);
   assert.deepEqual(first, second);
@@ -145,7 +148,7 @@ test('整理预览补齐近义节点、成功链、重复分支重连和 Markdow
   assert.equal(reconnect.commands[0].patch.to, 'n3');
   assert.ok(reconnect.source.objectIds.includes('eb2'));
   assert.ok(reconnect.source.routeIds.includes('r1'));
-  assert.ok(byKind.get('summarize_markdown').source.markdownPaths.includes('.live-dot-map/routes/es1.md'));
+  assert.ok(byKind.get('summarize_markdown').source.markdownPaths.includes('.live-dot-map/routes/es1/index.md'));
 });
 
 test('human-only 重连命令拒绝 Agent 自动应用', () => {
@@ -243,11 +246,11 @@ test('Agent 大尝试 Stop 证据检查要求 Markdown 有证据、结果和下�
     projectId: 'project-test', baseRevision: 1, commandId: 'attempt-evidence', actor: 'agent:codex', sessionId: 'session-1',
     commands: [{ op: 'update', collection: 'edges', id: 'e1', patch: { status: 'failed', score: 25 } }],
   }, { now: NOW });
-  const missing = checkAttemptEvidence(map, [{ path: '.live-dot-map/routes/e1.md', text: '# 方案\n\n## 关键证据\n已验证\n\n## 结果\n失败\n' }]);
+  const missing = checkAttemptEvidence(map, [{ path: '.live-dot-map/routes/e1/index.md', text: '# 方案\n\n## 关键证据\n已验证\n\n## 结果\n失败\n' }]);
   assert.equal(missing.length, 1);
   assert.ok(missing[0].missing.includes('下一步'));
   assert.ok(missing[0].missing.includes('失败原因'));
-  const complete = checkAttemptEvidence(map, [{ path: '.live-dot-map/routes/e1.md', text: '# 方案\n\n## 关键证据\n已验证\n\n## 结果\n失败\n\n## 评分\n25\n\n## 失败原因\n条件不满足\n\n## 下一步\n回到 n1\n' }]);
+  const complete = checkAttemptEvidence(map, [{ path: '.live-dot-map/routes/e1/index.md', text: '# 方案\n\n## 关键证据\n已验证\n\n## 结果\n失败\n\n## 评分\n25\n\n## 失败原因\n条件不满足\n\n## 下一步\n回到 n1\n' }]);
   assert.deepEqual(complete, []);
 });
 
@@ -289,21 +292,34 @@ test('未知地图命令必须显式失败，不能静默推进 revision', () =>
   assert.equal(map.edges[0].id, 'e1');
 });
 
-test('Agent 不能直接归档或搁置记忆，人类审核提交仍可应用', () => {
+test('Agent 与人对归档/恢复同权，但仍不能搁置记忆', () => {
   const map = baseMap();
-  for (const field of ['archived', 'shelved']) {
-    assert.throws(() => applyCommandEnvelope(map, {
-      projectId: 'project-test', baseRevision: map.revision, commandId: `agent-${field}`, actor: 'agent:codex', sessionId: 'session-agent',
-      commands: [{ op: 'update', collection: 'edges', id: 'e1', patch: { [field]: true } }],
-    }, { now: NOW }), (error) => error.code === 'HUMAN_APPROVAL_REQUIRED' && error.status === 403);
-  }
   assert.throws(() => applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: map.revision, commandId: 'agent-shelved', actor: 'agent:codex', sessionId: 'session-agent',
+    commands: [{ op: 'update', collection: 'edges', id: 'e1', patch: { shelved: true } }],
+  }, { now: NOW }), (error) => error.code === 'HUMAN_APPROVAL_REQUIRED' && error.status === 403);
+  const agentArchived = applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: map.revision, commandId: 'agent-archive', actor: 'agent:codex', sessionId: 'session-agent',
+    commands: [{ op: 'archive', collection: 'edges', id: 'e1', archiveReason: '低分失败方案' }],
+  }, { now: NOW });
+  assert.equal(agentArchived.edges[0].archived, true);
+  assert.equal(agentArchived.edges[0].archivedBy, 'agent:codex');
+  assert.equal(agentArchived.edges[0].archiveReason, '低分失败方案');
+  const restored = applyCommandEnvelope(agentArchived, {
+    projectId: 'project-test', baseRevision: agentArchived.revision, commandId: 'agent-restore', actor: 'agent:codex', sessionId: 'session-agent',
+    commands: [{ op: 'restore', collection: 'edges', id: 'e1' }],
+  }, { now: NOW });
+  assert.equal(restored.edges[0].archived, undefined);
+  assert.equal(restored.edges[0].archivedAt, undefined);
+  assert.equal(restored.edges[0].from, 'n1');
+  const agentHidden = applyCommandEnvelope(map, {
     projectId: 'project-test', baseRevision: map.revision, commandId: 'agent-hidden-create', actor: 'agent:codex', sessionId: 'session-agent',
     commands: [{ op: 'create', collection: 'nodes', value: { id: 'hidden1', name: '隐藏节点', route: 'r1', archived: true } }],
-  }, { now: NOW }), (error) => error.code === 'HUMAN_APPROVAL_REQUIRED');
+  }, { now: NOW });
+  assert.equal(agentHidden.nodes.at(-1).archived, true);
   const reviewed = applyCommandEnvelope(map, {
     projectId: 'project-test', baseRevision: map.revision, commandId: 'human-archive', actor: 'human', sessionId: 'session-human',
-    commands: [{ op: 'update', collection: 'edges', id: 'e1', patch: { archived: true } }],
+    commands: [{ op: 'archive', collection: 'edges', id: 'e1' }],
   }, { now: NOW });
   assert.equal(reviewed.edges[0].archived, true);
   assert.equal(reviewed.edges[0].updatedBy, 'human');
@@ -348,55 +364,36 @@ test('1000 次命令往返始终有效且未知字段不丢失', () => {
   assert.equal(map.revision, 1001);
 });
 
-test('Agent 创建里程碑写入真实来源，不能伪装执行碎片', () => {
+test('新节点只写 goal/problem，旧 result/milestone 兼容保留但不再更新', () => {
   const map = createEmptyMap({ name: '来源测试', now: NOW, mapId: 'map-origin' });
   const created = applyCommandEnvelope(map, {
     projectId: 'project-test', baseRevision: 0, commandId: 'cmd-origin', actor: 'agent:codex', sessionId: 'session-agent',
     commands: [{ op: 'create', collection: 'nodes', value: {
-      id: 'n1', name: '项目阶段', type: '阶段', x: 0, y: 0,
+      id: 'n1', name: '项目阶段', type: '结果', kind: 'result', x: 0, y: 0,
       milestone: { status: 'pending', origin: 'human_created', level: 'project', createdBy: 'human' },
       futureEvidence: { path: 'docs/context.md' },
     } }],
   }, { now: NOW });
   const node = created.nodes[0];
   assert.equal(node.createdBy, 'agent:codex');
-  assert.equal(node.updatedBy, 'agent:codex');
-  assert.equal(node.milestone.origin, 'agent_created');
-  assert.equal(node.milestone.level, 'project');
-  assert.equal(node.milestone.createdBy, 'agent:codex');
+  assert.equal(node.kind, 'goal');
+  assert.equal(node.milestone, undefined);
+  node.kind = 'result';
+  node.milestone = { futureLegacyShape: true };
   const updated = applyCommandEnvelope(created, {
     projectId: 'project-test', baseRevision: 1, commandId: 'cmd-origin-update', actor: 'human', sessionId: 'session-1',
-    commands: [{ op: 'update', collection: 'nodes', id: 'n1', patch: { milestone: { status: 'changes_requested', origin: 'agent_created' } } }],
+    commands: [{ op: 'update', collection: 'nodes', id: 'n1', patch: { x: 10, milestone: { status: 'changes_requested' } } }],
   }, { now: '2026-08-11T01:03:03.004Z' });
-  assert.equal(updated.nodes[0].milestone.origin, 'agent_created');
-  assert.equal(updated.nodes[0].milestone.createdBy, 'agent:codex');
-  assert.equal(updated.nodes[0].milestone.updatedBy, 'human');
+  assert.equal(updated.nodes[0].kind, 'result');
+  assert.deepEqual(updated.nodes[0].milestone, { futureLegacyShape: true });
   assert.throws(() => applyCommandEnvelope(map, {
-    projectId: 'project-test', baseRevision: 0, commandId: 'cmd-work', actor: 'agent:codex', sessionId: 'session-agent',
-    commands: [{ op: 'create', collection: 'nodes', value: { id: 'work1', name: '执行碎片', type: '任务', x: 0, y: 0, milestone: { status: 'pending', level: 'work' } } }],
-  }, { now: NOW }), (error) => error.code === 'AGENT_WORK_MILESTONE_FORBIDDEN');
-  const agentApproved = applyCommandEnvelope(map, {
-    projectId: 'project-test', baseRevision: 0, commandId: 'cmd-approved', actor: 'agent:codex', sessionId: 'session-agent',
-    commands: [{ op: 'create', collection: 'nodes', value: { id: 'approved1', name: 'Agent 已确认阶段', type: '阶段', x: 0, y: 0, milestone: { status: 'approved', level: 'project' } } }],
-  }, { now: NOW });
-  assert.equal(agentApproved.nodes[0].milestone.status, 'approved');
-  assert.equal(agentApproved.nodes[0].milestone.origin, 'agent_created');
-  assert.equal(agentApproved.nodes[0].milestone.createdBy, 'agent:codex');
-  const agentUpdated = applyCommandEnvelope(agentApproved, {
-    projectId: 'project-test', baseRevision: 1, commandId: 'cmd-approved-update', actor: 'agent:codex', sessionId: 'session-agent',
-    commands: [{ op: 'update', collection: 'nodes', id: 'approved1', patch: { milestone: { status: 'approved' } } }],
-  }, { now: '2026-08-11T01:03:04.004Z' });
-  assert.equal(agentUpdated.nodes[0].milestone.status, 'approved');
-  assert.equal(agentUpdated.nodes[0].milestone.origin, 'agent_created');
-  assert.equal(agentUpdated.nodes[0].milestone.updatedBy, 'agent:codex');
+    projectId: 'project-test', baseRevision: 0, commandId: 'cmd-retired', actor: 'agent:codex', sessionId: 'session-agent',
+    commands: [{ op: 'suggest_milestone', nodeId: 'n1', status: 'approved' }],
+  }, { now: NOW }), (error) => error.code === 'FEATURE_RETIRED' && error.status === 410);
 });
 
-test('Agent 扩张达到批量/里程碑上限时返回压缩建议', () => {
+test('Agent 扩张达到批量上限时返回压缩建议', () => {
   const map = createEmptyMap({ name: '上限测试', now: NOW, mapId: 'map-limit' });
-  const milestones = Array.from({ length: 3 }, (_, index) => ({ op: 'create', collection: 'nodes', value: { id: `m${index}`, name: `阶段${index}`, type: '阶段', x: index, y: 0, milestone: { status: 'pending', level: 'route' } } }));
-  assert.throws(() => applyCommandEnvelope(map, {
-    projectId: 'project-test', baseRevision: 0, commandId: 'cmd-limit-m', actor: 'agent:codex', sessionId: 'session-agent', commands: milestones,
-  }, { now: NOW }), (error) => error.code === 'AGENT_MILESTONE_LIMIT' && error.details.maxMilestones === 2);
   const objects = Array.from({ length: 11 }, (_, index) => ({ op: 'create', collection: 'routes', value: { id: `r${index}`, name: `路线${index}` } }));
   assert.throws(() => applyCommandEnvelope(map, {
     projectId: 'project-test', baseRevision: 0, commandId: 'cmd-limit-b', actor: 'agent:codex', sessionId: 'session-agent', commands: objects,
@@ -414,6 +411,36 @@ test('map_next_candidates 支持当前节点、limit 和历史开关', () => {
   }, { now: NOW });
   assert.ok(!retrieveContext(archived, '结果', { now: NOW }).objects.some((item) => item.id === 'n2'));
   assert.ok(retrieveContext(archived, '结果', { includeHistory: true, now: NOW }).objects.some((item) => item.id === 'n2'));
+});
+
+test('归档节点隐藏关联边与标注，恢复只恢复自身且保留未知字段', () => {
+  let map = applyCommandEnvelope(baseMap(), {
+    projectId: 'project-test', baseRevision: 1, commandId: 'archive-annotation', actor: 'human', sessionId: 'session-1',
+    commands: [{ op: 'create', collection: 'anns', value: { id: 'a-node', target: { kind: 'node', id: 'n1' }, text: '节点标注' } }],
+  }, { now: NOW });
+  map.nodes[0].futureField = { keep: true };
+  map = applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: map.revision, commandId: 'archive-node', actor: 'agent:codex', sessionId: 'session-agent',
+    commands: [{ op: 'archive', collection: 'nodes', id: 'n1', archiveReason: '归档测试' }],
+  }, { now: NOW });
+  const hidden = retrieveContext(map, '目标', { markdown: [
+    { path: '.live-dot-map/nodes/n1/index.md', text: '目标内容' },
+    { path: '.live-dot-map/routes/e1/index.md', text: '方案内容' },
+  ], now: NOW });
+  assert.ok(!hidden.objects.some((item) => ['n1', 'e1', 'a-node'].includes(item.id)));
+  assert.equal(hidden.markdown.length, 0);
+  const history = retrieveContext(map, '目标', { includeHistory: true, now: NOW });
+  assert.ok(history.objects.some((item) => item.id === 'n1'));
+  assert.ok(history.objects.some((item) => item.id === 'e1'));
+  assert.ok(history.objects.some((item) => item.id === 'a-node'));
+  map = applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: map.revision, commandId: 'archive-edge-alone', actor: 'human', sessionId: 'session-1',
+    commands: [{ op: 'archive', collection: 'edges', id: 'e1' }, { op: 'restore', collection: 'nodes', id: 'n1' }],
+  }, { now: NOW });
+  assert.deepEqual(map.nodes[0].futureField, { keep: true });
+  assert.equal(map.nodes[0].archived, undefined);
+  assert.equal(map.edges[0].archived, true);
+  assert.ok(!retrieveContext(map, '目标', { now: NOW }).objects.some((item) => item.id === 'e1'));
 });
 
 test('Agent 初始化地图在 15 个活跃节点后必须先压缩', () => {

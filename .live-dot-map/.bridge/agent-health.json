@@ -1,20 +1,27 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-17T04:50:18.772Z",
+  "updatedAt": "2026-08-25T03:14:02.241Z",
   "records": {
     "kimi": {
       "status": "ok",
       "actor": "agent:kimi",
-      "event": "mcp:tools/list",
+      "event": "mcp:map_get_context",
       "boundary": "mcp",
-      "at": "2026-08-17T04:50:18.771Z"
+      "at": "2026-08-23T08:25:08.449Z"
     },
     "codex": {
       "status": "ok",
       "actor": "agent:codex",
-      "event": "mcp:tools/list",
+      "event": "mcp:map_validate",
       "boundary": "mcp",
-      "at": "2026-08-16T15:13:15.094Z"
+      "at": "2026-08-25T03:14:02.241Z"
+    },
+    "generic": {
+      "status": "ok",
+      "actor": "agent:generic",
+      "event": "mcp:map_list",
+      "boundary": "mcp",
+      "at": "2026-08-22T15:48:00.265Z"
     }
   }
 }

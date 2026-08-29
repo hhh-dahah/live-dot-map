@@ -5,6 +5,7 @@ import { basename, join, resolve } from 'node:path';
 import { installProject } from '../../agent-kit/lib/installer.mjs';
 import { createBridgeServer } from '../../src/bridge/server.mjs';
 import { loadSharedAdapter } from '../../src/bridge/shared-adapter.mjs';
+import { ensureMapsLayout } from '../../src/bridge/maps.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const clients = {
@@ -22,9 +23,9 @@ process.env.LIVEDOT_RECENT_PROJECTS_FILE = join(REAL_TEST_ROOT, 'recent-projects
 const prompt = [
   '这是一次真实长程活点地图闭环验收，只修改临时项目地图和对应 Markdown，不修改其他项目源文件。必须实际调用工具，不要只描述。',
   '1. 先调用 map_get_context 和 map_list_human_updates，首次摘要逐字引用 a-human-long-task，然后调用 map_ack_human_updates。',
-  '2. 从当前节点 n1 开始，用 map_apply_commands 创建一条 pending 方案边 e-failed，name=故意失败方向，from=n1，to=null，route=r1，score=20，dx=180，dy=0。创建后在 .live-dot-map/routes/e-failed.md 写入“关键证据”和“下一步”。',
-  '3. 模拟得到失败证据：用 map_apply_commands 把 e-failed 更新为 failed，并创建失败结果节点 n-failed；补全 Markdown 的“结果”“评分”“失败原因”“下一步”。',
-  '4. 调用 map_next_candidates，query=故意失败方向，currentNodeId=n1，limit=3，includeHistory=false；不要重复 e-failed，选择或创建一个替代方向 e-alternative，并把它推进为 success，创建结果节点 n-success，写完整 Markdown（关键证据、结果、评分、下一步）。',
+  '2. 从当前节点 n1 开始，用 map_apply_commands 创建一条 pending 方案边 e-failed，name=故意失败方向，from=n1，to=null，route=r1，score=20，dx=180，dy=0。创建后在 .live-dot-map/maps/default/routes/e-failed/index.md 写入“关键证据”和“下一步”。',
+  '3. 模拟得到失败证据：用 map_apply_commands 把 e-failed 更新为 failed，并创建问题节点 n-failed（kind=problem）；补全 Markdown 的“结论”“评分”“失败原因”“下一步”。',
+  '4. 调用 map_next_candidates，query=故意失败方向，currentNodeId=n1，limit=3，includeHistory=false；不要重复 e-failed，选择或创建一个替代方向 e-alternative，并把它推进为 success，创建目标节点 n-success（kind=goal），写完整 Markdown（关键证据、结果、评分、下一步）。',
   '5. 用 map_apply_commands 更新路线 r1.currentNodeId=n-success；调用 map_validate，确保 attemptIssues 为空。最后用不超过 12 行总结：失败方向、失败原因、替代方向、成功结果、当前节点和下一步。',
 ].join('\n');
 
@@ -83,7 +84,8 @@ function bridgeHeaders(session, extra = {}) { return { Origin: 'https://real-lon
 const project = await mkdtemp(join(REAL_TEST_ROOT, `livedot-real-long-${agent}-`));
 try {
   await installProject({ projectRoot: project, createDesktopShortcut: false, register: false, offline: true, discoverAgents: agent === 'codebuddy' ? false : true });
-  const mapPath = join(project, '.live-dot-map', 'map.json');
+  await ensureMapsLayout(project);
+  const mapPath = join(project, '.live-dot-map', 'maps', 'default', 'map.json');
   const map = JSON.parse(await readFile(mapPath, 'utf8'));
   const initialRevision = map.revision;
   const now = new Date().toISOString();
@@ -92,7 +94,7 @@ try {
   // model still owns the actual failed -> alternative -> success path.
   for (let index = 0; index < 20; index += 1) {
     const id = `fixture-${String(index + 1).padStart(2, '0')}`;
-    map.nodes.push({ id, num: String(index + 2).padStart(2, '0'), name: `背景节点${index + 1}`, type: '阶段', route: 'r1', x: (index + 1) * 40, y: 180, md: `.live-dot-map/nodes/${id}.md`, createdAt: now, updatedAt: now, createdBy: 'fixture', updatedBy: 'fixture', updatedRevision: map.revision });
+    map.nodes.push({ id, num: String(index + 2).padStart(2, '0'), name: `背景节点${index + 1}`, kind: 'goal', type: '阶段', route: 'r1', x: (index + 1) * 40, y: 180, md: `.live-dot-map/maps/default/nodes/${id}/index.md`, createdAt: now, updatedAt: now, createdBy: 'fixture', updatedBy: 'fixture', updatedRevision: map.revision });
   }
   map.anns = [{ id: 'a-human-long-task', target: { kind: 'canvas' }, text: '长程验收先看人的上下文', source: 'human', priority: 'high', attention: 'new', acknowledgements: [], createdAt: now, updatedAt: now, updatedBy: 'human', updatedRevision: map.revision }];
   await writeFile(mapPath, `${JSON.stringify(map, null, 2)}\n`, 'utf8');
@@ -115,14 +117,14 @@ try {
   assert.equal(failed?.status, 'failed', `${agent} did not persist failed attempt`);
   assert.equal(alternative?.status, 'success', `${agent} did not persist alternative success`);
   assert.equal(persisted.routes.find((route) => route.id === 'r1')?.currentNodeId, 'n-success', `${agent} did not persist current node`);
-  const failedMarkdownPath = join(project, '.live-dot-map', 'routes', 'e-failed.md');
+  const failedMarkdownPath = join(project, '.live-dot-map', 'maps', 'default', 'routes', 'e-failed', 'index.md');
   const failedMarkdown = await readFile(failedMarkdownPath, 'utf8').catch(() => '');
   const failureReason = markdownSection(failedMarkdown, '失败原因');
   const nextStep = markdownSection(failedMarkdown, '下一步');
   assert.ok(failureReason, `${agent} failed attempt has no actual failure reason`);
   assert.ok(nextStep, `${agent} failed attempt has no next step`);
   assert.match(failedMarkdown, /关键证据/);
-  const walText = await readFile(join(project, '.live-dot-map', '.bridge', 'wal.ndjson'), 'utf8');
+  const walText = await readFile(join(project, '.live-dot-map', 'maps', 'default', '.bridge', 'wal.ndjson'), 'utf8');
   const commits = walText.trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)).filter((record) => record.type === 'commit' && Number.isInteger(record.revision));
   assert.ok(commits.length > 0, `${agent} produced no durable commit records`);
   for (let index = 1; index < commits.length; index += 1) assert.ok(commits[index].revision > commits[index - 1].revision, `${agent} revisions are not strictly increasing`);

@@ -15,6 +15,7 @@ $oldSkipShortcut = $env:LIVEDOT_SETUP_SKIP_SHORTCUT
 $oldShortcutRoot = $env:LIVEDOT_SETUP_SHORTCUT_ROOT
 $oldLastProject = $env:LIVEDOT_SETUP_LAST_PROJECT_FILE
 $oldRecentFile = $env:LIVEDOT_RECENT_PROJECTS_FILE
+$oldRuntimeState = $env:LIVEDOT_RUNTIME_STATE_DIR
 
 New-Item -ItemType Directory -Force -Path $project, $productRoot | Out-Null
 if (Test-Path -LiteralPath (Join-Path $project '.live-dot-map')) { throw '隔离项目并非全新目录' }
@@ -33,6 +34,8 @@ $env:LIVEDOT_SETUP_PRODUCT_ROOT = $productRoot
 $env:LIVEDOT_SETUP_SKIP_PRODUCT = '1'
 $env:LIVEDOT_SETUP_SKIP_SHORTCUT = '0'
 $env:LIVEDOT_SETUP_SHORTCUT_ROOT = Join-Path $testRoot 'shortcuts'
+$env:LIVEDOT_RUNTIME_STATE_DIR = Join-Path $testRoot 'runtime-state'
+$bridgeStateFile = Join-Path $env:LIVEDOT_RUNTIME_STATE_DIR 'bridge.json'
 New-Item -ItemType Directory -Force -Path (Join-Path $env:LIVEDOT_SETUP_SHORTCUT_ROOT 'Desktop'), (Join-Path $env:LIVEDOT_SETUP_SHORTCUT_ROOT 'StartMenu') | Out-Null
 $legacyCmd = Join-Path $env:LIVEDOT_SETUP_SHORTCUT_ROOT 'Desktop/活点地图本地桥.cmd'
 $legacyLnk = Join-Path $env:LIVEDOT_SETUP_SHORTCUT_ROOT 'Desktop/活点地图本地桥.lnk'
@@ -55,6 +58,15 @@ function Get-Window($process) {
     if ($process.MainWindowHandle -ne 0) { return [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle) }
   }
   throw '安装器窗口未出现'
+}
+
+function Get-IsolatedBridge {
+  if (-not (Test-Path -LiteralPath $bridgeStateFile)) { return $null }
+  try {
+    $state = Get-Content -LiteralPath $bridgeStateFile -Raw | ConvertFrom-Json
+    if (-not $state.pid) { return $null }
+    return Get-CimInstance Win32_Process -Filter "ProcessId = $($state.pid)" -ErrorAction SilentlyContinue
+  } catch { return $null }
 }
 
 function Get-Buttons($window) {
@@ -139,9 +151,8 @@ try {
   $env:LIVEDOT_SETUP_LAST_PROJECT_FILE = Join-Path $testRoot 'last-project.txt'
   $env:LIVEDOT_RECENT_PROJECTS_FILE = Join-Path $testRoot 'recent-projects.json'
   # 无窗口入口不随安装器退出，先清理可能仍在运行的旧桥，避免误匹配。
-  Get-CimInstance Win32_Process -Filter "Name = 'livedot-bridge-win-x64.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($env:LIVEDOT_SETUP_WORKSPACE_ROOT, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  $oldIsolatedBridge = Get-IsolatedBridge
+  if ($oldIsolatedBridge) { Stop-Process -Id $oldIsolatedBridge.ProcessId -Force -ErrorAction SilentlyContinue }
   # 3a. 从安装包目录运行（重新运行安装包）→ 必须回到安装 UI（修复/更新页），不是直达。
   $proc = Start-Process -FilePath $exe -PassThru
   $window = Get-Window $proc
@@ -166,9 +177,7 @@ try {
       $proc.Refresh()
       if ($proc.MainWindowHandle -ne 0) { $maxHandle = $proc.MainWindowHandle }
     }
-    $scenarioBridge = Get-CimInstance Win32_Process -Filter "Name = 'livedot-bridge-win-x64.exe'" -ErrorAction SilentlyContinue |
-      Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($env:LIVEDOT_SETUP_WORKSPACE_ROOT, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $_.CommandLine.IndexOf(' serve ', [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
-      Select-Object -First 1
+    $scenarioBridge = Get-IsolatedBridge
   }
   if ($maxHandle -ne 0) { throw '快捷方式运行出现了启动器窗口（应无窗口静默启动）' }
   if (-not $scenarioBridge) { throw '快捷方式运行没有直接打开默认工作区画布' }
@@ -248,6 +257,7 @@ finally {
   $env:LIVEDOT_SETUP_WORKSPACE_ROOT = $oldWorkspaceRoot
   $env:LIVEDOT_SETUP_LAST_PROJECT_FILE = $oldLastProject
   $env:LIVEDOT_RECENT_PROJECTS_FILE = $oldRecentFile
+  $env:LIVEDOT_RUNTIME_STATE_DIR = $oldRuntimeState
   $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
   $resolvedBase = [IO.Path]::GetFullPath($testBase).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
   if ($resolvedTestRoot.StartsWith($resolvedBase, [StringComparison]::OrdinalIgnoreCase)) {
