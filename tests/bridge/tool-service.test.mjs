@@ -113,7 +113,7 @@ test('Bundle Markdown 经 ToolService 完成 read/write/append/create/rename/arc
   let read = await service.dispatch('map_read_markdown', { ...owner, fileName: 'note.md' });
   assert.equal(read.content, '# 初稿\n\n正文');
 
-  const replaced = await service.dispatch('map_write_markdown', { ...owner, fileName: 'note.md', content: '# 修改\n\n版本二', baseEtag: read.etag });
+  const replaced = await service.dispatch('map_write_markdown', { ...owner, fileName: 'note.md', content: '# 修改\n\n版本二', baseEtag: read.etag, allowContentRemoval: true });
   assert.equal(replaced.content, '# 修改\n\n版本二');
   const appended = await service.dispatch('map_append_markdown', { ...owner, fileName: 'note.md', content: '追加证据', commandId: 'append-note-1' });
   assert.equal(appended.name, 'note.md');
@@ -135,6 +135,33 @@ test('Bundle Markdown 经 ToolService 完成 read/write/append/create/rename/arc
   assert.equal(restored.archived, false);
   listed = await service.dispatch('map_list_bundle_files', { ...owner });
   assert.equal(listed.files.some((file) => file.name === 'renamed.md'), true);
+});
+
+test('map_write_markdown 默认追加式：删已有行被拒，显式 allowContentRemoval 才放行（n12）', async (t) => {
+  const { manager, service } = await openService(t);
+  const mapKey = await createMap(manager, '写入契约地图');
+  await manager.switch(mapKey);
+  await addNode(service, mapKey, 'contract-node');
+  const owner = { ownerKind: 'node', ownerId: 'contract-node' };
+  await service.dispatch('map_create_markdown', { ...owner, fileName: 'note.md', content: '# 人类原话\n\n第一行\n第二行' });
+
+  // 1) 纯追加式替换（旧行全部保留）不需要标志
+  let read = await service.dispatch('map_read_markdown', { ...owner, fileName: 'note.md' });
+  const superset = await service.dispatch('map_write_markdown', { ...owner, fileName: 'note.md', content: '# 人类原话\n\n第一行\n第二行\n第三行（agent 追加）', baseEtag: read.etag });
+  assert.equal(superset.content.includes('第三行'), true);
+
+  // 2) 删除已有行被拒，且原文不被破坏
+  read = await service.dispatch('map_read_markdown', { ...owner, fileName: 'note.md' });
+  await assert.rejects(
+    service.dispatch('map_write_markdown', { ...owner, fileName: 'note.md', content: '# 只剩标题\n', baseEtag: read.etag }),
+    (error) => error?.code === 'REWRITE_REMOVES_CONTENT' && error?.status === 409,
+  );
+  read = await service.dispatch('map_read_markdown', { ...owner, fileName: 'note.md' });
+  assert.equal(read.content.includes('第二行'), true);
+
+  // 3) 显式 allowContentRemoval 放行
+  const rewritten = await service.dispatch('map_write_markdown', { ...owner, fileName: 'note.md', content: '# 只剩标题\n', baseEtag: read.etag, allowContentRemoval: true });
+  assert.equal(rewritten.content, '# 只剩标题\n');
 });
 
 test('map_read_asset 返回路径+元数据；文本带 content；includeContent 出 base64', async (t) => {
@@ -221,6 +248,7 @@ test('A2: map_get_context 空 query 默认带出最近书写的非空主文档',
   await service.dispatch('map_write_markdown', {
     ownerKind: 'node', ownerId: 'recent-node', fileName: 'index.md',
     content: '# 最近节点\n\n最新排障正文', baseEtag: (await service.dispatch('map_read_markdown', { ownerKind: 'node', ownerId: 'recent-node' })).etag,
+    allowContentRemoval: true,
   });
 
   const emptyQuery = await service.dispatch('map_get_context', {});

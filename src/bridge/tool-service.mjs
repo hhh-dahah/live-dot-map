@@ -36,7 +36,7 @@ export const TOOL_DEFINITIONS = Object.freeze([
   schema('map_checkpoint', '创建可恢复检查点。', { reason: { type: 'string' } }),
   schema('map_plan_consolidation', '只读生成可审核的整理建议。', { maxSuggestions: { type: 'integer', minimum: 1, maximum: 20 }, now: { type: 'string' } }),
   schema('map_read_markdown', '读取当前地图资料包 Markdown。', { ...owner, fileName: { type: 'string' }, path: { type: 'string' } }),
-  schema('map_write_markdown', '用 baseEtag 原子替换资料包 Markdown。', { ...owner, fileName: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' }, baseEtag: { type: 'string' } }, ['content', 'baseEtag']),
+  schema('map_write_markdown', '用 baseEtag 原子替换资料包 Markdown。默认追加式：若替换会删除已有内容的行将被拒绝（REWRITE_REMOVES_CONTENT），请优先用 map_append_markdown；确属用户明确要求改写时才传 allowContentRemoval: true。', { ...owner, fileName: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' }, baseEtag: { type: 'string' }, allowContentRemoval: { type: 'boolean' } }, ['content', 'baseEtag']),
   schema('map_append_markdown', '按路径锁幂等追加 Markdown。', { ...owner, fileName: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' }, commandId: { type: 'string' } }, ['content', 'commandId']),
   schema('map_list_bundle_files', '列出对象资料包文件。', { ...owner, includeArchived: { type: 'boolean' } }, ['ownerKind', 'ownerId']),
   schema('map_create_markdown', '在对象资料包中新建补充 Markdown。', { ...owner, fileName: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
@@ -320,6 +320,18 @@ export class ToolService {
     const file = ownerArgs(args, mapKey);
     if (name === 'map_read_markdown') return cleanResult(await bundleStore.readMarkdown(file));
     if (name === 'map_write_markdown') {
+      // 人机写入契约：默认追加式。整文替换若会删掉已有内容的行，必须显式传 allowContentRemoval。
+      if (args.allowContentRemoval !== true) {
+        const current = await bundleStore.readMarkdown(file).catch(() => null);
+        const existing = String(current?.content ?? '');
+        const next = String(args.content ?? '');
+        if (existing.trim()) {
+          const removed = existing.split(/\r?\n/).filter((line) => line.trim() && !next.includes(line.trim()));
+          if (removed.length) {
+            throw new BridgeError('REWRITE_REMOVES_CONTENT', `整文替换会删除 ${removed.length} 行已有内容，已拒绝。人与 Agent 的写入默认是追加式：请改用 map_append_markdown；确属用户明确要求改写时，重传 allowContentRemoval: true。`, { status: 409 });
+          }
+        }
+      }
       const result = await bundleStore.replaceMarkdown({ ...file, content: args.content, baseEtag: args.baseEtag });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return { ...result, content: String(args.content) };

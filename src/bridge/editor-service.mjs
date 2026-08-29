@@ -541,7 +541,8 @@ export class EditorService {
       const metadata = await stat(candidate);
       const folder = isDirectory(metadata) ? candidate : dirname(candidate);
       await this.#assertNoSymlinkEscape(folder);
-      await this.#callNative('open-folder', { targetPath: folder });
+      // 文件目标直达：传文件路径，由原生助手用 explorer /select 打开所在文件夹并选中该文件。
+      await this.#callNative('open-folder', { targetPath: isDirectory(metadata) ? folder : candidate });
       return { editorId, launched: true };
     }
     const target = await this.#projectPath(relativePath, { kind: 'file' });

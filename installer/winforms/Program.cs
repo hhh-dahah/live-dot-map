@@ -250,11 +250,22 @@ internal static class NativeHelperActions
         try
         {
             var target = Path.GetFullPath(targetValue);
-            var metadata = new DirectoryInfo(target);
-            if (!metadata.Exists || (metadata.Attributes & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidOperationException("目标文件夹不存在或不是普通目录");
             var info = new ProcessStartInfo { FileName = "explorer.exe", UseShellExecute = false, CreateNoWindow = true };
-            info.ArgumentList.Add(target);
+            if (File.Exists(target))
+            {
+                // 文件目标直达：打开所在文件夹并选中该文件。
+                // /select 需要 "/select,\"<path>\"" 的固定参数形式，不能用 ArgumentList 逐段拼接。
+                if ((File.GetAttributes(target) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidOperationException("目标不是普通文件");
+                info.Arguments = "/select,\"" + target + "\"";
+            }
+            else
+            {
+                var metadata = new DirectoryInfo(target);
+                if (!metadata.Exists || (metadata.Attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidOperationException("目标文件夹不存在或不是普通目录");
+                info.ArgumentList.Add(target);
+            }
             Process.Start(info);
             Write(new { ok = true, launched = true });
             return 0;

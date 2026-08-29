@@ -619,6 +619,7 @@ function retrieveContext(document, query, options = {}) {
     const id = String(item.id ?? "").toLowerCase();
     const name = String(item.name ?? "").toLowerCase();
     if (id && queryLower.includes(id) || name && queryLower.includes(name)) seeds.add(String(item.id));
+    else if (name && queryLower.length >= 2 && name.includes(queryLower)) seeds.add(String(item.id));
   }
   if (typeof options.currentNodeId === "string" && active.some(({ item }) => String(item.id) === options.currentNodeId)) seeds.add(options.currentNodeId);
   const adjacency = /* @__PURE__ */ new Map();
@@ -657,6 +658,12 @@ function retrieveContext(document, query, options = {}) {
     if (tokenHits) {
       score += Math.min(250, tokenHits * 50);
       reasons.push(`\u6587\u672C\u547D\u4E2D ${tokenHits} \u4E2A\u8BCD\u5143`);
+    }
+    const nameLower = String(item.name ?? "").toLowerCase();
+    const nameHits = nameLower ? terms.filter((term) => nameLower.includes(term)).length : 0;
+    if (nameHits) {
+      score += Math.min(600, nameHits * 300);
+      reasons.push(`\u540D\u79F0\u547D\u4E2D ${nameHits} \u4E2A\u8BCD\u5143`);
     }
     if (kind === "anns" && (item.attention === "new" || item.attention === "delivered")) {
       score += 800;
