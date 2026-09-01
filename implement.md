@@ -550,3 +550,46 @@ pm run verify 全量结果见下。
 - **测试**：相关自动化 75 项中 73 通过、0 失败、2 项因 Windows 无符号链接权限跳过；覆盖 500 对象局部刷新、Markdown 冲突、人类更新、envelope 非重叠重放/重叠冲突、命令幂等及 WAL 恢复。
 - **文档验收**：完整版最终状态连续编译两次，22 页且无 Overfull/Underfull/未定义引用；拆分件页数 1/1/3/8/9，全部 A4；摘要 297 字；中文正文 SimSun、标题 SimHei；22 页逐页渲染通过。
 - **交付**：`docs/patent-tex/main.pdf` 及 `docs/patent-tex/提交件/` 下完整核对版和五份正式件已覆盖更新。
+
+## 8-30 P1 编辑器体验大修（分支 ui-fix，节点 n15）
+
+- **范围**：详情/编辑器统一右侧 dock 体系 + 编辑器体验五项（T1~T6），决策与执行记录见地图「修bug 排序计划」n15 节点 `p1修改计划.md`，走查截图在 `走查截图/p1/`。
+- **T1/T2 右侧 dock**：`#panel` 详情面板迁入右侧悬浮 dock（宽度拖拽可调、localStorage 记忆、36px 细边条收起），编辑器取消遮罩弹窗、作为 dock 扩宽模式（默认 55vw）；脏状态切换节点/关闭有确认守卫；Escape=收起不关闭。
+- **T3 人写高亮**：textarea + 镜像层实现行号槽（逻辑行号、折行续行不留号）与 diff 实时高亮；保存时改动段自动固化 `<mark>` 写入文件（跨会话留痕，agent 可读）；底栏 3 色点（便签黄/淡紫/淡蓝）仅显示层；手动标记/取消支持选中段精确加减。契约补进 `docs/agent-protocol.md`：`<mark>`=人写，agent 写入不带。
+- **T4 图片补齐**：mdMini 预览渲染 `![alt](name)` 为 `<img>`（桥模式走同源 `/api/v1/assets/read`，查询参数带 projectHandle/mapKey）；粘贴本地图片绝对路径 → 桥端 `/api/v1/assets/import-local` 入库（绝对路径+扩展名白名单+MIME/魔数校验）→ 插入引用；`bundle-store #copySource` 加显式 `allowExternal` 开关（默认仍锁项目根）。
+- **T5**：资料包文件列右键菜单：复制文件名/相对路径/Markdown 引用。
+- **T6 质感**：对标 codex（n15 参考图）：幽灵小图标钮、发丝边框、无大色块（唯一实心色块=保存钮）；`--hl-blue` 令牌同步 `brand-spec.md`。
+- **验证**：Playwright 走查逐步通过（含 Ctrl+S 落盘核对、长文滚动对齐 scrollHeight 3284=3284 diff=0、剪贴板三项实测）；`npm run build`（core+app+bridge）+ `npm test` 217 过 0 挂 3 跳过（基线一致；bundle-store 首轮 1 挂为已知 Windows 并行文件锁抖动，单跑/复跑均过）。
+- **遗留**：待用户过目验收后合并 master；`.deploy/` 产物未动，发布走 `build:deploy`。
+
+## 8-30 P1 复测修复（第二轮，分支 ui-fix）
+
+- **起因**：用户复测发现「点击节点连面板都没有」，自查确认两个真 bug。
+- **Bug 1**：rail 收起态残留（localStorage `dock-rail=1`）时点节点面板只出 36px 细边条；`renderPanel()` 增加 `expandRail()`，有选中对象即摘掉 rail 类并重置偏好。
+- **Bug 2**：画布节点 pointerup 直接写 `S.sel` 绕过 `select()` 的 mdSession 脏检查，编辑中点别的节点不弹确认、状态错乱；`select()` 加 `defer` 参数，节点点击改走 `select('node', id, true)`。
+- **验证**：Playwright 桥 v18 实测五个分支全过（脏切换弹守卫/继续编辑保留/放弃切换/干净静默切换/同节点幂等），截图 `走查截图/p1/p1-fix-01-脏切换守卫.png`；`npm test` 218 过 0 挂 3 跳过。记录已追加到 n15 节点 `p1修改计划.md`。
+- **教训**：自测必须覆盖 rail 残留态与画布点击守卫两条主路径，不能只测理想路径。
+
+## 8-31 P0 热更新一键链路端到端验收通过（节点 n17，v9 安装包）
+
+- **背景**：批次 A（更新条 → 确认 → 自动保存 → 下载 → 切换 → 健康检查 → 画布自动恢复）代码完成后做真实安装目录实测。
+- **bug3 根因（实锤非产品 bug）**：更新器切换 `current` 目录 Access denied 的锁源是**测试 harness 后台任务的 conhost/pty 壳进程**残留在安装目录持锁；真实用户路径（启动器/桌面图标起桥）不存在该锁。保留韧性修复：`server.mjs` applyUpdate spawn 显式 `cwd: tempRoot`；`Program.cs` 重命名 10 次×3 秒重试（失败先还原）、彻底失败先重启旧版画布再弹窗、弹窗 120 秒超时、清理孤儿 .updating。
+- **实测（假通道 127.0.0.1:8787 → .deploy/windows-installer，v9 hash f5facd38）**：启动器起桥 → 更新条出现 → 确认弹窗（自动保存/恢复原样/数据不受影响文案）→ 接受 → 下载校验 → 切换成功（`.previous-20260831005806-…` 备份、无孤儿目录、桥 pid 26924→39444 自重启）→ 用户默认浏览器自动恢复画布、地图原样、状态正常、`/update/check` 变 available:false → MCP 核对 revision 71 全节点/资产完好。
+- **回归**：v9 安装上 md 内嵌编辑器正常打开；「打开方式 → 在文件夹中显示」成功弹出目标目录（n7a 未回退）；`node --test tests/bridge` 38/38。
+- **遗留**：真实线上通道 manifest 仍是旧 hash，批次 B 发布前画布再提示更新属预期；破坏场景（断网/杀更新器/回滚数据一致）待 D:/LiveDotMap-Test 副本验证。下一步批次 B：B1 MCP 薄代理（livedot.mjs mcp 转发桥 `/api/v1/mcp`，单写者）、B2 `scripts/release-update.mjs` 一键发布。
+
+## 8-31 P0 批次 B 完成：MCP 薄代理 + 发布一键化（节点 n17）
+
+- **B1 薄代理**：`/api/v1/mcp` 新增 `X-LiveDot-Control` 本地令牌分支（不回落会话路径）；`livedot.mjs mcp` 改为 stdio↔HTTP 转发壳，桥没跑自动点火（detached serve + 15s 轮询），fail-open 与 `LIVEDOT_MCP_LOCAL=1` 逃生门保留。实测四场景（直接转发/自动点火/未初始化目录/逃生门）全过，日志确认 channel:control 与 actor 正确。新增测试 11 例全绿；全量 232 项 228 过 3 跳过 1 失败（既有 fail-open 损坏地图断言过时，与本次无关，待另开任务）。
+- **B2 发布一键化**：`npm run release:update`（`scripts/release-update.mjs`）九步流水线：bump→构建→校验→三件套自洽→edgeone 输出→git 清单→回滚指引；默认不动 git，`--push` 才推送。顺带修：`.gitignore` 排除 187MB 安装器 exe、`edgeone-build.mjs` 剔除清单补 `windows-installer/LiveDotMapSetup.exe`。
+- **发现**：线上通道 payload/* 目前全部 404（从未进 git，本次发布会修好）；payload 内 88MB 桥二进制超 EdgeOne 25MiB 限制，推送后 EdgeOne 可能部署失败，需观察并准备桥二进制替代托管方案。
+- **待发布**：v2.0.1，payloadHash 2de42c80c15e…；git 推送待用户确认。
+
+## 9-01 推送前综合验收（Playwright 真人路径 + 安装版，节点 n17）
+
+- **改名 blur 崩溃（严重，已修）**：节点行内改名后点画布空白触发 blur 提交时，pointerdown 已先清空 `S.sel`，done 回调再读 `S.sel.kind` → `TypeError: Cannot read properties of null (reading 'kind')`，名字只进内存界面不刷新。修复：进编辑先 `if (!S.sel) return;` 并捕获 `selKind`，回调用捕获值。Enter/blur 两条路径复测零报错。
+- **更新失败提示不明确（已修 3 处）**：服务端 `UPDATE_*` 错误改中文且不再对 5xx 脱敏（`server.mjs` sendError 白名单）；manifest/文件下载的网络异常包装成 `UPDATE_MANIFEST_UNAVAILABLE`/`UPDATE_DOWNLOAD_FAILED`（502）；客户端 toast 带出具体原因。实测：篡改 hash →「更新包校验失败（app.html 与清单不一致，文件可能损坏或被篡改），已自动中止，现有版本不受影响」；通道挂掉 →「更新服务暂时不可用（无法连接更新服务器），请稍后重试」。两种失败现有版本与数据均完好。
+- **回归通过**：改名 Enter/blur、md 编辑器写入+diffline `<mark>` 落盘、添加标注、新建地图→建节点→切回、打开方式→在文件夹中显示（开发桥 503 系缺 `LIVEDOT_NATIVE_HELPER` 所致，安装版正常）、断线弹窗文案与自动恢复、更新条同版本不出现/有新版出现、真实更新链路（自动保存→下载→桥自重启→画布恢复→数据完好→条消失）、「稍后」关条红点保留。
+- **已知小瑕疵**：断线弹窗抢焦点后按 Ctrl+S 会触发全局「导出 map.json」而非 md 保存（编辑内容保留），记入 n17 文档待后续迭代。
+- **通道重建**：`.deploy/windows-installer` 通道已重新生成（v2.0.1，payloadHash d115e553db…，SEA 桥为含上述修复的 92304896 字节版本），`update-manifest.json` 无 installer 字段（exe 超 GitHub 100MB 走 Release 附件）。
+- **待办**：推送后立即核对 `https://livedotmap.top/windows-installer/update-manifest.json`（EdgeOne 25MiB 对 88MB exe 的部署风险）；既有 1 项 fail-open 测试失败待另开任务。

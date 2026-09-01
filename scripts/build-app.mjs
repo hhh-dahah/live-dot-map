@@ -141,8 +141,8 @@ window.LiveDotApp = {
     if (!dot){ syncBadge(); dot = document.querySelector('#sync-dot'); }
     let label = document.querySelector('#sync-label');
     if (!label){ label = document.createElement('span'); label.id='sync-label'; label.style.cssText='font-size:11px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; document.querySelector('#project-pill').insertBefore(label, document.querySelector('#proj-menu-btn')); }
-    const states = {draft:['var(--success)','正常'],saving:['var(--success)','正常'],saved:['var(--success)','正常'],offline:['var(--danger)','断线'],conflict:['var(--danger)','冲突'],error:['var(--danger)','异常'],fallback:['var(--danger)','降级']};
-    const current = states[state] || states.error; dot.style.background=current[0]; dot.title=(detail || current[1]) + (typeof agentActivityLine === 'function' ? agentActivityLine() : ''); label.textContent=current[1];
+    const states = {draft:['var(--success)','正常'],saving:['var(--success)','正常'],saved:['var(--success)','正常'],dirty:['var(--warn)','待保存'],offline:['var(--danger)','断线'],conflict:['var(--danger)','冲突'],error:['var(--danger)','异常'],fallback:['var(--danger)','降级']};
+    const current = states[state] || ['var(--warn)','未知状态']; dot.style.background=current[0]; dot.title=(detail || current[1]) + (typeof agentActivityLine === 'function' ? agentActivityLine() : ''); label.textContent=current[1];
     try{ window.LiveDotUI?.onStatusChange?.(state, detail); }catch{ /* 状态弹窗是附加能力，不能影响主流程 */ }
   },
   // Agent 刚写回的新对象高亮：给对应画布元素加 pulse 类（动画结束后自动移除）

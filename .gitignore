@@ -24,6 +24,9 @@ landing/tsconfig.tsbuildinfo
 .deploy/livedot-bridge-win-x64.blob
 .deploy/windows-installer/livedot-bridge-win-x64.exe
 .deploy/windows-installer/livedot-bridge-win-x64.blob
+# 安装器本体 ~196MB 超 GitHub 100MB 单文件硬限，永远不进 git（走 GitHub Release 附件）；
+# 通道 update-manifest.json 发布时不带 installer 字段，桥端回退本地 exe 执行切换。
+.deploy/windows-installer/LiveDotMapSetup.exe
 # 任何误放进仓库的密钥/环境文件都不进 git（真凭证存仓库外 ~/.live-dot-map/）
 *.env
 *.secrets
