@@ -18,5 +18,8 @@ for (const file of [
   // 安装器本体 ~196MB，远超 25MiB 单文件限制且不进 git；它只走 GitHub Release 附件。
   // 本地 .deploy 里有它（构建产物），复制到输出目录会让手工上传/CI 扫描直接超限。
   'windows-installer/LiveDotMapSetup.exe',
+  // 产品内更新通道的桥 exe ~88MB 同样超 25MiB：清单里该条目已 external 指向
+  // CloudBase 静态托管（平台备案域名），EdgeOne 输出不再携带它。
+  'windows-installer/payload/livedot-bridge-win-x64.exe',
 ]) await rm(resolve(output, file), { force: true });
 console.log('EdgeOne static output prepared: release-only binaries excluded');

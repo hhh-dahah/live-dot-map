@@ -5,19 +5,19 @@
   "channel": "internal-rc",
   "signed": false,
   "sourceReleaseManifest": null,
-  "payloadHash": "d115e553db76b10d1c19d14882a8fc01beae7bfcced7d5dc24f99c58b3daeff3",
+  "payloadHash": "2755532c849f6392be9b2b243432b2efca2068614015546a7518037458d87d21",
   "files": {
     "agent-kit/skills/live-dot-map/SKILL.md": {
-      "bytes": 7348,
-      "sha256": "c1f20eb1b96a665a3b5d4329a632a7c81d5eb8d5e189405ab42ed9f64d230539"
+      "bytes": 7438,
+      "sha256": "8786bfcfe5deb078dd05bce4c8cd3e4ff03b7ece780a623219c9ef3844014fb5"
     },
     "agent-kit/skills/live-dot-map/templates/attempt.md": {
-      "bytes": 290,
-      "sha256": "8c818cd96efdce7d36551f8a76cef1291b99d11d883f92376aac80c56031bc80"
+      "bytes": 301,
+      "sha256": "fd2cd25386e29e5919febbab0308c2cbc8b6bfd2e5f652b8273c4d20c989c1db"
     },
     "app.html": {
-      "bytes": 305937,
-      "sha256": "46790659d2c58247cc09e1b13e7f5e1ca2bfb0399cd73b30e9797a581aa57519"
+      "bytes": 309868,
+      "sha256": "9f7f118b892d35df8e97d5479581b0995a01eb386d3fbcf48e8dd331c656c1c2"
     },
     "assets/app-icon.ico": {
       "bytes": 24645,
@@ -36,16 +36,16 @@
       "sha256": "5eaa4169f40fe375b270b73082c25263c1d8cfa5792621e8672b8e61de030834"
     },
     "livedot-bridge-win-x64.exe": {
-      "bytes": 92305408,
-      "sha256": "ac02d0a2f65f1898b26055a70954905861f7b03d6e55b93ebd22bfc58f9463bd"
+      "bytes": 92307456,
+      "sha256": "1b0c9a4852597738c4e4f69b9612f754fdbda42934e34d7231039156c15da1cb"
     },
     "manifest.webmanifest": {
-      "bytes": 550,
-      "sha256": "aa41be332276032d399a3644c993aa9a5fc3bb24736d339d36bcfb9af1188439"
+      "bytes": 565,
+      "sha256": "ca9928a4d0562b12a03627798fc221cff2c96137f6ea607bda98dc6d6956bf89"
     },
     "sw.js": {
-      "bytes": 1870,
-      "sha256": "41ac0851be6cbbc0ddab6d98163669aebd668f161aa77e8bc8e59cb622bba73c"
+      "bytes": 1918,
+      "sha256": "aa9f8971e558f2feb7cec46c918225ff944ea12d69abd46eeab776ae90fcc828"
     }
   }
 }
