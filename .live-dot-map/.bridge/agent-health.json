@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-25T03:14:02.241Z",
+  "updatedAt": "2026-09-01T03:22:52.275Z",
   "records": {
     "kimi": {
       "status": "ok",
       "actor": "agent:kimi",
-      "event": "mcp:map_get_context",
+      "event": "mcp:map_append_markdown",
       "boundary": "mcp",
-      "at": "2026-08-23T08:25:08.449Z"
+      "at": "2026-09-01T03:22:52.275Z"
     },
     "codex": {
       "status": "ok",

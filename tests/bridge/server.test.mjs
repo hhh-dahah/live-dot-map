@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { request } from 'node:http';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { createServer as createHttpServer, request } from 'node:http';
 import test, { after } from 'node:test';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createBridgeServer, ensureProjectAgentConfig, buildPickFolderScript } from '../../src/bridge/server.mjs';
 import { ProjectStore } from '../../src/bridge/project-store.mjs';
@@ -508,6 +509,35 @@ test('opening a project auto-configures only detected Agents and preserves trust
   assert.equal(second.trust.codex.acknowledged, true);
 });
 
+test('A5: an already configured project silently refreshes a stale global Agent runtime', async (t) => {
+  const { root } = await temporaryProject(t, { withMap: false });
+  const home = await mkdtemp(join(TEST_ROOT_DIR, 'livedot-agent-home-'));
+  const runtimeSource = resolve(import.meta.dirname, '../../livedot.mjs');
+  const detected = {
+    codex: { id: 'codex', configured: false, executable: true, discovered: true },
+  };
+  const options = { platform: 'linux', homeRoot: home, runtimeSource, detect: async () => detected };
+  const first = await ensureProjectAgentConfig(root, options);
+  assert.equal(first.status, 'configured');
+
+  // 模拟旧版本运行时：内容被替换后，下一次打开项目应按 hash 差异原子刷新。
+  const globalRuntime = `${home}/.live-dot-map/livedot.mjs`;
+  await import('node:fs/promises').then(({ writeFile }) => writeFile(globalRuntime, '// stale runtime from an older release\n'));
+  const second = await ensureProjectAgentConfig(root, options);
+  assert.equal(second.status, 'ready');
+  assert.equal(second.runtimeRefreshed, true);
+  assert.equal(second.changed, true);
+  const refreshed = await import('node:fs/promises').then(({ readFile }) => readFile(globalRuntime, 'utf8'));
+  const source = await import('node:fs/promises').then(({ readFile }) => readFile(runtimeSource, 'utf8'));
+  assert.equal(refreshed, source);
+
+  // 内容一致后保持安静，不再重复刷新。
+  const third = await ensureProjectAgentConfig(root, options);
+  assert.equal(third.status, 'ready');
+  assert.equal(third.runtimeRefreshed, false);
+  assert.equal(third.changed, false);
+});
+
 test('enforces request body limit and baseRevision conflicts through HTTP', async (t) => {
   const { root, server } = await startServer(t, { bodyLimit: 512 });
   const session = await establishSession(server);
@@ -868,4 +898,207 @@ test('pick folder script escapes quotes in marker path', () => {
   const script = buildPickFolderScript("C:\\Users\\o'brien\\pick.txt");
   // PowerShell 单引号字符串内的单引号须双写转义。
   assert.match(script, /o''brien/);
+});
+
+// ---- 产品内更新通道（A2/A3）：payloadHash 主信号 + 安装器本体随通道下发 ----
+
+function sha256Hex(content) {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+// 假更新通道：把 entries 落到一个临时目录，用本地 http 服务按路径提供下载。
+async function startUpdateChannel(test, entries) {
+  const channelRoot = await mkdtemp(join(TEST_ROOT_DIR, 'update-channel-'));
+  for (const [name, content] of Object.entries(entries)) {
+    const target = join(channelRoot, name);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, content);
+  }
+  const http = createHttpServer((req, res) => {
+    const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname).replace(/^\/+/, '');
+    const file = join(channelRoot, pathname);
+    if (!file.startsWith(channelRoot)) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    readFile(file).then((data) => {
+      res.writeHead(200);
+      res.end(data);
+    }, () => {
+      res.writeHead(404);
+      res.end();
+    });
+  });
+  await new Promise((resolveListen) => http.listen(0, '127.0.0.1', resolveListen));
+  test.after(() => new Promise((done) => http.close(done)));
+  return { root: channelRoot, url: `http://127.0.0.1:${http.address().port}` };
+}
+
+async function makeChannel(test, { version, payloadHash = null, files = {}, installer = null }) {
+  const entries = {};
+  const fileMeta = {};
+  for (const [name, content] of Object.entries(files)) {
+    entries[`payload/${name}`] = content;
+    fileMeta[name] = { bytes: Buffer.byteLength(content), sha256: sha256Hex(content), url: `payload/${name}` };
+  }
+  const manifest = { schema: 1, product: 'live-dot-map', version, channel: 'internal-rc', files: fileMeta };
+  if (payloadHash) manifest.payloadHash = payloadHash;
+  if (installer !== null) {
+    entries['LiveDotMapSetup.exe'] = installer;
+    manifest.installer = { bytes: Buffer.byteLength(installer), sha256: sha256Hex(installer), url: 'LiveDotMapSetup.exe' };
+  }
+  entries['update-manifest.json'] = JSON.stringify(manifest);
+  return startUpdateChannel(test, entries);
+}
+
+async function makeInstallRoot(test, { version, payloadHash = null }) {
+  const installRoot = await mkdtemp(join(TEST_ROOT_DIR, 'install-root-'));
+  const manifest = { schema: 1, product: 'live-dot-map', version, files: {} };
+  if (payloadHash) manifest.payloadHash = payloadHash;
+  await writeFile(join(installRoot, 'payload-manifest.json'), JSON.stringify(manifest));
+  return installRoot;
+}
+
+test('update check treats payload hash mismatch at equal version as available', async (test) => {
+  const channel = await makeChannel(test, { version: '2.0.0', payloadHash: 'remote-hash' });
+  const installRoot = await makeInstallRoot(test, { version: '2.0.0', payloadHash: 'local-hash' });
+  const { server } = await startServer(test, { updateBase: channel.url, installRoot });
+
+  const check = await (await fetch(`${server.origin}/update/check`, { headers: { Origin: APP_ORIGIN } })).json();
+  assert.equal(check.ok, true);
+  assert.equal(check.available, true);
+});
+
+test('update check is quiet when version and payload hash both match', async (test) => {
+  const channel = await makeChannel(test, { version: '2.0.0', payloadHash: 'same-hash' });
+  const installRoot = await makeInstallRoot(test, { version: '2.0.0', payloadHash: 'same-hash' });
+  const { server } = await startServer(test, { updateBase: channel.url, installRoot });
+
+  const check = await (await fetch(`${server.origin}/update/check`, { headers: { Origin: APP_ORIGIN } })).json();
+  assert.equal(check.available, false);
+});
+
+test('update check never offers a downgrade even when hashes differ', async (test) => {
+  const channel = await makeChannel(test, { version: '2.0.0', payloadHash: 'remote-hash' });
+  const installRoot = await makeInstallRoot(test, { version: '2.1.0', payloadHash: 'local-hash' });
+  const { server } = await startServer(test, { updateBase: channel.url, installRoot });
+
+  const check = await (await fetch(`${server.origin}/update/check`, { headers: { Origin: APP_ORIGIN } })).json();
+  assert.equal(check.available, false);
+});
+
+test('update check falls back to version comparison when the channel has no payload hash', async (test) => {
+  const channel = await makeChannel(test, { version: '2.0.1' });
+  const installRoot = await makeInstallRoot(test, { version: '2.0.0' });
+  const { server } = await startServer(test, { updateBase: channel.url, installRoot });
+
+  const newer = await (await fetch(`${server.origin}/update/check`, { headers: { Origin: APP_ORIGIN } })).json();
+  assert.equal(newer.available, true);
+});
+
+test('update apply downloads installer from channel and spawns it with the temp payload root', async (test) => {
+  const spawned = [];
+  const channel = await makeChannel(test, {
+    version: '2.0.1',
+    payloadHash: 'remote-hash',
+    files: { 'app.html': '<html>new</html>' },
+    installer: 'fake-installer-bytes',
+  });
+  const installRoot = await makeInstallRoot(test, { version: '2.0.0', payloadHash: 'local-hash' });
+  const { server } = await startServer(test, {
+    updateBase: channel.url,
+    installRoot,
+    restartOnUpdate: false,
+    spawnUpdater: (exe, args) => spawned.push([exe, args]),
+  });
+  const session = await establishSession(server);
+
+  const applied = await fetch(`${server.origin}/update/apply`, { method: 'POST', headers: authHeaders(session) });
+  assert.equal(applied.status, 200);
+  const body = await applied.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.restarting, false);
+
+  assert.equal(spawned.length, 1);
+  const [exe, args] = spawned[0];
+  assert.equal(args[0], '--update');
+  // 通道带安装器本体时用新 exe 执行切换；--update 参数与该 exe 路径一致，
+  // UpdateForm 取其目录名定位 tempRoot/payload。
+  assert.equal(exe, args[1]);
+  assert.equal(await readFile(exe, 'utf8'), 'fake-installer-bytes');
+  assert.equal(await readFile(join(dirname(args[1]), 'payload', 'app.html'), 'utf8'), '<html>new</html>');
+});
+
+test('update apply rejects checksum mismatch without spawning the updater', async (test) => {
+  const spawned = [];
+  const channel = await makeChannel(test, {
+    version: '2.0.1',
+    payloadHash: 'remote-hash',
+    files: { 'app.html': '<html>new</html>' },
+    installer: 'fake-installer-bytes',
+  });
+  // 篡改清单里 app.html 的 sha256，模拟下载内容被污染。
+  const manifestPath = join(channel.root, 'update-manifest.json');
+  const tampered = JSON.parse(await readFile(manifestPath, 'utf8'));
+  tampered.files['app.html'].sha256 = '0'.repeat(64);
+  await writeFile(manifestPath, JSON.stringify(tampered));
+  const installRoot = await makeInstallRoot(test, { version: '2.0.0', payloadHash: 'local-hash' });
+  const { server } = await startServer(test, {
+    updateBase: channel.url,
+    installRoot,
+    restartOnUpdate: false,
+    spawnUpdater: (exe, args) => spawned.push([exe, args]),
+  });
+  const session = await establishSession(server);
+
+  const applied = await fetch(`${server.origin}/update/apply`, { method: 'POST', headers: authHeaders(session) });
+  assert.equal(applied.status, 502);
+  assert.equal((await applied.json()).error.code, 'UPDATE_CHECKSUM_MISMATCH');
+  assert.equal(spawned.length, 0);
+});
+
+test('update apply reports already up to date when hashes match', async (test) => {
+  const spawned = [];
+  const channel = await makeChannel(test, { version: '2.0.0', payloadHash: 'same-hash', files: {} });
+  const installRoot = await makeInstallRoot(test, { version: '2.0.0', payloadHash: 'same-hash' });
+  const { server } = await startServer(test, {
+    updateBase: channel.url,
+    installRoot,
+    restartOnUpdate: false,
+    spawnUpdater: (exe, args) => spawned.push([exe, args]),
+  });
+  const session = await establishSession(server);
+
+  const applied = await fetch(`${server.origin}/update/apply`, { method: 'POST', headers: authHeaders(session) });
+  assert.equal(applied.status, 409);
+  assert.equal((await applied.json()).error.code, 'ALREADY_UP_TO_DATE');
+  assert.equal(spawned.length, 0);
+});
+
+test('control shutdown requires the control token and triggers the injected shutdown handler', async (test) => {
+  const controlToken = 'shutdown-token-for-test';
+  let shutdownCalls = 0;
+  const { server } = await startServer(test, {
+    controlToken,
+    shutdownHandler: () => { shutdownCalls += 1; },
+  });
+
+  const denied = await fetch(`${server.origin}/api/v1/control/shutdown`, { method: 'POST' });
+  assert.equal(denied.status, 401);
+  assert.equal(shutdownCalls, 0);
+
+  const getDenied = await fetch(`${server.origin}/api/v1/control/shutdown`, {
+    headers: { 'X-LiveDot-Control': controlToken },
+  });
+  assert.equal(getDenied.status, 405);
+  assert.equal(shutdownCalls, 0);
+
+  const ok = await fetch(`${server.origin}/api/v1/control/shutdown`, {
+    method: 'POST',
+    headers: { 'X-LiveDot-Control': controlToken },
+  });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { ok: true, stopping: true });
+  assert.equal(shutdownCalls, 1);
 });

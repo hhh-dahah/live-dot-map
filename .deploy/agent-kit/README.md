@@ -1,6 +1,6 @@
 # agent-kit
 
-给 Codex、Claude Code、Kimi Code 和 WorkBuddy/CodeBuddy 的本地协作接入包。安装时自动检测当前可用 Agent，只写入检测到的平台配置；正式模式由一个 `livedot.mjs` 同时提供可靠存储、图检索、MCP 和 hooks。
+给 Codex、Claude Code、Kimi Code 和 WorkBuddy/CodeBuddy 的本地协作接入包。安装时自动检测当前可用 Agent，只写入检测到的平台配置；正式模式由一个 `livedot.mjs` 同时提供可靠存储、图检索、MCP 和 hooks。stdio MCP 进程是薄代理：`tools/call` 转发给常驻桥（地图唯一写者），桥未运行时会自动拉起；`LIVEDOT_MCP_LOCAL=1` 可临时回退旧的就地模式。
 
 ## 一句接入
 

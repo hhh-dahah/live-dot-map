@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -115,6 +115,9 @@ for (const sourceRelative of payloadFiles) {
   await cp(source, target, { force: true });
 }
 const payloadHashes = Object.fromEntries(await Promise.all(payloadFiles.map(async (entry) => [entry, await sha256(join(payload, entry))])));
+// 整体指纹：所有文件「相对路径:sha256」排序拼接后再取 sha256。
+// 产品内更新以它为第一判定信号——版本号相同但内容变化的构建也能被识别。
+const payloadHash = createHash('sha256').update(Object.keys(payloadHashes).sort().map((entry) => `${entry}:${payloadHashes[entry].sha256}`).join('\n')).digest('hex');
 const releaseManifest = await sha256(join(deploy, 'release-manifest.json'));
 await writeFile(join(payload, 'payload-manifest.json'), `${JSON.stringify({
   schema: 1,
@@ -123,6 +126,7 @@ await writeFile(join(payload, 'payload-manifest.json'), `${JSON.stringify({
   channel: 'internal-rc',
   signed: false,
   sourceReleaseManifest: releaseManifest,
+  payloadHash,
   files: payloadHashes,
 }, null, 2)}\n`, 'utf8');
 
@@ -161,26 +165,42 @@ await writeFile(join(output, 'installer-manifest.json'), `${JSON.stringify({
   files: installerHashes,
 }, null, 2)}\n`, 'utf8');
 const executable = join(output, 'LiveDotMapSetup.exe');
-const executableSize = (await stat(executable)).size;
+const executableMeta = await sha256(executable);
+const executableSize = executableMeta.bytes;
 // 产品内更新清单：复制 payload 到 .deploy/windows-installer/（EdgeOne/CloudBase 线上源），
 // 供本地桥 /api/v1/update/check 与 /api/v1/update/apply 下载比对。
 const updateDir = join(deploy, 'windows-installer');
 await removeGeneratedDirectory(updateDir);
 await mkdir(updateDir, { recursive: true });
+// 更新通道同时携带安装器本体：产品内更新用新 exe 执行目录切换，
+// 这样安装器自身的修复也能送达；旧清单没有 installer 字段时服务端回退到本地现有 exe。
+await cp(executable, join(updateDir, 'LiveDotMapSetup.exe'), { force: true });
 const updateFiles = {};
 for (const entry of payloadFiles) {
   const source = join(payload, entry);
-  const target = join(updateDir, entry);
+  // 清单 url 是 payload/<entry>，通道目录必须同布局放置，否则下载 404。
+  const target = join(updateDir, 'payload', entry);
   await mkdir(dirname(target), { recursive: true });
   await cp(source, target, { force: true });
   const { bytes, sha256 } = payloadHashes[entry];
   updateFiles[entry] = { bytes, sha256, url: `payload/${entry}` };
+}
+// 更新包必须带 payload-manifest.json：安装器侧的 PayloadVerifier 按它逐文件校验，
+// 缺了它产品内更新会在「新版本校验失败」处中止。
+{
+  const manifestEntry = 'payload-manifest.json';
+  const manifestMeta = await sha256(join(payload, manifestEntry));
+  const target = join(updateDir, 'payload', manifestEntry);
+  await cp(join(payload, manifestEntry), target, { force: true });
+  updateFiles[manifestEntry] = { bytes: manifestMeta.bytes, sha256: manifestMeta.sha256, url: `payload/${manifestEntry}` };
 }
 await writeFile(join(updateDir, 'update-manifest.json'), `${JSON.stringify({
   schema: 1,
   product: 'live-dot-map',
   version: packageJson.version,
   channel: 'internal-rc',
+  payloadHash,
+  installer: { bytes: executableMeta.bytes, sha256: executableMeta.sha256, url: 'LiveDotMapSetup.exe' },
   files: updateFiles,
 }, null, 2)}\n`, 'utf8');
 console.log(JSON.stringify({ ok: true, output, executable, executableSize, payloadFiles: Object.keys(payloadHashes), updateManifest: join(updateDir, 'update-manifest.json') }, null, 2));
