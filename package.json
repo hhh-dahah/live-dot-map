@@ -1,6 +1,6 @@
 {
   "name": "live-dot-map-v2",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "build:release-manifest": "node scripts/build-release-manifest.mjs",
     "build:edgeone": "node scripts/edgeone-build.mjs",
     "build:windows-installer": "node scripts/build-windows-installer.mjs",
+    "release:update": "node scripts/release-update.mjs",
     "build": "npm run build:core && npm run build:app && npm run build:bridge",
     "test": "npm run build:core && node --test tests/**/*.test.mjs",
     "test:core": "npm run build:core && node --test tests/core/*.test.mjs",

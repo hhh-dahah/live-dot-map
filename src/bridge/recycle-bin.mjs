@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { access, lstat } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 
 import { BridgeError } from './errors.mjs';
 
@@ -11,6 +12,17 @@ function failure(code, message, status = 503, details) {
 }
 
 export function defaultNativeHelperPath(options = {}) {
+  if (options.helperPath) return resolve(options.helperPath);
+  // 环境变量优先，便于开发/测试时指向任意安装目录的启动器。
+  const fromEnv = options.envHelper ?? process.env.LIVEDOT_NATIVE_HELPER;
+  if (fromEnv && existsSync(fromEnv)) return resolve(fromEnv);
+  // 安装版：桥在 <安装目录>/current/payload/livedot-bridge-*.exe，
+  // 启动器在同级的 <安装目录>/current/LiveDotMapSetup.exe。
+  // 自定义安装目录（不在 LOCALAPPDATA 下）也必须能找到。
+  const execPath = options.execPath ?? process.execPath;
+  const fromExec = join(dirname(resolve(execPath)), '..', 'LiveDotMapSetup.exe');
+  if (existsSync(fromExec)) return fromExec;
+  // 兼容默认安装位置（LOCALAPPDATA/live-dot-map/current）。
   const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
   if (!localAppData) return null;
   return join(resolve(localAppData), 'live-dot-map', 'current', 'LiveDotMapSetup.exe');

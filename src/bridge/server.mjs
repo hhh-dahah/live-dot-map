@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { canonicalDirectory } from './fs-utils.mjs';
@@ -261,6 +261,29 @@ async function readObject(path) {
   }
 }
 
+async function sha256File(path) {
+  try {
+    return createHash('sha256').update(await readFile(path)).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+/** A5：全局 Agent 运行时（~/.live-dot-map/livedot.mjs）与本次发行运行时 hash 不一致时原子刷新（tmp + rename）。 */
+async function refreshAgentRuntime({ runtimeSource, homeRoot } = {}) {
+  if (!runtimeSource) return false;
+  const source = resolve(runtimeSource);
+  const target = join(resolve(homeRoot || homedir()), '.live-dot-map', 'livedot.mjs');
+  if (source.toLowerCase() === target.toLowerCase()) return false;
+  const [sourceHash, targetHash] = await Promise.all([sha256File(source), sha256File(target)]);
+  if (!sourceHash || sourceHash === targetHash) return false;
+  const temp = join(dirname(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(temp, await readFile(source));
+  await rename(temp, target);
+  return true;
+}
+
 function runtimeSources({ sourceRoot, runtimeSource } = {}) {
   const entry = process.argv[1] ? resolve(process.argv[1]) : '';
   const entryRoot = entry ? dirname(entry) : '';
@@ -306,7 +329,12 @@ export async function ensureProjectAgentConfig(projectRoot, {
     const installed = existing?.installed && typeof existing.installed === 'object' ? existing.installed : {};
     const alreadyConfigured = existing?.version === 2 && available.every((item) => installed[item.id] === true);
     if (alreadyConfigured) {
-      return { ok: true, status: 'ready', changed: false, projectRoot: root, detectedAgents: detected || {}, configured: installed, trust: existing?.trust || {} };
+      // A5：已配置不代表运行时最新——全局 livedot.mjs 与本次发行运行时 hash 不同则原子刷新，提示重开会话后生效。
+      let runtimeRefreshed = false;
+      try {
+        runtimeRefreshed = await refreshAgentRuntime({ runtimeSource: runtimeSources({ sourceRoot, runtimeSource }).runtimeSource, homeRoot });
+      } catch { /* 刷新失败不阻断打开地图 */ }
+      return { ok: true, status: 'ready', changed: runtimeRefreshed, runtimeRefreshed, projectRoot: root, detectedAgents: detected || {}, configured: installed, trust: existing?.trust || {} };
     }
     const sources = runtimeSources({ sourceRoot, runtimeSource });
     const result = await install({
@@ -448,10 +476,13 @@ function sendJson(response, status, value) {
 
 function sendError(response, error) {
   const bridgeError = asBridgeError(error);
+  // UPDATE_* 是面向用户的更新错误（校验失败、下载失败等），5xx 不脱敏；
+  // 其余 5xx 隐藏内部细节避免泄露实现与路径。
+  const userFacing = String(bridgeError.code || '').startsWith('UPDATE_');
   const body = {
     error: {
       code: bridgeError.code,
-      message: bridgeError.status >= 500 ? 'Local bridge request failed' : bridgeError.message,
+      message: userFacing || bridgeError.status < 500 ? bridgeError.message : 'Local bridge request failed',
     },
   };
   if (bridgeError.details !== undefined && bridgeError.status < 500) body.error.details = bridgeError.details;
@@ -492,6 +523,11 @@ export async function createBridgeServer({
   staticAssets = {},
   agentSetup = ensureProjectAgentConfig,
   logger = noopLogger,
+  updateBase = null,
+  installRoot = process.cwd(),
+  spawnUpdater = null,
+  restartOnUpdate = true,
+  shutdownHandler = null,
 } = {}) {
   if (!Array.isArray(allowedProjectRoots) || allowedProjectRoots.length === 0) {
     throw new BridgeError('ALLOWLIST_REQUIRED', 'At least one project root must be allowlisted');
@@ -767,16 +803,20 @@ export async function createBridgeServer({
   }
 
   // ---- 产品内更新：/update/check 与 /update/apply ----
-  // 更新渠道指向线上 windows-installer 目录（update-manifest.json + payload 文件），
+  // 更新渠道指向线上 windows-installer 目录（update-manifest.json + payload 文件 + 安装器本体），
   // 可用 LIVEDOT_UPDATE_BASE 覆盖（本地预演/测试）。所有请求由桥代发，前端不直连外网（CSP）。
-  const UPDATE_BASE = (process.env.LIVEDOT_UPDATE_BASE || 'https://livedotmap.top/windows-installer').replace(/\/+$/, '');
+  const UPDATE_BASE = (updateBase || process.env.LIVEDOT_UPDATE_BASE || 'https://livedotmap.top/windows-installer').replace(/\/+$/, '');
 
-  async function readLocalPayloadVersion() {
+  // 本地安装信息：版本号只是人类标签，payloadHash 才是「内容是否变化」的第一判定信号。
+  async function readLocalPayloadInfo() {
     try {
-      const parsed = JSON.parse(await readFile(join(process.cwd(), 'payload-manifest.json'), 'utf8'));
-      return typeof parsed.version === 'string' ? parsed.version : null;
+      const parsed = JSON.parse(await readFile(join(installRoot, 'payload-manifest.json'), 'utf8'));
+      return {
+        version: typeof parsed.version === 'string' ? parsed.version : null,
+        payloadHash: typeof parsed.payloadHash === 'string' ? parsed.payloadHash : null,
+      };
     } catch {
-      return null;
+      return { version: null, payloadHash: null };
     }
   }
 
@@ -791,9 +831,24 @@ export async function createBridgeServer({
     return 0;
   }
 
+  // 更新判定契约：远端版本更高 → 可更新；版本相同但 payloadHash 不同（同版本重打包）→ 可更新；
+  // 远端版本更低一律不提示（不向用户推送降级）；清单缺 payloadHash（旧通道）时回退纯版本号比较。
+  function isUpdateAvailable(local, manifest) {
+    if (local.version === null) return false;
+    const versionDelta = compareVersions(manifest.version, local.version);
+    if (versionDelta > 0) return true;
+    if (versionDelta < 0) return false;
+    return Boolean(local.payloadHash && typeof manifest.payloadHash === 'string' && local.payloadHash !== manifest.payloadHash);
+  }
+
   async function fetchUpdateManifest() {
-    const response = await fetch(`${UPDATE_BASE}/update-manifest.json`, { signal: AbortSignal.timeout(8000) });
-    if (!response.ok) throw new BridgeError('UPDATE_MANIFEST_UNAVAILABLE', `Update manifest unavailable (HTTP ${response.status})`, { status: 502 });
+    let response;
+    try {
+      response = await fetch(`${UPDATE_BASE}/update-manifest.json`, { signal: AbortSignal.timeout(8000) });
+    } catch {
+      throw new BridgeError('UPDATE_MANIFEST_UNAVAILABLE', '更新服务暂时不可用（无法连接更新服务器），请稍后重试', { status: 502 });
+    }
+    if (!response.ok) throw new BridgeError('UPDATE_MANIFEST_UNAVAILABLE', `更新服务暂时不可用（HTTP ${response.status}），请稍后重试`, { status: 502 });
     const manifest = await response.json();
     if (!manifest || typeof manifest !== 'object' || typeof manifest.version !== 'string' || !manifest.files || typeof manifest.files !== 'object') {
       throw new BridgeError('UPDATE_MANIFEST_INVALID', 'Update manifest is invalid', { status: 502 });
@@ -802,57 +857,92 @@ export async function createBridgeServer({
   }
 
   async function checkUpdate() {
-    const current = await readLocalPayloadVersion();
+    const local = await readLocalPayloadInfo();
     try {
       const manifest = await fetchUpdateManifest();
-      const latest = manifest.version;
-      const available = current !== null && compareVersions(latest, current) > 0;
-      return { ok: true, current, latest, available, fileCount: available ? Object.keys(manifest.files).length : 0 };
+      const available = isUpdateAvailable(local, manifest);
+      return { ok: true, current: local.version, latest: manifest.version, available, fileCount: available ? Object.keys(manifest.files).length : 0 };
     } catch (error) {
-      return { ok: false, current, latest: null, available: false, error: error instanceof Error ? error.message : String(error) };
+      return { ok: false, current: local.version, latest: null, available: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
-  async function applyUpdate() {
-    const current = await readLocalPayloadVersion();
-    const manifest = await fetchUpdateManifest();
-    if (current !== null && compareVersions(manifest.version, current) <= 0) {
-      throw new BridgeError('ALREADY_UP_TO_DATE', `Current version ${current} is up to date`, { status: 409 });
+  // 把更新清单里一个带 sha256 的条目下载到 target；url 只允许相对路径，防止清单被篡改后读取任意地址。
+  async function downloadUpdateFile(meta, target, label) {
+    if (!meta || typeof meta !== 'object' || typeof meta.sha256 !== 'string' || typeof meta.url !== 'string') {
+      throw new BridgeError('UPDATE_MANIFEST_INVALID', `Invalid file entry: ${label}`, { status: 502 });
     }
-    const updater = resolve(join(process.cwd(), '..', 'LiveDotMapSetup.exe'));
+    if (meta.url.includes('..') || meta.url.startsWith('/') || /^[a-zA-Z]:/.test(meta.url) || /^https?:/i.test(meta.url)) {
+      throw new BridgeError('UPDATE_MANIFEST_INVALID', `Unsafe file url: ${label}`, { status: 502 });
+    }
+    let response;
     try {
-      await access(updater);
+      response = await fetch(`${UPDATE_BASE}/${meta.url}`, { signal: AbortSignal.timeout(600000) });
     } catch {
-      throw new BridgeError('UPDATER_UNAVAILABLE', 'Installer entry not found; updates are only available in installed mode', { status: 501 });
+      throw new BridgeError('UPDATE_DOWNLOAD_FAILED', `更新包下载失败（${label}，无法连接更新服务器），请检查网络后重试`, { status: 502 });
+    }
+    if (!response.ok) throw new BridgeError('UPDATE_DOWNLOAD_FAILED', `更新包下载失败（${label}，HTTP ${response.status}），请检查网络后重试`, { status: 502 });
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const actual = createHash('sha256').update(buffer).digest('hex');
+    if (actual !== meta.sha256.toLowerCase()) throw new BridgeError('UPDATE_CHECKSUM_MISMATCH', `更新包校验失败（${label} 与清单不一致，文件可能损坏或被篡改），已自动中止，现有版本不受影响`, { status: 502 });
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, buffer);
+  }
+
+  async function applyUpdate() {
+    const local = await readLocalPayloadInfo();
+    const manifest = await fetchUpdateManifest();
+    if (!isUpdateAvailable(local, manifest)) {
+      throw new BridgeError('ALREADY_UP_TO_DATE', `Current version ${local.version ?? 'unknown'} is up to date`, { status: 409 });
     }
     const tempRoot = join(process.env.TEMP || process.env.TMP || homedir(), `livedot-update-${manifest.version}-${randomUUID()}`);
     const payloadDir = join(tempRoot, 'payload');
     await mkdir(payloadDir, { recursive: true });
     try {
       for (const [relative, meta] of Object.entries(manifest.files)) {
-        if (!meta || typeof meta !== 'object' || typeof meta.sha256 !== 'string' || typeof meta.url !== 'string') {
-          throw new BridgeError('UPDATE_MANIFEST_INVALID', `Invalid file entry: ${relative}`, { status: 502 });
-        }
         if (relative.includes('..') || relative.startsWith('/') || /^[a-zA-Z]:/.test(relative)) {
           throw new BridgeError('UPDATE_MANIFEST_INVALID', `Unsafe file path: ${relative}`, { status: 502 });
         }
-        const target = join(payloadDir, relative);
-        await mkdir(dirname(target), { recursive: true });
-        const response = await fetch(`${UPDATE_BASE}/${meta.url}`, { signal: AbortSignal.timeout(600000) });
-        if (!response.ok) throw new BridgeError('UPDATE_DOWNLOAD_FAILED', `Download failed for ${relative} (HTTP ${response.status})`, { status: 502 });
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const actual = createHash('sha256').update(buffer).digest('hex');
-        if (actual !== meta.sha256.toLowerCase()) throw new BridgeError('UPDATE_CHECKSUM_MISMATCH', `Checksum mismatch for ${relative}`, { status: 502 });
-        await writeFile(target, buffer);
+        await downloadUpdateFile(meta, join(payloadDir, relative), relative);
       }
     } catch (error) {
       await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
       throw error;
     }
-    // 启动更新器（独立进程），随后桥优雅退出；更新器完成 备份→切换→重开画布。
-    const child = spawn(updater, ['--update', tempRoot], { detached: true, stdio: 'ignore', windowsHide: true });
-    child.unref();
-    return { ok: true, version: manifest.version, restarting: true };
+    // 安装器本体随通道下发时用新 exe 执行切换（安装器自身的修复也能送达）；
+    // 旧清单没有 installer 字段时回退到当前安装目录里的 exe。
+    let updater;
+    if (manifest.installer && typeof manifest.installer === 'object') {
+      updater = join(tempRoot, 'LiveDotMapSetup.exe');
+      try {
+        await downloadUpdateFile(manifest.installer, updater, 'LiveDotMapSetup.exe');
+      } catch (error) {
+        await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+      }
+    } else {
+      updater = resolve(join(installRoot, '..', 'LiveDotMapSetup.exe'));
+      try {
+        await access(updater);
+      } catch {
+        await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
+        throw new BridgeError('UPDATER_UNAVAILABLE', 'Installer entry not found; updates are only available in installed mode', { status: 501 });
+      }
+    }
+    // UpdateForm 的 --update 参数是「新安装包 exe 路径」，其目录名必须包含 payload/。
+    // 这里统一传 tempRoot 下的 exe 路径（回退场景该文件不存在也无妨，GetDirectoryName 不做存在性检查）。
+    // 第三个参数显式告诉更新器要替换的 current 目录（installRoot 是 payload/，上一级即 current），
+    // 否则更新器从 TEMP 运行时会把下载目录误当安装目录。
+    const updaterArgs = ['--update', join(tempRoot, 'LiveDotMapSetup.exe'), resolve(join(installRoot, '..'))];
+    if (spawnUpdater) {
+      spawnUpdater(updater, updaterArgs);
+    } else {
+      // 必须显式指定 cwd：缺省会继承桥的 cwd（current/payload），
+      // Windows 禁止重命名任何进程工作目录的祖先，更新器不退出切换脚本就一直 Access denied。
+      const child = spawn(updater, updaterArgs, { detached: true, stdio: 'ignore', windowsHide: true, cwd: tempRoot });
+      child.unref();
+    }
+    return { ok: true, version: manifest.version, restarting: restartOnUpdate };
   }
 
   function scheduleRestart() {
@@ -926,22 +1016,33 @@ export async function createBridgeServer({
         ['/api/v1/editors/pick', '/editors/pick'],
         ['/api/v1/editors/save-as', '/editors/save-as'],
         ['/api/v1/assets/import', '/assets/import'],
+        ['/api/v1/assets/import-local', '/assets/import-local'],
         ['/api/v1/assets/read', '/assets/read'],
         ['/api/v1/update/check', '/update/check'],
         ['/api/v1/update/apply', '/update/apply'],
         ['/api/v1/logs/client', '/logs/client'],
         ['/api/v1/control/status', '/control/status'],
         ['/api/v1/control/open-project', '/control/open-project'],
+        ['/api/v1/control/shutdown', '/control/shutdown'],
       ]);
       const pathname = aliases.get(url.pathname) || url.pathname;
 
-      if (pathname === '/control/status' || pathname === '/control/open-project') {
+      if (pathname === '/control/status' || pathname === '/control/open-project' || pathname === '/control/shutdown') {
         if (!controlToken || !constantEqual(request.headers['x-livedot-control'], controlToken)) {
           throw new BridgeError('INVALID_CONTROL_TOKEN', 'Bridge control authentication failed', { status: 401 });
         }
+        if (pathname === '/control/shutdown') {
+          // A4：安装/更新/启动时通过受认证控制通道请旧桥优雅退出，替代杀进程。
+          requireMethod(request, 'POST');
+          sendJson(response, 200, { ok: true, stopping: true });
+          (shutdownHandler ?? scheduleRestart)();
+          return;
+        }
         if (pathname === '/control/status') {
           requireMethod(request, 'GET');
-          sendJson(response, 200, { ok: true, service: 'live-dot-map-bridge', pid: process.pid, port });
+          // capabilities 供薄代理做能力探测：老版本桥的 /api/v1/mcp 只认浏览器会话，
+          // 没有 mcpControl 能力时 CLI 会点火新 serve 流程替换/拉起新桥。
+          sendJson(response, 200, { ok: true, service: 'live-dot-map-bridge', pid: process.pid, port, capabilities: { mcpControl: true } });
           return;
         }
         requireMethod(request, 'POST');
@@ -966,6 +1067,56 @@ export async function createBridgeServer({
           bootstrapToken: ticket,
           ...(projectHandle ? { projectHandle } : {}),
         });
+        return;
+      }
+
+      // B1：本地 Agent 薄代理通道。/api/v1/mcp 携带 X-LiveDot-Control 头时走控制令牌
+      // 鉴权（与 /control/* 同一信任级），跳过浏览器 session/CSRF，从 body 取
+      // projectRoot/mapKey/agent。不带该头的请求原样落入后面的浏览器会话路径，
+      // 行为完全不变；令牌不匹配直接 401，不回落会话鉴权（避免令牌猜测撞进会话分支）。
+      if (pathname === '/api/v1/mcp' && controlToken && typeof request.headers['x-livedot-control'] === 'string') {
+        if (!constantEqual(request.headers['x-livedot-control'], controlToken)) {
+          throw new BridgeError('INVALID_CONTROL_TOKEN', 'Bridge control authentication failed', { status: 401 });
+        }
+        requireMethod(request, 'POST');
+        const body = await readJsonBody(request, bodyLimit);
+        const tool = String(body.tool || body.name || '');
+        let healthRoot = null;
+        let actor = 'agent:mcp-proxy';
+        try {
+          if (typeof body.projectRoot !== 'string' || !isAbsolute(body.projectRoot)) {
+            throw new BridgeError('PROJECT_ROOT_REQUIRED', 'projectRoot must be an absolute path', { status: 400 });
+          }
+          let root;
+          try {
+            root = await canonicalDirectory(body.projectRoot);
+          } catch (error) {
+            if (error?.code === 'ENOENT') throw new BridgeError('PROJECT_NOT_FOUND', `Project directory does not exist: ${body.projectRoot}`, { status: 404 });
+            throw new BridgeError('PROJECT_NOT_ALLOWED', 'Project root is not accessible', { status: 403 });
+          }
+          healthRoot = root;
+          if (typeof body.agent === 'string' && body.agent.trim()) {
+            actor = `agent:${body.agent.trim().replace(/^agent:/, '').slice(0, 64) || 'mcp-proxy'}`;
+          }
+          // 与 serve/launcher 同一授权语义：持有控制令牌的项目根幂等登记进注册表；
+          // 无注册表（内嵌/测试）时与 openProject 一样直接放行。
+          const projectHandle = projectRegistry ? (await projectRegistry.register(root)).projectHandle : 'mcp-proxy';
+          const args = body.arguments && typeof body.arguments === 'object' && !Array.isArray(body.arguments) ? body.arguments : {};
+          const manager = await mapManagerFor(root);
+          const service = new ToolService({ mapManager: manager, shared: adapter, actor, projectHandle });
+          // mapKey 缺省跟随该项目 active-map 指针（即画布当前地图）。
+          const result = await service.dispatch(tool, {
+            ...args,
+            ...(typeof body.mapKey === 'string' && body.mapKey ? { mapKey: body.mapKey } : {}),
+          });
+          await recordAgentHealth(root, actor, `mcp:${tool}`, 'ok').catch(() => undefined);
+          logger.info('mcp', { tool, ok: true, channel: 'control', actor });
+          sendJson(response, 200, { tool, result });
+        } catch (error) {
+          if (healthRoot) await recordAgentHealth(healthRoot, actor, `mcp:${tool || 'unknown'}`, 'error', error).catch(() => undefined);
+          logger.error('mcp', { tool: tool || 'unknown', channel: 'control', actor, error });
+          throw error;
+        }
         return;
       }
 
@@ -1124,7 +1275,7 @@ export async function createBridgeServer({
         validateCsrf(request, session);
         const applied = await applyUpdate();
         sendJson(response, 200, applied);
-        scheduleRestart();
+        if (restartOnUpdate) scheduleRestart();
         return;
       }
       if (pathname === '/projects/pick') {
@@ -1508,6 +1659,29 @@ export async function createBridgeServer({
           fileName,
           stream: request,
           mimeType: String(request.headers['content-type'] || ''),
+        });
+        sendJson(response, 201, result);
+        return;
+      }
+
+      /* 粘贴本地图片绝对路径入库:浏览器拿不到路径对应的字节,由本地桥代为读取。
+         仅限绝对路径;扩展名/MIME/文件头校验与流式导入一致。 */
+      if (pathname === '/assets/import-local') {
+        requireMethod(request, 'POST');
+        validateCsrf(request, session);
+        const body = await readJsonBody(request, bodyLimit);
+        const ownerKind = String(body.ownerKind || '');
+        const ownerId = String(body.ownerId || '');
+        const sourcePath = String(body.sourcePath || '');
+        if (!ownerKind || !ownerId || !sourcePath) throw new BridgeError('ASSET_FIELDS_REQUIRED', 'ownerKind, ownerId and sourcePath are required', { status: 400 });
+        if (!isAbsolute(sourcePath)) throw new BridgeError('ASSET_PATH_NOT_ABSOLUTE', 'sourcePath 必须是绝对路径', { status: 400 });
+        const bundle = await activeBundleStore(session);
+        const result = await bundle.importAsset({
+          ownerKind,
+          ownerId,
+          fileName: basename(sourcePath),
+          sourcePath,
+          allowExternalPath: true,
         });
         sendJson(response, 201, result);
         return;

@@ -166,3 +166,81 @@ test('BridgeClient 切图可恢复 A 草稿，失败回滚旧 mapKey，并等待
     globalThis.location = originalLocation;
   }
 });
+
+test('flushPending 跳过防抖立即提交 pending，断线时抛错由调用方中止', async () => {
+  const source = await readFile(new URL('../../src/web/bridge-client.ts', import.meta.url), 'utf8');
+  const compiled = await transform(source, { loader: 'ts', format: 'esm', platform: 'node', target: 'es2022' });
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const originalIndexedDb = globalThis.indexedDB;
+  const originalSessionStorage = globalThis.sessionStorage;
+  const originalLocation = globalThis.location;
+  const indexed = makeIndexedDb();
+  const session = new Map();
+  globalThis.window = {
+    addEventListener() {},
+    setTimeout,
+    clearTimeout,
+    LiveDotApp: { load() {}, setStatus() {} },
+  };
+  globalThis.indexedDB = { open: indexed.open };
+  globalThis.sessionStorage = {
+    getItem(key) { return session.get(key) ?? null; },
+    setItem(key, value) { session.set(key, String(value)); },
+    removeItem(key) { session.delete(key); },
+  };
+  globalThis.location = { href: 'http://bridge.test/app.html' };
+  try {
+    const bootstrapWindowApp = globalThis.window.LiveDotApp;
+    globalThis.window.LiveDotApp = undefined;
+    const module = await import(`data:text/javascript,${encodeURIComponent(compiled.code)}`);
+    globalThis.window.LiveDotApp = bootstrapWindowApp;
+    const client = new module.BridgeClient();
+    client.origin = 'http://bridge.test';
+    client.initialized = true;
+    client.connected = true;
+    client.csrf = 'csrf';
+    client.projectHandle = 'project-handle';
+    client.projectId = 'project';
+    client.mapKey = 'map-a';
+    client.revision = 1;
+    client.lastDocument = structuredClone(mapDocument('地图 A', 'A 基线'));
+
+    // 无 pending：直接返回，不发任何请求
+    let posts = 0;
+    globalThis.fetch = async () => { posts += 1; return new Response(JSON.stringify({ ok: true }), { status: 200 }); };
+    await client.flushPending();
+    assert.equal(posts, 0);
+
+    // 有 pending：立即提交（不等 350ms 防抖），成功后清空 dirty/pending
+    const draft = mapDocument('地图 A', 'A 待保存');
+    client.pending = structuredClone(draft);
+    client.dirty = true;
+    client.draftCommandId = 'cmd-flush';
+    globalThis.fetch = async (url, options = {}) => {
+      const requestUrl = new URL(String(url));
+      posts += 1;
+      if (requestUrl.pathname.endsWith('/commands')) {
+        return new Response(JSON.stringify({ ok: true, revision: 2, document: { ...structuredClone(draft), revision: 2 } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    };
+    await client.flushPending();
+    assert.equal(client.pending, null);
+    assert.equal(client.dirty, false);
+    assert.equal(client.revision, 2);
+    assert.ok(posts >= 1);
+
+    // 断线且仍有 pending：抛错，更新流程据此中止而不是带伤重启
+    client.pending = structuredClone(draft);
+    client.dirty = true;
+    client.connected = false;
+    await assert.rejects(() => client.flushPending(), /未能保存/);
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+    globalThis.indexedDB = originalIndexedDb;
+    globalThis.sessionStorage = originalSessionStorage;
+    globalThis.location = originalLocation;
+  }
+});

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 
-import { NativeRecycleBin, assertPurgeStagingPath } from '../../src/bridge/recycle-bin.mjs';
+import { NativeRecycleBin, assertPurgeStagingPath, defaultNativeHelperPath } from '../../src/bridge/recycle-bin.mjs';
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'livedot-recycle-'));
@@ -43,4 +43,26 @@ test('native recycle helper 使用固定参数且不启用 shell', async () => {
   assert.equal(await recycle.recycle(staging), true);
   assert.deepEqual(calls[0].args, ['--recycle-staging', staging]);
   assert.equal(calls[0].options.shell, false);
+});
+
+test('native helper 路径优先取桥进程旁边的启动器，兼容自定义安装目录', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'livedot-helper-path-'));
+  const launcher = join(root, 'current', 'LiveDotMapSetup.exe');
+  const bridgeExe = join(root, 'current', 'payload', 'livedot-bridge-win-x64.exe');
+  await mkdir(join(root, 'current', 'payload'), { recursive: true });
+  await writeFile(launcher, 'test');
+  await writeFile(bridgeExe, 'test');
+  // 桥进程旁边有启动器时直接用，不再依赖 LOCALAPPDATA 固定路径。
+  assert.equal(
+    defaultNativeHelperPath({ execPath: bridgeExe, envHelper: '', localAppData: join(root, 'elsewhere') }),
+    launcher,
+  );
+  // 开发模式（node.exe 旁边没有启动器）回退到 LOCALAPPDATA 约定路径。
+  const localAppData = join(root, 'local-app-data');
+  assert.equal(
+    defaultNativeHelperPath({ execPath: join(root, 'node-bin', 'node.exe'), envHelper: '', localAppData }),
+    join(localAppData, 'live-dot-map', 'current', 'LiveDotMapSetup.exe'),
+  );
+  // 显式 helperPath 永远优先。
+  assert.equal(defaultNativeHelperPath({ helperPath: launcher, execPath: join(root, 'node.exe') }), launcher);
 });

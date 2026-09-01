@@ -1,16 +1,16 @@
 {
   "mapId": "map-1ezxiid",
   "version": 2,
-  "revision": 52,
-  "lastEventId": 52,
+  "revision": 81,
+  "lastEventId": 81,
   "name": "第四轮排查",
   "mapDir": ".live-dot-map/maps/map-mt421fju",
   "bundleLayoutVersion": 1,
   "createdAt": "2026-08-22T07:26:28.610Z",
-  "updatedAt": "2026-08-24T16:21:15.272Z",
+  "updatedAt": "2026-09-01T03:22:25.231Z",
   "view": {
-    "x": -258.124034598172,
-    "y": 202.61096155291511,
+    "x": -242.1239888218048,
+    "y": 43.27761804705574,
     "k": 0.8416799932665602
   },
   "ui": {
@@ -58,9 +58,12 @@
       "md": ".live-dot-map/maps/map-mt421fju/nodes/n2/index.md",
       "createdBy": "human",
       "createdAt": "2026-08-22T07:26:38.314Z",
-      "updatedAt": "2026-08-22T15:10:21.459Z",
+      "updatedAt": "2026-08-29T07:33:36.188Z",
       "updatedBy": "human",
-      "updatedRevision": 11
+      "updatedRevision": 71,
+      "archived": true,
+      "archivedAt": "2026-08-29T07:33:36.188Z",
+      "archivedBy": "human"
     },
     {
       "id": "n3",
@@ -273,8 +276,137 @@
       "updatedAt": "2026-08-24T16:21:15.272Z",
       "updatedBy": "human",
       "updatedRevision": 52
+    },
+    {
+      "id": "n15",
+      "num": "15",
+      "name": "修bug 排序计划",
+      "type": "目标",
+      "kind": "goal",
+      "route": null,
+      "x": 1337.947965506088,
+      "y": 321.645261998293,
+      "md": ".live-dot-map/maps/map-mt421fju/nodes/n15/index.md",
+      "createdBy": "human",
+      "createdAt": "2026-08-29T04:23:22.471Z",
+      "updatedAt": "2026-08-29T04:24:30.785Z",
+      "updatedBy": "human",
+      "updatedRevision": 60,
+      "resolved": false
+    },
+    {
+      "id": "n16",
+      "num": "16",
+      "name": "我发现 每次对话 一开始扫描地图后就会有特别大的上下文注入",
+      "type": "问题",
+      "kind": "problem",
+      "route": null,
+      "x": 1107.8525565384978,
+      "y": 450.7521528369161,
+      "md": ".live-dot-map/maps/map-mt421fju/nodes/n16/index.md",
+      "createdBy": "human",
+      "createdAt": "2026-08-29T05:24:56.161Z",
+      "updatedAt": "2026-08-29T07:32:38.737Z",
+      "updatedBy": "human",
+      "updatedRevision": 69,
+      "resolved": false
+    },
+    {
+      "id": "n17",
+      "num": "17",
+      "name": "安装器行为 如何热更新？影响小",
+      "type": "问题",
+      "kind": "problem",
+      "route": null,
+      "x": 531.6240202805632,
+      "y": 434.91080741760453,
+      "md": ".live-dot-map/maps/map-mt421fju/nodes/n17/index.md",
+      "createdBy": "human",
+      "createdAt": "2026-08-29T05:27:43.790Z",
+      "updatedAt": "2026-08-29T05:28:19.486Z",
+      "updatedBy": "human",
+      "updatedRevision": 68,
+      "resolved": false
+    },
+    {
+      "id": "n18",
+      "num": "18",
+      "name": "热更新关系到agent与桥的逻辑",
+      "type": "目标",
+      "kind": "goal",
+      "route": null,
+      "x": 658.3547111191862,
+      "y": 496.295961998293,
+      "md": ".live-dot-map/maps/map-mt421fju/nodes/n18/index.md",
+      "createdBy": "human",
+      "createdAt": "2026-08-29T07:32:40.281Z",
+      "updatedAt": "2026-08-29T07:33:36.188Z",
+      "updatedBy": "human",
+      "updatedRevision": 71
+    },
+    {
+      "id": "n19",
+      "num": "19",
+      "name": "验收-改名blur提交",
+      "type": "目标",
+      "kind": "goal",
+      "route": null,
+      "x": 1119.337511119186,
+      "y": 602.036861998293,
+      "md": ".live-dot-map/maps/map-mt421fju/nodes/n19/index.md",
+      "createdBy": "human",
+      "createdAt": "2026-09-01T02:30:03.160Z",
+      "updatedAt": "2026-09-01T03:22:25.231Z",
+      "updatedBy": "agent:kimi",
+      "updatedRevision": 81,
+      "archived": true,
+      "archivedAt": "2026-09-01T03:22:25.231Z",
+      "archivedBy": "agent:kimi"
     }
   ],
   "edges": [],
-  "anns": []
+  "anns": [
+    {
+      "id": "a1",
+      "target": {
+        "kind": "node",
+        "id": "n11"
+      },
+      "text": "新标注",
+      "hidden": false,
+      "createdAt": "2026-08-31T01:15:00.160Z",
+      "updatedAt": "2026-09-01T03:22:25.231Z",
+      "updatedBy": "agent:kimi",
+      "updatedRevision": 81,
+      "source": "human",
+      "priority": "normal",
+      "attention": "new",
+      "acknowledgements": [],
+      "createdBy": "human",
+      "archived": true,
+      "archivedAt": "2026-09-01T03:22:25.231Z",
+      "archivedBy": "agent:kimi"
+    },
+    {
+      "id": "a2",
+      "target": {
+        "kind": "node",
+        "id": "n3"
+      },
+      "text": "新标注",
+      "hidden": false,
+      "createdAt": "2026-09-01T02:56:49.244Z",
+      "updatedAt": "2026-09-01T03:22:25.231Z",
+      "updatedBy": "agent:kimi",
+      "updatedRevision": 81,
+      "source": "human",
+      "priority": "normal",
+      "attention": "new",
+      "acknowledgements": [],
+      "createdBy": "human",
+      "archived": true,
+      "archivedAt": "2026-09-01T03:22:25.231Z",
+      "archivedBy": "agent:kimi"
+    }
+  ]
 }

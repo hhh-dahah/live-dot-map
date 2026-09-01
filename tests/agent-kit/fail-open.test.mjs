@@ -13,7 +13,8 @@ function runMcp(project, requests, environment = {}) {
     const child = spawn(process.execPath, [RUNTIME, 'mcp', '--project', project, '--agent', 'codex'], {
       cwd: ROOT,
       windowsHide: true,
-      env: { ...process.env, ...environment },
+      // 薄代理是默认模式；本套件验证的是就地模式的 fail-open 语义，固定走逃生门。
+      env: { ...process.env, LIVEDOT_MCP_LOCAL: '1', ...environment },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let stdout = '';

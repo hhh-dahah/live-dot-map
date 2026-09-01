@@ -1,36 +1,36 @@
 {
   "product": "live-dot-map",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "channel": "rc",
   "schema": 2,
-  "generatedAt": "2026-08-29T05:17:14.231Z",
+  "generatedAt": "2026-09-01T03:09:23.553Z",
   "signed": false,
   "deployed": false,
   "runtime": "node20-bundle",
   "files": {
     "app.html": {
-      "bytes": 277025,
-      "sha256": "6a1b36d357416da333716c9b83f2766e6025cae7571b8476e96f142a618593ea"
+      "bytes": 305937,
+      "sha256": "46790659d2c58247cc09e1b13e7f5e1ca2bfb0399cd73b30e9797a581aa57519"
     },
     "livedot.mjs": {
-      "bytes": 452525,
-      "sha256": "9ad7f0690e9efd0fe0feb63f7a3a3ea729c9cc3b7d7bca65178b454010117570"
+      "bytes": 470844,
+      "sha256": "1af5b5b7f268006be0cdc9ead53b8035c50c01965ed30490fda73659d489dd14"
     },
     "agent-kit/setup.md": {
       "bytes": 5063,
       "sha256": "cf752d2fce309953b67e5a72707dc66a94f5cd2f6cb42f06cd9a8e4e01cd88ee"
     },
     "agent-kit/README.md": {
-      "bytes": 3434,
-      "sha256": "2df25bd88f10756934aa10d4ce1ac5265a018aff3c243f420863b975c572c2e0"
+      "bytes": 3614,
+      "sha256": "b0d44f255283f158945533e464eddf22abba9412fca280a81269733ee522020a"
     },
     "agent-kit/map.template.json": {
       "bytes": 1157,
       "sha256": "bbe2bbb4d3f8ec78c925f349976c1e3755a85742dbd2abdbae8a8383adae09e6"
     },
     "livedot-bridge-win-x64.exe": {
-      "bytes": 92285440,
-      "sha256": "39512599471befea8c6cfc3c83fa5cb57b47f68e6045c507eab76fe17023fc53"
+      "bytes": 92304896,
+      "sha256": "316fbf6828b0d0a6828feb5a9587e5f32c874797027c9292b9726dc485b73813"
     }
   },
   "distribution": {
