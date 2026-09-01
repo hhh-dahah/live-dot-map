@@ -7338,7 +7338,10 @@ async function createBridgeServer({
   agentSetup = ensureProjectAgentConfig,
   logger = noopLogger,
   updateBase = null,
-  installRoot = process.cwd(),
+  // 安装版：桥 exe 位于 <安装目录>/current/payload/，payload-manifest.json 就在旁边。
+  // 用 exe 自身目录而不是 process.cwd()：启动器「正常启动」与更新器「重启」的 cwd 不一致，
+  // 以 cwd 为准会导致正常启动时读不到本地安装信息（current:null），更新判定失效。
+  installRoot = process.execPath ? (0, import_node_path20.dirname)((0, import_node_path20.resolve)(process.execPath)) : process.cwd(),
   spawnUpdater = null,
   restartOnUpdate = true,
   shutdownHandler = null
@@ -7637,16 +7640,37 @@ async function createBridgeServer({
       return { ok: false, current: local.version, latest: null, available: false, error: error3 instanceof Error ? error3.message : String(error3) };
     }
   }
+  const UPDATE_EXTERNAL_HOST_SUFFIXES = [".tcloudbaseapp.com", ".tcb.qcloud.la"];
+  function assertAllowedExternalUrl(url, label) {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new BridgeError("UPDATE_MANIFEST_INVALID", `\u66F4\u65B0\u5305\u6E05\u5355\u5F02\u5E38\uFF08${label} \u5916\u90E8\u5730\u5740\u683C\u5F0F\u975E\u6CD5\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62`, { status: 502 });
+    }
+    if (parsed.protocol !== "https:") throw new BridgeError("UPDATE_MANIFEST_INVALID", `\u66F4\u65B0\u5305\u6E05\u5355\u5F02\u5E38\uFF08${label} \u5916\u90E8\u5730\u5740\u5FC5\u987B\u4E3A https\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62`, { status: 502 });
+    const host2 = parsed.hostname.toLowerCase();
+    if (!UPDATE_EXTERNAL_HOST_SUFFIXES.some((suffix) => host2 === suffix.slice(1) || host2.endsWith(suffix))) {
+      throw new BridgeError("UPDATE_MANIFEST_INVALID", `\u66F4\u65B0\u5305\u6E05\u5355\u5F02\u5E38\uFF08${label} \u5916\u90E8\u5730\u5740\u57DF\u540D\u4E0D\u5728\u767D\u540D\u5355\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62\uFF0C\u73B0\u6709\u7248\u672C\u4E0D\u53D7\u5F71\u54CD`, { status: 502 });
+    }
+  }
   async function downloadUpdateFile(meta, target, label) {
     if (!meta || typeof meta !== "object" || typeof meta.sha256 !== "string" || typeof meta.url !== "string") {
       throw new BridgeError("UPDATE_MANIFEST_INVALID", `Invalid file entry: ${label}`, { status: 502 });
     }
-    if (meta.url.includes("..") || meta.url.startsWith("/") || /^[a-zA-Z]:/.test(meta.url) || /^https?:/i.test(meta.url)) {
-      throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file url: ${label}`, { status: 502 });
+    let sourceUrl;
+    if (meta.external === true) {
+      assertAllowedExternalUrl(meta.url, label);
+      sourceUrl = meta.url;
+    } else {
+      if (meta.url.includes("..") || meta.url.startsWith("/") || /^[a-zA-Z]:/.test(meta.url) || /^https?:/i.test(meta.url)) {
+        throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file url: ${label}`, { status: 502 });
+      }
+      sourceUrl = `${UPDATE_BASE}/${meta.url}`;
     }
     let response;
     try {
-      response = await fetch(`${UPDATE_BASE}/${meta.url}`, { signal: AbortSignal.timeout(6e5) });
+      response = await fetch(sourceUrl, { signal: AbortSignal.timeout(6e5) });
     } catch {
       throw new BridgeError("UPDATE_DOWNLOAD_FAILED", `\u66F4\u65B0\u5305\u4E0B\u8F7D\u5931\u8D25\uFF08${label}\uFF0C\u65E0\u6CD5\u8FDE\u63A5\u66F4\u65B0\u670D\u52A1\u5668\uFF09\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5`, { status: 502 });
     }
@@ -7934,6 +7958,7 @@ async function createBridgeServer({
             sendJson(response, 200, {
               csrfToken: authorized.csrfToken,
               expiresAt: authorized.expiresAt,
+              projectRoot: ticket[1].projectRoot,
               projectHandle: ticket[1].projectHandle,
               reconnectTicket: authorized.reconnectTicket,
               resumed: true
@@ -7949,6 +7974,7 @@ async function createBridgeServer({
           sendJson(response, 200, {
             csrfToken: existing.csrfToken,
             expiresAt: new Date(existing.expiresAt).toISOString(),
+            projectRoot: ticket[1].projectRoot,
             projectHandle: ticket[1].projectHandle,
             resumed: true
           });
@@ -7967,7 +7993,7 @@ async function createBridgeServer({
         sendJson(response, 201, {
           csrfToken,
           expiresAt: new Date(expiresAt).toISOString(),
-          projectRoot: ticket[1].projectHandle ? void 0 : ticket[1].projectRoot,
+          projectRoot: ticket[1].projectRoot,
           projectHandle: ticket[1].projectHandle,
           reconnectTicket: createdSession?.reconnectTicket,
           resumed: false

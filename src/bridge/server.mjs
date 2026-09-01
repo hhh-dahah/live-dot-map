@@ -524,7 +524,10 @@ export async function createBridgeServer({
   agentSetup = ensureProjectAgentConfig,
   logger = noopLogger,
   updateBase = null,
-  installRoot = process.cwd(),
+  // 安装版：桥 exe 位于 <安装目录>/current/payload/，payload-manifest.json 就在旁边。
+  // 用 exe 自身目录而不是 process.cwd()：启动器「正常启动」与更新器「重启」的 cwd 不一致，
+  // 以 cwd 为准会导致正常启动时读不到本地安装信息（current:null），更新判定失效。
+  installRoot = process.execPath ? dirname(resolve(process.execPath)) : process.cwd(),
   spawnUpdater = null,
   restartOnUpdate = true,
   shutdownHandler = null,
@@ -867,17 +870,43 @@ export async function createBridgeServer({
     }
   }
 
-  // 把更新清单里一个带 sha256 的条目下载到 target；url 只允许相对路径，防止清单被篡改后读取任意地址。
+  // 外部条目白名单：只允许腾讯云平台托管域名（平台已完成备案，可用于大文件分发）。
+  // 桥 exe ~88MB 超 EdgeOne 静态站点 25MiB 单文件限制，改由 CloudBase 静态托管分发，
+  // manifest 里该条目标记 external:true。域名后缀白名单防止清单被篡改后读取任意地址。
+  const UPDATE_EXTERNAL_HOST_SUFFIXES = ['.tcloudbaseapp.com', '.tcb.qcloud.la'];
+
+  function assertAllowedExternalUrl(url, label) {
+    let parsed;
+    try { parsed = new URL(url); } catch {
+      throw new BridgeError('UPDATE_MANIFEST_INVALID', `更新包清单异常（${label} 外部地址格式非法），已自动中止`, { status: 502 });
+    }
+    if (parsed.protocol !== 'https:') throw new BridgeError('UPDATE_MANIFEST_INVALID', `更新包清单异常（${label} 外部地址必须为 https），已自动中止`, { status: 502 });
+    const host = parsed.hostname.toLowerCase();
+    if (!UPDATE_EXTERNAL_HOST_SUFFIXES.some((suffix) => host === suffix.slice(1) || host.endsWith(suffix))) {
+      throw new BridgeError('UPDATE_MANIFEST_INVALID', `更新包清单异常（${label} 外部地址域名不在白名单），已自动中止，现有版本不受影响`, { status: 502 });
+    }
+  }
+
+  // 把更新清单里一个带 sha256 的条目下载到 target。
+  // 默认 url 只允许相对路径并拼到 UPDATE_BASE，防止清单被篡改后读取任意地址；
+  // external:true 条目允许 https 白名单域名绝对地址（大文件分发）。
   async function downloadUpdateFile(meta, target, label) {
     if (!meta || typeof meta !== 'object' || typeof meta.sha256 !== 'string' || typeof meta.url !== 'string') {
       throw new BridgeError('UPDATE_MANIFEST_INVALID', `Invalid file entry: ${label}`, { status: 502 });
     }
-    if (meta.url.includes('..') || meta.url.startsWith('/') || /^[a-zA-Z]:/.test(meta.url) || /^https?:/i.test(meta.url)) {
-      throw new BridgeError('UPDATE_MANIFEST_INVALID', `Unsafe file url: ${label}`, { status: 502 });
+    let sourceUrl;
+    if (meta.external === true) {
+      assertAllowedExternalUrl(meta.url, label);
+      sourceUrl = meta.url;
+    } else {
+      if (meta.url.includes('..') || meta.url.startsWith('/') || /^[a-zA-Z]:/.test(meta.url) || /^https?:/i.test(meta.url)) {
+        throw new BridgeError('UPDATE_MANIFEST_INVALID', `Unsafe file url: ${label}`, { status: 502 });
+      }
+      sourceUrl = `${UPDATE_BASE}/${meta.url}`;
     }
     let response;
     try {
-      response = await fetch(`${UPDATE_BASE}/${meta.url}`, { signal: AbortSignal.timeout(600000) });
+      response = await fetch(sourceUrl, { signal: AbortSignal.timeout(600000) });
     } catch {
       throw new BridgeError('UPDATE_DOWNLOAD_FAILED', `更新包下载失败（${label}，无法连接更新服务器），请检查网络后重试`, { status: 502 });
     }
@@ -1204,6 +1233,7 @@ export async function createBridgeServer({
             sendJson(response, 200, {
               csrfToken: authorized.csrfToken,
               expiresAt: authorized.expiresAt,
+              projectRoot: ticket[1].projectRoot,
               projectHandle: ticket[1].projectHandle,
               reconnectTicket: authorized.reconnectTicket,
               resumed: true,
@@ -1219,6 +1249,7 @@ export async function createBridgeServer({
           sendJson(response, 200, {
             csrfToken: existing.csrfToken,
             expiresAt: new Date(existing.expiresAt).toISOString(),
+            projectRoot: ticket[1].projectRoot,
             projectHandle: ticket[1].projectHandle,
             resumed: true,
           });
@@ -1237,7 +1268,7 @@ export async function createBridgeServer({
         sendJson(response, 201, {
           csrfToken,
           expiresAt: new Date(expiresAt).toISOString(),
-          projectRoot: ticket[1].projectHandle ? undefined : ticket[1].projectRoot,
+          projectRoot: ticket[1].projectRoot,
           projectHandle: ticket[1].projectHandle,
           reconnectTicket: createdSession?.reconnectTicket,
           resumed: false,

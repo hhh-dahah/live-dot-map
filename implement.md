@@ -593,3 +593,16 @@ pm run verify 全量结果见下。
 - **已知小瑕疵**：断线弹窗抢焦点后按 Ctrl+S 会触发全局「导出 map.json」而非 md 保存（编辑内容保留），记入 n17 文档待后续迭代。
 - **通道重建**：`.deploy/windows-installer` 通道已重新生成（v2.0.1，payloadHash d115e553db…，SEA 桥为含上述修复的 92304896 字节版本），`update-manifest.json` 无 installer 字段（exe 超 GitHub 100MB 走 Release 附件）。
 - **待办**：推送后立即核对 `https://livedotmap.top/windows-installer/update-manifest.json`（EdgeOne 25MiB 对 88MB exe 的部署风险）；既有 1 项 fail-open 测试失败待另开任务。
+
+## 9-01 方案 A：桥 exe 改由 CloudBase 托管（EdgeOne 25MiB 限制逃生）
+
+- **背景**：v2.0.1 首次推送后 EdgeOne 线上通道 26+ 分钟无变化（Last-Modified 停在 p0 提交部署），判定为 payload 内 88MB 桥 exe 超 EdgeOne Pages 单文件 25MiB 限制导致平台构建失败（线上清单仍为旧 2.0.0 + payload 全 404）。
+- **方案 A 实施**：
+  - CloudBase 静态托管（env test-d0gims26n5c5ce096，`*.tcloudbaseapp.com` 平台备案域名）上传 `windows-installer/payload/livedot-bridge-win-x64.exe`，匿名下载 92,307,456B 实测 sha256 匹配（2.8s）。
+  - `server.mjs`：清单条目支持 `external:true` + https 绝对地址，白名单仅 `.tcloudbaseapp.com` / `.tcb.qcloud.la` 后缀（防篡改清单指向任意地址）；`UPDATE_*` 错误中文不再脱敏（上轮已做）。
+  - `edgeone-build.mjs`：EdgeOne 输出剔除 `windows-installer/payload/livedot-bridge-win-x64.exe`（已外链，不再进静态站点）。
+  - 顺带修复 `installRoot >= process.cwd()` → `dirname(process.execPath)`：启动器普通启动与更新器重启的 cwd 不一致，导致正常启动 `update/check` 读不到本地安装信息（current:null）。
+  - 顺带修复 bootstrap 会话响应在带 projectHandle 时丢弃 projectRoot，导致画布项目 pill 显示「未选择项目」；三处 session/bootstrap 响应回传 projectRoot。
+- **验证**（假通道 + 安装版真机）：2.0.6→2.0.7 好路径（external exe 从 CloudBase 下载安装、桥自重启、画布恢复、数据完好、更新条消失）✓；篡改 exe sha →「更新包校验失败（livedot-bridge-win-x64.exe 与清单不一致…）」✓；external 地址换非法域名 →「外部地址域名不在白名单」✓；通道断网 →「更新服务暂时不可用」✓；「稍后」关条红点留 ✓；项目 pill 显示项目名 ✓；画布数据全程完好。
+- **测试**：全量 229 过 0 挂 3 跳过（既有 fail-open 偶发项本次未复现；串行稳定全绿）。
+- **最终通道**：v2.0.1，payloadHash `2755532c849f…`，exe 条目 external→CloudBase（`test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com`），无 installer 字段。
