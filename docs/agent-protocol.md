@@ -124,6 +124,27 @@ archive/restore。`purge` 只允许人类二次确认或系统 30 天任务；�
 restore、switch 和 reveal 等副作用操作必须通过 Host/Origin、HttpOnly 会话和 CSRF 校验；
 项目根必须已经由 launcher 加入白名单。工具错误返回结构化错误，不用空结果伪装成功。
 
+### stdio MCP 薄代理（本地 Agent 通道）
+
+`livedot.mjs mcp` 是薄代理进程：stdio JSON-RPC 的 `initialize`/`tools/list` 由进程本地
+静态应答，`tools/call` 一律转发给常驻桥的 `POST /api/v1/mcp` 控制令牌通道，桥是地图的
+唯一写者。转发请求带 `X-LiveDot-Control` 头（运行态目录 `control.token`，与
+`/api/v1/control/*` 同一信任级），body 为：
+
+```json
+{ "tool": "工具名", "arguments": {}, "projectRoot": "绝对路径", "mapKey": "default（可省，缺省跟随该项目 active-map 指针）", "agent": "kimi" }
+```
+
+`projectRoot` 必须是已存在的绝对路径；桥将其 canonical 化后按与 serve/launcher 相同的
+语义幂等登记进项目注册表，actor 归一化为 `agent:<name>` 并绑定到所有写入。令牌不匹配
+直接 `401 INVALID_CONTROL_TOKEN`，不回落浏览器会话鉴权；不带该头的 `/api/v1/mcp` 请求
+原样走上面的浏览器会话路径，行为不变。
+
+桥未运行时薄代理会自动点火一个 `serve` 子进程（app.html 依次从 `--app`、脚本旁、exe 旁、
+`~/.live-dot-map/`、cwd 解析），等待就绪有上限，超时返回 `BRIDGE_UNAVAILABLE` 并提示重启
+画布。未初始化或只读目录在转发前被 fail-open 拦截（返回结构化 `isError` 结果），不点火、
+不建目录。`LIVEDOT_MCP_LOCAL=1` 是紧急逃生门，回退旧的就地读写模式，正常情况不应使用。
+
 ### Markdown 工具
 
 - `map_read_markdown({path,create?,title?})` 读取当前地图资料包内 Markdown；`create:true`
@@ -139,6 +160,10 @@ restore、switch 和 reveal 等副作用操作必须通过 Host/Origin、HttpOnl
   拒绝绝对路径、`..`、双编码、symlink/junction、非 Markdown 文件和超过 2 MiB 的正文。
 - `POST /api/v1/markdown/reveal` 只打开已校验路径；不执行用户提供的命令。GET 版本只
   返回存在性元数据，不产生打开副作用。
+- **`<mark>` 人机写入契约**：Markdown 里的 `<mark>…</mark>` 表示「人写/人标记」的段落
+  （编辑器保存时自动把会话改动段包 `<mark>` 固化，人也可手动标记/取消）。Agent 通过任何
+  写入工具新增或改写内容时**一律不带 `<mark>`**；读到既有 `<mark>` 时应保留原样，不主动
+  增删。高亮颜色是人的显示层偏好（localStorage），不进文件。
 
 ### 资料包与附件工具
 

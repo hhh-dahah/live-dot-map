@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { access, lstat, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { isSea } from 'node:sea';
 import { createBridgeServer, createLogger, MapManager, noopLogger, TOOL_DEFINITIONS, ToolService } from '../bridge/index.mjs';
@@ -9,6 +11,7 @@ import { ProjectRegistry } from '../bridge/project-registry.mjs';
 import { SessionStore } from '../bridge/session-store.mjs';
 import {
   acquireSingletonLock,
+  bridgeProcessImagePath,
   checkBridgeProcess,
   clearStaleSingletonLock,
   isProcessAlive,
@@ -104,6 +107,25 @@ async function openThroughRunningBridgeWithRetry(
     }
   }
   throw lastError;
+}
+
+// A4：通过受认证控制通道请旧桥优雅退出，并等待进程真正消失。
+async function shutdownRunningBridge(
+  state: { pid: number; port: number },
+  controlToken: string,
+): Promise<boolean> {
+  try {
+    await fetch(`http://127.0.0.1:${state.port}/api/v1/control/shutdown`, {
+      method: 'POST',
+      headers: { 'X-LiveDot-Control': controlToken },
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch { /* 桥可能已死或端口被占用，交给下面的存活轮询判断 */ }
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    if (!isProcessAlive(state.pid)) return true;
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 200));
+  }
+  return !isProcessAlive(state.pid);
 }
 
 async function recordAgentHealth(root: string, actor: string, event: string, status: 'ok' | 'error', error?: unknown): Promise<void> {
@@ -215,7 +237,174 @@ function compactHookContext(value: unknown): Json {
 
 const toolDefinitions = TOOL_DEFINITIONS;
 
-async function runMcp(projectRoot: string, actor: string): Promise<void> {
+// ---- B1：MCP 薄代理 ----
+// tools/call 一律转发给常驻桥（地图唯一写者），MCP 进程本身不再加载
+// MapManager/ToolService。initialize/tools/list 仍本地静态应答，保证会话启动快、
+// 桥挂了也能 list。LIVEDOT_MCP_LOCAL=1 时回退旧的本地直读写模式（紧急逃生门）。
+
+type McpOptions = { runtimeStateDir?: string; appPath?: string };
+type BridgeHandle = { origin: string; controlToken: string; pid: number };
+
+// 点火等待上限默认 15 秒；测试可用 LIVEDOT_MCP_IGNITE_TIMEOUT_MS 缩短。
+const BRIDGE_IGNITE_TIMEOUT_MS = Number(process.env.LIVEDOT_MCP_IGNITE_TIMEOUT_MS) || 15_000;
+
+function bridgeUnavailableError(message: string): Error & { code: string; proxyFailure: boolean } {
+  return Object.assign(new Error(message), { code: 'BRIDGE_UNAVAILABLE', proxyFailure: true });
+}
+
+/** 控制通道能力探测：pid 对齐且桥声明 mcpControl 能力（老桥没有，需要点火替换）。 */
+async function probeBridgeControl(handle: BridgeHandle): Promise<boolean> {
+  try {
+    const status = await fetch(`${handle.origin}/api/v1/control/status`, {
+      headers: { 'X-LiveDot-Control': handle.controlToken },
+      signal: AbortSignal.timeout(1_500),
+    });
+    if (!status.ok) return false;
+    const body = await status.json() as Json;
+    return Number(body.pid) === handle.pid && Boolean((body.capabilities as Json | undefined)?.mcpControl);
+  } catch { return false; }
+}
+
+/** 解析 app.html：依次看 --app、脚本旁（全局安装布局）、exe 旁（SEA 安装布局）、全局数据目录、cwd。 */
+async function resolveAppHtmlPath(explicit?: string): Promise<string | null> {
+  const candidates: string[] = [];
+  if (explicit) candidates.push(explicit);
+  if (process.argv[1]) candidates.push(join(dirname(resolve(process.argv[1])), 'app.html'));
+  candidates.push(join(dirname(process.execPath), 'app.html'));
+  candidates.push(join(homedir(), '.live-dot-map', 'app.html'));
+  candidates.push(join(process.cwd(), 'app.html'));
+  for (const candidate of [...new Set(candidates)]) {
+    if (await access(candidate, constants.F_OK).then(() => true).catch(() => false)) return candidate;
+  }
+  return null;
+}
+
+/** 点火：spawn 分离子进程跑现有 serve 命令，复用其桥复用/单例锁/A4 旧桥替换逻辑。 */
+async function igniteBridge(projectRoot: string, appPath: string, runtimeStateDir?: string): Promise<void> {
+  const script = process.argv[1] ? resolve(process.argv[1]) : '';
+  const serveArgs = [
+    ...(isSea() || !script ? [] : [script]),
+    'serve', '--project', projectRoot, '--app', appPath,
+    ...(runtimeStateDir ? ['--runtime-state-dir', runtimeStateDir] : []),
+  ];
+  const child = spawn(process.execPath, serveArgs, { detached: true, stdio: 'ignore', windowsHide: true });
+  child.unref();
+}
+
+/** 读运行态拿到可用桥；没有就点火并轮询就绪（上限 BRIDGE_IGNITE_TIMEOUT_MS）。 */
+async function ensureBridge(projectRoot: string, options: McpOptions): Promise<BridgeHandle> {
+  const controlToken = await readOrCreateControlToken(options.runtimeStateDir);
+  const probe = async (): Promise<BridgeHandle | null> => {
+    const state = await readBridgeState(options.runtimeStateDir).catch(() => null);
+    if (!state) return null;
+    const handle: BridgeHandle = { origin: `http://127.0.0.1:${state.port}`, controlToken, pid: state.pid };
+    return await probeBridgeControl(handle) ? handle : null;
+  };
+  const existing = await probe();
+  if (existing) return existing;
+  const appPath = await resolveAppHtmlPath(options.appPath);
+  if (!appPath) {
+    throw bridgeUnavailableError('桥未运行且自动启动失败：找不到 app.html。请双击桌面「活点地图」图标启动画布后重试。');
+  }
+  await igniteBridge(projectRoot, appPath, options.runtimeStateDir);
+  const deadline = Date.now() + BRIDGE_IGNITE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 300));
+    const ready = await probe();
+    if (ready) return ready;
+  }
+  throw bridgeUnavailableError(`桥未能自动启动（等待 ${Math.round(BRIDGE_IGNITE_TIMEOUT_MS / 1000)} 秒未就绪，可能是旧版本桥占用或启动失败）。请双击桌面「活点地图」图标重启画布后重试。`);
+}
+
+/** 转发一次工具调用；桥返回错误时抛出带 code 的异常，交给外层按 JSON-RPC error 上报。 */
+async function forwardToolCall(handle: BridgeHandle, targetRoot: string, actor: string, name: string, args: Json): Promise<unknown> {
+  const response = await fetch(`${handle.origin}/api/v1/mcp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-LiveDot-Control': handle.controlToken },
+    body: JSON.stringify({ tool: name, arguments: args, projectRoot: targetRoot, agent: actor }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const body = await response.json().catch(() => ({})) as Json;
+  if (!response.ok) {
+    const detail = (body.error && typeof body.error === 'object' ? body.error : {}) as Json;
+    throw Object.assign(
+      new Error(typeof detail.message === 'string' ? detail.message : `桥请求失败（HTTP ${response.status}）`),
+      { code: typeof detail.code === 'string' ? detail.code : 'BRIDGE_MCP_FAILED', details: detail.details, httpStatus: response.status },
+    );
+  }
+  return body.result;
+}
+
+async function runMcpProxy(projectRoot: string, actor: string, options: McpOptions): Promise<void> {
+  const root = resolve(projectRoot);
+  const qualification = await inspectProjectQualification(root);
+  // fail-open 进程不能创建日志目录、health 文件或地图目录。transport
+  // 仍然保持可用，只有 tools/call 返回结构化 isError。
+  const logger = qualification.ok ? createLogger({ source: 'agent' }) : noopLogger;
+  // 项目根跟随画布当前项目（bug1）：每次调用解析全局指针，失败回落启动根。
+  let currentRoot = root;
+  let bridge: BridgeHandle | null = null;
+  if (qualification.ok) await logger.info('agent.mcp.start', { project: root, actor, pid: process.pid, mode: 'proxy' });
+  const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
+  for await (const line of lines) {
+    let request: Json;
+    try { request = JSON.parse(line); } catch { continue; }
+    if (!('id' in request)) continue;
+    const id = request.id;
+    try {
+      let result: unknown;
+      if (request.method === 'initialize') result = { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'live-dot-map', version: '2.0.0' } };
+      else if (request.method === 'tools/list') result = { tools: toolDefinitions };
+      else if (request.method === 'tools/call') {
+        if (!qualification.ok) {
+          result = unavailableToolResult(qualification);
+        } else {
+          const params = request.params as Json;
+          const name = String(params.name);
+          const callArgs = (params.arguments as Json) ?? {};
+          const targetRoot = await resolveProjectRootToUse(null, currentRoot);
+          currentRoot = targetRoot;
+          // 桥句柄按进程缓存；桥死亡/换届（A4 替换）时清空缓存重探一次（含自动点火）。
+          let value: unknown;
+          let lastError: unknown = null;
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+              bridge = bridge && await probeBridgeControl(bridge) ? bridge : await ensureBridge(targetRoot, options);
+              value = await forwardToolCall(bridge, targetRoot, actor, name, callArgs);
+              lastError = null;
+              break;
+            } catch (error) {
+              lastError = error;
+              const status = (error as { httpStatus?: number })?.httpStatus;
+              // fetch 网络错误（桥中途死亡）或 401（旧桥不认识控制通道）可重试一次；
+              // 其余 4xx/5xx 是工具本身的真实错误，直接上报，绝不重试点火。
+              if (typeof status === 'number' && status !== 401) throw error;
+              bridge = null;
+            }
+          }
+          if (lastError) throw lastError;
+          result = { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value };
+        }
+      } else throw Object.assign(new Error(`未知方法 ${String(request.method)}`), { code: -32601 });
+      process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, result })}\n`);
+    } catch (error) {
+      const value = error as Error & { code?: string | number; details?: unknown; proxyFailure?: boolean };
+      if (qualification.ok) {
+        // 到达桥的工具调用由桥端记录 health；这里只补记从未到达桥的代理层故障，
+        // 避免两个进程对同一 actor 键读改写竞争。
+        if (value.proxyFailure) await recordAgentHealth(root, actor, `mcp:${String((request.params as Json | undefined)?.name ?? request.method ?? 'unknown')}`, 'error', value);
+        await logger.error('agent.mcp', { tool: String((request.params as Json | undefined)?.name ?? request.method ?? 'unknown'), error: value });
+      }
+      process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, error: { code: typeof value.code === 'number' ? value.code : -32000, message: value.message, data: { code: value.code, details: value.details } } })}\n`);
+    }
+  }
+}
+
+/**
+ * 旧的本地直读写模式（LIVEDOT_MCP_LOCAL=1 紧急逃生门）。
+ * 桥不可用或薄代理异常时的回退路径；正常情况不应使用。
+ */
+async function runMcpLocal(projectRoot: string, actor: string): Promise<void> {
   const root = resolve(projectRoot);
   const qualification = await inspectProjectQualification(root);
   // fail-open 进程不能创建日志目录、health 文件或地图目录。transport
@@ -224,7 +413,7 @@ async function runMcp(projectRoot: string, actor: string): Promise<void> {
   // 项目根跟随画布当前项目（bug1）：per-root 缓存实例，指针变化时切换。
   let currentRoot = root;
   const entries = new Map<string, { manager: MapManager; tools: ToolService }>();
-  if (qualification.ok) await logger.info('agent.mcp.start', { project: root, actor, pid: process.pid });
+  if (qualification.ok) await logger.info('agent.mcp.start', { project: root, actor, pid: process.pid, mode: 'local' });
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
     let request: Json;
@@ -269,6 +458,12 @@ async function runMcp(projectRoot: string, actor: string): Promise<void> {
     }
   }
   for (const entry of entries.values()) await entry.manager.close().catch(() => undefined);
+}
+
+async function runMcp(projectRoot: string, actor: string, options: McpOptions = {}): Promise<void> {
+  // 紧急逃生门：LIVEDOT_MCP_LOCAL=1 回退旧的本地直读写模式（旧逻辑保留在 runMcpLocal）。
+  if (process.env.LIVEDOT_MCP_LOCAL === '1') return runMcpLocal(projectRoot, actor);
+  return runMcpProxy(projectRoot, actor, options);
 }
 
 async function runHook(kind: string, args: Args): Promise<void> {
@@ -403,6 +598,35 @@ async function main(): Promise<void> {
     const sessionStore = await SessionStore.open({ runtimeStateDir });
     const registered = await registry.register(projectRoot);
     let state = await readBridgeState(runtimeStateDir);
+    let preferredPort = 0;
+    if (state) {
+      // A4：bridge.json 里的进程若来自另一份安装（旧版本/开发副本），复用它会让旧代码一直服役。
+      const image = await bridgeProcessImagePath(state.pid);
+      // pid 可能被系统回收复用：只有镜像名确实像我们的产品进程才允许替换，否则交给下面的保守复用逻辑。
+      const imageName = image ? image.replace(/\\/g, '/').split('/').pop()!.toLowerCase() : '';
+      const looksLikeBridge = /^(livedot-bridge[^/]*\.exe|livedotmapsetup\.exe|node\.exe|node)$/.test(imageName)
+        || imageName.includes('livedot');
+      if (image && looksLikeBridge && resolve(image).toLowerCase() !== resolve(process.execPath).toLowerCase()) {
+        await logger.info('bridge.replace-stale', { pid: state.pid, image });
+        // 通过受认证控制通道请旧桥优雅退出；保留旧端口供新桥复用（草稿按 origin 键控，端口变了草稿就找不回）。
+        const stalePort = state.port;
+        if (!(await shutdownRunningBridge(state, controlToken))) {
+          // A4 之前安装的老桥没有 /control/shutdown：已核对进程镜像就是另一份安装的桥，强杀兜底。
+          await logger.info('bridge.replace-stale.kill', { pid: state.pid, image });
+          try { process.kill(state.pid); } catch { /* 已退出 */ }
+          for (let attempt = 0; attempt < 25 && isProcessAlive(state.pid); attempt += 1) {
+            await new Promise((resolveDelay) => setTimeout(resolveDelay, 200));
+          }
+          if (isProcessAlive(state.pid)) {
+            throw new Error('正在运行的旧版 Bridge 未能自动退出，请关闭画布后重试。');
+          }
+        }
+        await clearStaleSingletonLock(runtimeStateDir, state.pid, { force: true });
+        await removeBridgeState(runtimeStateDir, state.pid);
+        state = null;
+        preferredPort = stalePort;
+      }
+    }
     if (state) {
       try {
         const reused = await openThroughRunningBridgeWithRetry(state, controlToken, projectRoot, registered.projectHandle);
@@ -464,13 +688,14 @@ async function main(): Promise<void> {
         controlToken,
         projectRegistry: registry,
         sessionStore,
-        listenPort: state?.port ?? 0,
+        listenPort: state?.port ?? preferredPort,
       });
       state = await writeBridgeState(runtimeStateDir, { pid: process.pid, port: bridge.port });
     } catch (error) {
       await releaseLock?.();
-      if ((error as { code?: string })?.code === 'EADDRINUSE' && state?.port) {
-        throw new Error(`Bridge 固定端口 ${state.port} 被其他程序占用；为保护浏览器草稿，未切换到随机端口`);
+      const fixedPort = state?.port ?? preferredPort;
+      if ((error as { code?: string })?.code === 'EADDRINUSE' && fixedPort) {
+        throw new Error(`Bridge 固定端口 ${fixedPort} 被其他程序占用；为保护浏览器草稿，未切换到随机端口`);
       }
       throw error;
     }
@@ -490,8 +715,13 @@ async function main(): Promise<void> {
   }
   if (command === 'mcp') {
     // 全局 MCP 配置不带 --project：Agent 在哪个项目目录启动，就协作哪个项目。
+    // 薄代理模式：转发到桥控制通道；LIVEDOT_MCP_LOCAL=1 时退回旧的就地模式。
     const project = resolve(typeof args.project === 'string' && args.project.trim() ? args.project : process.cwd());
-    return runMcp(project, `agent:${String(args.agent || 'generic')}`);
+    return runMcp(project, `agent:${String(args.agent || 'generic')}`, {
+      runtimeStateDir:
+        typeof args['runtime-state-dir'] === 'string' ? resolve(args['runtime-state-dir']) : undefined,
+      appPath: typeof args.app === 'string' ? resolve(args.app) : undefined,
+    });
   }
   if (command === 'hook') {
     // 全局 hook 配置同样不带 --project，用 Agent 当前工作目录。
@@ -521,7 +751,7 @@ async function main(): Promise<void> {
     if (!result.ok && result.reason !== 'not-installed') process.exitCode = 1;
     return;
   }
-  process.stdout.write('活点地图 v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp --project <path> --agent codex|claude|kimi\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n');
+  process.stdout.write('活点地图 v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n');
 }
 
 void main().catch(async (error) => {

@@ -639,9 +639,10 @@ export class BundleStore {
     return { size, header: Buffer.concat(chunks).subarray(0, 8192) };
   }
 
-  async #copySource(sourcePath, temporary) {
-    const candidate = resolve(this.projectRoot, sourcePath);
-    await this.#assertSafePath(this.projectRoot, candidate, { allowMissing: false });
+  async #copySource(sourcePath, temporary, { allowExternal = false } = {}) {
+    /* 默认只允许项目内相对路径;显式 allowExternal(本地路径粘贴导入)才放行项目外绝对路径 */
+    const candidate = allowExternal ? resolve(sourcePath) : resolve(this.projectRoot, sourcePath);
+    if (!allowExternal) await this.#assertSafePath(this.projectRoot, candidate, { allowMissing: false });
     const before = await stat(candidate);
     if (!before.isFile()) throw bridgeError('BUNDLE_SOURCE_NOT_FILE', '附件源必须是普通文件', 400);
     if (before.size > MAX_ASSET_BYTES) throw bridgeError('BUNDLE_ASSET_TOO_LARGE', '单附件超过 20 MiB', 413, { limit: MAX_ASSET_BYTES });
@@ -664,7 +665,7 @@ export class BundleStore {
   }
 
   async importAsset(...args) {
-    const input = asOptions(args, ['ownerKind', 'ownerId', 'fileName', 'sourcePath', 'stream', 'mimeType']);
+    const input = asOptions(args, ['ownerKind', 'ownerId', 'fileName', 'sourcePath', 'stream', 'mimeType', 'allowExternalPath']);
     const info = this.#ownerInfo(input);
     const requestedName = normalizeFileName(input.fileName, { asset: true });
     const type = contentTypeFor(requestedName);
@@ -675,7 +676,7 @@ export class BundleStore {
     const temporary = join(info.directory, `.${randomBytes(12).toString('hex')}.upload.tmp`);
     let imported;
     try {
-      imported = input.sourcePath ? await this.#copySource(input.sourcePath, temporary) : await this.#consumeStream(input.stream, temporary);
+      imported = input.sourcePath ? await this.#copySource(input.sourcePath, temporary, { allowExternal: input.allowExternalPath === true }) : await this.#consumeStream(input.stream, temporary);
       if (!headerMatches(type.kind, imported.header)) throw bridgeError('BUNDLE_FILE_HEADER_MISMATCH', '附件文件头与扩展名不一致', 415, { expected: type.kind });
       return await this.#withMapLock(() => this.#withOwnerLock(info, async () => {
         await this.#prepareOwner(info);

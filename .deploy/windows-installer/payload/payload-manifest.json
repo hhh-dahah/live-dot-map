@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "product": "live-dot-map",
+  "version": "2.0.1",
+  "channel": "internal-rc",
+  "signed": false,
+  "sourceReleaseManifest": null,
+  "payloadHash": "d115e553db76b10d1c19d14882a8fc01beae7bfcced7d5dc24f99c58b3daeff3",
+  "files": {
+    "agent-kit/skills/live-dot-map/SKILL.md": {
+      "bytes": 7348,
+      "sha256": "c1f20eb1b96a665a3b5d4329a632a7c81d5eb8d5e189405ab42ed9f64d230539"
+    },
+    "agent-kit/skills/live-dot-map/templates/attempt.md": {
+      "bytes": 290,
+      "sha256": "8c818cd96efdce7d36551f8a76cef1291b99d11d883f92376aac80c56031bc80"
+    },
+    "app.html": {
+      "bytes": 305937,
+      "sha256": "46790659d2c58247cc09e1b13e7f5e1ca2bfb0399cd73b30e9797a581aa57519"
+    },
+    "assets/app-icon.ico": {
+      "bytes": 24645,
+      "sha256": "eab21d3e55f211882354435dde318e457079e98f7dc6d67cc111af15a01bc4bf"
+    },
+    "favicon.ico": {
+      "bytes": 24645,
+      "sha256": "eab21d3e55f211882354435dde318e457079e98f7dc6d67cc111af15a01bc4bf"
+    },
+    "icons/icon-192.png": {
+      "bytes": 9442,
+      "sha256": "320398900626d76a94465252c0607c4e50581716ed4661ff812d5797069ab8b4"
+    },
+    "icons/icon-512.png": {
+      "bytes": 27249,
+      "sha256": "5eaa4169f40fe375b270b73082c25263c1d8cfa5792621e8672b8e61de030834"
+    },
+    "livedot-bridge-win-x64.exe": {
+      "bytes": 92305408,
+      "sha256": "ac02d0a2f65f1898b26055a70954905861f7b03d6e55b93ebd22bfc58f9463bd"
+    },
+    "manifest.webmanifest": {
+      "bytes": 550,
+      "sha256": "aa41be332276032d399a3644c993aa9a5fc3bb24736d339d36bcfb9af1188439"
+    },
+    "sw.js": {
+      "bytes": 1870,
+      "sha256": "41ac0851be6cbbc0ddab6d98163669aebd668f161aa77e8bc8e59cb622bba73c"
+    }
+  }
+}

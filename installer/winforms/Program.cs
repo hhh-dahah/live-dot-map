@@ -58,8 +58,9 @@ internal static class Program
 
         if (args.Length >= 2 && string.Equals(args[0], "--update", StringComparison.Ordinal))
         {
-            // --update <新安装包exe路径>: 产品内更新链路调用，替换 current 后重开画布。
-            Application.Run(new UpdateForm(args[1]));
+            // --update <新安装包exe路径> [已安装current目录]: 产品内更新链路调用，替换 current 后重开画布。
+            // 第二个参数省略时按 install-location.txt 记忆位置解析（兼容旧版桥的调用）。
+            Application.Run(new UpdateForm(args[1], args.Length >= 3 ? args[2] : null));
             return 0;
         }
 
@@ -1332,10 +1333,12 @@ internal sealed class UpdateForm : Form
     private readonly TextBox _status = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = SystemColors.Window };
     private readonly ProgressBar _progress = new() { Dock = DockStyle.Top, Height = 14, Visible = false };
     private readonly string _newInstallerPath;
+    private readonly string? _installedRootOverride;
 
-    public UpdateForm(string newInstallerPath)
+    public UpdateForm(string newInstallerPath, string? installedRootOverride = null)
     {
         _newInstallerPath = newInstallerPath;
+        _installedRootOverride = string.IsNullOrWhiteSpace(installedRootOverride) ? null : installedRootOverride;
         Text = "活点地图更新";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(560, 240);
@@ -1358,6 +1361,10 @@ internal sealed class UpdateForm : Form
         Shown += async (_, _) => await RunAsync();
     }
 
+    /// <summary>要替换的已安装 current 目录：优先用桥传来的显式路径，否则按 install-location.txt 记忆位置解析。
+    /// 不能用 SourceRoot——产品内更新时更新器运行在 TEMP 下载目录里，SourceRoot 会指向那里。</summary>
+    private string CurrentRoot => _installedRootOverride is null ? LauncherForm.CurrentInstalledRoot : Path.GetFullPath(_installedRootOverride);
+
     private async Task RunAsync()
     {
         var newRoot = Path.GetDirectoryName(Path.GetFullPath(_newInstallerPath));
@@ -1367,13 +1374,18 @@ internal sealed class UpdateForm : Form
             Fail("新版本文件不完整，更新已取消。请重新下载安装包后重试。");
             return;
         }
+        if (!Directory.Exists(CurrentRoot))
+        {
+            Fail("找不到现有安装目录，更新已取消。请重新安装活点地图。");
+            return;
+        }
         var verification = PayloadVerifier.Verify(newPayload);
         if (!verification.Ok)
         {
             Fail($"新版本校验失败，更新已取消（现有版本不受影响）：{string.Join("；", verification.Errors)}");
             return;
         }
-        var productRoot = Directory.GetParent(LauncherForm.SourceRoot)?.FullName ?? LauncherForm.SourceRoot;
+        var productRoot = Directory.GetParent(CurrentRoot)?.FullName ?? CurrentRoot;
         Directory.CreateDirectory(productRoot);
         var updating = Path.Combine(productRoot, $".updating-{Guid.NewGuid():N}");
         try
@@ -1381,8 +1393,8 @@ internal sealed class UpdateForm : Form
             AppendStatus($"新版本 {verification.Version} 校验通过，正在复制…");
             _progress.Visible = true;
             await CopyDirectoryAsync(newRoot, updating);
-            // 更新器本体运行在 current 内：把当前 exe 复制进暂存目录，使 .updating 成为完整安装目录。
-            var ownExe = Path.Combine(LauncherForm.SourceRoot, "LiveDotMapSetup.exe");
+            // 更新器本体运行在 TEMP 下载目录：把已安装目录的 exe 复制进暂存目录，使 .updating 成为完整安装目录。
+            var ownExe = Path.Combine(CurrentRoot, "LiveDotMapSetup.exe");
             if (!File.Exists(Path.Combine(updating, "LiveDotMapSetup.exe")) && File.Exists(ownExe))
                 File.Copy(ownExe, Path.Combine(updating, "LiveDotMapSetup.exe"), true);
             var copied = PayloadVerifier.Verify(Path.Combine(updating, "payload"));
@@ -1440,25 +1452,113 @@ internal sealed class UpdateForm : Form
 
     private async Task ScheduleSwitchAsync(string updating, string productRoot)
     {
-        // 更新器自身运行在 current 内，Windows 不允许移动被占用的目录，
-        // 因此写延迟脚本：本进程退出后由 cmd 完成 备份 current → 切换 .updating → 打开画布 → 自删。
-        var current = LauncherForm.SourceRoot;
+        // 更新器自身运行在 TEMP 下载目录，而旧桥进程运行在 current/payload 内，
+        // Windows 不允许移动被占用的目录，因此写延迟 PowerShell 脚本：本进程退出后完成 备份 current → 切换 .updating → 打开画布 → 健康检查。
+        // 新桥起不来时自动回滚到 .previous 并弹窗告知，绝不留下打不开的安装（A6 更新安全契约）。
+        var current = CurrentRoot;
         var previous = Path.Combine(productRoot, $".previous-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}");
-        var script = Path.Combine(productRoot, $"switch-{Guid.NewGuid():N}.cmd");
-        var launcher = Path.Combine(current, "LiveDotMapSetup.exe").Replace("%", "%%", StringComparison.Ordinal);
-        var previousEscaped = previous.Replace("%", "%%", StringComparison.Ordinal);
-        var updatingEscaped = updating.Replace("%", "%%", StringComparison.Ordinal);
-        var currentEscaped = current.Replace("%", "%%", StringComparison.Ordinal);
-        var productEscaped = productRoot.Replace("%", "%%", StringComparison.Ordinal);
-        await File.WriteAllTextAsync(script, $"@echo off\r\n" +
-            $"timeout /t 2 /nobreak >nul\r\n" +
-            $"if exist \"{currentEscaped}\" rename \"{currentEscaped}\" \"{Path.GetFileName(previousEscaped)}\" >nul 2>&1\r\n" +
-            $"if exist \"{updatingEscaped}\" rename \"{updatingEscaped}\" \"current\" >nul 2>&1\r\n" +
-            $"for /d %%D in (\"{productEscaped}\\.previous-*\") do if not \"%%~D\"==\"{previousEscaped}\" rmdir /s /q \"%%~D\" >nul 2>&1\r\n" +
-            $"start \"\" \"{launcher}\" --open\r\n" +
-            $"del /f /q \"%~f0\" >nul 2>&1\r\n", Encoding.UTF8);
-        var info = new ProcessStartInfo { FileName = "cmd.exe", UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = productRoot };
-        info.ArgumentList.Add("/c");
+        var script = Path.Combine(productRoot, $"switch-{Guid.NewGuid():N}.ps1");
+        var launcher = Path.Combine(current, "LiveDotMapSetup.exe");
+        static string Q(string value) => $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
+        var lines = new[]
+        {
+            "$ErrorActionPreference = 'Stop'",
+            $"$current = {Q(current)}",
+            $"$updating = {Q(updating)}",
+            $"$previous = {Q(previous)}",
+            $"$productRoot = {Q(productRoot)}",
+            $"$launcher = {Q(launcher)}",
+            "$runDir = Join-Path $env:LOCALAPPDATA 'live-dot-map\\run'",
+            "function Popup([string]$text, [int]$icon) {",
+            "  try { (New-Object -ComObject WScript.Shell).Popup($text, 120, '活点地图', $icon) | Out-Null } catch { }",
+            "}",
+            "Start-Sleep -Seconds 2",
+            "# 1. 切换目录：备份 current，再让 .updating 上位。",
+            "# 刚退出的更新器、杀毒软件或索引服务可能短暂持有目录句柄，重试最多 10 次（约 30 秒）再认输；",
+            "# 彻底失败时 current 保持完整，必须重启旧版本画布——绝不把用户留在打不开的状态（A6 更新安全契约）。",
+            "$switched = $false",
+            "$lastError = $null",
+            "for ($i = 0; $i -lt 10 -and -not $switched; $i++) {",
+            "  try {",
+            "    if (Test-Path -LiteralPath $current) { Rename-Item -LiteralPath $current -NewName (Split-Path $previous -Leaf) -ErrorAction Stop }",
+            "    Rename-Item -LiteralPath $updating -NewName 'current' -ErrorAction Stop",
+            "    $switched = $true",
+            "  } catch {",
+            "    $lastError = $_.Exception.Message",
+            "    # 第一步成功而第二步失败时先还原，再整体重试",
+            "    try { if ((Test-Path -LiteralPath $previous) -and !(Test-Path -LiteralPath $current)) { Rename-Item -LiteralPath $previous -NewName 'current' } } catch { }",
+            "    Start-Sleep -Seconds 3",
+            "  }",
+            "}",
+            "if (-not $switched) {",
+            "  try { if (Test-Path -LiteralPath $current) { Start-Process -FilePath $launcher -ArgumentList '--open' -WorkingDirectory $productRoot -WindowStyle Hidden } } catch { }",
+            "  try { Remove-Item -LiteralPath $updating -Recurse -Force -ErrorAction SilentlyContinue } catch { }",
+            "  Popup ('更新切换失败：' + $lastError + '。已恢复原版本并重新打开画布；如画布无法打开，请重新安装。') 16",
+            "  Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue",
+            "  exit 1",
+            "}",
+            "# 2. 启动新版本画布",
+            "Start-Process -FilePath $launcher -ArgumentList '--open' -WorkingDirectory $productRoot -WindowStyle Hidden",
+            "# 3. 健康检查：bridge.json 的 startedAt 必须在最近 180 秒内且 /health 返回 200，上限 60 秒",
+            "$healthy = $false",
+            "$deadline = (Get-Date).AddSeconds(60)",
+            "$bridgeFile = Join-Path $runDir 'bridge.json'",
+            "while ((Get-Date) -lt $deadline) {",
+            "  try {",
+            "    $info = Get-Content -LiteralPath $bridgeFile -Raw -ErrorAction Stop | ConvertFrom-Json",
+            "    $startedAt = [DateTimeOffset]::Parse($info.startedAt)",
+            "    if ((([DateTimeOffset]::UtcNow) - $startedAt.ToUniversalTime()).TotalSeconds -lt 180) {",
+            "      $response = Invoke-WebRequest -Uri ('http://127.0.0.1:' + $info.port + '/health') -UseBasicParsing -TimeoutSec 3",
+            "      if ($response.StatusCode -eq 200) { $healthy = $true; break }",
+            "    }",
+            "  } catch { }",
+            "  Start-Sleep -Seconds 2",
+            "}",
+            "if ($healthy) {",
+            "  # 4a. 健康：清理历史 .previous-* 备份（保留本次那一份供诊断）",
+            "  Get-ChildItem -LiteralPath $productRoot -Directory -Filter '.previous-*' |",
+            "    Where-Object { $_.FullName -ne $previous } |",
+            "    ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction Stop } catch { } }",
+            "} else {",
+            "  # 4b. 不健康：请新桥退出（控制通道失败则按 pid 强杀），回滚目录并重启旧版本",
+            "  $bridge = $null",
+            "  try {",
+            "    $bridge = Get-Content -LiteralPath $bridgeFile -Raw -ErrorAction Stop | ConvertFrom-Json",
+            "    $token = (Get-Content -LiteralPath (Join-Path $runDir 'control.token') -Raw -ErrorAction Stop).Trim()",
+            "    Invoke-WebRequest -Method Post -Uri ('http://127.0.0.1:' + $bridge.port + '/api/v1/control/shutdown') -Headers @{ 'X-LiveDot-Control' = $token } -UseBasicParsing -TimeoutSec 5 | Out-Null",
+            "  } catch { }",
+            "  Start-Sleep -Seconds 3",
+            "  try {",
+            "    if ($bridge -and $bridge.pid) {",
+            "      $proc = Get-Process -Id $bridge.pid -ErrorAction SilentlyContinue",
+            "      if ($proc) { Stop-Process -Id $bridge.pid -Force -ErrorAction SilentlyContinue }",
+            "    }",
+            "  } catch { }",
+            "  try {",
+            "    $failed = Join-Path $productRoot ('.failed-' + (Get-Date -Format 'yyyyMMddHHmmss'))",
+            "    if (Test-Path -LiteralPath $current) { Rename-Item -LiteralPath $current -NewName (Split-Path $failed -Leaf) }",
+            "    if (Test-Path -LiteralPath $previous) { Rename-Item -LiteralPath $previous -NewName 'current' }",
+            "    if (Test-Path -LiteralPath $current) {",
+            "      Start-Process -FilePath $launcher -ArgumentList '--open' -WorkingDirectory $productRoot -WindowStyle Hidden",
+            "      Popup '更新后新版本未能正常启动，已自动恢复到之前的版本。你的地图数据没有受影响。' 48",
+            "    } else {",
+            "      Popup '更新失败且自动恢复未完成。请重新安装活点地图；你的地图数据没有受影响。' 16",
+            "    }",
+            "  } catch {",
+            "    Popup ('更新失败且自动恢复出错：' + $_.Exception.Message + '。请重新安装活点地图；你的地图数据没有受影响。') 16",
+            "  }",
+            "}",
+            "Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue",
+        };
+        // PowerShell 5.1 把无 BOM 的 UTF-8 当 ANSI 读，中文提示会乱码，必须带 BOM 写入。
+        await File.WriteAllTextAsync(script, string.Join("\r\n", lines), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        var info = new ProcessStartInfo { FileName = "powershell.exe", UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = productRoot };
+        info.ArgumentList.Add("-NoProfile");
+        info.ArgumentList.Add("-ExecutionPolicy");
+        info.ArgumentList.Add("Bypass");
+        info.ArgumentList.Add("-WindowStyle");
+        info.ArgumentList.Add("Hidden");
+        info.ArgumentList.Add("-File");
         info.ArgumentList.Add(script);
         Process.Start(info);
         await Task.CompletedTask;

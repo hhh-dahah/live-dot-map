@@ -189,6 +189,8 @@ export class BridgeClient {
   private logTimer = 0;
   /** Agent 最近一次写回（来自桥端 agent-health 记录），供状态点 tooltip 展示。 */
   lastAgentActivity: { at: string; name: string } | null = null;
+  /** A5：打开项目时桥端返回的 Agent 接入状态；runtimeRefreshed=true 表示全局运行时已刷新，需重开 Agent 会话生效。 */
+  agentSetup: JsonMap | null = null;
 
   /** 操作日志：缓冲后批量发给桥写入运行日志（与桥、Agent 同一文件）；桥未连接时只留 console。 */
   log(event: string, fields: JsonMap = {}, level: 'info' | 'warn' | 'error' = 'info'): void {
@@ -367,6 +369,7 @@ export class BridgeClient {
         ? await this.request('/api/v1/snapshot')
         : await this.request('/api/v1/projects/open', { method: 'POST', body: { projectRoot } });
       const openedSnapshot = opened.snapshot && typeof opened.snapshot === 'object' ? opened.snapshot as JsonMap : undefined;
+      this.agentSetup = opened.agentSetup && typeof opened.agentSetup === 'object' ? opened.agentSetup as JsonMap : null;
       let document = (opened.document ?? opened.map ?? openedSnapshot?.document) as JsonMap;
       if (!document || Number(document.version) !== 2) throw new Error('本地桥没有返回可写的 v2 地图');
       if (resumedRoot && resumedRoot !== projectRoot) throw new Error('本地桥会话绑定了另一个项目，请重新打开项目');
@@ -689,6 +692,33 @@ export class BridgeClient {
     return this.requestBinary(`/api/v1/assets/import?${params.toString()}`, data, contentType || 'application/octet-stream');
   }
 
+  /**
+   * 生成附件直读 URL：<img> 无法带自定义请求头，projectHandle/mapKey 以查询参数携带
+   * （服务端 authenticate 支持该回退）。仅供同源 <img>/<a> 使用。
+   */
+  assetReadUrl(ownerKind: 'node' | 'route', ownerId: string, fileName: string): string {
+    const params = new URLSearchParams({ ownerKind, ownerId, fileName });
+    if (this.projectHandle) params.set('projectHandle', this.projectHandle);
+    if (this.mapKey) params.set('mapKey', this.mapKey);
+    return `/api/v1/assets/read?${params.toString()}`;
+  }
+
+  /**
+   * 粘贴本地图片绝对路径入库：浏览器读不到路径对应的字节，由本地桥代为读取。
+   * 服务端仍执行扩展名、MIME 和文件头校验。
+   */
+  async importAssetFromPath(
+    ownerKind: 'node' | 'route',
+    ownerId: string,
+    sourcePath: string,
+  ): Promise<JsonMap> {
+    if (!this.active) throw new Error('本地桥未连接，无法导入附件');
+    return this.request('/api/v1/assets/import-local', {
+      method: 'POST',
+      body: { ownerKind, ownerId, sourcePath },
+    });
+  }
+
   private async requestBinary(path: string, body: Blob | ArrayBuffer | Uint8Array, contentType: string): Promise<JsonMap> {
     const headers: Record<string, string> = { 'Content-Type': contentType };
     if (this.csrf) headers['X-CSRF-Token'] = this.csrf;
@@ -749,6 +779,7 @@ export class BridgeClient {
     await this.prepareMapTransition();
     try {
       const result = await this.request('/api/v1/projects/open', { method: 'POST', body: { projectRoot } });
+      this.agentSetup = result.agentSetup && typeof result.agentSetup === 'object' ? result.agentSetup as JsonMap : null;
       await this.attachProject(result);
       return result;
     } catch (error) {
@@ -1142,6 +1173,21 @@ export class BridgeClient {
     } finally {
       this.notifyInFlightDone();
     }
+  }
+
+  /** 更新/退出前强制落盘：跳过防抖立即提交 pending，并等待在途提交完成；仍有未保存修改时抛错，由调用方中止后续动作。 */
+  async flushPending(): Promise<void> {
+    if (!this.active) return;
+    clearTimeout(this.timer);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await this.waitForInFlight();
+      if (!this.pending) return;
+      if (!this.connected) break;
+      await this.flush();
+      if (!this.pending) return;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    if (this.pending) throw new Error('尚有修改未能保存');
   }
 
   private startEvents(): void {

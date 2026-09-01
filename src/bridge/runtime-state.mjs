@@ -181,4 +181,19 @@ export async function removeBridgeState(runtimeStateDir, expectedPid) {
   return true;
 }
 
+/** 返回 pid 进程的可执行文件完整路径；取不到（权限/已退出/非 Windows）返回 null。 */
+export async function bridgeProcessImagePath(pid) {
+  if (!isProcessAlive(pid)) return null;
+  if (process.platform !== 'win32') return null;
+  try {
+    const { stdout } = await execFileAsync('powershell', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).Path`,
+    ], { timeout: 5000 });
+    return String(stdout).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export { defaultRuntimeStateDir };

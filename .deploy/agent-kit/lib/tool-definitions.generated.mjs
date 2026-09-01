@@ -258,7 +258,7 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_write_markdown",
-    "description": "用 baseEtag 原子替换资料包 Markdown。",
+    "description": "用 baseEtag 原子替换资料包 Markdown。默认追加式：若替换会删除已有内容的行将被拒绝（REWRITE_REMOVES_CONTENT），请优先用 map_append_markdown；确属用户明确要求改写时才传 allowContentRemoval: true。",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -283,6 +283,9 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "baseEtag": {
           "type": "string"
+        },
+        "allowContentRemoval": {
+          "type": "boolean"
         }
       },
       "required": [
