@@ -6407,7 +6407,7 @@ var map_template_default = {
 };
 
 // agent-kit/lib/installer.mjs
-var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code"]);
+var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code", "antigravity"]);
 var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
 var skillTargetPaths = (home, id) => id === "codex" ? join17(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join17(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join17(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : join17(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
@@ -6417,8 +6417,21 @@ var ADAPTER_PROBES = Object.freeze({
   codex: ["codex"],
   "claude-code": ["claude", "claude-code"],
   "kimi-code": ["kimi", "kimi-code"],
+  antigravity: ["antigravity", "agy"],
   codebuddy: ["codebuddy", "codebuddy-code", "workbuddy"]
 });
+function adapterFingerprints(id, { platform, home }) {
+  if (id !== "antigravity") return [];
+  const local = process.env.LOCALAPPDATA;
+  const programFiles = process.env.ProgramFiles;
+  const out = [];
+  if (platform === "win32") {
+    if (local) out.push(join17(local, "Programs", "Antigravity", "Antigravity.exe"));
+    if (programFiles) out.push(join17(programFiles, "Antigravity", "Antigravity.exe"));
+  }
+  out.push(join17(home, ".gemini", "antigravity-ide"));
+  return out;
+}
 async function exists2(path) {
   try {
     await access3(path, constants2.F_OK);
@@ -6467,7 +6480,7 @@ async function restoreCapturedFile(entry) {
     await rm5(entry.path, { force: true }).catch(() => void 0);
   }
 }
-var adapterConfigPaths = (home, id) => id === "codex" ? [join17(home, ".codex", "config.toml"), join17(home, ".codex", "hooks.json")] : id === "claude-code" ? [join17(home, ".claude", "settings.json")] : id === "kimi-code" ? [join17(home, ".kimi-code", "mcp.json"), join17(kimiPluginRoot(home), "kimi.plugin.json")] : [join17(home, ".codebuddy", "settings.json"), join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+var adapterConfigPaths = (home, id) => id === "codex" ? [join17(home, ".codex", "config.toml"), join17(home, ".codex", "hooks.json")] : id === "claude-code" ? [join17(home, ".claude", "settings.json")] : id === "kimi-code" ? [join17(home, ".kimi-code", "mcp.json"), join17(kimiPluginRoot(home), "kimi.plugin.json")] : id === "antigravity" ? [join17(home, ".gemini", "config", "mcp_config.json"), join17(home, ".gemini", "antigravity-ide", "mcp_config.json")] : [join17(home, ".codebuddy", "settings.json"), join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), "hooks", "hooks.json")];
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === "1";
 }
@@ -6535,7 +6548,8 @@ async function detectInstalledAdapters({ projectRoot = process.cwd(), platform =
       }
     }
     const embeddedPath = id === "codebuddy" && !executable ? await discoverEmbeddedCodeBuddy({ platform }) : null;
-    return [id, { id, configured, executable: executable || Boolean(embeddedPath), executableSource: embeddedPath ? "workbuddy-embedded" : null, discovered: configured || executable || Boolean(embeddedPath) }];
+    const fingerprint = executable ? "" : (await Promise.all(adapterFingerprints(id, { platform, home }).map(async (path) => await exists2(path) ? path : ""))).find(Boolean) || "";
+    return [id, { id, configured, executable: executable || Boolean(embeddedPath), executableSource: embeddedPath ? "workbuddy-embedded" : null, discovered: configured || executable || Boolean(embeddedPath) || Boolean(fingerprint) }];
   }));
   return Object.fromEntries(checks);
 }
@@ -6639,6 +6653,21 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
   };
   await atomicJson(join17(plugin, "kimi.plugin.json"), manifest);
   return [mcpPath, join17(plugin, "kimi.plugin.json")];
+}
+async function writeAntigravityConfig(home, nodeCommand, runtime) {
+  const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "antigravity"] };
+  const paths = [
+    join17(home, ".gemini", "config", "mcp_config.json"),
+    join17(home, ".gemini", "antigravity-ide", "mcp_config.json")
+  ];
+  for (const path of paths) {
+    const mcp = await readJson2(path);
+    const servers = mcp.mcpServers && typeof mcp.mcpServers === "object" ? mcp.mcpServers : {};
+    servers["livedot-map"] = entry;
+    mcp.mcpServers = servers;
+    await atomicJson(path, mcp);
+  }
+  return paths;
 }
 async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
   const settingsPath = join17(home, ".codebuddy", "settings.json");
@@ -6763,6 +6792,7 @@ async function installProject({
     if (installed.codex) await writeCodexConfig(home, nodeCommand, runtime);
     if (installed["claude-code"]) await writeClaudeConfig(home, nodeCommand, runtime);
     if (installed["kimi-code"]) await writeKimiConfig(home, nodeCommand, runtime);
+    if (installed.antigravity) await writeAntigravityConfig(home, nodeCommand, runtime);
     if (installed.codebuddy) await writeCodeBuddyConfig(home, nodeCommand, runtime);
     const config = {
       ...old,
@@ -6849,6 +6879,12 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
     }
   }
   const launcherPaths = [join17(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), join17(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
+  const homeRoot = config.homeRoot ? resolve14(config.homeRoot) : null;
+  if (homeRoot && config.installed?.antigravity) {
+    for (const name of ["antigravity", "antigravity-ide", "antigravity-cli"]) {
+      await rm5(join17(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
+    }
+  }
   if (platform === "win32") {
     const desktop = windowsDesktopDirectory({ platform, env, exec });
     launcherPaths.push(join17(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), join17(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
@@ -6878,6 +6914,7 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
   if (installed.codex) expected.push(["codex-hooks", join17(home, ".codex", "hooks.json")], ["codex-mcp", join17(home, ".codex", "config.toml")]);
   if (installed["claude-code"]) expected.push(["claude-hooks", join17(home, ".claude", "settings.json")]);
   if (installed["kimi-code"]) expected.push(["kimi-mcp", join17(home, ".kimi-code", "mcp.json")], ["kimi-plugin", join17(kimiPluginRoot(home), "kimi.plugin.json")]);
+  if (installed.antigravity) expected.push(["antigravity-mcp", join17(home, ".gemini", "config", "mcp_config.json")]);
   if (installed.codebuddy) expected.push(["codebuddy-hooks", join17(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
@@ -7330,10 +7367,11 @@ function sendJson(response, status, value) {
 }
 function sendError(response, error3) {
   const bridgeError3 = asBridgeError(error3);
+  const userFacing = String(bridgeError3.code || "").startsWith("UPDATE_");
   const body = {
     error: {
       code: bridgeError3.code,
-      message: bridgeError3.status >= 500 ? "Local bridge request failed" : bridgeError3.message
+      message: userFacing || bridgeError3.status < 500 ? bridgeError3.message : "Local bridge request failed"
     }
   };
   if (bridgeError3.details !== void 0 && bridgeError3.status < 500) body.error.details = bridgeError3.details;
@@ -7373,7 +7411,10 @@ async function createBridgeServer({
   agentSetup = ensureProjectAgentConfig,
   logger = noopLogger,
   updateBase = null,
-  installRoot = process.cwd(),
+  // 安装版：桥 exe 位于 <安装目录>/current/payload/，payload-manifest.json 就在旁边。
+  // 用 exe 自身目录而不是 process.cwd()：启动器「正常启动」与更新器「重启」的 cwd 不一致，
+  // 以 cwd 为准会导致正常启动时读不到本地安装信息（current:null），更新判定失效。
+  installRoot = process.execPath ? dirname9(resolve15(process.execPath)) : process.cwd(),
   spawnUpdater = null,
   restartOnUpdate = true,
   shutdownHandler = null
@@ -7649,8 +7690,13 @@ async function createBridgeServer({
     return Boolean(local.payloadHash && typeof manifest.payloadHash === "string" && local.payloadHash !== manifest.payloadHash);
   }
   async function fetchUpdateManifest() {
-    const response = await fetch(`${UPDATE_BASE}/update-manifest.json`, { signal: AbortSignal.timeout(8e3) });
-    if (!response.ok) throw new BridgeError("UPDATE_MANIFEST_UNAVAILABLE", `Update manifest unavailable (HTTP ${response.status})`, { status: 502 });
+    let response;
+    try {
+      response = await fetch(`${UPDATE_BASE}/update-manifest.json`, { signal: AbortSignal.timeout(8e3) });
+    } catch {
+      throw new BridgeError("UPDATE_MANIFEST_UNAVAILABLE", "\u66F4\u65B0\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u65E0\u6CD5\u8FDE\u63A5\u66F4\u65B0\u670D\u52A1\u5668\uFF09\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5", { status: 502 });
+    }
+    if (!response.ok) throw new BridgeError("UPDATE_MANIFEST_UNAVAILABLE", `\u66F4\u65B0\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528\uFF08HTTP ${response.status}\uFF09\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5`, { status: 502 });
     const manifest = await response.json();
     if (!manifest || typeof manifest !== "object" || typeof manifest.version !== "string" || !manifest.files || typeof manifest.files !== "object") {
       throw new BridgeError("UPDATE_MANIFEST_INVALID", "Update manifest is invalid", { status: 502 });
@@ -7667,14 +7713,40 @@ async function createBridgeServer({
       return { ok: false, current: local.version, latest: null, available: false, error: error3 instanceof Error ? error3.message : String(error3) };
     }
   }
+  const UPDATE_EXTERNAL_HOST_SUFFIXES = [".tcloudbaseapp.com", ".tcb.qcloud.la"];
+  function assertAllowedExternalUrl(url, label) {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new BridgeError("UPDATE_MANIFEST_INVALID", `\u66F4\u65B0\u5305\u6E05\u5355\u5F02\u5E38\uFF08${label} \u5916\u90E8\u5730\u5740\u683C\u5F0F\u975E\u6CD5\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62`, { status: 502 });
+    }
+    if (parsed.protocol !== "https:") throw new BridgeError("UPDATE_MANIFEST_INVALID", `\u66F4\u65B0\u5305\u6E05\u5355\u5F02\u5E38\uFF08${label} \u5916\u90E8\u5730\u5740\u5FC5\u987B\u4E3A https\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62`, { status: 502 });
+    const host2 = parsed.hostname.toLowerCase();
+    if (!UPDATE_EXTERNAL_HOST_SUFFIXES.some((suffix) => host2 === suffix.slice(1) || host2.endsWith(suffix))) {
+      throw new BridgeError("UPDATE_MANIFEST_INVALID", `\u66F4\u65B0\u5305\u6E05\u5355\u5F02\u5E38\uFF08${label} \u5916\u90E8\u5730\u5740\u57DF\u540D\u4E0D\u5728\u767D\u540D\u5355\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62\uFF0C\u73B0\u6709\u7248\u672C\u4E0D\u53D7\u5F71\u54CD`, { status: 502 });
+    }
+  }
   async function downloadUpdateFile(meta, target, label) {
     if (!meta || typeof meta !== "object" || typeof meta.sha256 !== "string" || typeof meta.url !== "string") {
       throw new BridgeError("UPDATE_MANIFEST_INVALID", `Invalid file entry: ${label}`, { status: 502 });
     }
-    if (meta.url.includes("..") || meta.url.startsWith("/") || /^[a-zA-Z]:/.test(meta.url) || /^https?:/i.test(meta.url)) {
-      throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file url: ${label}`, { status: 502 });
+    let sourceUrl;
+    if (meta.external === true) {
+      assertAllowedExternalUrl(meta.url, label);
+      sourceUrl = meta.url;
+    } else {
+      if (meta.url.includes("..") || meta.url.startsWith("/") || /^[a-zA-Z]:/.test(meta.url) || /^https?:/i.test(meta.url)) {
+        throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file url: ${label}`, { status: 502 });
+      }
+      sourceUrl = `${UPDATE_BASE}/${meta.url}`;
     }
-    const response = await fetch(`${UPDATE_BASE}/${meta.url}`, { signal: AbortSignal.timeout(6e5) });
+    let response;
+    try {
+      response = await fetch(sourceUrl, { signal: AbortSignal.timeout(6e5) });
+    } catch {
+      throw new BridgeError("UPDATE_DOWNLOAD_FAILED", `\u66F4\u65B0\u5305\u4E0B\u8F7D\u5931\u8D25\uFF08${label}\uFF0C\u65E0\u6CD5\u8FDE\u63A5\u66F4\u65B0\u670D\u52A1\u5668\uFF09\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5`, { status: 502 });
+    }
     if (!response.ok) throw new BridgeError("UPDATE_DOWNLOAD_FAILED", `\u66F4\u65B0\u5305\u4E0B\u8F7D\u5931\u8D25\uFF08${label}\uFF0CHTTP ${response.status}\uFF09\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5`, { status: 502 });
     const buffer = Buffer.from(await response.arrayBuffer());
     const actual = createHash8("sha256").update(buffer).digest("hex");
@@ -7959,6 +8031,7 @@ async function createBridgeServer({
             sendJson(response, 200, {
               csrfToken: authorized.csrfToken,
               expiresAt: authorized.expiresAt,
+              projectRoot: ticket[1].projectRoot,
               projectHandle: ticket[1].projectHandle,
               reconnectTicket: authorized.reconnectTicket,
               resumed: true
@@ -7974,6 +8047,7 @@ async function createBridgeServer({
           sendJson(response, 200, {
             csrfToken: existing.csrfToken,
             expiresAt: new Date(existing.expiresAt).toISOString(),
+            projectRoot: ticket[1].projectRoot,
             projectHandle: ticket[1].projectHandle,
             resumed: true
           });
@@ -7992,7 +8066,7 @@ async function createBridgeServer({
         sendJson(response, 201, {
           csrfToken,
           expiresAt: new Date(expiresAt).toISOString(),
-          projectRoot: ticket[1].projectHandle ? void 0 : ticket[1].projectRoot,
+          projectRoot: ticket[1].projectRoot,
           projectHandle: ticket[1].projectHandle,
           reconnectTicket: createdSession?.reconnectTicket,
           resumed: false
@@ -9689,7 +9763,7 @@ async function main() {
     if (!result2.ok && result2.reason !== "not-installed") process.exitCode = 1;
     return;
   }
-  process.stdout.write("\u6D3B\u70B9\u5730\u56FE v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n");
+  process.stdout.write("\u6D3B\u70B9\u5730\u56FE v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n");
 }
 void main().catch(async (error3) => {
   const parsed = parseArgs(process.argv.slice(2));
