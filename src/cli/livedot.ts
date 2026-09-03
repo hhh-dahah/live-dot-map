@@ -751,7 +751,7 @@ async function main(): Promise<void> {
     if (!result.ok && result.reason !== 'not-installed') process.exitCode = 1;
     return;
   }
-  process.stdout.write('活点地图 v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n');
+  process.stdout.write('活点地图 v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n');
 }
 
 void main().catch(async (error) => {

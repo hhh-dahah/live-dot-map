@@ -10,18 +10,21 @@ import { windowsDesktopDirectory } from './shortcut.mjs';
 import { portableManifestFor, runtimePlan } from './portable-node.mjs';
 import MAP_TEMPLATE from '../map.template.json' with { type: 'json' };
 
-const ADAPTERS = Object.freeze(['codex', 'claude-code', 'kimi-code']);
+const ADAPTERS = Object.freeze(['codex', 'claude-code', 'kimi-code', 'antigravity']);
 const OPTIONAL_ADAPTERS = Object.freeze(['codebuddy']);
 const ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
 
 // 2026-08-15 全局化：插件（skill/MCP/hook）安装到用户 Agent 全局，项目里只放数据。
+// Antigravity：MCP 为标准 stdio 配置（可写），其 skills 目录加载格式未确认前不复制（返回 null 跳过）。
 const skillTargetPaths = (home, id) => id === 'codex'
   ? join(home, '.codex', 'skills', 'live-dot-map', 'SKILL.md')
   : id === 'claude-code'
     ? join(home, '.claude', 'skills', 'live-dot-map', 'SKILL.md')
     : id === 'kimi-code'
       ? join(home, '.kimi-code', 'plugins', 'live-dot-map', 'skills', 'live-dot-map', 'SKILL.md')
-      : join(home, '.codebuddy', 'plugins', 'live-dot-map', 'skills', 'live-dot-map', 'SKILL.md');
+      : id === 'antigravity'
+        ? null
+        : join(home, '.codebuddy', 'plugins', 'live-dot-map', 'skills', 'live-dot-map', 'SKILL.md');
 
 const kimiPluginRoot = (home) => join(home, '.kimi-code', 'plugins', 'live-dot-map');
 const codebuddyPluginRoot = (home) => join(home, '.codebuddy', 'plugins', 'live-dot-map');
@@ -30,8 +33,25 @@ const ADAPTER_PROBES = Object.freeze({
   codex: ['codex'],
   'claude-code': ['claude', 'claude-code'],
   'kimi-code': ['kimi', 'kimi-code'],
+  antigravity: ['antigravity', 'agy'],
   codebuddy: ['codebuddy', 'codebuddy-code', 'workbuddy'],
 });
+
+// 非 PATH 类指纹（GUI 应用常不注册命令）：路径存在即视为已安装。
+// Antigravity：%LOCALAPPDATA%\Programs\Antigravity\Antigravity.exe（官网默认安装位置）
+// 或 Program Files 直装；AGY IDE/CLI 的全局数据目录 ~/.gemini/antigravity-ide 也在列。
+function adapterFingerprints(id, { platform, home }) {
+  if (id !== 'antigravity') return [];
+  const local = process.env.LOCALAPPDATA;
+  const programFiles = process.env.ProgramFiles;
+  const out = [];
+  if (platform === 'win32') {
+    if (local) out.push(join(local, 'Programs', 'Antigravity', 'Antigravity.exe'));
+    if (programFiles) out.push(join(programFiles, 'Antigravity', 'Antigravity.exe'));
+  }
+  out.push(join(home, '.gemini', 'antigravity-ide'));
+  return out;
+}
 
 async function exists(path) {
   try { await access(path, constants.F_OK); return true; } catch { return false; }
@@ -86,7 +106,9 @@ const adapterConfigPaths = (home, id) => id === 'codex'
     ? [join(home, '.claude', 'settings.json')]
     : id === 'kimi-code'
       ? [join(home, '.kimi-code', 'mcp.json'), join(kimiPluginRoot(home), 'kimi.plugin.json')]
-      : [join(home, '.codebuddy', 'settings.json'), join(codebuddyPluginRoot(home), '.codebuddy-plugin', 'plugin.json'), join(codebuddyPluginRoot(home), '.workbuddy-plugin', 'plugin.json'), join(codebuddyPluginRoot(home), 'hooks', 'hooks.json')];
+      : id === 'antigravity'
+        ? [join(home, '.gemini', 'config', 'mcp_config.json'), join(home, '.gemini', 'antigravity-ide', 'mcp_config.json')]
+        : [join(home, '.codebuddy', 'settings.json'), join(codebuddyPluginRoot(home), '.codebuddy-plugin', 'plugin.json'), join(codebuddyPluginRoot(home), '.workbuddy-plugin', 'plugin.json'), join(codebuddyPluginRoot(home), 'hooks', 'hooks.json')];
 
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === '1';
@@ -166,7 +188,8 @@ export async function detectInstalledAdapters({ projectRoot = process.cwd(), pla
       if (await commandExists(probe)) { executable = true; break; }
     }
     const embeddedPath = id === 'codebuddy' && !executable ? await discoverEmbeddedCodeBuddy({ platform }) : null;
-    return [id, { id, configured, executable: executable || Boolean(embeddedPath), executableSource: embeddedPath ? 'workbuddy-embedded' : null, discovered: configured || executable || Boolean(embeddedPath) }];
+    const fingerprint = executable ? '' : (await Promise.all(adapterFingerprints(id, { platform, home }).map(async (path) => (await exists(path)) ? path : ''))).find(Boolean) || '';
+    return [id, { id, configured, executable: executable || Boolean(embeddedPath), executableSource: embeddedPath ? 'workbuddy-embedded' : null, discovered: configured || executable || Boolean(embeddedPath) || Boolean(fingerprint) }];
   }));
   return Object.fromEntries(checks);
 }
@@ -294,8 +317,26 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
   return [mcpPath, join(plugin, 'kimi.plugin.json')];
 }
 
-async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
-  const settingsPath = join(home, '.codebuddy', 'settings.json');
+// Antigravity（AGY IDE / AGY CLI / AGY）：全局 MCP 入口 ~/.gemini/config/mcp_config.json，
+// 与 gemini CLI 的 ~/.gemini/settings.json 是两套文件，这里按 AGY 官方文档写入 mcpServers。
+// AGY IDE 另在 ~/.gemini/antigravity-ide/mcp_config.json 留有同名空配置，一并写入兜底。
+async function writeAntigravityConfig(home, nodeCommand, runtime) {
+  const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), 'mcp', '--agent', 'antigravity'] };
+  const paths = [
+    join(home, '.gemini', 'config', 'mcp_config.json'),
+    join(home, '.gemini', 'antigravity-ide', 'mcp_config.json'),
+  ];
+  for (const path of paths) {
+    const mcp = await readJson(path);
+    const servers = mcp.mcpServers && typeof mcp.mcpServers === 'object' ? mcp.mcpServers : {};
+    servers['livedot-map'] = entry;
+    mcp.mcpServers = servers;
+    await atomicJson(path, mcp);
+  }
+  return paths;
+}
+
+async function writeCodeBuddyConfig(home, nodeCommand, runtime) {  const settingsPath = join(home, '.codebuddy', 'settings.json');
   const settings = await readJson(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === 'object' ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, 'codebuddy');
@@ -363,7 +404,7 @@ export async function installProject({
   let createdMapsLayout = false;
   const touched = new Set([configPath, ...(runtime ? [runtime] : [])]);
   for (const id of new Set([...Object.keys(old.installed || {}), ...Object.keys(installed)])) for (const path of adapterConfigPaths(home, id)) touched.add(path);
-  for (const id of Object.keys(installed)) touched.add(skillTargetPaths(home, id));
+  for (const id of Object.keys(installed)) { const target = skillTargetPaths(home, id); if (target) touched.add(target); }
   const existingBackup = await readJson(backupPath, null);
   const backupFiles = new Map(Array.isArray(existingBackup?.files) ? existingBackup.files.map((entry) => [entry.path, entry]) : []);
   for (const path of touched) if (!backupFiles.has(path)) backupFiles.set(path, await captureFile(path));
@@ -390,6 +431,7 @@ export async function installProject({
     }
     for (const id of Object.keys(installed)) {
       const target = skillTargetPaths(home, id);
+      if (!target) continue; // 适配器未确认 skills 布局（如 antigravity）时不复制
       await mkdir(dirname(target), { recursive: true });
       await copyFile(canonicalSkill, target);
     }
@@ -419,6 +461,7 @@ export async function installProject({
     if (installed.codex) await writeCodexConfig(home, nodeCommand, runtime);
     if (installed['claude-code']) await writeClaudeConfig(home, nodeCommand, runtime);
     if (installed['kimi-code']) await writeKimiConfig(home, nodeCommand, runtime);
+    if (installed.antigravity) await writeAntigravityConfig(home, nodeCommand, runtime);
     if (installed.codebuddy) await writeCodeBuddyConfig(home, nodeCommand, runtime);
     const config = {
       ...old, version: 2, projectId: old.projectId || projectId, projectRoot: root, runtime, runtimeMode: seaRuntime() ? 'sea' : 'node', nodeCommand, homeRoot: home, detectedAgents: detected,
@@ -483,6 +526,13 @@ export async function uninstallProject({ projectRoot = process.cwd(), platform =
     }
   }
   const launcherPaths = [join(dataDir, '启动活点地图.cmd'), join(dataDir, '打开活点地图.cmd')];
+  // AGY 特有的 MCP 缓存：只删配置不解缓存，AGY 界面仍可能残留「僵尸服务器」——卸载时一并清。
+  const homeRoot = config.homeRoot ? resolve(config.homeRoot) : null;
+  if (homeRoot && config.installed?.antigravity) {
+    for (const name of ['antigravity', 'antigravity-ide', 'antigravity-cli']) {
+      await rm(join(homeRoot, '.gemini', name, 'mcp', 'livedot-map'), { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
   if (platform === 'win32') {
     const desktop = windowsDesktopDirectory({ platform, env, exec });
     launcherPaths.push(join(desktop, '活点地图本地桥.lnk'), join(desktop, '活点地图本地桥.cmd'));
@@ -510,6 +560,7 @@ export async function doctorProject({ projectRoot = process.cwd(), checkBridge =
   if (installed.codex) expected.push(['codex-hooks', join(home, '.codex', 'hooks.json')], ['codex-mcp', join(home, '.codex', 'config.toml')]);
   if (installed['claude-code']) expected.push(['claude-hooks', join(home, '.claude', 'settings.json')]);
   if (installed['kimi-code']) expected.push(['kimi-mcp', join(home, '.kimi-code', 'mcp.json')], ['kimi-plugin', join(kimiPluginRoot(home), 'kimi.plugin.json')]);
+  if (installed.antigravity) expected.push(['antigravity-mcp', join(home, '.gemini', 'config', 'mcp_config.json')]);
   if (installed.codebuddy) expected.push(['codebuddy-hooks', join(home, '.codebuddy', 'settings.json')], ['codebuddy-plugin', join(codebuddyPluginRoot(home), '.codebuddy-plugin', 'plugin.json')]);
   const checks = [{ name: 'project-root', ok: await exists(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists(path), detail: path });
