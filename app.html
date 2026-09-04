@@ -89,6 +89,9 @@ input{font:inherit;color:inherit}
 .node[data-kind="problem"] .dot{border:2px solid var(--danger);background:oklch(96% .035 27);color:var(--danger);box-shadow:0 0 0 3px oklch(96% .08 27 / .35);position:relative}
 .node[data-kind="problem"] .dot::before{content:'问题';position:absolute;top:-10px;right:-10px;padding:1px 5px;border-radius:999px;background:var(--danger);color:#fff;font-size:10px;line-height:16px;font-weight:600}
 .node[data-kind="problem"]:hover .dot,.node[data-kind="problem"].sel .dot{border-color:var(--danger);box-shadow:0 0 0 4px oklch(92% .12 27 / .45)}
+.node[data-kind="problem"].resolved .dot{border:2px solid oklch(65% 0.12 150);background:oklch(97% .02 150);color:oklch(40% 0.1 150);box-shadow:none}
+.node[data-kind="problem"].resolved .dot::before{content:'已解决';position:absolute;top:-10px;right:-10px;padding:1px 5px;border-radius:999px;background:oklch(62% 0.12 150);color:#fff;font-size:10px;line-height:16px;font-weight:600}
+.node[data-kind="problem"].resolved:hover .dot,.node[data-kind="problem"].resolved.sel .dot{border-color:oklch(55% 0.14 150);box-shadow:0 0 0 3px oklch(85% 0.08 150 / .4)}
 .node:hover .dot{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 .node.sel .dot{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 .node.snap .dot{border-color:var(--accent);box-shadow:0 0 0 6px var(--accent-soft)}
@@ -356,9 +359,18 @@ input{font:inherit;color:inherit}
 .mdv-root{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--bg)}
 .mdv-head{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 16px;border-bottom:1px solid var(--border)}
 .mdv-title{font-weight:600;font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mdv-seg{display:flex;flex:none;border:1px solid var(--border);border-radius:7px;overflow:hidden}
-.mdv-seg button{padding:5px 12px;border:0;background:var(--bg);color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
-.mdv-seg button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+/* 顶栏微交互分段滑块控件 (带有平滑胶囊底板) */
+.mdv-seg{position:relative;display:flex;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px}
+.mdv-seg button{position:relative;z-index:2;border:0;border-radius:6px;background:none;color:var(--muted);font:inherit;font-size:12px;font-weight:500;padding:4px 12px;cursor:pointer;transition:color .18s ease}
+.mdv-seg button:hover{color:var(--fg)}
+.mdv-seg button.on{color:var(--fg);font-weight:600}
+.mdv-seg-pill{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 4px);border-radius:6px;background:var(--bg);box-shadow:0 1px 3px rgba(0,0,0,.08),0 0.5px 1px rgba(0,0,0,.04);transition:transform .2s cubic-bezier(0.16,1,0.3,1);z-index:1;pointer-events:none}
+.mdv-seg.prev-active .mdv-seg-pill{transform:translateX(calc(100% + 2px))}
+/* 专注模式拓展钮 */
+.mdv-focus-btn{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s}
+.mdv-focus-btn:hover{color:var(--fg);background:var(--surface-hover);border-color:var(--fg)}
+.mdv-focus-btn.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+#panel.dock-focus{width:min(88vw, 1180px) !important}
 .mdv-openwrap{position:relative;flex:none}
 .mdv-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .mdv-btn:hover{background:var(--surface-hover)}
@@ -375,41 +387,51 @@ input{font:inherit;color:inherit}
 .mdv-msep{height:1px;background:var(--border);margin:5px 4px}
 .mdv-remember{display:flex;align-items:center;gap:7px;padding:7px 10px 4px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
 .mdv-body{display:flex;flex:1;min-height:0}
-/* 编辑区 = 行号槽 + 镜像层高亮 + 透明文字 textarea(文字全部由镜像层渲染,保证标签淡化与背景高亮逐字对齐) */
+/* 编辑区: 移除行号槽, 版心居中自适应 */
 .mdv-editwrap{flex:1;min-width:0;min-height:0;display:flex;background:var(--bg)}
 .mdv-editwrap[hidden]{display:none}
-.mdv-gutter{flex:none;width:46px;overflow:hidden;padding:18px 10px 18px 0;text-align:right;font-family:var(--font-mono);font-size:13px;line-height:1.7;color:var(--muted);border-right:1px solid var(--border);user-select:none;white-space:pre}
-.mdv-gutter>div{position:relative;will-change:transform}
-.mdv-gutter .gn{position:absolute;left:0;right:0}
-.mdv-editstack{position:relative;flex:1;min-width:0;min-height:0}
-.mdv-mirror{position:absolute;inset:0;overflow:hidden;pointer-events:none;padding:18px 20px;font-family:var(--font-mono);font-size:13px;line-height:1.7;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;color:var(--fg);scrollbar-gutter:stable}
-.mdv-mirror .tag{color:var(--muted);opacity:.4}
-.mdv-mirror .hl{background:var(--hl,var(--note));border-radius:2px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
-.mdv-edit{position:absolute;inset:0;width:100%;height:100%;resize:none;border:0;outline:0;padding:18px 20px;font-family:var(--font-mono);font-size:13px;line-height:1.7;background:transparent;color:transparent;caret-color:var(--fg);user-select:text;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;overflow-y:scroll;scrollbar-gutter:stable}
+.mdv-gutter{display:none !important}
+.mdv-editstack{position:relative;flex:1;min-width:0;min-height:0;max-width:920px;margin:0 auto;width:100%}
+.mdv-mirror{position:absolute;inset:0;overflow:hidden;pointer-events:none;padding:20px 26px;font-family:var(--font-mono);font-size:13.5px;line-height:1.75;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;color:var(--fg);scrollbar-gutter:stable}
+.mdv-mirror .tag{color:var(--muted);opacity:.4;font-size:11px}
+.mdv-mirror .hl{background:transparent;border-bottom:1.5px dashed var(--accent);border-radius:0}
+.mdv-mirror .ml.author-human{border-left:2.5px solid oklch(72% 0.16 75);background:oklch(72% 0.16 75 / 0.035);padding-left:12px;margin-left:-14.5px}
+.mdv-mirror .ml.author-agent{border-left:2.5px solid oklch(62% 0.16 280);background:oklch(62% 0.16 280 / 0.03);padding-left:12px;margin-left:-14.5px}
+.mdv-edit{position:absolute;inset:0;width:100%;height:100%;resize:none;border:0;outline:0;padding:20px 26px;font-family:var(--font-mono);font-size:13.5px;line-height:1.75;background:transparent;color:transparent;caret-color:var(--fg);user-select:text;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;overflow-y:scroll;scrollbar-gutter:stable}
 .mdv-edit::selection{background:oklch(85% 0.06 286 / .6)}
-.mdv-preview mark{background:var(--hl,var(--note));border-radius:2px;padding:0 1px;color:inherit}
-/* 底栏人写标记工具:标记/取消 + 高亮色点(显示层偏好,不进文件) */
-.mdv-hlbar{display:flex;align-items:center;gap:6px;flex:none}
-.mdv-hlbtn{padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
-.mdv-hlbtn:hover{background:var(--surface-hover)}
-.mdv-hldot{width:14px;height:14px;border-radius:50%;border:1.5px solid transparent;cursor:pointer;padding:0;flex:none}
-.mdv-hldot.on{border-color:var(--fg)}
-.mdv-preview{flex:1;min-width:0;overflow:auto;padding:18px 22px;font-size:13.5px;line-height:1.75;color:var(--fg);user-select:text}
-.mdv-preview img{max-width:100%;border-radius:6px;display:block;margin:6px 0}
+/* 现代精工卡片式预览排版 */
+.mdv-preview{flex:1;min-width:0;overflow:auto;padding:22px 32px;font-size:14px;line-height:1.8;color:var(--fg);user-select:text;max-width:920px;margin:0 auto;width:100%}
+.mdv-preview mark{background:transparent;border-bottom:1.5px dashed var(--accent);padding:0 1px;color:inherit}
+.mdv-preview .author-card{margin:16px 0;padding:12px 18px;border-radius:0 8px 8px 0;border:1px solid var(--border);border-left-width:3.5px;position:relative}
+.mdv-preview .author-card.human{border-left-color:oklch(72% 0.16 75);background:oklch(72% 0.16 75 / 0.028)}
+.mdv-preview .author-card.agent{border-left-color:oklch(62% 0.16 280);background:oklch(62% 0.16 280 / 0.022)}
+.mdv-preview .author-card-head{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;margin-bottom:8px;user-select:none}
+.mdv-preview .author-card.human .author-card-head{color:oklch(62% 0.16 75)}
+.mdv-preview .author-card.agent .author-card-head{color:oklch(56% 0.16 280)}
+.mdv-preview .author-card p:last-child{margin-bottom:0}
+.mdv-preview img{max-width:100%;border-radius:6px;display:block;margin:10px 0}
 .mdv-imgph{display:inline-block;padding:6px 10px;border:1px dashed var(--border);border-radius:6px;color:var(--muted);font-size:12px}
-.mdv-preview h1,.mdv-preview h2,.mdv-preview h3{line-height:1.35;margin:.9em 0 .45em;font-weight:700}
-.mdv-preview h1{font-size:20px}
-.mdv-preview h2{font-size:16.5px}
-.mdv-preview h3{font-size:14.5px}
+.mdv-preview h1,.mdv-preview h2,.mdv-preview h3{line-height:1.35;margin:1.1em 0 .5em;font-weight:700}
+.mdv-preview h1{font-size:22px}
+.mdv-preview h2{font-size:17.5px}
+.mdv-preview h3{font-size:15px}
 .mdv-preview h1:first-child,.mdv-preview h2:first-child,.mdv-preview h3:first-child{margin-top:0}
-.mdv-preview p{margin:.5em 0}
-.mdv-preview ul{margin:.4em 0;padding-left:1.4em}
+.mdv-preview p{margin:.6em 0}
+.mdv-preview ul{margin:.5em 0;padding-left:1.4em}
 .mdv-preview code{font-family:var(--font-mono);font-size:12.5px;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:1px 5px}
-.mdv-preview pre{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow:auto;margin:.6em 0}
+.mdv-preview pre{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;overflow:auto;margin:.8em 0}
 .mdv-preview pre code{background:none;border:0;padding:0}
-.mdv-side{width:230px;flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+/* Tactile Splitter 精工发丝分割器 */
+.mdv-resizer{width:7px;margin:0 -3.5px;flex:none;cursor:col-resize;position:relative;z-index:5;user-select:none;display:flex;align-items:center;justify-content:center;background:transparent}
+.mdv-resizer::before{content:'';position:absolute;top:0;bottom:0;left:3px;width:1px;background:var(--border);transition:background .15s}
+.mdv-resizer:hover::before,.mdv-resizer.dragging::before{background:var(--accent);width:2px;left:2.5px}
+.mdv-resizer-dots{position:relative;z-index:2;display:flex;flex-direction:column;gap:3px;opacity:0;transition:opacity .15s;pointer-events:none}
+.mdv-resizer:hover .mdv-resizer-dots,.mdv-resizer.dragging .mdv-resizer-dots{opacity:1}
+.mdv-resizer-dot{width:3px;height:3px;border-radius:50%;background:var(--accent)}
+.mdv-resizer-tip{position:absolute;top:28px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.2);pointer-events:none;z-index:10}
+.mdv-side{width:var(--side-w,230px);flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0;transition:width .18s cubic-bezier(0.16,1,0.3,1)}
+.mdv-side.collapsed{width:0 !important;overflow:hidden;border-left:none !important;padding:0 !important}
 .mdv-sidehead{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:11px 12px;font-size:12px;font-weight:600;border-bottom:1px solid var(--border)}
-/* 资料包「添加」钮:codex 式幽灵图标钮,无边框,hover 才出底色 */
 .mdv-add{width:24px;height:24px;border:0;border-radius:6px;background:none;color:var(--muted);font-size:15px;line-height:1;cursor:pointer;flex:none}
 .mdv-add:hover{background:var(--surface-hover);color:var(--fg)}
 .mdv-files{flex:1;overflow:auto;padding:7px}
@@ -424,12 +446,22 @@ input{font:inherit;color:inherit}
 .mdv-act{flex:none;border:0;background:none;color:var(--muted);font:inherit;font-size:11px;padding:4px 5px;border-radius:5px;cursor:pointer}
 .mdv-act:hover{background:var(--surface-hover);color:var(--fg)}
 .mdv-empty{padding:10px 8px;font-size:11.5px;color:var(--muted);line-height:1.6}
-.mdv-foot{display:flex;align-items:center;gap:10px;padding:9px 16px;border-top:1px solid var(--border)}
-.mdv-status{font-size:12px;color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mdv-save{padding:7px 16px;border:1px solid var(--accent);border-radius:7px;background:var(--accent);color:#fff;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
-.mdv-save:hover{filter:brightness(1.06)}
-.mdv-save:active{transform:translateY(1px)}
-.mdv-save:disabled{opacity:.6;cursor:default}
+/* Linear 级底栏与深墨黑胶囊 */
+.mdv-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 18px;border-top:1px solid var(--border);background:var(--bg)}
+.mdv-foot-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.mdv-live-dot{width:7px;height:7px;border-radius:50%;background:oklch(68% 0.18 145);position:relative;flex:none}
+.mdv-live-dot::after{content:'';position:absolute;inset:-2px;border-radius:50%;background:oklch(68% 0.18 145 / 0.35);animation:mdv-pulse 2s cubic-bezier(0.24,0,0.38,1) infinite}
+@keyframes mdv-pulse{0%{transform:scale(1);opacity:.8}70%{transform:scale(2.2);opacity:0}100%{transform:scale(2.2);opacity:0}}
+.mdv-foot-status{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdv-foot-right{display:flex;align-items:center;gap:10px;flex:none}
+.mdv-btn-ghost{padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--fg);font:inherit;font-size:12px;cursor:pointer;transition:all .15s}
+.mdv-btn-ghost:hover{background:var(--surface-hover);border-color:var(--fg)}
+.mdv-linear-save{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:6px;border:1px solid rgba(0,0,0,.85);background:#18181b;color:#fff;font:inherit;font-size:12px;font-weight:600;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 1px 2px rgba(0,0,0,.15);transition:all .15s}
+.mdv-linear-save kbd{font-family:var(--font-mono);font-size:10.5px;opacity:.75;background:rgba(255,255,255,.15);padding:1px 4px;border-radius:3px}
+.mdv-linear-save:hover:not(:disabled){background:#27272a;box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 2px 4px rgba(0,0,0,.2)}
+.mdv-linear-save:active:not(:disabled){transform:translateY(1px);box-shadow:none}
+.mdv-linear-save:disabled{opacity:.45;cursor:default;background:var(--surface);border-color:var(--border);color:var(--muted);box-shadow:none}
+.mdv-linear-save:disabled kbd{background:none}
 .mdv-close{width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center;border:0;border-radius:7px;background:none;color:var(--muted);cursor:pointer}
 .mdv-close:hover{background:var(--surface-hover);color:var(--fg)}
 .mdv-close svg{width:15px;height:15px}
@@ -1103,9 +1135,11 @@ function render(){
     const L = layout.get(n.id);
     const el = document.createElement('div');
     const nodeKind = nodeKindOf(n);
-    el.className = 'node' + (isSelObj('node', n.id) ? ' sel':'') + (S.snapTo === n.id ? ' snap':'') + (inlineNodeEdit === n.id ? ' editing':'');
+    const isResolved = nodeKind === 'problem' && n.resolved === true;
+    el.className = 'node' + (isSelObj('node', n.id) ? ' sel':'') + (S.snapTo === n.id ? ' snap':'') + (inlineNodeEdit === n.id ? ' editing':'') + (isResolved ? ' resolved':'');
     el.dataset.type = n.type; el.dataset.kind = nodeKind; el.dataset.id = n.id;
-    el.setAttribute('role', 'button'); el.setAttribute('aria-label', `${el.dataset.kind === 'problem' ? '问题节点' : '节点'}：${n.name}`);
+    if (isResolved) el.dataset.resolved = 'true';
+    el.setAttribute('role', 'button'); el.setAttribute('aria-label', `${el.dataset.kind === 'problem' ? (isResolved ? '已解决问题节点' : '问题节点') : '节点'}：${n.name}`);
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
     el.innerHTML = `<div class="dot" style="width:${n.r*2}px;height:${n.r*2}px"><span>${L.lines.map(esc).join('<br>')}</span></div>`;
     world.appendChild(el);
@@ -1207,14 +1241,19 @@ function renderPanel(){
   if (S.sel.kind === 'node'){
     const n = nodeById(S.sel.id); if (!n){ S.sel=null; p.classList.remove('on'); return; }
     const nodeKind = nodeKindOf(n);
-    const nodeColor = nodeKind === 'problem' ? 'var(--danger)' : 'var(--fg)';
-    title.innerHTML = `<span class="swatch" style="background:${nodeColor}"></span>${nodeKind === 'problem' ? '问题节点' : '普通节点'}`;
+    const isResolved = nodeKind === 'problem' && n.resolved === true;
+    const nodeColor = nodeKind === 'problem' ? (isResolved ? 'oklch(62% 0.12 150)' : 'var(--danger)') : 'var(--fg)';
+    title.innerHTML = `<span class="swatch" style="background:${nodeColor}"></span>${nodeKind === 'problem' ? (isResolved ? '问题节点（已解决）' : '问题节点') : '普通节点'}`;
     body.innerHTML =
       field('所属路线', routePickHTML(n)) +
       field('名称', `<div class="v" data-edit="name">${esc(n.name)}</div>`) +
       field('语义', `<div class="seg node-kind" data-node-kind="${esc(n.id)}">
         ${[['normal','普通'],['problem','问题']].map(([kind,label]) => `<button class="${nodeKind===kind?'on':''}" data-kind="${kind}">${label}</button>`).join('')}
       </div>`) +
+      (nodeKind === 'problem' ? field('解决状态', `<div class="seg node-resolve" data-node-resolve="${esc(n.id)}">
+        <button class="${!n.resolved?'on':''}" data-val="false">待解决</button>
+        <button class="${n.resolved?'on':''}" data-val="true">已解决</button>
+      </div>`) : '') +
       field('类型', `<div class="v" data-edit="type" title="点击修改类型">${esc(n.type)}</div>`) +
       sourceBlock(n) +
       field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(n.md)}</span>${I.ext}</div>`) +
@@ -1292,6 +1331,16 @@ function setNodeKind(n, kind){
   n.updatedAt = today();
   render(); renderPanel();
   toast(kind === 'problem' ? '已设为问题节点' : '已设为普通节点');
+}
+
+function setNodeResolved(n, resolved){
+  if (!n) return;
+  if (IO.readOnly){ warnReadOnly(); return; }
+  pushHistory();
+  n.resolved = !!resolved;
+  n.updatedAt = today();
+  render(); renderPanel();
+  toast(resolved ? '问题节点已标记为已解决' : '问题节点已设为待解决');
 }
 
 /* ---------- 菜单 ---------- */
@@ -1760,6 +1809,8 @@ $('#panel-body').addEventListener('click', ev => {
   const sb = ev.target.closest('.seg button'); if (!sb) return;
   const kindGroup = sb.closest('.node-kind');
   if (kindGroup && S.sel?.kind === 'node') { setNodeKind(nodeById(S.sel.id), sb.dataset.kind); return; }
+  const resGroup = sb.closest('.node-resolve');
+  if (resGroup && S.sel?.kind === 'node') { setNodeResolved(nodeById(S.sel.id), sb.dataset.val === 'true'); return; }
   setEdgeStatus(edgeById(sb.closest('.seg').dataset.edge), sb.dataset.status);
 });
 $('#panel-more').onclick = ev => {
@@ -3145,9 +3196,20 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   const back = document.createElement('button'); back.className = 'mdv-close'; back.type = 'button'; back.title = '返回详情'; back.setAttribute('aria-label', '返回详情'); back.innerHTML = I.back;
   const title = document.createElement('span'); title.className = 'mdv-title'; title.textContent = path.split('/').pop(); title.title = path;
   const seg = document.createElement('div'); seg.className = 'mdv-seg'; seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', '编辑或预览');
+  const segPill = document.createElement('div'); segPill.className = 'mdv-seg-pill';
   const segEdit = document.createElement('button'); segEdit.type = 'button'; segEdit.textContent = '编辑'; segEdit.className = 'on';
   const segPrev = document.createElement('button'); segPrev.type = 'button'; segPrev.textContent = '预览';
-  seg.append(segEdit, segPrev);
+  seg.append(segPill, segEdit, segPrev);
+  const focusBtn = document.createElement('button'); focusBtn.type = 'button'; focusBtn.className = 'mdv-focus-btn';
+  focusBtn.innerHTML = '<span>⤢</span><span>专注</span>'; focusBtn.title = '切换宽屏专注模式';
+  let isFocus = false;
+  focusBtn.onclick = () => {
+    isFocus = !isFocus;
+    panel.classList.toggle('dock-focus', isFocus);
+    focusBtn.classList.toggle('on', isFocus);
+    focusBtn.innerHTML = isFocus ? '<span>⤡</span><span>退出专注</span>' : '<span>⤢</span><span>专注</span>';
+    toast(isFocus ? '已开启宽屏专注模式' : '已恢复标准侧栏模式');
+  };
   const openWrap = document.createElement('div'); openWrap.className = 'mdv-openwrap'; openWrap.hidden = true;
   const openBtn = document.createElement('button'); openBtn.type = 'button'; openBtn.className = 'mdv-btn'; openBtn.setAttribute('aria-haspopup', 'menu');
   openBtn.innerHTML = `${I.ext}<span>打开方式</span>${I.chev.replace('<svg', '<svg class="chev"')}`;
@@ -3155,7 +3217,7 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   openWrap.append(openBtn, menu);
   const close = document.createElement('button'); close.className = 'mdv-close'; close.type = 'button'; close.title = '关闭'; close.setAttribute('aria-label', '关闭'); close.innerHTML = I.x;
   const collapseBtn = document.createElement('button'); collapseBtn.className = 'mdv-close'; collapseBtn.type = 'button'; collapseBtn.title = '收起侧栏（Esc）'; collapseBtn.setAttribute('aria-label', '收起侧栏'); collapseBtn.innerHTML = I.chevR;
-  header.append(back, title, seg, openWrap, collapseBtn, close);
+  header.append(back, title, seg, focusBtn, openWrap, collapseBtn, close);
   const bundle = bundleOptions?.bridge && bundleOptions.ownerKind && bundleOptions.ownerId ? bundleOptions : null;
   const body = document.createElement('div'); body.className = 'mdv-body';
   const editWrap = document.createElement('div'); editWrap.className = 'mdv-editwrap';
@@ -3167,91 +3229,175 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   editor.setAttribute('wrap', 'soft'); editor.spellcheck = false;
   stack.append(mirror, editor); editWrap.append(gutter, stack);
   const preview = document.createElement('div'); preview.className = 'mdv-preview'; preview.hidden = true;
+  const resizer = document.createElement('div'); resizer.className = 'mdv-resizer'; resizer.title = '拖拽调整资料包宽度，双击折叠/展开';
+  const resizerDots = document.createElement('div'); resizerDots.className = 'mdv-resizer-dots';
+  resizerDots.innerHTML = '<div class="mdv-resizer-dot"></div><div class="mdv-resizer-dot"></div><div class="mdv-resizer-dot"></div>';
+  const resizerTip = document.createElement('div'); resizerTip.className = 'mdv-resizer-tip'; resizerTip.hidden = true;
+  resizer.append(resizerDots, resizerTip);
   const side = document.createElement('aside'); side.className = 'mdv-side';
   const sideHead = document.createElement('div'); sideHead.className = 'mdv-sidehead';
   const sideTitle = document.createElement('span'); sideTitle.textContent = '资料包';
   const newFile = document.createElement('button'); newFile.className = 'mdv-add'; newFile.type = 'button'; newFile.textContent = '+'; newFile.title = '新建补充 Markdown'; newFile.setAttribute('aria-label', '新建补充 Markdown');
   sideHead.append(sideTitle, newFile); side.appendChild(sideHead);
   const fileList = document.createElement('div'); fileList.className = 'mdv-files'; side.appendChild(fileList);
-  body.append(editWrap, preview, side);
+  body.append(editWrap, preview, resizer, side);
   const footer = document.createElement('footer'); footer.className = 'mdv-foot';
-  const status = document.createElement('span'); status.className = 'mdv-status'; status.textContent = '已打开';
-  /* 人写标记工具:手动 标记/取消标记 + 高亮色点(显示层偏好,localStorage 记忆,不进文件) */
-  const HL_COLORS = [ ['便签黄', 'var(--note)'], ['淡紫', 'var(--accent-soft)'], ['淡蓝', 'var(--hl-blue)'] ];
-  const hlBar = document.createElement('div'); hlBar.className = 'mdv-hlbar';
-  const markBtn = document.createElement('button'); markBtn.className = 'mdv-hlbtn'; markBtn.type = 'button'; markBtn.textContent = '标记/取消'; markBtn.title = '把选中文字标记为「人写」（写入 <mark>）或取消标记';
-  hlBar.appendChild(markBtn);
-  const saveButton = document.createElement('button'); saveButton.className = 'mdv-save'; saveButton.type = 'button'; saveButton.textContent = '保存（Ctrl+S）'; saveButton.title = '快捷键：Ctrl+S 或 Ctrl+Enter';
-  footer.append(status, hlBar, saveButton); root.append(header, body, footer);
+  const footLeft = document.createElement('div'); footLeft.className = 'mdv-foot-left';
+  const liveDot = document.createElement('span'); liveDot.className = 'mdv-live-dot'; liveDot.title = '实时本地优先状态';
+  const status = document.createElement('span'); status.className = 'mdv-foot-status';
+  footLeft.append(liveDot, status);
+  const footRight = document.createElement('div'); footRight.className = 'mdv-foot-right';
+  const copyBtn = document.createElement('button'); copyBtn.type = 'button'; copyBtn.className = 'mdv-btn-ghost'; copyBtn.textContent = '复制全文';
+  copyBtn.title = '复制当前 Markdown 全文到剪贴板';
+  copyBtn.onclick = () => {
+    if (!navigator.clipboard?.writeText) { toast('剪贴板不可用，请手动复制'); return; }
+    navigator.clipboard.writeText(editor.value).then(() => toast('已复制全文到剪贴板')).catch(() => toast('复制失败'));
+  };
+  const saveButton = document.createElement('button'); saveButton.className = 'mdv-linear-save'; saveButton.type = 'button';
+  saveButton.innerHTML = '<span>保存</span><kbd>⌘S</kbd>';
+  saveButton.title = '快捷键：Ctrl+S 或 ⌘S';
+  saveButton.disabled = true;
+  footRight.append(copyBtn, saveButton);
+  footer.append(footLeft, footRight); root.append(header, body, footer);
+
   let files = Array.isArray(bundle?.files) ? bundle.files : [];
   let currentName = String(path).split(/[\\/]/).pop() || 'index.md';
   let etag = initialEtag || ''; let savedText = text; let saving = false;
-  /* ---- 人写高亮状态:baseRaw = 会话基线(含既有 <mark>);liveSpan = 未保存 diff 段(逻辑坐标) ---- */
-  let baseRaw = text;
-  let baseLogical = mdParseMarks(text).logical;
+
+  /* 资料包 Tactile Splitter 精工发丝拖拽与磁吸折叠 */
+  let sideWidth = Number(dockStore.get('mdv-side-w', 230)) || 230;
+  let isSideCollapsed = dockStore.get('mdv-side-collapsed', false) === true;
+  const applySideWidth = (w, collapsed) => {
+    if (collapsed || w <= 0){
+      side.style.setProperty('--side-w', '0px');
+      side.classList.add('collapsed');
+      resizer.classList.add('collapsed');
+      dockStore.set('mdv-side-collapsed', true);
+    } else {
+      side.style.setProperty('--side-w', `${w}px`);
+      side.classList.remove('collapsed');
+      resizer.classList.remove('collapsed');
+      dockStore.set('mdv-side-w', w);
+      dockStore.set('mdv-side-collapsed', false);
+    }
+  };
+  applySideWidth(sideWidth, isSideCollapsed);
+
+  let startX = 0, startW = 0, draggingResizer = false;
+  resizer.addEventListener('pointerdown', ev => {
+    ev.preventDefault(); draggingResizer = true;
+    startX = ev.clientX;
+    startW = side.classList.contains('collapsed') ? 0 : side.offsetWidth;
+    resizer.classList.add('dragging');
+    resizerTip.hidden = false;
+    resizerTip.textContent = `${startW}px`;
+    document.body.style.cursor = 'col-resize';
+    resizer.setPointerCapture(ev.pointerId);
+  });
+  resizer.addEventListener('pointermove', ev => {
+    if (!draggingResizer) return;
+    const delta = startX - ev.clientX;
+    const newW = startW + delta;
+    if (newW < 60){
+      applySideWidth(0, true);
+      resizerTip.textContent = '折叠';
+    } else {
+      const clamped = Math.min(520, Math.max(80, newW));
+      applySideWidth(clamped, false);
+      resizerTip.textContent = `${clamped}px`;
+    }
+  });
+  const stopResize = () => {
+    if (!draggingResizer) return;
+    draggingResizer = false;
+    resizer.classList.remove('dragging');
+    resizerTip.hidden = true;
+    document.body.style.cursor = '';
+  };
+  resizer.addEventListener('pointerup', stopResize);
+  resizer.addEventListener('pointercancel', stopResize);
+  resizer.addEventListener('dblclick', () => {
+    if (side.classList.contains('collapsed')){
+      applySideWidth(Number(dockStore.get('mdv-side-w', 230)) || 230, false);
+    } else {
+      applySideWidth(0, true);
+    }
+  });
+
+  /* 人机笔迹发丝识别与镜像层渲染（纯净无物理标签污染） */
   const escHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const renderMirror = raw => {
-    const { logical, spans, tagRanges } = mdParseMarks(raw);
-    const live = logical !== baseLogical ? mdDiffSpan(baseLogical, logical) : null;
-    const merged = mdMergeSpans(live ? spans.concat([live]) : spans);
-    /* 逐逻辑行生成 <div class="ml">,供行号槽按实测位置对齐;空行用零宽字符补高 */
+    const lines = String(raw).replace(/\r\n/g, '\n').split('\n');
+    let currentAuthor = null;
     const lineHtml = [];
-    let html = '', buf = '', bufHl = false, li = 0, si = 0, ti = 0, i = 0;
-    const hlAt = idx => { while (si < merged.length && idx >= merged[si][1]) si++; return si < merged.length && idx >= merged[si][0]; };
-    const flush = () => { if (buf){ html += bufHl ? `<span class="hl">${buf}</span>` : buf; buf = ''; } };
-    const endLine = () => { flush(); lineHtml.push(html ? `<div class="ml">${html}</div>` : '<div class="ml">​</div>'); html = ''; };
-    while (i < raw.length){
-      if (ti < tagRanges.length && tagRanges[ti][0] === i){
-        flush(); html += `<span class="tag">${escHtml(raw.slice(i, tagRanges[ti][1]))}</span>`; i = tagRanges[ti][1]; ti++; continue;
+    for (const line of lines){
+      const m = line.match(/^<!--\s*@author:\s*(human|agent[^\s>]*)\s*-->/i) || line.match(/^:::\s*(human|agent[^\s]*)/i);
+      if (m){
+        currentAuthor = m[1].toLowerCase().startsWith('human') ? 'human' : 'agent';
+        lineHtml.push(`<div class="ml tag"><span class="tag">${escHtml(line)}</span></div>`);
+        continue;
       }
-      const hl = hlAt(li);
-      if (hl !== bufHl){ flush(); bufHl = hl; }
-      if (raw[i] === '\n'){ endLine(); i++; li++; continue; }
-      buf += escHtml(raw[i]); i++; li++;
+      if (line.trim() === ':::'){
+        currentAuthor = null;
+        lineHtml.push(`<div class="ml tag"><span class="tag">${escHtml(line)}</span></div>`);
+        continue;
+      }
+      const cls = currentAuthor ? `ml author-${currentAuthor}` : 'ml';
+      lineHtml.push(line ? `<div class="${cls}">${escHtml(line)}</div>` : `<div class="${cls}">​</div>`);
     }
-    endLine();
     mirror.innerHTML = lineHtml.join('');
     mirror.scrollTop = editor.scrollTop; mirror.scrollLeft = editor.scrollLeft;
-    /* 行号槽:一个号对应一个逻辑行,按镜像层实测位置绝对定位(折行的续行不留号) */
-    const mLines = mirror.children;
-    const n = mLines.length;
-    while (gutterIn.children.length > n) gutterIn.lastChild.remove();
-    while (gutterIn.children.length < n) { const d = document.createElement('div'); d.className = 'gn'; gutterIn.appendChild(d); }
-    const padTop = parseFloat(getComputedStyle(mirror).paddingTop) || 0;
-    for (let k = 0; k < n; k++){
-      const d = gutterIn.children[k];
-      const num = String(k + 1);
-      if (d.textContent !== num) d.textContent = num;
-      const top = mLines[k].offsetTop - padTop;
-      if (d._top !== top){ d._top = top; d.style.top = top + 'px'; }
-    }
   };
   let hlRaf = 0;
   const refreshHighlight = () => { if (hlRaf) return; hlRaf = requestAnimationFrame(() => { hlRaf = 0; renderMirror(editor.value); }); };
-  editor.addEventListener('scroll', () => { mirror.scrollTop = editor.scrollTop; mirror.scrollLeft = editor.scrollLeft; gutterIn.style.transform = `translateY(${-editor.scrollTop}px)`; });
-  /* 高亮色点:只设 .mdv-root 的 --hl,编辑器镜像层与预览 mark 共用 */
-  let hlColor = dockStore.get('dock-hl-color', HL_COLORS[0][1]);
-  const applyHlColor = v => { hlColor = v; root.style.setProperty('--hl', v); dockStore.set('dock-hl-color', v);
-    for (const d of hlBar.querySelectorAll('.mdv-hldot')) d.classList.toggle('on', d.dataset.color === v); };
-  for (const [label, v] of HL_COLORS){
-    const dot = document.createElement('button'); dot.type = 'button'; dot.className = 'mdv-hldot'; dot.dataset.color = v;
-    dot.style.background = v; dot.title = `人写高亮色:${label}`; dot.setAttribute('aria-label', `人写高亮色:${label}`);
-    dot.addEventListener('click', () => applyHlColor(v)); hlBar.appendChild(dot);
-  }
-  /* 手动标记/取消:选中段与既有 <mark> 重叠则精确减去,否则添加 */
-  markBtn.addEventListener('click', () => {
-    const raw = editor.value;
-    const { logical, spans } = mdParseMarks(raw);
-    const sL = mdParseMarks(raw.slice(0, editor.selectionStart)).logical.length;
-    const eL = sL + mdParseMarks(raw.slice(editor.selectionStart, editor.selectionEnd)).logical.length;
-    if (eL <= sL){ toast('先选中要标记的文字'); return; }
-    const overlaps = spans.some(([a, b]) => a < eL && b > sL);
-    const next = overlaps ? mdSubtractSpans(spans, sL, eL) : mdMergeSpans(spans.concat([[sL, eL]]));
-    const final = mdEmitMarks(logical, next);
-    editor.value = final;
+  editor.addEventListener('scroll', () => { mirror.scrollTop = editor.scrollTop; mirror.scrollLeft = editor.scrollLeft; });
+
+  /* 悬浮气泡快捷标记工具 */
+  const bubble = document.createElement('div'); bubble.className = 'mdv-bubble'; bubble.hidden = true;
+  const btnHuman = document.createElement('button'); btnHuman.type = 'button'; btnHuman.textContent = '👤 标为人写';
+  const btnAgent = document.createElement('button'); btnAgent.type = 'button'; btnAgent.textContent = '🤖 标为Agent';
+  const btnBubbleCopy = document.createElement('button'); btnBubbleCopy.type = 'button'; btnBubbleCopy.textContent = '📋 复制';
+  bubble.append(btnHuman, btnAgent, btnBubbleCopy);
+  document.body.appendChild(bubble);
+
+  const wrapSelectionWithAuthor = (authorTag) => {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    if (start === end) return;
+    const val = editor.value;
+    const selected = val.slice(start, end);
+    const tag = `<!-- @author: ${authorTag} -->\n`;
+    const next = val.slice(0, start) + (start > 0 && val[start - 1] !== '\n' ? '\n' : '') + tag + selected + val.slice(end);
+    editor.value = next;
     editor.dispatchEvent(new Event('input'));
-    editor.setSelectionRange(mdRawIndexForLogical(final, sL), mdRawIndexForLogical(final, eL));
+    bubble.hidden = true;
     editor.focus();
+    toast(`已标记为「${authorTag === 'human' ? '人写' : 'Agent'}」`);
+  };
+  btnHuman.onclick = () => wrapSelectionWithAuthor('human');
+  btnAgent.onclick = () => wrapSelectionWithAuthor('agent');
+  btnBubbleCopy.onclick = () => {
+    const s = editor.value.slice(editor.selectionStart, editor.selectionEnd);
+    if (s && navigator.clipboard?.writeText){
+      navigator.clipboard.writeText(s).then(() => toast('已复制选中文字'));
+    }
+    bubble.hidden = true;
+  };
+
+  const updateBubblePos = () => {
+    if (editor.selectionStart === editor.selectionEnd || editWrap.hidden){
+      bubble.hidden = true; return;
+    }
+    const rect = editor.getBoundingClientRect();
+    bubble.style.top = `${Math.max(10, rect.top + 20)}px`;
+    bubble.style.left = `${Math.min(window.innerWidth - 260, rect.left + 40)}px`;
+    bubble.hidden = false;
+  };
+  editor.addEventListener('select', () => setTimeout(updateBubblePos, 50));
+  editor.addEventListener('mouseup', () => setTimeout(updateBubblePos, 50));
+  editor.addEventListener('keyup', e => {
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key) || e.shiftKey) setTimeout(updateBubblePos, 50);
+    else if (editor.selectionStart === editor.selectionEnd) bubble.hidden = true;
   });
   let editorCatalog = [];
   const externalRelativePath = () => {
@@ -3265,22 +3411,6 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     status.textContent = message;
     toast(message);
   };
-  /* 预览只做最小排版:先整体 HTML 转义再做变换,任何原始标签都不会被渲染。 */
-  /* <mark> 可能跨行:预览前按行重平衡,保证每行标签闭合;空行不进标记,保持段落分隔语义 */
-  const rebalanceMarks = src => {
-    let inMark = false;
-    return String(src).replace(/\r\n/g, '\n').split('\n').map(line => {
-      if (!line.trim()) return line;
-      let out = inMark ? '<mark>' : '';
-      for (let i = 0; i < line.length;){
-        if (line.startsWith('<mark>', i)){ if (!inMark){ inMark = true; out += '<mark>'; } i += 6; }
-        else if (line.startsWith('</mark>', i)){ if (inMark){ inMark = false; out += '</mark>'; } i += 7; }
-        else { out += line[i++]; }
-      }
-      if (inMark) out += '</mark>';
-      return out;
-    }).join('\n');
-  };
   /* 图片渲染:桥接模式走同源 /api/v1/assets/read;http(s) 直链原样;非桥接显示占位卡 */
   const mdImgHtml = (alt, raw) => {
     let name = raw.replace(/&amp;/g, '&');
@@ -3290,40 +3420,82 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     const src = bundle.bridge.assetReadUrl(bundle.ownerKind, bundle.ownerId, name).replace(/&/g, '&amp;');
     return `<img src="${src}" alt="${alt}" loading="lazy">`;
   };
+  /* 现代精工卡片式预览排版：识别 <!-- @author: ... --> 并渲染为精工 Author Card */
   const mdMini = src => {
     const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const inline = s => esc(s)
-      .replace(/&lt;mark&gt;/g, '<mark>').replace(/&lt;\/mark&gt;/g, '</mark>') // 放行 <mark>:人写标记渲染为高亮色
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, name) => mdImgHtml(alt, name))
       .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '$1');
-    const out = []; let list = null; let para = []; let code = null;
-    const flushPara = () => { if (para.length){ out.push(`<p>${para.map(inline).join('<br>')}</p>`); para = []; } };
-    const flushList = () => { if (list){ out.push(`<ul>${list.map(item => `<li>${inline(item)}</li>`).join('')}</ul>`); list = null; } };
-    for (const line of String(src).replace(/\r\n/g, '\n').split('\n')){
-      if (/^\s*```/.test(line)){
-        if (code){ out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`); code = null; }
-        else { flushPara(); flushList(); code = []; }
+
+    const rawLines = String(src).replace(/\r\n/g, '\n').split('\n');
+    const sections = [];
+    let currentSec = { author: null, lines: [] };
+
+    for (let i = 0; i < rawLines.length; i++){
+      const line = rawLines[i];
+      const m = line.match(/^<!--\s*@author:\s*(human|agent[^\s>]*)\s*-->/i) || line.match(/^:::\s*(human|agent[^\s]*)/i);
+      if (m){
+        if (currentSec.lines.length) sections.push(currentSec);
+        const authorType = m[1].toLowerCase().startsWith('human') ? 'human' : 'agent';
+        currentSec = { author: authorType, lines: [] };
         continue;
       }
-      if (code){ code.push(line); continue; }
-      const h = line.match(/^(#{1,3})\s+(.*)$/);
-      if (h){ flushPara(); flushList(); out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); continue; }
-      const li = line.match(/^\s*[-*]\s+(.*)$/);
-      if (li){ flushPara(); list = list || []; list.push(li[1]); continue; }
-      if (!line.trim()){ flushPara(); flushList(); continue; }
-      flushList(); para.push(line);
+      if (line.trim() === ':::'){
+        if (currentSec.lines.length) sections.push(currentSec);
+        currentSec = { author: null, lines: [] };
+        continue;
+      }
+      currentSec.lines.push(line);
     }
-    if (code) out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`);
-    flushPara(); flushList();
-    return out.join('');
+    if (currentSec.lines.length) sections.push(currentSec);
+
+    const renderBlock = lines => {
+      const out = []; let list = null; let para = []; let code = null;
+      const flushPara = () => { if (para.length){ out.push(`<p>${para.map(inline).join('<br>')}</p>`); para = []; } };
+      const flushList = () => { if (list){ out.push(`<ul>${list.map(item => `<li>${inline(item)}</li>`).join('')}</ul>`); list = null; } };
+      for (const line of lines){
+        if (/^\s*```/.test(line)){
+          if (code){ out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`); code = null; }
+          else { flushPara(); flushList(); code = []; }
+          continue;
+        }
+        if (code){ code.push(line); continue; }
+        const h = line.match(/^(#{1,3})\s+(.*)$/);
+        if (h){ flushPara(); flushList(); out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); continue; }
+        const li = line.match(/^\s*[-*]\s+(.*)$/);
+        if (li){ flushPara(); list = list || []; list.push(li[1]); continue; }
+        if (!line.trim()){ flushPara(); flushList(); continue; }
+        flushList(); para.push(line);
+      }
+      if (code) out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`);
+      flushPara(); flushList();
+      return out.join('');
+    };
+
+    let resultHtml = '';
+    for (const sec of sections){
+      const inner = renderBlock(sec.lines);
+      if (!inner.trim()) continue;
+      if (sec.author === 'human'){
+        resultHtml += `<div class="author-card human"><div class="author-card-head">👤 人类编辑</div>${inner}</div>`;
+      } else if (sec.author === 'agent'){
+        resultHtml += `<div class="author-card agent"><div class="author-card-head">🤖 Agent 交付</div>${inner}</div>`;
+      } else {
+        resultHtml += inner;
+      }
+    }
+    return resultHtml;
   };
   const setMode = mode => {
     const showPreview = mode === 'preview';
-    segEdit.classList.toggle('on', !showPreview); segPrev.classList.toggle('on', showPreview);
+    seg.classList.toggle('prev-active', showPreview);
+    segEdit.classList.toggle('on', !showPreview);
+    segPrev.classList.toggle('on', showPreview);
     editWrap.hidden = showPreview; preview.hidden = !showPreview;
-    if (showPreview) preview.innerHTML = mdMini(rebalanceMarks(editor.value));
+    bubble.hidden = true;
+    if (showPreview) preview.innerHTML = mdMini(editor.value);
   };
   segEdit.addEventListener('click', () => setMode('edit'));
   segPrev.addEventListener('click', () => setMode('preview'));
@@ -3516,7 +3688,13 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
       .catch(error => { bundle.bridge.logError?.('bundle.create.failed', error); status.textContent = `创建失败：${error?.message || '请重试'}`; toast('补充 Markdown 创建失败，当前编辑内容仍保留。'); });
   };
   /* 退出编辑模式:摘掉 .mdv-root、退回详情面板;有未保存时先弹确认 */
-  const destroyEditor = () => { root.remove(); panel.classList.remove('editing'); mdSession = null; renderPanel(); };
+  const destroyEditor = () => {
+    bubble.remove();
+    root.remove();
+    panel.classList.remove('editing', 'dock-focus');
+    mdSession = null;
+    renderPanel();
+  };
   const closeEditor = () => {
     if (editor.value !== savedText){
       void confirmDialog({ title: '关闭文档', body: '还有未保存的修改，关闭会放弃这些修改。', confirmLabel: '放弃并关闭', cancelLabel: '继续编辑', danger: true })
@@ -3528,31 +3706,45 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   close.onclick = closeEditor;
   back.onclick = closeEditor; // 返回详情 = 关闭编辑器,dock 留在详情模式
   collapseBtn.onclick = dockCollapse;
-  saveButton.onclick = async () => {
+
+  const updateFootStatus = isDirty => {
+    const charCount = editor.value.length;
+    const lineCount = editor.value ? editor.value.split('\n').length : 0;
+    if (isDirty){
+      status.textContent = `共 ${charCount} 字 (${lineCount} 行) · 未保存 (⌘S)`;
+      saveButton.disabled = false;
+    } else {
+      status.textContent = `共 ${charCount} 字 (${lineCount} 行) · 本地已就绪`;
+      saveButton.disabled = true;
+    }
+  };
+
+  const doSave = async () => {
     if (saving) return; saving = true; saveButton.disabled = true; status.textContent = '保存中…';
     try{
-      /* 保存固化:把会话 diff 段包 <mark> 合并写入,跨会话留痕;标签规范化(嵌套/相邻合并) */
-      const raw = editor.value;
-      const { logical, spans } = mdParseMarks(raw);
-      const live = logical !== baseLogical ? mdDiffSpan(baseLogical, logical) : null;
-      const clean = (live ? spans.concat([live]) : spans).filter(([a, b]) => logical.slice(a, b).trim()); // 纯空白段不留标签
-      const finalText = mdEmitMarks(logical, clean);
-      const cursorL = mdParseMarks(raw.slice(0, editor.selectionStart)).logical.length;
+      const finalText = editor.value; // 纯净 Markdown,零物理 <mark> 污染
       const result = bundle && currentName !== 'index.md'
         ? await bundle.bridge.replaceBundleMarkdown(bundle.ownerKind, bundle.ownerId, currentName, finalText, etag)
         : await save(finalText, etag);
-      etag = String(result?.etag || etag); savedText = finalText; status.textContent = '已保存';
-      if (finalText !== raw){ editor.value = finalText; const ri = mdRawIndexForLogical(finalText, cursorL); editor.setSelectionRange(ri, ri); }
-      baseRaw = finalText; baseLogical = mdParseMarks(finalText).logical; renderMirror(editor.value);
+      etag = String(result?.etag || etag); savedText = finalText;
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      status.textContent = `共 ${finalText.length} 字 · 已保存 (${timeStr})`;
+      saveButton.disabled = true;
+      renderMirror(editor.value);
+      toast('已保存 Markdown');
     }catch(error){
-      // 保留 textarea 原文；409 等并发错误也不允许用服务端内容覆盖用户正在编辑的内容。
       status.textContent = `保存失败：${error?.message || '请重试'}`;
+      saveButton.disabled = false;
       toast(Number(error?.status) === 409 ? '资料包有并发修改，请重新读取后合并；你的编辑内容已保留。' : '保存失败，编辑内容已保留。');
     }
-    finally{ saving = false; saveButton.disabled = false; }
+    finally{ saving = false; }
   };
-  /* 编辑器内的未保存提示：只动本面板状态栏，不碰全局同步灯（未保存≠冲突）。 */
-  editor.addEventListener('input', () => { if (!saving) status.textContent = editor.value === savedText ? '已保存' : '未保存（Ctrl+S 保存）'; refreshHighlight(); });
+  saveButton.onclick = () => void doSave();
+  /* 编辑器内的未保存提示：更新底栏字数与状态 */
+  editor.addEventListener('input', () => {
+    if (!saving) updateFootStatus(editor.value !== savedText);
+    refreshHighlight();
+  });
   editor.addEventListener('paste', async event => {
     const item = [...(event.clipboardData?.items || [])].find(candidate => candidate.kind === 'file' && /^image\//i.test(candidate.type));
     const before = editor.value; const start = editor.selectionStart; const end = editor.selectionEnd;
@@ -3604,7 +3796,7 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   panel.classList.add('on', 'editing');
   panel.appendChild(root);
   updateDockSpace(); // dock 扩宽后重算工具条居中偏移,避免压住编辑器顶栏
-  applyHlColor(hlColor);
+  updateFootStatus(false);
   renderMirror(text);
   void refreshFiles();
   void loadEditorCatalog();
