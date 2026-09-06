@@ -1228,7 +1228,7 @@ export async function createBridgeServer({
         if (sessionStore && existingId && ticket[1].projectHandle && ticket[1].projectRoot) {
           const authorized = sessionStore.authorize(existingId, ticket[1].projectHandle);
           if (authorized) {
-            await sessionStore.persistIfDue();
+            await sessionStore.flush();
             response.setHeader('Set-Cookie', `${SESSION_COOKIE}=${existingId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(sessionStore.ttlMs / 1000)}`);
             sendJson(response, 200, {
               csrfToken: authorized.csrfToken,
