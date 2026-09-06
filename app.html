@@ -395,11 +395,6 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
   color:oklch(62% 0.16 280);border:1px solid oklch(62% 0.16 280 / .25);
   letter-spacing:.3px;pointer-events:none;
 }
-.mdv-mirror .tag-agent-start::after{
-  content:'';position:absolute;left:-14px;top:7px;width:7px;height:11px;
-  border-left:2px solid oklch(62% 0.16 280);border-top:2px solid oklch(62% 0.16 280);
-  border-top-left-radius:2.5px;pointer-events:none;
-}
 .mdv-mirror .tag-agent-end{position:relative}
 .mdv-mirror .tag-agent-end::before{
   content:'✦ /Agent';position:absolute;right:8px;top:3px;
@@ -408,30 +403,8 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
   color:oklch(62% 0.16 280 / .8);border:1px solid oklch(62% 0.16 280 / .18);
   letter-spacing:.3px;pointer-events:none;
 }
-.mdv-mirror .tag-agent-end::after{
-  content:'';position:absolute;left:-14px;bottom:7px;width:7px;height:11px;
-  border-left:2px solid oklch(62% 0.16 280);border-bottom:2px solid oklch(62% 0.16 280);
-  border-bottom-left-radius:2.5px;pointer-events:none;
-}
 .mdv-mirror .hl{background:transparent;border-bottom:1.5px dashed var(--accent);border-radius:0}
 .mdv-mirror .ml{position:relative}
-.mdv-mirror .ml.author-agent{--ac:oklch(62% 0.16 280)}
-/* 起始折角 ┌ */
-.mdv-mirror .ml.author-start::before,
-.mdv-mirror .ml.author-single::before{
-  content:'';position:absolute;left:-14px;top:4px;width:7px;height:10px;
-  border-left:2px solid var(--ac);border-top:2px solid var(--ac);
-  border-top-left-radius:2.5px;pointer-events:none
-}
-/* 结束折角 └ */
-.mdv-mirror .ml.author-end::after,
-.mdv-mirror .ml.author-single::after{
-  content:'';position:absolute;left:-14px;bottom:4px;width:7px;height:10px;
-  border-left:2px solid var(--ac);border-bottom:2px solid var(--ac);
-  border-bottom-left-radius:2.5px;pointer-events:none
-}
-/* 中间行：完全纯净留白，无栅栏线阻碍视线 */
-.mdv-mirror .ml.author-mid{border-left:none}
 
 /* 高权重重点标记: 暖金发丝点虚线 + 柔和温润底光 */
 .mdv-mirror mark.mdv-mark{
@@ -3620,52 +3593,6 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
       parsed.push({ isTag: false, author: inAgent ? 'agent' : null, text: line });
     }
 
-    const lineClasses = new Array(lines.length).fill('');
-    let blockStart = -1;
-
-    const finalizeBlock = (startIdx, endIdx) => {
-      if (startIdx > endIdx) return;
-      const contentIndices = [];
-      for (let k = startIdx; k <= endIdx; k++){
-        if (parsed[k].text.trim().length > 0){
-          contentIndices.push(k);
-        }
-      }
-      if (contentIndices.length === 0){
-        lineClasses[startIdx] = 'author-agent author-single';
-        for (let k = startIdx + 1; k <= endIdx; k++) lineClasses[k] = 'author-agent author-mid';
-      } else if (contentIndices.length === 1){
-        const onlyIdx = contentIndices[0];
-        lineClasses[onlyIdx] = 'author-agent author-single';
-        for (let k = startIdx; k <= endIdx; k++){
-          if (k !== onlyIdx) lineClasses[k] = 'author-agent author-mid';
-        }
-      } else {
-        const firstIdx = contentIndices[0];
-        const lastIdx = contentIndices[contentIndices.length - 1];
-        lineClasses[firstIdx] = 'author-agent author-start';
-        lineClasses[lastIdx] = 'author-agent author-end';
-        for (let k = startIdx; k <= endIdx; k++){
-          if (k !== firstIdx && k !== lastIdx) lineClasses[k] = 'author-agent author-mid';
-        }
-      }
-    };
-
-    for (let i = 0; i < parsed.length; i++){
-      const item = parsed[i];
-      if (item.isTag || !item.author){
-        if (blockStart !== -1){
-          finalizeBlock(blockStart, i - 1);
-          blockStart = -1;
-        }
-      } else {
-        if (blockStart === -1) blockStart = i;
-      }
-    }
-    if (blockStart !== -1){
-      finalizeBlock(blockStart, parsed.length - 1);
-    }
-
     const renderLineTextWithMarks = (lineText, inMarkState) => {
       let inMark = inMarkState;
       let out = inMark ? '<mark class="mdv-mark">' : '';
@@ -3706,7 +3633,7 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
                        'ml tag';
         lineHtml.push(`<div class="${tagCls}"><span class="tag">${escHtml(line)}</span></div>`);
       } else {
-        const cls = lineClasses[i] ? `ml ${lineClasses[i]}` : 'ml';
+        const cls = p.author ? 'ml author-agent' : 'ml';
         if (!line){
           lineHtml.push(`<div class="${cls}">&#x200B;</div>`);
         } else {
