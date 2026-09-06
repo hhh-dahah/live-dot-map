@@ -141,13 +141,14 @@ input{font:inherit;color:inherit}
 #toolbar{left:50%;top:12px;transform:translateX(-50%);padding:4px;gap:2px}
 #toolbar .icb kbd{position:absolute;right:3px;bottom:2px;font-size:9px;color:var(--muted);
   font-family:var(--font-mono);pointer-events:none}
-#topbar{position:fixed;z-index:20;left:12px;right:12px;top:12px;display:flex;align-items:flex-start;
-  gap:8px;pointer-events:none;min-width:0}
+#topbar{position:fixed;z-index:20;left:12px;right:calc(12px + var(--dockspace,0px));top:12px;display:flex;align-items:flex-start;
+  gap:8px;pointer-events:none;min-width:0;transition:right .15s ease}
 #topbar>.chrome{position:relative;left:auto;top:auto;transform:none;pointer-events:auto}
 #topbar>#popover{pointer-events:auto}
 #topbar>#project-pill{flex:0 1 auto;min-width:0;overflow:hidden}
-/* 工具栏相对整条 topbar(即视口)绝对居中,不受项目栏宽度影响;窄屏由媒体查询退回流式布局 */
-#topbar>#toolbar{flex:none;position:absolute;left:calc(50% - var(--dockspace,0px)/2);transform:translateX(-50%)}
+/* 工具栏在地图可见区（topbar内）绝对居中；窄屏退回流式居中；编辑器打开时彻底隐藏以免遮挡 */
+#topbar>#toolbar{flex:none;position:absolute;left:50%;transform:translateX(-50%)}
+body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#panel.editing) #topbar>#toolbar{display:none !important}
 #sync-dot{appearance:none;border:0;padding:0;background:var(--danger);cursor:pointer}
 #sync-dot:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
 #zoombar{left:12px;bottom:12px;padding:4px;gap:2px}
@@ -173,7 +174,7 @@ input{font:inherit;color:inherit}
 #selbox .h{position:absolute;width:8px;height:8px;background:var(--bg);border:1.5px solid var(--accent)}
 
 /* ============ 右侧 dock(属性面板/编辑器共用容器,悬浮于地图上方) ============ */
-#panel{position:fixed;top:0;right:0;bottom:0;width:var(--dockw,320px);z-index:18;
+#panel{position:fixed;top:0;right:0;bottom:0;width:var(--dockw,320px);z-index:25;
   background:var(--bg);border-left:1px solid var(--border);
   display:none;flex-direction:column}
 #panel.on{display:flex}
@@ -3247,6 +3248,7 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   });
 
   const applyAuthorTag = type => {
+    editor.focus();
     const s = editor.selectionStart, e = editor.selectionEnd;
     const val = editor.value;
     if (type === 'clear'){
@@ -3258,16 +3260,27 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
         if (charCount <= s && s < charCount + len){ startLine = i; break; }
         charCount += len;
       }
-      let changed = false;
-      for (let i = startLine; i >= 0; i--){
-        if (/^<!--\s*@author:\s*(human|agent[^\s>]*)\s*-->/i.test(lines[i])){
-          lines.splice(i, 1);
-          changed = true;
-          break;
+      let foundLine = -1;
+      let tagStart = 0;
+      let curPos = 0;
+      for (let i = 0; i < lines.length; i++){
+        const lineLen = lines[i].length + 1;
+        if (i <= startLine && /^<!--\s*@author:\s*(?:human|agent[^\s>]*)\s*-->/i.test(lines[i])){
+          foundLine = i;
+          tagStart = curPos;
         }
+        curPos += lineLen;
       }
-      if (changed){
-        editor.value = lines.join('\n');
+      if (foundLine !== -1){
+        const tagLineLen = lines[foundLine].length + (foundLine < lines.length - 1 ? 1 : 0);
+        const tagEnd = tagStart + tagLineLen;
+        editor.setSelectionRange(tagStart, tagEnd);
+        let ok = false;
+        try { ok = document.execCommand('delete'); } catch (_) {}
+        if (!ok){
+          lines.splice(foundLine, 1);
+          editor.value = lines.join('\n');
+        }
         editor.dispatchEvent(new Event('input'));
         toast('已清除当前段笔迹');
       } else {
@@ -3277,17 +3290,44 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
       return;
     }
 
-    const tag = `<!-- @author: ${type === 'human' ? 'human' : 'agent:antigravity'} -->\n`;
+    const tagText = `<!-- @author: ${type === 'human' ? 'human' : 'agent:antigravity'} -->\n`;
+    let textToInsert = tagText;
+
     if (s !== e){
       const before = val.slice(0, s);
-      const sel = val.slice(s, e);
-      const after = val.slice(e);
       const needsNl = s > 0 && before[before.length - 1] !== '\n';
-      editor.value = before + (needsNl ? '\n' : '') + tag + sel + after;
+      textToInsert = (needsNl ? '\n' : '') + tagText;
+      editor.setSelectionRange(s, s);
     } else {
       const lastNl = val.lastIndexOf('\n', s - 1);
-      const pos = lastNl === -1 ? 0 : lastNl + 1;
-      editor.value = val.slice(0, pos) + tag + val.slice(pos);
+      const lineStart = lastNl === -1 ? 0 : lastNl + 1;
+      const nextNl = val.indexOf('\n', lineStart);
+      const curLine = nextNl === -1 ? val.slice(lineStart) : val.slice(lineStart, nextNl);
+      if (/^<!--\s*@author:\s*(?:human|agent[^\s>]*)\s*-->/i.test(curLine)){
+        const tagEnd = nextNl === -1 ? val.length : nextNl + 1;
+        editor.setSelectionRange(lineStart, tagEnd);
+      } else {
+        editor.setSelectionRange(lineStart, lineStart);
+      }
+    }
+
+    let ok = false;
+    try {
+      ok = document.execCommand('insertText', false, textToInsert);
+    } catch (_) {}
+
+    if (!ok){
+      if (s !== e){
+        const before = val.slice(0, s);
+        const sel = val.slice(s, e);
+        const after = val.slice(e);
+        const needsNl = s > 0 && before[before.length - 1] !== '\n';
+        editor.value = before + (needsNl ? '\n' : '') + tagText + sel + after;
+      } else {
+        const lastNl = val.lastIndexOf('\n', s - 1);
+        const pos = lastNl === -1 ? 0 : lastNl + 1;
+        editor.value = val.slice(0, pos) + tagText + val.slice(pos);
+      }
     }
     editor.dispatchEvent(new Event('input'));
     toast(type === 'human' ? '已标记为人写段落（琥珀金）' : '已标记为 Agent 段落（靛蓝）');
@@ -3657,7 +3697,7 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
       .catch(error => { bundle.bridge.logError?.('bundle.create.failed', error); status.textContent = `创建失败：${error?.message || '请重试'}`; toast('补充 Markdown 创建失败，当前编辑内容仍保留。'); });
   };
   /* 退出编辑模式:摘掉 .mdv-root、退回详情面板;有未保存时先弹确认 */
-  const destroyEditor = () => { if (autoSaveTimer) clearTimeout(autoSaveTimer); root.remove(); panel.classList.remove('editing'); mdSession = null; renderPanel(); };
+  const destroyEditor = () => { if (autoSaveTimer) clearTimeout(autoSaveTimer); document.body.classList.remove('is-editing'); root.remove(); panel.classList.remove('editing'); mdSession = null; renderPanel(); };
   const closeEditor = () => {
     if (editor.value !== savedText){
       void confirmDialog({ title: '关闭文档', body: '还有未保存的修改，关闭会放弃这些修改。', confirmLabel: '放弃并关闭', cancelLabel: '继续编辑', danger: true })
@@ -3757,6 +3797,7 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   // 挂进 dock:面板进入编辑模式(详情三节被 .editing 隐藏),注册会话供 select() 守卫
   mdSession = { dirty: () => editor.value !== savedText, discard: () => { if (mdSession) destroyEditor(); } };
   panel.classList.add('on', 'editing');
+  document.body.classList.add('is-editing');
   panel.appendChild(root);
   updateDockSpace(); // dock 扩宽后重算工具条居中偏移,避免压住编辑器顶栏
   renderMirror(text);
