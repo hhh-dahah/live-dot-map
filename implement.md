@@ -627,3 +627,26 @@ pm run verify 全量结果见下。
   - 修复 `nodes/n24/index.md`：在用户键入的「撒大苏打」前追加 `<!-- @author: human -->`，验证紫色折角准确收拢于 Agent 尾句，用户新输入呈现琥珀金单行折角 `[`。
 - **验证**：Playwright `tools/test-smart-enter.mjs` 与 `tools/test-tail-render.mjs` 全部通过（截图 `tools/12-index-tail-verified.png`），自动切回人类归属 100% 成立。
 
+## 9-06 方案 C 落地：Notion 式成对闭合 Agent 块 + 默认纯净正文 + 高权重重点标记（分支 ui-exp-minimal-zen，节点 n24）
+
+- **决策与背景**：彻底解决流式作者向下无界渗透的脆弱性，全面转向方案 C（成对闭合 Agent 块 + 默认纯净正文），并根据用户需求引入高权重重点标记 `<mark>`。
+- **1. 纯净基线（Default Human, No Human Tags）**：
+  - 废除任何 `<!-- @author: human -->` 的概念；
+  - 默认正文 100% 纯净标准 Markdown，无任何作者注释，无任何左侧边线，打字自由无感。
+- **2. Notion 式成对闭合 Agent 块（`<!-- @author: agent... --> ... <!-- /@author -->`）**：
+  - Agent 回复必须且只能在成对标签内产生；
+  - 起始行 `tag-agent-start`：左侧紫色发丝折角 `┌`，右侧配备小巧精致的 Notion 风格微型徽标 `✦ Agent`；
+  - 结束行 `tag-agent-end`：左侧紫色发丝折角 `└`，右侧配备 `✦ /Agent` 微型徽标；
+  - 内容区：首行 `┌`，末行 `└`，中间行纯净呼吸留白；
+  - 块外绝对隔离：用户在闭合标签之后打字（如 `撒大苏打`），自然属于纯净基线，绝无误染风险。
+- **3. 高权重重点标记（`<mark>...</mark>`）**：
+  - 用户可划选任意文本（无论人类文本还是 Agent 文本），点击「⭐ 设为重点（高权重）」；
+  - 编辑区与预览区呈现一致的暖金发丝虚线下划线（`border-bottom: 2px dashed oklch(75% 0.16 80)`）与微光柔和底色；
+  - 镜像层逐行重平衡并精准映射 `<mark>` 标签，textarea 文字几何逐字符 1:1 对齐；
+  - 写入协议规范：后续 Agent 读取上下文时，将 `<mark>` 识别为人类亲自圈定、需最高优先引用的核心意图与最高约束。
+- **4. 右下角高级微面板重构（`[ ✦ 标记 ▾ ]`）**：
+  - 菜单提供：「`✦ 标为 Agent 块`」、「`⭐ 设为重点（高权重）`」、「`✕ 清除标记`」；
+  - 焦点常驻锁定，100% 支持原生 `Ctrl+Z` 瞬时单步撤销。
+- **验证**：Playwright `tools/test-scheme-c.mjs` 自动化走查全过（产出 `tools/13-scheme-c-agent-block.png` ~ `tools/19-agent-block-preview.png`），Agent 首尾微标清晰、尾部打字 100% 纯净、重点高亮及预览卡片均完美呈现。
+
+
