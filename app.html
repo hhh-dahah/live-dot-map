@@ -386,9 +386,35 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
 .mdv-editstack{position:relative;flex:1;min-width:0;min-height:0;max-width:880px;margin:0 auto;width:100%}
 .mdv-mirror{position:absolute;inset:0;overflow:hidden;pointer-events:none;padding:18px 24px;font-family:var(--font-mono);font-size:13.5px;line-height:1.75;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;color:var(--fg);scrollbar-gutter:stable}
 .mdv-mirror .tag{color:var(--muted);opacity:.45;font-size:11.5px}
+.mdv-mirror .tag.tag-agent{opacity:.85;color:oklch(62% 0.16 280)}
+.mdv-mirror .tag-agent-start{position:relative}
+.mdv-mirror .tag-agent-start::before{
+  content:'✦ Agent';position:absolute;right:8px;top:3px;
+  font-family:var(--font-sans);font-size:10px;font-weight:600;line-height:16px;
+  padding:0 6px;border-radius:4px;background:oklch(62% 0.16 280 / .12);
+  color:oklch(62% 0.16 280);border:1px solid oklch(62% 0.16 280 / .25);
+  letter-spacing:.3px;pointer-events:none;
+}
+.mdv-mirror .tag-agent-start::after{
+  content:'';position:absolute;left:-14px;top:7px;width:7px;height:11px;
+  border-left:2px solid oklch(62% 0.16 280);border-top:2px solid oklch(62% 0.16 280);
+  border-top-left-radius:2.5px;pointer-events:none;
+}
+.mdv-mirror .tag-agent-end{position:relative}
+.mdv-mirror .tag-agent-end::before{
+  content:'✦ /Agent';position:absolute;right:8px;top:3px;
+  font-family:var(--font-sans);font-size:10px;font-weight:600;line-height:16px;
+  padding:0 6px;border-radius:4px;background:oklch(62% 0.16 280 / .08);
+  color:oklch(62% 0.16 280 / .8);border:1px solid oklch(62% 0.16 280 / .18);
+  letter-spacing:.3px;pointer-events:none;
+}
+.mdv-mirror .tag-agent-end::after{
+  content:'';position:absolute;left:-14px;bottom:7px;width:7px;height:11px;
+  border-left:2px solid oklch(62% 0.16 280);border-bottom:2px solid oklch(62% 0.16 280);
+  border-bottom-left-radius:2.5px;pointer-events:none;
+}
 .mdv-mirror .hl{background:transparent;border-bottom:1.5px dashed var(--accent);border-radius:0}
 .mdv-mirror .ml{position:relative}
-.mdv-mirror .ml.author-human{--ac:oklch(72% 0.16 75)}
 .mdv-mirror .ml.author-agent{--ac:oklch(62% 0.16 280)}
 /* 起始折角 ┌ */
 .mdv-mirror .ml.author-start::before,
@@ -406,15 +432,34 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
 }
 /* 中间行：完全纯净留白，无栅栏线阻碍视线 */
 .mdv-mirror .ml.author-mid{border-left:none}
+
+/* 高权重重点标记: 暖金发丝点虚线 + 柔和温润底光 */
+.mdv-mirror mark.mdv-mark{
+  background:oklch(86% 0.12 85 / .22);
+  border-bottom:2px dashed oklch(75% 0.16 80);
+  border-radius:3px;
+  color:inherit;
+}
+.mdv-mirror .mdv-mark-tag{
+  font-size:11px;
+  opacity:.42;
+  color:oklch(65% 0.15 80);
+  user-select:none;
+}
 .mdv-edit{position:absolute;inset:0;width:100%;height:100%;resize:none;border:0;outline:0;padding:18px 24px;font-family:var(--font-mono);font-size:13.5px;line-height:1.75;background:transparent;color:transparent;caret-color:var(--fg);user-select:text;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;overflow-y:scroll;scrollbar-gutter:stable}
 .mdv-edit::selection{background:oklch(85% 0.06 286 / .6)}
 .mdv-preview{flex:1;min-width:0;overflow:auto;padding:20px 28px;font-size:14px;line-height:1.8;color:var(--fg);user-select:text;max-width:880px;margin:0 auto;width:100%}
-.mdv-preview mark{background:transparent;border-bottom:1.5px dashed var(--accent);padding:0 1px;color:inherit}
-.mdv-preview .author-block{margin:12px 0;padding:4px 0 4px 14px;position:relative}
-.mdv-preview .author-block.human{border-left:2.5px solid oklch(72% 0.14 75)}
-.mdv-preview .author-block.agent{border-left:2.5px solid oklch(62% 0.16 280)}
-.mdv-preview .author-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;margin-bottom:6px;user-select:none}
-.mdv-preview .author-block.human .author-badge{color:oklch(65% 0.15 75)}
+.mdv-preview mark{
+  background:oklch(86% 0.12 85 / .22);
+  border-bottom:2px dashed oklch(75% 0.16 80);
+  border-radius:3px;
+  padding:1px 3px;
+  color:inherit;
+  font-weight:500;
+}
+.mdv-preview .author-block{margin:14px 0;padding:6px 14px;position:relative;border-radius:8px}
+.mdv-preview .author-block.agent{background:oklch(62% 0.16 280 / .03);border-left:2.5px solid oklch(62% 0.16 280)}
+.mdv-preview .author-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;margin-bottom:6px;user-select:none}
 .mdv-preview .author-block.agent .author-badge{color:oklch(58% 0.15 280)}
 .mdv-preview img{max-width:100%;border-radius:6px;display:block;margin:10px 0}
 .mdv-imgph{display:inline-block;padding:6px 10px;border:1px dashed var(--border);border-radius:6px;color:var(--muted);font-size:12px}
@@ -455,27 +500,24 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
 .mdv-btn-save:hover{background:var(--surface-hover)}
 .mdv-btn-save:disabled{opacity:.5;cursor:not-allowed}
 .mdv-foot-hint{font-size:11.5px;color:var(--muted);opacity:.7;white-space:nowrap}
-/* 底部「笔迹」高级感微面板 */
+/* 底部「标记」高级感微面板 */
 .mdv-palette-wrap{position:relative;display:inline-flex;align-items:center}
-.mdv-btn-palette{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;height:28px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--fg);font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s ease}
+.mdv-btn-palette{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;height:28px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--fg);font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s ease}
 .mdv-btn-palette:hover{background:var(--surface-hover);border-color:var(--fg)}
 .mdv-btn-palette.on{background:var(--surface-hover);border-color:var(--accent)}
-.mdv-btn-palette .dots{display:inline-flex;align-items:center;gap:3px}
-.mdv-btn-palette .dot{width:6px;height:6px;border-radius:50%}
-.mdv-btn-palette .dot.human{background:oklch(72% 0.16 75)}
-.mdv-btn-palette .dot.agent{background:oklch(62% 0.16 280)}
+.mdv-btn-palette .mark-icon{color:oklch(62% 0.16 280);font-size:12px;display:inline-flex;align-items:center}
 .mdv-btn-palette .chev{color:var(--muted);width:10px;height:10px;transition:transform .15s}
 .mdv-btn-palette.on .chev{transform:rotate(180deg)}
-.mdv-palette-pop{position:absolute;bottom:calc(100% + 8px);right:0;width:220px;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.15),0 2px 6px rgba(0,0,0,.06);padding:6px;z-index:50;display:flex;flex-direction:column;gap:3px;backdrop-filter:blur(16px)}
+.mdv-palette-pop{position:absolute;bottom:calc(100% + 8px);right:0;width:210px;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.15),0 2px 6px rgba(0,0,0,.06);padding:6px;z-index:50;display:flex;flex-direction:column;gap:3px;backdrop-filter:blur(16px)}
 .mdv-palette-pop[hidden]{display:none}
 .mdv-palette-head{display:flex;align-items:center;gap:6px;padding:4px 7px 3px;font-size:11px;color:var(--muted);letter-spacing:.2px;user-select:none}
 .mdv-palette-head .scope-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);flex:none}
 .mdv-palette-pop button{display:flex;align-items:center;gap:8px;padding:6px 9px;border:0;border-radius:7px;background:none;color:var(--fg);font:inherit;font-size:12px;cursor:pointer;text-align:left;width:100%;transition:background .12s}
 .mdv-palette-pop button:hover{background:var(--surface-hover)}
-.mdv-palette-pop .pdot{width:8px;height:8px;border-radius:50%;flex:none}
-.mdv-palette-pop .pdot.human{background:oklch(72% 0.16 75)}
-.mdv-palette-pop .pdot.agent{background:oklch(62% 0.16 280)}
-.mdv-palette-pop .pdot.clear{width:8px;height:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}
+.mdv-palette-pop .pdot{width:14px;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none}
+.mdv-palette-pop .pdot.agent{color:oklch(62% 0.16 280)}
+.mdv-palette-pop .pdot.important{color:oklch(75% 0.16 80)}
+.mdv-palette-pop .pdot.clear{color:var(--muted);font-size:11px}
 .mdv-palette-pop .psep{height:1px;background:var(--border);margin:3px 2px}
 .mdv-close{width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center;border:0;border-radius:7px;background:none;color:var(--muted);cursor:pointer}
 .mdv-close:hover{background:var(--surface-hover);color:var(--fg)}
@@ -3244,19 +3286,19 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   const footer = document.createElement('footer'); footer.className = 'mdv-foot';
   const status = document.createElement('span'); status.className = 'mdv-status'; status.textContent = '已打开';
   const footActions = document.createElement('div'); footActions.className = 'mdv-foot-actions';
-  /* 底部右侧「笔迹」高级感微面板 */
+  /* 底部右侧「标记」高级感微面板 */
   const paletteWrap = document.createElement('div'); paletteWrap.className = 'mdv-palette-wrap';
   paletteWrap.addEventListener('pointerdown', ev => ev.preventDefault()); // 锁死焦点在编辑区，防 blur 丢原生撤销栈
-  const paletteBtn = document.createElement('button'); paletteBtn.type = 'button'; paletteBtn.className = 'mdv-btn-palette'; paletteBtn.title = '人机笔迹归属（点击展开面板）';
-  paletteBtn.innerHTML = `<span class="dots"><span class="dot human"></span><span class="dot agent"></span></span><span>笔迹</span><svg class="chev" viewBox="0 0 12 12"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  const paletteBtn = document.createElement('button'); paletteBtn.type = 'button'; paletteBtn.className = 'mdv-btn-palette'; paletteBtn.title = '内容标记（点击展开面板）';
+  paletteBtn.innerHTML = `<span class="mark-icon">✦</span><span>标记</span><svg class="chev" viewBox="0 0 12 12"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
   const palettePop = document.createElement('div'); palettePop.className = 'mdv-palette-pop'; palettePop.hidden = true;
   palettePop.innerHTML = `
     <div class="mdv-palette-head"><span class="scope-dot"></span><span class="scope-txt">段落模式：当前光标段落</span></div>
     <div class="psep"></div>
-    <button type="button" data-palette="human"><span class="pdot human"></span><span>标为人写（琥珀金）</span></button>
-    <button type="button" data-palette="agent"><span class="pdot agent"></span><span>标为 Agent（靛蓝）</span></button>
+    <button type="button" data-palette="agent"><span class="pdot agent">✦</span><span>标为 Agent 块</span></button>
+    <button type="button" data-palette="important"><span class="pdot important">⭐</span><span>设为重点（高权重）</span></button>
     <div class="psep"></div>
-    <button type="button" data-palette="clear"><span class="pdot clear">✕</span><span>清除当前归属标记</span></button>
+    <button type="button" data-palette="clear"><span class="pdot clear">✕</span><span>清除标记</span></button>
   `;
   paletteWrap.append(paletteBtn, palettePop);
 
@@ -3281,13 +3323,60 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     if (!paletteWrap.contains(e.target)) togglePalette(false);
   });
 
-  const getAuthorAt = (val, pos) => {
-    const textBefore = val.slice(0, pos);
-    const matches = [...textBefore.matchAll(/<!--\s*@author:\s*(human|agent[^\s>]*|none|clear)\s*-->/gi)];
-    if (matches.length === 0) return null;
-    const last = matches[matches.length - 1][1].toLowerCase();
-    if (last === 'none' || last === 'clear') return null;
-    return last.startsWith('human') ? 'human' : 'agent';
+  const getMarkRangeAt = (val, pos) => {
+    const before = val.slice(0, pos);
+    const lastOpen = before.lastIndexOf('<mark>');
+    if (lastOpen === -1) return null;
+    const lastClose = before.lastIndexOf('</mark>');
+    if (lastClose > lastOpen) return null;
+    const after = val.slice(pos);
+    const nextClose = after.indexOf('</mark>');
+    if (nextClose === -1) return null;
+    const end = pos + nextClose + 7;
+    return { start: lastOpen, end, innerText: val.slice(lastOpen + 6, pos + nextClose) };
+  };
+
+  const getWordRangeAt = (val, pos) => {
+    if (!val || val.length === 0) return null;
+    let s = pos, e = pos;
+    while (s > 0 && !/[\s\n\r,，。！？；：、"'`()[\]{}]/.test(val[s - 1])) s--;
+    while (e < val.length && !/[\s\n\r,，。！？；：、"'`()[\]{}]/.test(val[e])) e++;
+    return { start: s, end: e, text: val.slice(s, e) };
+  };
+
+  const getAgentBlockRangeAt = (val, pos) => {
+    const before = val.slice(0, pos);
+    const startMatches = [...before.matchAll(/<!--\s*@author:\s*agent[^\s>]*\s*-->/gi)];
+    if (startMatches.length === 0) return null;
+    const lastStart = startMatches[startMatches.length - 1];
+    const startIdx = lastStart.index;
+    const between = before.slice(startIdx);
+    if (/<!--\s*\/@author\s*-->/i.test(between)) return null;
+    const after = val.slice(pos);
+    const endMatch = after.match(/<!--\s*\/@author\s*-->/i);
+    let endIdx = endMatch ? pos + endMatch.index + endMatch[0].length : val.length;
+    if (endIdx < val.length && val[endIdx] === '\n') endIdx++;
+    return { start: startIdx, end: endIdx };
+  };
+
+  const getParaRangeAt = (val, pos) => {
+    let start = pos === 0 ? 0 : val.lastIndexOf('\n', pos - 1) + 1;
+    while (start > 0){
+      const prevNl = val.lastIndexOf('\n', start - 2);
+      const line = val.slice(prevNl === -1 ? 0 : prevNl + 1, start - 1);
+      if (line.trim() === '' || /^<!--\s*@author:/i.test(line) || /^<!--\s*\/@author/i.test(line) || /^#{1,6}\s/.test(line)) break;
+      start = prevNl === -1 ? 0 : prevNl + 1;
+    }
+    let end = val.indexOf('\n', pos);
+    if (end === -1) end = val.length;
+    while (end < val.length){
+      const nextNlPos = val.indexOf('\n', end + 1);
+      const line = val.slice(end + 1, nextNlPos === -1 ? val.length : nextNlPos);
+      if (line.trim() === '' || /^<!--\s*@author:/i.test(line) || /^<!--\s*\/@author/i.test(line) || /^#{1,6}\s/.test(line)) break;
+      end = nextNlPos === -1 ? val.length : nextNlPos;
+    }
+    if (end < val.length && val[end] === '\n') end++;
+    return { start, end };
   };
 
   const applyAuthorTag = type => {
@@ -3295,142 +3384,148 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     const s = editor.selectionStart, e = editor.selectionEnd;
     const val = editor.value;
 
-    if (s !== e){
-      // 选区模式：作用于用户选中的完整行，保留纠错与外部粘贴重标自由度
-      const lineStart = s === 0 ? 0 : val.lastIndexOf('\n', s - 1) + 1;
-      let lineEnd = e >= val.length ? val.length : (val[e - 1] === '\n' ? e : val.indexOf('\n', e));
-      if (lineEnd === -1) lineEnd = val.length;
-      else if (lineEnd < val.length && val[lineEnd] === '\n') lineEnd++;
-
-      const selectedChunk = val.slice(lineStart, lineEnd);
-      let cleanChunk = selectedChunk.replace(/<!--\s*@author:\s*(?:human|agent[^\s>]*|none|clear)\s*-->\n?/gi, '');
-      if (cleanChunk && !cleanChunk.endsWith('\n') && lineEnd < val.length) cleanChunk += '\n';
-
-      const authorBefore = getAuthorAt(val, lineStart);
-      const authorAfter = getAuthorAt(val, lineEnd);
-      const hasTagImmediatelyAfter = lineEnd < val.length && /^<!--\s*@author:/i.test(val.slice(lineEnd));
-
-      let replacement = '';
-      if (type === 'clear'){
-        const stopTag = authorBefore ? `<!-- @author: none -->\n` : '';
-        const restoreTag = (!hasTagImmediatelyAfter && authorAfter) ? `<!-- @author: ${authorAfter === 'human' ? 'human' : 'agent:antigravity'} -->\n` : '';
-        replacement = stopTag + cleanChunk + restoreTag;
-      } else {
-        const newTag = `<!-- @author: ${type === 'human' ? 'human' : 'agent:antigravity'} -->\n`;
-        const restoreTag = (!hasTagImmediatelyAfter && authorAfter && authorAfter !== type) ? `<!-- @author: ${authorAfter === 'human' ? 'human' : 'agent:antigravity'} -->\n` : '';
-        replacement = newTag + cleanChunk + restoreTag;
-      }
-
-      editor.setSelectionRange(lineStart, lineEnd);
-      let ok = false;
-      try { ok = document.execCommand('insertText', false, replacement); } catch (_) {}
-      if (!ok){
-        editor.value = val.slice(0, lineStart) + replacement + val.slice(lineEnd);
-      }
-      editor.dispatchEvent(new Event('input'));
-      toast(type === 'clear' ? '已清除选区笔迹' : (type === 'human' ? '已将选区标为人写（琥珀金）' : '已将选区标为 Agent（靛蓝）'));
-      editor.focus();
-      return;
-    }
-
-    // 光标段落模式：无需繁琐全选，无感作用于当前自然段
-    const curLineStart = s === 0 ? 0 : val.lastIndexOf('\n', s - 1) + 1;
-    const nextNl = val.indexOf('\n', s);
-    const curLineEnd = nextNl === -1 ? val.length : nextNl;
-    const curLine = val.slice(curLineStart, curLineEnd);
-
-    if (/^<!--\s*@author:\s*(?:human|agent[^\s>]*|none|clear)\s*-->/i.test(curLine)){
-      const tagEnd = nextNl === -1 ? val.length : nextNl + 1;
-      editor.setSelectionRange(curLineStart, tagEnd);
-      let ok = false;
-      if (type === 'clear'){
-        try { ok = document.execCommand('insertText', false, ''); } catch (_) {}
-        if (!ok){ editor.value = val.slice(0, curLineStart) + val.slice(tagEnd); }
-        toast('已清除当前段笔迹');
-      } else {
-        const newTag = `<!-- @author: ${type === 'human' ? 'human' : 'agent:antigravity'} -->\n`;
-        try { ok = document.execCommand('insertText', false, newTag); } catch (_) {}
-        if (!ok){ editor.value = val.slice(0, curLineStart) + newTag + val.slice(tagEnd); }
-        toast(type === 'human' ? '已标记为人写段落（琥珀金）' : '已标记为 Agent 段落（靛蓝）');
-      }
-      editor.dispatchEvent(new Event('input'));
-      editor.focus();
-      return;
-    }
-
-    let paraStart = curLineStart;
-    while (paraStart > 0){
-      const prevNl = val.lastIndexOf('\n', paraStart - 2);
-      const line = val.slice(prevNl === -1 ? 0 : prevNl + 1, paraStart - 1);
-      if (line.trim() === '' || /^<!--\s*@author:/i.test(line) || /^#{1,6}\s/.test(line)) break;
-      paraStart = prevNl === -1 ? 0 : prevNl + 1;
-    }
-
-    let existingTagRange = null;
-    if (paraStart > 0){
-      const prevNl = val.lastIndexOf('\n', paraStart - 2);
-      const prevLineStart = prevNl === -1 ? 0 : prevNl + 1;
-      const prevLine = val.slice(prevLineStart, paraStart - 1);
-      if (/^<!--\s*@author:\s*(?:human|agent[^\s>]*)\s*-->/i.test(prevLine)){
-        existingTagRange = [prevLineStart, paraStart];
-      }
-    }
-
-    let paraEnd = curLineEnd;
-    while (paraEnd < val.length){
-      const nextNlPos = val.indexOf('\n', paraEnd + 1);
-      const line = val.slice(paraEnd + 1, nextNlPos === -1 ? val.length : nextNlPos);
-      if (line.trim() === '' || /^<!--\s*@author:/i.test(line) || /^#{1,6}\s/.test(line)) break;
-      paraEnd = nextNlPos === -1 ? val.length : nextNlPos;
-    }
-    if (paraEnd < val.length && val[paraEnd] === '\n') paraEnd++;
-
-    if (type === 'clear'){
-      if (existingTagRange){
-        editor.setSelectionRange(existingTagRange[0], existingTagRange[1]);
-        let ok = false;
-        try { ok = document.execCommand('insertText', false, ''); } catch (_) {}
-        if (!ok){ editor.value = val.slice(0, existingTagRange[0]) + val.slice(existingTagRange[1]); }
-        toast('已清除当前段笔迹');
-      } else {
-        const curAuthor = getAuthorAt(val, s);
-        if (curAuthor){
-          const authorAfter = getAuthorAt(val, paraEnd);
-          const hasTagImmediatelyAfter = paraEnd < val.length && /^<!--\s*@author:/i.test(val.slice(paraEnd));
-          const restoreTag = (!hasTagImmediatelyAfter && authorAfter) ? `<!-- @author: ${authorAfter === 'human' ? 'human' : 'agent:antigravity'} -->\n` : '';
-          const replacement = `<!-- @author: none -->\n` + val.slice(paraStart, paraEnd) + restoreTag;
-          editor.setSelectionRange(paraStart, paraEnd);
-          let ok = false;
-          try { ok = document.execCommand('insertText', false, replacement); } catch (_) {}
-          if (!ok){ editor.value = val.slice(0, paraStart) + replacement + val.slice(paraEnd); }
-          toast('已清除当前段笔迹');
+    if (type === 'important'){
+      if (s !== e){
+        const sel = val.slice(s, e);
+        let replacement = '';
+        if (/^<mark>.*<\/mark>$/s.test(sel.trim())){
+          replacement = sel.replace(/^(\s*)<mark>/i, '$1').replace(/<\/mark>(\s*)$/i, '$1');
+          toast('已取消重点标记');
         } else {
-          toast('当前段落未设置笔迹');
-          return;
+          const clean = sel.replace(/<\/?mark>/gi, '');
+          replacement = `<mark>${clean}</mark>`;
+          toast('已设为重点（高权重）');
         }
-      }
-    } else {
-      if (existingTagRange){
-        const newTag = `<!-- @author: ${type === 'human' ? 'human' : 'agent:antigravity'} -->\n`;
-        editor.setSelectionRange(existingTagRange[0], existingTagRange[1]);
-        let ok = false;
-        try { ok = document.execCommand('insertText', false, newTag); } catch (_) {}
-        if (!ok){ editor.value = val.slice(0, existingTagRange[0]) + newTag + val.slice(existingTagRange[1]); }
-      } else {
-        const authorAfter = getAuthorAt(val, paraEnd);
-        const hasTagImmediatelyAfter = paraEnd < val.length && /^<!--\s*@author:/i.test(val.slice(paraEnd));
-        const restoreTag = (!hasTagImmediatelyAfter && authorAfter && authorAfter !== type) ? `<!-- @author: ${authorAfter === 'human' ? 'human' : 'agent:antigravity'} -->\n` : '';
-        const newTag = `<!-- @author: ${type === 'human' ? 'human' : 'agent:antigravity'} -->\n`;
-        const replacement = newTag + val.slice(paraStart, paraEnd) + restoreTag;
-        editor.setSelectionRange(paraStart, paraEnd);
+        editor.setSelectionRange(s, e);
         let ok = false;
         try { ok = document.execCommand('insertText', false, replacement); } catch (_) {}
-        if (!ok){ editor.value = val.slice(0, paraStart) + replacement + val.slice(paraEnd); }
+        if (!ok){ editor.value = val.slice(0, s) + replacement + val.slice(e); }
+        editor.dispatchEvent(new Event('input'));
+        editor.focus();
+        return;
+      } else {
+        const markInfo = getMarkRangeAt(val, s);
+        if (markInfo){
+          editor.setSelectionRange(markInfo.start, markInfo.end);
+          let ok = false;
+          try { ok = document.execCommand('insertText', false, markInfo.innerText); } catch (_) {}
+          if (!ok){ editor.value = val.slice(0, markInfo.start) + markInfo.innerText + val.slice(markInfo.end); }
+          toast('已取消重点标记');
+        } else {
+          const word = getWordRangeAt(val, s);
+          if (word && word.text.trim().length > 0){
+            const rep = `<mark>${word.text}</mark>`;
+            editor.setSelectionRange(word.start, word.end);
+            let ok = false;
+            try { ok = document.execCommand('insertText', false, rep); } catch (_) {}
+            if (!ok){ editor.value = val.slice(0, word.start) + rep + val.slice(word.end); }
+            toast('已设为重点（高权重）');
+          } else {
+            const rep = `<mark></mark>`;
+            try { document.execCommand('insertText', false, rep); } catch (_) {}
+            editor.setSelectionRange(s + 6, s + 6);
+            toast('已插入重点标记');
+          }
+        }
+        editor.dispatchEvent(new Event('input'));
+        editor.focus();
+        return;
       }
-      toast(type === 'human' ? '已标记为人写段落（琥珀金）' : '已标记为 Agent 段落（靛蓝）');
     }
-    editor.dispatchEvent(new Event('input'));
-    editor.focus();
+
+    if (type === 'agent'){
+      if (s !== e){
+        const lineStart = s === 0 ? 0 : val.lastIndexOf('\n', s - 1) + 1;
+        let lineEnd = e >= val.length ? val.length : (val[e - 1] === '\n' ? e : val.indexOf('\n', e));
+        if (lineEnd === -1) lineEnd = val.length;
+        else if (lineEnd < val.length && val[lineEnd] === '\n') lineEnd++;
+
+        const chunk = val.slice(lineStart, lineEnd);
+        let clean = chunk.replace(/<!--\s*@author:[^\n]*-->\n?/gi, '').replace(/<!--\s*\/@author\s*-->\n?/gi, '').trimEnd();
+        const replacement = `<!-- @author: agent:antigravity -->\n${clean}\n<!-- /@author -->\n`;
+
+        editor.setSelectionRange(lineStart, lineEnd);
+        let ok = false;
+        try { ok = document.execCommand('insertText', false, replacement); } catch (_) {}
+        if (!ok){ editor.value = val.slice(0, lineStart) + replacement + val.slice(lineEnd); }
+        toast('已标记为 Agent 块');
+        editor.dispatchEvent(new Event('input'));
+        editor.focus();
+        return;
+      } else {
+        const para = getParaRangeAt(val, s);
+        const chunk = val.slice(para.start, para.end);
+        let clean = chunk.replace(/<!--\s*@author:[^\n]*-->\n?/gi, '').replace(/<!--\s*\/@author\s*-->\n?/gi, '').trimEnd();
+        const replacement = `<!-- @author: agent:antigravity -->\n${clean}\n<!-- /@author -->\n`;
+
+        editor.setSelectionRange(para.start, para.end);
+        let ok = false;
+        try { ok = document.execCommand('insertText', false, replacement); } catch (_) {}
+        if (!ok){ editor.value = val.slice(0, para.start) + replacement + val.slice(para.end); }
+        toast('已将当前段标记为 Agent 块');
+        editor.dispatchEvent(new Event('input'));
+        editor.focus();
+        return;
+      }
+    }
+
+    if (type === 'clear'){
+      if (s !== e){
+        const sel = val.slice(s, e);
+        let clean = sel.replace(/<\/?mark>/gi, '')
+          .replace(/<!--\s*@author:[^\n]*-->\n?/gi, '')
+          .replace(/<!--\s*\/@author\s*-->\n?/gi, '');
+        editor.setSelectionRange(s, e);
+        let ok = false;
+        try { ok = document.execCommand('insertText', false, clean); } catch (_) {}
+        if (!ok){ editor.value = val.slice(0, s) + clean + val.slice(e); }
+        toast('已清除选区标记');
+        editor.dispatchEvent(new Event('input'));
+        editor.focus();
+        return;
+      } else {
+        const markInfo = getMarkRangeAt(val, s);
+        if (markInfo){
+          editor.setSelectionRange(markInfo.start, markInfo.end);
+          let ok = false;
+          try { ok = document.execCommand('insertText', false, markInfo.innerText); } catch (_) {}
+          if (!ok){ editor.value = val.slice(0, markInfo.start) + markInfo.innerText + val.slice(markInfo.end); }
+          toast('已清除重点标记');
+          editor.dispatchEvent(new Event('input'));
+          editor.focus();
+          return;
+        }
+        const agentBlock = getAgentBlockRangeAt(val, s);
+        if (agentBlock){
+          const blockText = val.slice(agentBlock.start, agentBlock.end);
+          let clean = blockText.replace(/<!--\s*@author:[^\n]*-->\n?/gi, '')
+            .replace(/<!--\s*\/@author\s*-->\n?/gi, '');
+          editor.setSelectionRange(agentBlock.start, agentBlock.end);
+          let ok = false;
+          try { ok = document.execCommand('insertText', false, clean); } catch (_) {}
+          if (!ok){ editor.value = val.slice(0, agentBlock.start) + clean + val.slice(agentBlock.end); }
+          toast('已清除 Agent 块标记');
+          editor.dispatchEvent(new Event('input'));
+          editor.focus();
+          return;
+        }
+        const curLineStart = s === 0 ? 0 : val.lastIndexOf('\n', s - 1) + 1;
+        const nextNl = val.indexOf('\n', s);
+        const curLineEnd = nextNl === -1 ? val.length : nextNl + 1;
+        const curLine = val.slice(curLineStart, curLineEnd);
+        if (/^<!--\s*@author:|^<!--\s*\/@author/i.test(curLine.trim())){
+          editor.setSelectionRange(curLineStart, curLineEnd);
+          let ok = false;
+          try { ok = document.execCommand('insertText', false, ''); } catch (_) {}
+          if (!ok){ editor.value = val.slice(0, curLineStart) + val.slice(curLineEnd); }
+          toast('已清除标记行');
+          editor.dispatchEvent(new Event('input'));
+          editor.focus();
+          return;
+        }
+        toast('当前位置无标记可清除');
+      }
+    }
   };
 
   palettePop.addEventListener('click', ev => {
@@ -3498,35 +3593,38 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     }
   });
 
-  /* 人机笔迹发丝呈现：起止折角 ┌ └，中间行留白呼吸无栅栏线 */
+  /* 人机笔迹发丝呈现：Scheme C Notion 闭合 Agent 块 + 默认纯净正文 + 高权重重点 mark */
   const escHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const renderMirror = raw => {
     const lines = String(raw).replace(/\r\n/g, '\n').split('\n');
     const parsed = [];
-    let currentAuthor = null;
+    let inAgent = false;
 
     for (let i = 0; i < lines.length; i++){
       const line = lines[i];
-      const m = line.match(/^<!--\s*@author:\s*(human|agent[^\s>]*|none|clear)\s*-->/i);
-      if (m){
-        const val = m[1].toLowerCase();
-        if (val === 'none' || val === 'clear'){
-          currentAuthor = null;
-        } else {
-          currentAuthor = val.startsWith('human') ? 'human' : 'agent';
-        }
-        parsed.push({ isTag: true, author: null, text: line });
+      if (/^<!--\s*@author:\s*agent[^\s>]*\s*-->/i.test(line)){
+        inAgent = true;
+        parsed.push({ isTag: true, tagType: 'tag-agent-start', text: line });
         continue;
       }
-      parsed.push({ isTag: false, author: currentAuthor, text: line });
+      if (/^<!--\s*\/@author\s*-->/i.test(line)){
+        inAgent = false;
+        parsed.push({ isTag: true, tagType: 'tag-agent-end', text: line });
+        continue;
+      }
+      if (/^<!--\s*@author:\s*(human|none|clear)\s*-->/i.test(line)){
+        inAgent = false;
+        parsed.push({ isTag: true, tagType: 'tag-legacy', text: line });
+        continue;
+      }
+      parsed.push({ isTag: false, author: inAgent ? 'agent' : null, text: line });
     }
 
     const lineClasses = new Array(lines.length).fill('');
     let blockStart = -1;
-    let blockAuthor = null;
 
-    const finalizeBlock = (startIdx, endIdx, author) => {
-      if (!author || startIdx > endIdx) return;
+    const finalizeBlock = (startIdx, endIdx) => {
+      if (startIdx > endIdx) return;
       const contentIndices = [];
       for (let k = startIdx; k <= endIdx; k++){
         if (parsed[k].text.trim().length > 0){
@@ -3534,25 +3632,21 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
         }
       }
       if (contentIndices.length === 0){
-        lineClasses[startIdx] = `author-${author} author-single`;
-        for (let k = startIdx + 1; k <= endIdx; k++){
-          lineClasses[k] = `author-${author} author-mid`;
-        }
+        lineClasses[startIdx] = 'author-agent author-single';
+        for (let k = startIdx + 1; k <= endIdx; k++) lineClasses[k] = 'author-agent author-mid';
       } else if (contentIndices.length === 1){
         const onlyIdx = contentIndices[0];
-        lineClasses[onlyIdx] = `author-${author} author-single`;
+        lineClasses[onlyIdx] = 'author-agent author-single';
         for (let k = startIdx; k <= endIdx; k++){
-          if (k !== onlyIdx) lineClasses[k] = `author-${author} author-mid`;
+          if (k !== onlyIdx) lineClasses[k] = 'author-agent author-mid';
         }
       } else {
         const firstIdx = contentIndices[0];
         const lastIdx = contentIndices[contentIndices.length - 1];
-        lineClasses[firstIdx] = `author-${author} author-start`;
-        lineClasses[lastIdx] = `author-${author} author-end`;
+        lineClasses[firstIdx] = 'author-agent author-start';
+        lineClasses[lastIdx] = 'author-agent author-end';
         for (let k = startIdx; k <= endIdx; k++){
-          if (k !== firstIdx && k !== lastIdx){
-            lineClasses[k] = `author-${author} author-mid`;
-          }
+          if (k !== firstIdx && k !== lastIdx) lineClasses[k] = 'author-agent author-mid';
         }
       }
     };
@@ -3560,33 +3654,66 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     for (let i = 0; i < parsed.length; i++){
       const item = parsed[i];
       if (item.isTag || !item.author){
-        if (blockAuthor){
-          finalizeBlock(blockStart, i - 1, blockAuthor);
-          blockAuthor = null;
+        if (blockStart !== -1){
+          finalizeBlock(blockStart, i - 1);
           blockStart = -1;
         }
       } else {
-        if (item.author !== blockAuthor){
-          if (blockAuthor){
-            finalizeBlock(blockStart, i - 1, blockAuthor);
-          }
-          blockAuthor = item.author;
-          blockStart = i;
-        }
+        if (blockStart === -1) blockStart = i;
       }
     }
-    if (blockAuthor){
-      finalizeBlock(blockStart, parsed.length - 1, blockAuthor);
+    if (blockStart !== -1){
+      finalizeBlock(blockStart, parsed.length - 1);
     }
 
+    const renderLineTextWithMarks = (lineText, inMarkState) => {
+      let inMark = inMarkState;
+      let out = inMark ? '<mark class="mdv-mark">' : '';
+      let i = 0;
+      while (i < lineText.length) {
+        if (lineText.startsWith('<mark>', i)) {
+          if (!inMark) {
+            inMark = true;
+            out += '<mark class="mdv-mark"><span class="mdv-mark-tag">&lt;mark&gt;</span>';
+          } else {
+            out += '<span class="mdv-mark-tag">&lt;mark&gt;</span>';
+          }
+          i += 6;
+        } else if (lineText.startsWith('</mark>', i)) {
+          if (inMark) {
+            inMark = false;
+            out += '<span class="mdv-mark-tag">&lt;/mark&gt;</span></mark>';
+          } else {
+            out += '<span class="mdv-mark-tag">&lt;/mark&gt;</span>';
+          }
+          i += 7;
+        } else {
+          out += escHtml(lineText[i++]);
+        }
+      }
+      if (inMark) out += '</mark>';
+      return { html: out, inMark };
+    };
+
     const lineHtml = [];
+    let markState = false;
     for (let i = 0; i < lines.length; i++){
       const line = lines[i];
-      if (parsed[i].isTag){
-        lineHtml.push(`<div class="ml tag"><span class="tag">${escHtml(line)}</span></div>`);
+      const p = parsed[i];
+      if (p.isTag){
+        const tagCls = p.tagType === 'tag-agent-start' ? 'ml tag tag-agent tag-agent-start' :
+                       p.tagType === 'tag-agent-end' ? 'ml tag tag-agent tag-agent-end' :
+                       'ml tag';
+        lineHtml.push(`<div class="${tagCls}"><span class="tag">${escHtml(line)}</span></div>`);
       } else {
         const cls = lineClasses[i] ? `ml ${lineClasses[i]}` : 'ml';
-        lineHtml.push(line ? `<div class="${cls}">${escHtml(line)}</div>` : `<div class="${cls}">&#x200B;</div>`);
+        if (!line){
+          lineHtml.push(`<div class="${cls}">&#x200B;</div>`);
+        } else {
+          const res = renderLineTextWithMarks(line, markState);
+          markState = res.inMark;
+          lineHtml.push(`<div class="${cls}">${res.html}</div>`);
+        }
       }
     }
     mirror.innerHTML = lineHtml.join('');
@@ -3637,7 +3764,7 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   const mdMini = src => {
     const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const inline = s => esc(s)
-      .replace(/&lt;mark&gt;/g, '<mark>').replace(/&lt;\/mark&gt;/g, '</mark>') // 放行 <mark>:人写标记渲染为高亮色
+      .replace(/&lt;mark&gt;/g, '<mark>').replace(/&lt;\/mark&gt;/g, '</mark>') // 放行 <mark>:重点标记渲染为高亮色
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, name) => mdImgHtml(alt, name))
@@ -3648,13 +3775,15 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     const flushPara = () => { if (para.length){ out.push(`<p>${para.map(inline).join('<br>')}</p>`); para = []; } };
     const flushList = () => { if (list){ out.push(`<ul>${list.map(item => `<li>${inline(item)}</li>`).join('')}</ul>`); list = null; } };
     for (const line of String(src).replace(/\r\n/g, '\n').split('\n')){
-      const authMatch = line.match(/^<!--\s*@author:\s*(human|agent[^\s>]*)\s*-->/i);
-      if (authMatch) {
+      const agentStartMatch = line.match(/^<!--\s*@author:\s*(agent[^\s>]*)\s*-->/i);
+      if (agentStartMatch) {
         flushPara(); flushList(); closeAuthor();
-        const role = authMatch[1].toLowerCase().startsWith('human') ? 'human' : 'agent';
-        currentAuthor = role;
-        const badge = role === 'human' ? '👤 人类' : `🤖 ${authMatch[1]}`;
-        out.push(`<div class="author-block ${role}"><div class="author-badge">${badge}</div>`);
+        currentAuthor = 'agent';
+        out.push(`<div class="author-block agent"><div class="author-badge">✦ ${agentStartMatch[1]}</div>`);
+        continue;
+      }
+      if (/^<!--\s*\/@author\s*-->/i.test(line) || /^<!--\s*@author:\s*(human|none|clear)\s*-->/i.test(line)){
+        flushPara(); flushList(); closeAuthor();
         continue;
       }
       if (/^\s*```/.test(line)){
@@ -3692,33 +3821,6 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     }
     // Escape 不再关闭编辑器，而是把整个 dock 收成细边条（编辑内容保留，展开即回）
     if (e.key === 'Escape'){ if (!menu.hidden) closeMenu(); else dockCollapse(); }
-  });
-  // 人类输入防污染：在 Agent 回复末尾换行时，无感自动切回人类归属
-  editor.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing){
-      const s = editor.selectionStart, end = editor.selectionEnd;
-      if (s === end){
-        const val = editor.value;
-        const author = getAuthorAt(val, s);
-        if (author === 'agent'){
-          const rest = val.slice(s).trim();
-          if (rest.length === 0){
-            // 光标位于 Agent 块末尾，按下 Enter 即表达人类开始接续书写
-            e.preventDefault();
-            const prefix = (s > 0 && val[s - 1] !== '\n') ? '\n\n' : (val.slice(0, s).endsWith('\n\n') ? '' : '\n');
-            const snippet = `${prefix}<!-- @author: human -->\n`;
-            let ok = false;
-            try { ok = document.execCommand('insertText', false, snippet); } catch (_) {}
-            if (!ok){
-              editor.value = val.slice(0, s) + snippet;
-              editor.setSelectionRange(s + snippet.length, s + snippet.length);
-            }
-            editor.dispatchEvent(new Event('input'));
-            return;
-          }
-        }
-      }
-    }
   });
   const menuIcon = item => {
     const id = String(item?.id || '');
