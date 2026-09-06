@@ -604,5 +604,22 @@ pm run verify 全量结果见下。
   - 顺带修复 `installRoot >= process.cwd()` → `dirname(process.execPath)`：启动器普通启动与更新器重启的 cwd 不一致，导致正常启动 `update/check` 读不到本地安装信息（current:null）。
   - 顺带修复 bootstrap 会话响应在带 projectHandle 时丢弃 projectRoot，导致画布项目 pill 显示「未选择项目」；三处 session/bootstrap 响应回传 projectRoot。
 - **验证**（假通道 + 安装版真机）：2.0.6→2.0.7 好路径（external exe 从 CloudBase 下载安装、桥自重启、画布恢复、数据完好、更新条消失）✓；篡改 exe sha →「更新包校验失败（livedot-bridge-win-x64.exe 与清单不一致…）」✓；external 地址换非法域名 →「外部地址域名不在白名单」✓；通道断网 →「更新服务暂时不可用」✓；「稍后」关条红点留 ✓；项目 pill 显示项目名 ✓；画布数据全程完好。
-- **测试**：全量 229 过 0 挂 3 跳过（既有 fail-open 偶发项本次未复现；串行稳定全绿）。
 - **最终通道**：v2.0.1，payloadHash `2755532c849f…`，exe 条目 external→CloudBase（`test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com`），无 installer 字段。
+
+## 9-06 极简禅意（Zen）编辑器体验升级（分支 ui-exp-minimal-zen，节点 n24）
+
+- **背景**：针对用户实测指出的通栏实线压抑、标记清除不可 Ctrl+Z 撤回、作用范围判断不明确及气泡遮挡正文等痛点，实施全面体验重构。
+- **1. 起止折角发丝标（`┌` 与 `└`）**：
+  - 取消左侧纵贯全文的通栏实线；`renderMirror` 改为多段扫描并标记 `author-start`（起始行首折角 `┌`）、`author-end`（结束行底折角 `└`）、`author-single`（单行 `[`）与 `author-mid`（中间所有行完全留白呼吸，无边框干扰）。
+  - CSS 使用 `--ac` 动态绑定琥珀金（人写）与靛蓝（Agent），折角宽 7px 高 10px，贴合左侧留白区。
+- **2. Notion 式无感段落判定 + 自由纠错选区模式**：
+  - 光标无选区时（`s === e`），自动定位当前自然段并在上方插入或替换标签；
+  - 用户有选区时（`s !== e`，如外部粘贴 AI 文本重标），精确作用于所选文本行，并在后续段落按需自动闭合/恢复原作者，赋予充分纠错空间。
+- **3. 右下角高级感微面板**：
+  - 维持在右下角 `[ ●● 笔迹 ▾ ]` 上方弹出，不悬浮遮挡打字视线；
+  - 引入 16px 毛玻璃滤镜与微阴影，顶部动态显示 `📍 段落模式：作用于当前光标段落` 或 `📍 选区模式：作用于选中的 N 字`。
+- **4. 100% 原生 Ctrl+Z 撤销保障**：
+  - `paletteWrap` 增加 `pointerdown` 的 `preventDefault()`，锁定编辑区焦点防 blur 丢失撤销事务；
+  - 标记与清除统一走单步原子的 `document.execCommand('insertText', false, ...)`，消除 `delete` 降级对 undo stack 的破坏。标记与清除均可按 Ctrl+Z 瞬时无损还原。
+- **验证**：自动化 Playwright 脚本（`tools/verify-corner-and-undo.mjs`）端到端通过，折角、动态文案、清除及 Ctrl+Z 双向还原全绿，截图沉淀至 `tools/06~10` 与 artifacts。
+
