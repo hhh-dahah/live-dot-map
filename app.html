@@ -3693,6 +3693,33 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     // Escape 不再关闭编辑器，而是把整个 dock 收成细边条（编辑内容保留，展开即回）
     if (e.key === 'Escape'){ if (!menu.hidden) closeMenu(); else dockCollapse(); }
   });
+  // 人类输入防污染：在 Agent 回复末尾换行时，无感自动切回人类归属
+  editor.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing){
+      const s = editor.selectionStart, end = editor.selectionEnd;
+      if (s === end){
+        const val = editor.value;
+        const author = getAuthorAt(val, s);
+        if (author === 'agent'){
+          const rest = val.slice(s).trim();
+          if (rest.length === 0){
+            // 光标位于 Agent 块末尾，按下 Enter 即表达人类开始接续书写
+            e.preventDefault();
+            const prefix = (s > 0 && val[s - 1] !== '\n') ? '\n\n' : (val.slice(0, s).endsWith('\n\n') ? '' : '\n');
+            const snippet = `${prefix}<!-- @author: human -->\n`;
+            let ok = false;
+            try { ok = document.execCommand('insertText', false, snippet); } catch (_) {}
+            if (!ok){
+              editor.value = val.slice(0, s) + snippet;
+              editor.setSelectionRange(s + snippet.length, s + snippet.length);
+            }
+            editor.dispatchEvent(new Event('input'));
+            return;
+          }
+        }
+      }
+    }
+  });
   const menuIcon = item => {
     const id = String(item?.id || '');
     if (item?.kind === 'folder' || id === 'folder') return I.folder;

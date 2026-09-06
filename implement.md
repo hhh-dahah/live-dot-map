@@ -621,5 +621,9 @@ pm run verify 全量结果见下。
 - **4. 100% 原生 Ctrl+Z 撤销保障**：
   - `paletteWrap` 增加 `pointerdown` 的 `preventDefault()`，锁定编辑区焦点防 blur 丢失撤销事务；
   - 标记与清除统一走单步原子的 `document.execCommand('insertText', false, ...)`，消除 `delete` 降级对 undo stack 的破坏。标记与清除均可按 Ctrl+Z 瞬时无损还原。
-- **验证**：自动化 Playwright 脚本（`tools/verify-corner-and-undo.mjs`）端到端通过，折角、动态文案、清除及 Ctrl+Z 双向还原全绿，截图沉淀至 `tools/06~10` 与 artifacts。
+- **5. Agent 回复末尾智能切回人类笔迹（Smart Auto-Handoff）**：
+  - 根因：Agent 结尾若未闭合，按流式向下继承会导致用户在文件最后接续打字被误染为 Agent（紫色折角）。
+  - 机制：在 `editor` 的 `keydown` 中检测光标是否处于 Agent 块末尾，按下 `Enter` 换行接续书写时，自动无感注入 `\n\n<!-- @author: human -->\n`，使用户的新输入天然、自动归属为人写（琥珀金），彻底消除手动标人写的认知负担，同时 `Ctrl+Z` 可单步撤回。
+  - 修复 `nodes/n24/index.md`：在用户键入的「撒大苏打」前追加 `<!-- @author: human -->`，验证紫色折角准确收拢于 Agent 尾句，用户新输入呈现琥珀金单行折角 `[`。
+- **验证**：Playwright `tools/test-smart-enter.mjs` 与 `tools/test-tail-render.mjs` 全部通过（截图 `tools/12-index-tail-verified.png`），自动切回人类归属 100% 成立。
 
