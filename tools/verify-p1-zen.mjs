@@ -246,15 +246,39 @@ async function run() {
   await editBtn.click();
   await page.waitForTimeout(300);
 
-  await editor.selectText();
-  await editor.dispatchEvent('keyup');
+  // 验证浮动气泡已被彻底清除（不在左上角遮挡）
+  const bubbleCount = await page.locator('.mdv-bubble').count();
+  console.log(`✓ 左上角浮动气泡是否已彻底移除: ${bubbleCount === 0}`);
+  if (bubbleCount > 0) throw new Error('左上角浮动气泡未被移除');
+
+  // 验证右下角「笔迹色板」按钮及弹出菜单
+  const paletteBtn = page.locator('.mdv-btn-palette');
+  const hasPaletteBtn = await paletteBtn.isVisible();
+  console.log(`✓ 右下角「笔迹色板」按钮可见性: ${hasPaletteBtn}`);
+  if (!hasPaletteBtn) throw new Error('右下角未显示笔迹色板按钮');
+
+  await paletteBtn.click();
   await page.waitForTimeout(300);
 
-  const bubbleVisible = await page.evaluate(() => {
-    const b = document.querySelector('.mdv-bubble');
-    return b && !b.hidden;
+  const popVisible = await page.locator('.mdv-palette-pop').isVisible();
+  console.log(`✓ 点击后向上弹出色板卡片可见性: ${popVisible}`);
+  if (!popVisible) throw new Error('笔迹色板卡片未正常弹出');
+
+  const humanOption = page.locator('.mdv-palette-pop button[data-palette="human"]');
+  await humanOption.click();
+  await page.waitForTimeout(300);
+
+  // 验证窄屏模式下顶部工具栏不会诡异拉伸
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await page.waitForTimeout(300);
+  const toolbarWidth = await page.evaluate(() => {
+    const tb = document.querySelector('#toolbar');
+    return tb ? tb.offsetWidth : 0;
   });
-  console.log(`✓ 选中文本后浮动微胶囊菜单显示: ${bubbleVisible}`);
+  console.log(`✓ 窄屏 (1000px) 下顶部工具栏紧凑宽度: ${toolbarWidth}px (应 < 360px，绝不拉伸)`);
+  if (toolbarWidth > 360) throw new Error(`顶部工具栏异常横向拉伸: ${toolbarWidth}px`);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(300);
 
   const saveBtn = page.locator('.mdv-btn-save');
   await saveBtn.click();

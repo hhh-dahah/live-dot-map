@@ -437,9 +437,25 @@ input{font:inherit;color:inherit}
 .mdv-btn-save:hover{background:var(--surface-hover)}
 .mdv-btn-save:disabled{opacity:.5;cursor:not-allowed}
 .mdv-foot-hint{font-size:11.5px;color:var(--muted);opacity:.7;white-space:nowrap}
-.mdv-bubble{position:fixed;z-index:60;display:flex;align-items:center;gap:3px;padding:3px 5px;background:var(--fg);color:var(--bg);border-radius:7px;box-shadow:0 4px 14px rgba(0,0,0,.18);font-size:11.5px}
-.mdv-bubble button{background:none;border:0;color:#fff;font:inherit;font-size:11.5px;padding:4px 7px;border-radius:5px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
-.mdv-bubble button:hover{background:rgba(255,255,255,.2)}
+/* 底部「笔迹色板」微组件 */
+.mdv-palette-wrap{position:relative;display:inline-flex;align-items:center}
+.mdv-btn-palette{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;height:28px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--fg);font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s ease}
+.mdv-btn-palette:hover{background:var(--surface-hover);border-color:var(--fg)}
+.mdv-btn-palette .dots{display:inline-flex;align-items:center;gap:3px}
+.mdv-btn-palette .dot{width:6px;height:6px;border-radius:50%}
+.mdv-btn-palette .dot.human{background:oklch(72% 0.16 75)}
+.mdv-btn-palette .dot.agent{background:oklch(62% 0.16 280)}
+.mdv-btn-palette .chev{color:var(--muted);width:10px;height:10px;transition:transform .15s}
+.mdv-btn-palette.on .chev{transform:rotate(180deg)}
+.mdv-palette-pop{position:absolute;bottom:calc(100% + 8px);right:0;width:180px;background:var(--bg);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow),0 4px 16px rgba(0,0,0,.08);padding:5px;z-index:50;display:flex;flex-direction:column;gap:2px}
+.mdv-palette-pop[hidden]{display:none}
+.mdv-palette-pop button{display:flex;align-items:center;gap:8px;padding:6px 9px;border:0;border-radius:6px;background:none;color:var(--fg);font:inherit;font-size:12px;cursor:pointer;text-align:left;width:100%;transition:background .12s}
+.mdv-palette-pop button:hover{background:var(--surface-hover)}
+.mdv-palette-pop .pdot{width:8px;height:8px;border-radius:50%;flex:none}
+.mdv-palette-pop .pdot.human{background:oklch(72% 0.16 75)}
+.mdv-palette-pop .pdot.agent{background:oklch(62% 0.16 280)}
+.mdv-palette-pop .pdot.clear{width:8px;height:8px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--muted)}
+.mdv-palette-pop .psep{height:1px;background:var(--border);margin:3px 0}
 .mdv-close{width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center;border:0;border-radius:7px;background:none;color:var(--muted);cursor:pointer}
 .mdv-close:hover{background:var(--surface-hover);color:var(--fg)}
 .mdv-close svg{width:15px;height:15px}
@@ -447,7 +463,7 @@ input{font:inherit;color:inherit}
 /* ============ 响应式 ============ */
 @media (max-width:1100px){
   #topbar>#project-pill{flex:0 1 auto}
-  #topbar>#toolbar{flex:1 1 auto;min-width:0;overflow-x:auto;position:relative;left:auto;transform:none;margin-right:var(--dockspace,0px)}
+  #topbar>#toolbar{flex:0 0 auto;width:fit-content;position:relative;left:auto;transform:none;margin:0 auto}
   #project-pill .pilltxt{display:none}
   #project-pill .pname{max-width:72px}
 }
@@ -3207,9 +3223,86 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   const footer = document.createElement('footer'); footer.className = 'mdv-foot';
   const status = document.createElement('span'); status.className = 'mdv-status'; status.textContent = '已打开';
   const footActions = document.createElement('div'); footActions.className = 'mdv-foot-actions';
+  /* 底部右侧「笔迹色板」微组件 */
+  const paletteWrap = document.createElement('div'); paletteWrap.className = 'mdv-palette-wrap';
+  const paletteBtn = document.createElement('button'); paletteBtn.type = 'button'; paletteBtn.className = 'mdv-btn-palette'; paletteBtn.title = '人机笔迹色板（点击设置归属）';
+  paletteBtn.innerHTML = `<span class="dots"><span class="dot human"></span><span class="dot agent"></span></span><span>笔迹</span><svg class="chev" viewBox="0 0 12 12"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+  const palettePop = document.createElement('div'); palettePop.className = 'mdv-palette-pop'; palettePop.hidden = true;
+  palettePop.innerHTML = `
+    <button type="button" data-palette="human"><span class="pdot human"></span><span>标为人写（琥珀金）</span></button>
+    <button type="button" data-palette="agent"><span class="pdot agent"></span><span>标为Agent（靛蓝）</span></button>
+    <div class="psep"></div>
+    <button type="button" data-palette="clear"><span class="pdot clear">✕</span><span>清除笔迹标记</span></button>
+  `;
+  paletteWrap.append(paletteBtn, palettePop);
+
+  const togglePalette = show => {
+    const next = typeof show === 'boolean' ? show : palettePop.hidden;
+    palettePop.hidden = !next;
+    paletteBtn.classList.toggle('on', next);
+  };
+  paletteBtn.onclick = e => { e.stopPropagation(); togglePalette(); };
+  root.addEventListener('pointerdown', e => {
+    if (!paletteWrap.contains(e.target)) togglePalette(false);
+  });
+
+  const applyAuthorTag = type => {
+    const s = editor.selectionStart, e = editor.selectionEnd;
+    const val = editor.value;
+    if (type === 'clear'){
+      const lines = val.split('\n');
+      let charCount = 0;
+      let startLine = 0;
+      for (let i = 0; i < lines.length; i++){
+        const len = lines[i].length + 1;
+        if (charCount <= s && s < charCount + len){ startLine = i; break; }
+        charCount += len;
+      }
+      let changed = false;
+      for (let i = startLine; i >= 0; i--){
+        if (/^<!--\s*@author:\s*(human|agent[^\s>]*)\s*-->/i.test(lines[i])){
+          lines.splice(i, 1);
+          changed = true;
+          break;
+        }
+      }
+      if (changed){
+        editor.value = lines.join('\n');
+        editor.dispatchEvent(new Event('input'));
+        toast('已清除当前段笔迹');
+      } else {
+        toast('当前段落未设置笔迹');
+      }
+      editor.focus();
+      return;
+    }
+
+    const tag = `<!-- @author: ${type === 'human' ? 'human' : 'agent:antigravity'} -->\n`;
+    if (s !== e){
+      const before = val.slice(0, s);
+      const sel = val.slice(s, e);
+      const after = val.slice(e);
+      const needsNl = s > 0 && before[before.length - 1] !== '\n';
+      editor.value = before + (needsNl ? '\n' : '') + tag + sel + after;
+    } else {
+      const lastNl = val.lastIndexOf('\n', s - 1);
+      const pos = lastNl === -1 ? 0 : lastNl + 1;
+      editor.value = val.slice(0, pos) + tag + val.slice(pos);
+    }
+    editor.dispatchEvent(new Event('input'));
+    toast(type === 'human' ? '已标记为人写段落（琥珀金）' : '已标记为 Agent 段落（靛蓝）');
+    editor.focus();
+  };
+
+  palettePop.addEventListener('click', ev => {
+    const b = ev.target.closest('button'); if (!b) return;
+    togglePalette(false);
+    applyAuthorTag(b.dataset.palette);
+  });
+
   const saveBtn = document.createElement('button'); saveBtn.type = 'button'; saveBtn.className = 'mdv-btn-save'; saveBtn.textContent = '保存'; saveBtn.title = '快捷键 Ctrl+S';
   const footHint = document.createElement('span'); footHint.className = 'mdv-foot-hint'; footHint.textContent = 'Esc 收起 · Ctrl+S 保存';
-  footActions.append(saveBtn, footHint);
+  footActions.append(paletteWrap, saveBtn, footHint);
   footer.append(status, footActions); root.append(header, body, footer);
   let files = Array.isArray(bundle?.files) ? bundle.files : [];
   let currentName = String(path).split(/[\\/]/).pop() || 'index.md';
@@ -3289,37 +3382,7 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   const refreshHighlight = () => { if (hlRaf) return; hlRaf = requestAnimationFrame(() => { hlRaf = 0; renderMirror(editor.value); }); };
   editor.addEventListener('scroll', () => { mirror.scrollTop = editor.scrollTop; mirror.scrollLeft = editor.scrollLeft; });
 
-  /* 选区浮动微胶囊菜单 */
-  const bubble = document.createElement('div'); bubble.className = 'mdv-bubble'; bubble.hidden = true;
-  bubble.innerHTML = `<button type="button" data-act="human">👤 标为人写</button><button type="button" data-act="agent">🤖 标为Agent</button><button type="button" data-act="copy">📋 复制</button>`;
-  root.appendChild(bubble);
-  const updateBubble = () => {
-    const s = editor.selectionStart, e = editor.selectionEnd;
-    if (s === e || editor.hidden || preview.hidden === false){ bubble.hidden = true; return; }
-    const rect = editor.getBoundingClientRect();
-    bubble.style.left = `${Math.min(window.innerWidth - 200, Math.max(10, rect.left + 40))}px`;
-    bubble.style.top = `${Math.max(10, rect.top + 20)}px`;
-    bubble.hidden = false;
-  };
-  editor.addEventListener('pointerup', updateBubble);
-  editor.addEventListener('keyup', updateBubble);
-  bubble.addEventListener('click', ev => {
-    const btn = ev.target.closest('button'); if (!btn) return;
-    const act = btn.dataset.act;
-    const s = editor.selectionStart, e = editor.selectionEnd;
-    if (act === 'copy'){
-      navigator.clipboard?.writeText(editor.value.slice(s, e)); toast('已复制选中文字');
-    } else if (act === 'human' || act === 'agent'){
-      const tag = `<!-- @author: ${act} -->\n`;
-      const before = editor.value.slice(0, s);
-      const sel = editor.value.slice(s, e);
-      const after = editor.value.slice(e);
-      editor.value = before + tag + sel + after;
-      editor.dispatchEvent(new Event('input'));
-      toast(act === 'human' ? '已标记为人写段落' : '已标记为 Agent 段落');
-    }
-    bubble.hidden = true; editor.focus();
-  });
+
   let editorCatalog = [];
   const externalRelativePath = () => {
     const base = String(object?.md || path || '');
