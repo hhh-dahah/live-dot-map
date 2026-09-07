@@ -647,6 +647,11 @@ pm run verify 全量结果见下。
 - **4. 右下角高级微面板重构（`[ ✦ 标记 ▾ ]`）**：
   - 菜单提供：「`✦ 标为 Agent 块`」、「`⭐ 设为重点（高权重）`」、「`✕ 清除标记`」；
   - 焦点常驻锁定，100% 支持原生 `Ctrl+Z` 瞬时单步撤销。
-- **验证**：Playwright `tools/test-scheme-c.mjs` 自动化走查全过（产出 `tools/13-scheme-c-agent-block.png` ~ `tools/19-agent-block-preview.png`），Agent 首尾微标清晰、尾部打字 100% 纯净、重点高亮及预览卡片均完美呈现。
+- **5. 视觉极简微调：Agent 首尾徽标统一移至左侧前缀**：
+  - 响应用户反馈，去除冗余的折角线，仅保留精致微型徽标；
+  - 徽标由原本浮动在行最右侧改为直接置于标签最左侧前缀：起始行 `[ ✦ Agent ] <!-- @author: ... -->`，结束行 `[ ✦ /Agent ] <!-- /@author -->`；
+  - 严格计算并固化行高为 `23.625px`（`min-height: 23.625px; box-sizing: border-box; display: flex; align-items: center`），彻底消除 3.5px 字体尺寸偏差导致的 textarea 光标漂移；
+  - 产出截图验证：`tools/17-agent-block-start-editor.png`、`tools/18-agent-block-end-editor.png`。
+
 
 
