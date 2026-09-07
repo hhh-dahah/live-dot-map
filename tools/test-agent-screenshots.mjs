@@ -27,6 +27,24 @@ async function run() {
     }
   });
   await page.waitForTimeout(300);
+  // 检查行高严格同步
+  const metrics = await page.evaluate(() => {
+    const normalLine = document.querySelector('.mdv-mirror .ml:not(.tag)');
+    const startLine = document.querySelector('.mdv-mirror .tag-agent-start');
+    const endLine = document.querySelector('.mdv-mirror .tag-agent-end');
+    const sComp = startLine ? window.getComputedStyle(startLine) : null;
+    return {
+      normalHeight: normalLine ? normalLine.getBoundingClientRect().height : null,
+      startHeight: startLine ? startLine.getBoundingClientRect().height : null,
+      endHeight: endLine ? endLine.getBoundingClientRect().height : null,
+      startOuterHTML: startLine ? startLine.outerHTML : null,
+      startDisplay: sComp ? sComp.display : null,
+      startFontSize: sComp ? sComp.fontSize : null,
+      startHeightCSS: sComp ? sComp.height : null,
+    };
+  });
+  console.log('Line Height Metrics:', JSON.stringify(metrics, null, 2));
+
   await page.screenshot({ path: 'tools/17-agent-block-start-editor.png' });
   console.log('Saved tools/17-agent-block-start-editor.png');
 

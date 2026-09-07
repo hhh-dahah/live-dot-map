@@ -385,23 +385,42 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
 .mdv-gutter{display:none !important}
 .mdv-editstack{position:relative;flex:1;min-width:0;min-height:0;max-width:880px;margin:0 auto;width:100%}
 .mdv-mirror{position:absolute;inset:0;overflow:hidden;pointer-events:none;padding:18px 24px;font-family:var(--font-mono);font-size:13.5px;line-height:1.75;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;color:var(--fg);scrollbar-gutter:stable}
-.mdv-mirror .tag{color:var(--muted);opacity:.45;font-size:11.5px}
+.mdv-mirror .tag{color:var(--muted);opacity:.45}
+.mdv-mirror span.tag{font-size:11.5px}
 .mdv-mirror .tag.tag-agent{opacity:.85;color:oklch(62% 0.16 280)}
-.mdv-mirror .tag-agent-start{position:relative}
-.mdv-mirror .tag-agent-start::before{
-  content:'✦ Agent';position:absolute;right:8px;top:3px;
-  font-family:var(--font-sans);font-size:10px;font-weight:600;line-height:16px;
-  padding:0 6px;border-radius:4px;background:oklch(62% 0.16 280 / .12);
-  color:oklch(62% 0.16 280);border:1px solid oklch(62% 0.16 280 / .25);
-  letter-spacing:.3px;pointer-events:none;
+.mdv-mirror .tag-agent-start,
+.mdv-mirror .tag-agent-end{
+  display:flex;
+  align-items:center;
+  height:23.625px;
+  min-height:23.625px;
+  box-sizing:border-box;
 }
-.mdv-mirror .tag-agent-end{position:relative}
-.mdv-mirror .tag-agent-end::before{
-  content:'✦ /Agent';position:absolute;right:8px;top:3px;
-  font-family:var(--font-sans);font-size:10px;font-weight:600;line-height:16px;
-  padding:0 6px;border-radius:4px;background:oklch(62% 0.16 280 / .08);
-  color:oklch(62% 0.16 280 / .8);border:1px solid oklch(62% 0.16 280 / .18);
-  letter-spacing:.3px;pointer-events:none;
+.mdv-mirror .agent-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
+  font-family:var(--font-sans);
+  font-size:10px;
+  font-weight:600;
+  line-height:16px;
+  height:18px;
+  box-sizing:border-box;
+  padding:0 6px;
+  border-radius:4px;
+  background:oklch(62% 0.16 280 / .12);
+  color:oklch(62% 0.16 280);
+  border:1px solid oklch(62% 0.16 280 / .25);
+  letter-spacing:.3px;
+  margin-right:8px;
+  user-select:none;
+  pointer-events:none;
+  flex-shrink:0;
+}
+.mdv-mirror .agent-badge.end{
+  background:oklch(62% 0.16 280 / .08);
+  color:oklch(62% 0.16 280 / .8);
+  border:1px solid oklch(62% 0.16 280 / .18);
 }
 .mdv-mirror .hl{background:transparent;border-bottom:1.5px dashed var(--accent);border-radius:0}
 .mdv-mirror .ml{position:relative}
@@ -3628,10 +3647,13 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
       const line = lines[i];
       const p = parsed[i];
       if (p.isTag){
-        const tagCls = p.tagType === 'tag-agent-start' ? 'ml tag tag-agent tag-agent-start' :
-                       p.tagType === 'tag-agent-end' ? 'ml tag tag-agent tag-agent-end' :
-                       'ml tag';
-        lineHtml.push(`<div class="${tagCls}"><span class="tag">${escHtml(line)}</span></div>`);
+        if (p.tagType === 'tag-agent-start') {
+          lineHtml.push(`<div class="ml tag tag-agent tag-agent-start"><span class="agent-badge">✦ Agent</span><span class="tag">${escHtml(line)}</span></div>`);
+        } else if (p.tagType === 'tag-agent-end') {
+          lineHtml.push(`<div class="ml tag tag-agent tag-agent-end"><span class="agent-badge end">✦ /Agent</span><span class="tag">${escHtml(line)}</span></div>`);
+        } else {
+          lineHtml.push(`<div class="ml tag"><span class="tag">${escHtml(line)}</span></div>`);
+        }
       } else {
         const cls = p.author ? 'ml author-agent' : 'ml';
         if (!line){
