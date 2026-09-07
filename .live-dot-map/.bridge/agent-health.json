@@ -1,20 +1,20 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-01T04:30:32.355Z",
+  "updatedAt": "2026-09-06T03:56:29.254Z",
   "records": {
     "kimi": {
       "status": "ok",
       "actor": "agent:kimi",
-      "event": "mcp:map_append_markdown",
+      "event": "mcp:map_write_markdown",
       "boundary": "mcp",
-      "at": "2026-09-01T04:30:32.354Z"
+      "at": "2026-09-03T05:06:12.346Z"
     },
     "codex": {
       "status": "ok",
       "actor": "agent:codex",
-      "event": "mcp:map_validate",
+      "event": "mcp:map_list_human_updates",
       "boundary": "mcp",
-      "at": "2026-08-25T03:14:02.241Z"
+      "at": "2026-09-06T03:56:29.254Z"
     },
     "generic": {
       "status": "ok",
@@ -22,6 +22,13 @@
       "event": "mcp:map_list",
       "boundary": "mcp",
       "at": "2026-08-22T15:48:00.265Z"
+    },
+    "antigravity": {
+      "status": "ok",
+      "actor": "agent:antigravity",
+      "event": "mcp:map_list",
+      "boundary": "mcp",
+      "at": "2026-09-03T04:58:47.164Z"
     }
   }
 }
