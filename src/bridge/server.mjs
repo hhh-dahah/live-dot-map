@@ -1540,9 +1540,10 @@ export async function createBridgeServer({
         requireMethod(request, 'POST');
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
+        const relativePath = await mapMarkdownPath(session, String(body.relativePath || ''));
         sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).open({
           editorId: String(body.editorId || ''),
-          relativePath: String(body.relativePath || ''),
+          relativePath,
           targetKind: body.targetKind === 'directory' ? 'directory' : 'file',
         }));
         return;
@@ -1567,7 +1568,8 @@ export async function createBridgeServer({
         requireMethod(request, 'POST');
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
-        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath: String(body.relativePath || '') }));
+        const relativePath = await mapMarkdownPath(session, String(body.relativePath || ''));
+        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath }));
         return;
       }
 
