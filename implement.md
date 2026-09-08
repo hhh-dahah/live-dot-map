@@ -681,5 +681,12 @@ pm run verify 全量结果见下。
     - 交互断言：点击「在文件夹中显示」拦截 200 `{ editorId: 'folder', launched: true }`；点击「VS Code」拦截 200 `{ editorId: 'vscode', launched: true }`；
     - 文本行高镜像层严格对齐：`23.625px`（diff=0）。
 
-
-
+### 2026-09-08 节点侧栏顶栏收敛与极简去噪
+- **背景**：在完成 Markdown 全屏/抽屉顶栏去噪后，普通节点与边属性面板（`#panel`）右上角依然保留了收起箭头（`>`，即 `#panel-collapse`），与关闭按钮（`✕`）并排，存在视觉冗余且不符合极简原则（快捷键与边缘拖拽已能收折侧栏）。
+- **修改**：
+  - 从 `app.html` 的 `#panel header .acts` 中彻底移除 `#panel-collapse` 按钮，顶栏右侧仅保留纯粹的 `✕` 关闭按钮；
+  - 侧栏事件绑定切换为可选链保护（`$('#panel-collapse')?.addEventListener(...)`），消除 DOM 节点缺失引发的运行时中断风险。
+- **验证**：
+  - Playwright 端到端断言：节点详情面板打开后，`#panel header .acts` 内按钮数量严格为 1，`#panel-collapse` 元素为 null，`#panel-close` 正常生效；
+  - 视觉验证产物：`tools/22-panel-header-no-collapse.png`、`tools/22-panel-overview.png`；
+  - 全量自动化测试：230/230 项测试全部通过（pass 230, fail 0）。
