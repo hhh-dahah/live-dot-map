@@ -360,9 +360,10 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
 .mdv-root{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--bg)}
 .mdv-head{display:flex;align-items:center;gap:10px;padding:9px 10px 9px 16px;border-bottom:1px solid var(--border)}
 .mdv-title{font-weight:600;font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mdv-seg{display:flex;flex:none;border:1px solid var(--border);border-radius:7px;overflow:hidden}
-.mdv-seg button{padding:5px 12px;border:0;background:var(--bg);color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
-.mdv-seg button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.mdv-seg{display:flex;flex:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px}
+.mdv-seg button{padding:4px 11px;border:0;border-radius:6px;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s ease}
+.mdv-seg button:hover:not(.on){color:var(--fg)}
+.mdv-seg button.on{background:var(--bg);color:var(--fg);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
 .mdv-openwrap{position:relative;flex:none}
 .mdv-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .mdv-btn:hover{background:var(--surface-hover)}
@@ -374,7 +375,7 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
 .mdv-menu button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:0;border-radius:7px;background:none;color:var(--fg);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}
 .mdv-menu button:hover:not(:disabled){background:var(--surface-hover)}
 .mdv-menu button:disabled{opacity:.45;cursor:default}
-.mdv-menu button svg{width:15px;height:15px;flex:none;color:var(--muted)}
+.mdv-menu button svg{width:16px;height:16px;flex:none;border-radius:3px;overflow:hidden}
 .mdv-menu button .tick{margin-left:auto;color:var(--accent)}
 .mdv-msep{height:1px;background:var(--border);margin:5px 4px}
 .mdv-remember{display:flex;align-items:center;gap:7px;padding:7px 10px 4px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
@@ -387,7 +388,7 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
 .mdv-mirror{position:absolute;inset:0;overflow:hidden;pointer-events:none;padding:18px 24px;font-family:var(--font-mono);font-size:13.5px;line-height:1.75;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;color:var(--fg);scrollbar-gutter:stable}
 .mdv-mirror .tag{color:var(--muted);opacity:.45}
 .mdv-mirror span.tag{font-size:11.5px}
-.mdv-mirror .tag.tag-agent{opacity:.85;color:oklch(62% 0.16 280)}
+.mdv-mirror .tag.tag-agent{opacity:.75;color:oklch(50% 0.08 285)}
 .mdv-mirror .tag-agent-start,
 .mdv-mirror .tag-agent-end{
   display:flex;
@@ -408,9 +409,9 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
   box-sizing:border-box;
   padding:0 6px;
   border-radius:4px;
-  background:oklch(62% 0.16 280 / .12);
-  color:oklch(62% 0.16 280);
-  border:1px solid oklch(62% 0.16 280 / .25);
+  background:oklch(50% 0.08 285 / .10);
+  color:oklch(46% 0.08 285);
+  border:1px solid oklch(50% 0.08 285 / .24);
   letter-spacing:.3px;
   margin-right:8px;
   user-select:none;
@@ -418,9 +419,9 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
   flex-shrink:0;
 }
 .mdv-mirror .agent-badge.end{
-  background:oklch(62% 0.16 280 / .08);
-  color:oklch(62% 0.16 280 / .8);
-  border:1px solid oklch(62% 0.16 280 / .18);
+  background:oklch(50% 0.08 285 / .06);
+  color:oklch(48% 0.08 285 / .8);
+  border:1px solid oklch(50% 0.08 285 / .16);
 }
 .mdv-mirror .hl{background:transparent;border-bottom:1.5px dashed var(--accent);border-radius:0}
 .mdv-mirror .ml{position:relative}
@@ -450,9 +451,9 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
   font-weight:500;
 }
 .mdv-preview .author-block{margin:14px 0;padding:6px 14px;position:relative;border-radius:8px}
-.mdv-preview .author-block.agent{background:oklch(62% 0.16 280 / .03);border-left:2.5px solid oklch(62% 0.16 280)}
+.mdv-preview .author-block.agent{background:oklch(50% 0.08 285 / .04);border-left:2.5px solid oklch(50% 0.08 285)}
 .mdv-preview .author-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;margin-bottom:6px;user-select:none}
-.mdv-preview .author-block.agent .author-badge{color:oklch(58% 0.15 280)}
+.mdv-preview .author-block.agent .author-badge{color:oklch(46% 0.08 285)}
 .mdv-preview img{max-width:100%;border-radius:6px;display:block;margin:10px 0}
 .mdv-imgph{display:inline-block;padding:6px 10px;border:1px dashed var(--border);border-radius:6px;color:var(--muted);font-size:12px}
 .mdv-preview h1,.mdv-preview h2,.mdv-preview h3{line-height:1.35;margin:1.1em 0 .5em;font-weight:700}
@@ -479,8 +480,8 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
 .mdv-name svg{width:13px;height:13px;flex:none;color:var(--muted)}
 .mdv-name span{overflow:hidden;text-overflow:ellipsis}
 .mdv-name:hover{background:var(--surface-hover)}
-.mdv-name.on{background:var(--accent-soft);color:var(--accent)}
-.mdv-name.on svg{color:var(--accent)}
+.mdv-name.on{background:var(--surface-hover);color:var(--fg);font-weight:600}
+.mdv-name.on svg{color:var(--fg);opacity:.9}
 .mdv-name.archived{opacity:.55}
 .mdv-act{flex:none;border:0;background:none;color:var(--muted);font:inherit;font-size:11px;padding:4px 5px;border-radius:5px;cursor:pointer}
 .mdv-act:hover{background:var(--surface-hover);color:var(--fg)}
@@ -496,18 +497,18 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
 .mdv-palette-wrap{position:relative;display:inline-flex;align-items:center}
 .mdv-btn-palette{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;height:28px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--fg);font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s ease}
 .mdv-btn-palette:hover{background:var(--surface-hover);border-color:var(--fg)}
-.mdv-btn-palette.on{background:var(--surface-hover);border-color:var(--accent)}
-.mdv-btn-palette .mark-icon{color:oklch(62% 0.16 280);font-size:12px;display:inline-flex;align-items:center}
+.mdv-btn-palette.on{background:var(--surface-hover);border-color:var(--fg)}
+.mdv-btn-palette .mark-icon{color:oklch(50% 0.08 285);font-size:12px;display:inline-flex;align-items:center}
 .mdv-btn-palette .chev{color:var(--muted);width:10px;height:10px;transition:transform .15s}
 .mdv-btn-palette.on .chev{transform:rotate(180deg)}
 .mdv-palette-pop{position:absolute;bottom:calc(100% + 8px);right:0;width:210px;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.15),0 2px 6px rgba(0,0,0,.06);padding:6px;z-index:50;display:flex;flex-direction:column;gap:3px;backdrop-filter:blur(16px)}
 .mdv-palette-pop[hidden]{display:none}
 .mdv-palette-head{display:flex;align-items:center;gap:6px;padding:4px 7px 3px;font-size:11px;color:var(--muted);letter-spacing:.2px;user-select:none}
-.mdv-palette-head .scope-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);flex:none}
+.mdv-palette-head .scope-dot{width:5px;height:5px;border-radius:50%;background:oklch(50% 0.08 285);flex:none}
 .mdv-palette-pop button{display:flex;align-items:center;gap:8px;padding:6px 9px;border:0;border-radius:7px;background:none;color:var(--fg);font:inherit;font-size:12px;cursor:pointer;text-align:left;width:100%;transition:background .12s}
 .mdv-palette-pop button:hover{background:var(--surface-hover)}
 .mdv-palette-pop .pdot{width:14px;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none}
-.mdv-palette-pop .pdot.agent{color:oklch(62% 0.16 280)}
+.mdv-palette-pop .pdot.agent{color:oklch(50% 0.08 285)}
 .mdv-palette-pop .pdot.important{color:oklch(75% 0.16 80)}
 .mdv-palette-pop .pdot.clear{color:var(--muted);font-size:11px}
 .mdv-palette-pop .psep{height:1px;background:var(--border);margin:3px 2px}
@@ -666,7 +667,13 @@ const I = {
   save:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2.5h7l3 3v8H3v-11Z"/><path d="M5.5 2.5V6h4V2.5M5 13.5v-4h6v4" stroke-linejoin="round"/></svg>',
   img:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="5.5" cy="6.5" r="1.2"/><path d="m2.5 11.5 3-3 2.5 2.5 2-2 3 3" stroke-linejoin="round"/></svg>',
   app:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 5.5h12"/></svg>',
-  terminal:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="m5 6.5 2.5 2L5 10.5M8.5 10.5H11" stroke-linecap="round"/></svg>',
+  terminal:'<svg viewBox="0 0 16 16" fill="none"><rect width="16" height="16" rx="3.5" fill="#1F2937"/><rect y="2" width="16" height="3.5" fill="#374151"/><path d="M3.5 7.5l2.5 2-2.5 2" stroke="#F9FAFB" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="8" y="10.5" width="3.5" height="1.2" fill="#9CA3AF"/></svg>',
+  vscode:'<svg viewBox="0 0 16 16" fill="none"><path fill="#0065A9" d="m11.5 1.5-6.7 5.8-2.6-2-1 .5 2.2 2.2-2.2 2.2 1 .5 2.6-2 6.7 5.8 3.3-1.6V3.1l-3.3-1.6z"/><path fill="#007ACC" d="m14.8 3.1-3.3-1.6-4.4 3.9 2.1 2.1 5.6-4.4z"/><path fill="#1F9CF0" d="M14.8 12.9V3.1L9.2 7.5l5.6 5.4z"/><path fill="#0065A9" d="m11.5 14.5 3.3-1.6-5.6-5.4-2.1 2.1 4.4 4.9z"/><path fill="#007ACC" d="m1.2 5.8v4.4l2.4-2.2L1.2 5.8z"/></svg>',
+  antigravity:'<svg viewBox="0 0 16 16" fill="none"><defs><linearGradient id="ag-arc" x1="0%" y1="100%" x2="100%" y2="100%"><stop offset="0%" stop-color="#C084FC"/><stop offset="25%" stop-color="#38BDF8"/><stop offset="50%" stop-color="#34D399"/><stop offset="75%" stop-color="#FBBF24"/><stop offset="100%" stop-color="#F87171"/></linearGradient></defs><rect width="16" height="16" rx="3.5" fill="#24262B"/><path d="M4.5 12.5 C4.5 7.2 6 4.6 8 4.6 C10 4.6 11.5 7.2 11.5 12.5" stroke="url(#ag-arc)" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>',
+  defaultApp:'<svg viewBox="0 0 16 16" fill="none"><rect x="1.5" y="3.5" width="5.5" height="3" rx="1" fill="#FFA000"/><rect x="1.5" y="5" width="13" height="8.5" rx="1.5" fill="#FFC107"/><rect x="4.5" y="2.5" width="7" height="6.5" rx="1" fill="#2563EB"/><rect x="6" y="4" width="4" height="2" rx="0.5" fill="#FFFFFF" opacity="0.9"/><path d="M1.5 6.5h13v6a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 1.5 12.5v-6Z" fill="#FFD54F"/></svg>',
+  gitBash:'<svg viewBox="0 0 16 16" fill="none"><rect x="3.2" y="3.2" width="9.6" height="9.6" rx="2" transform="rotate(45 8 8)" fill="#F05032"/><circle cx="8" cy="4.8" r="1.3" fill="#FFFFFF"/><circle cx="5" cy="8.5" r="1.3" fill="#38BDF8"/><circle cx="11" cy="8.5" r="1.3" fill="#4ADE80"/><path d="M8 5.8v2.4M8 8.2l-2.2 0.3M8 8.2l2.2 0.3" stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  pycharm:'<svg viewBox="0 0 16 16" fill="none"><rect width="16" height="16" rx="3" fill="#212121"/><path d="M0 11.5L4.5 16H11.5L16 11.5V16H0z" fill="#21D789" opacity="0.85"/><path d="M9 13.5L14.5 13.5L16 10.5V16H9z" fill="#FEEA3B" opacity="0.9"/><text x="2.2" y="9.5" font-family="-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif" font-weight="900" font-size="7" fill="#FFFFFF" letter-spacing="-0.5">PC</text><rect x="2.2" y="11.5" width="4.5" height="1.2" fill="#21D789"/></svg>',
+  folderOfficial:'<svg viewBox="0 0 16 16" fill="none"><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3l1.5 1.8H13A1.5 1.5 0 0 1 14.5 5.3v6.2A1.5 1.5 0 0 1 13 13H3a1.5 1.5 0 0 1-1.5-1.5v-8Z" fill="#FFA000"/><path d="M1.5 5.8A1.2 1.2 0 0 1 2.7 4.8h10.6a1.2 1.2 0 0 1 1.2 1.2v5.7a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5v-5.9Z" fill="#FFC107"/></svg>',
   chev:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   back:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 5 8l5 5"/></svg>',
   chevR:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3 5 5-5 5"/></svg>'
@@ -3254,8 +3261,7 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   const menu = document.createElement('div'); menu.className = 'mdv-menu'; menu.hidden = true; menu.setAttribute('role', 'menu');
   openWrap.append(openBtn, menu);
   const close = document.createElement('button'); close.className = 'mdv-close'; close.type = 'button'; close.title = '关闭'; close.setAttribute('aria-label', '关闭'); close.innerHTML = I.x;
-  const collapseBtn = document.createElement('button'); collapseBtn.className = 'mdv-close'; collapseBtn.type = 'button'; collapseBtn.title = '收起侧栏（Esc）'; collapseBtn.setAttribute('aria-label', '收起侧栏'); collapseBtn.innerHTML = I.chevR;
-  header.append(back, title, seg, openWrap, collapseBtn, close);
+  header.append(back, title, seg, openWrap, close);
   const bundle = bundleOptions?.bridge && bundleOptions.ownerKind && bundleOptions.ownerId ? bundleOptions : null;
   const body = document.createElement('div'); body.className = 'mdv-body';
   const editWrap = document.createElement('div'); editWrap.className = 'mdv-editwrap';
@@ -3772,11 +3778,17 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     if (e.key === 'Escape'){ if (!menu.hidden) closeMenu(); else dockCollapse(); }
   });
   const menuIcon = item => {
-    const id = String(item?.id || '');
-    if (item?.kind === 'folder' || id === 'folder') return I.folder;
-    if (item?.kind === 'system' || id === 'system') return I.ext;
-    if (item?.kind === 'manual' || id === 'manual') return I.gear;
-    if (/terminal|bash|shell/i.test(id)) return I.terminal;
+    const id = String(item?.id || '').toLowerCase();
+    const label = String(item?.label || '').toLowerCase();
+    const kind = String(item?.kind || '').toLowerCase();
+    if (id === 'vscode' || label.includes('vs code') || label.includes('vscode')) return I.vscode;
+    if (id === 'antigravity' || label.includes('antigravity')) return I.antigravity;
+    if (id === 'pycharm' || label.includes('pycharm')) return I.pycharm;
+    if (id === 'gitbash' || id === 'git' || label.includes('git bash')) return I.gitBash;
+    if (id === 'terminal' || /terminal|powershell|cmd|shell/i.test(id) || /terminal|终端/i.test(label)) return I.terminal;
+    if (kind === 'folder' || id === 'folder' || label.includes('文件夹')) return I.folderOfficial;
+    if (kind === 'system' || id === 'system' || /default/i.test(id) || label.includes('默认应用')) return I.defaultApp;
+    if (kind === 'manual' || id === 'manual') return I.gear;
     return I.app;
   };
   const renderEditorCatalog = listing => {
@@ -3787,6 +3799,14 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
       menu.appendChild(empty); return;
     }
     const preferred = String(listing?.preferredEditorId || '');
+    const prefItem = editorCatalog.find(item => String(item.id) === preferred && item.available);
+    if (prefItem) {
+      openBtn.innerHTML = `${menuIcon(prefItem)}<span>打开</span>${I.chev.replace('<svg', '<svg class="chev"')}`;
+      openBtn.title = `首选：${prefItem.label || prefItem.id}（点击展开）`;
+    } else {
+      openBtn.innerHTML = `${I.ext}<span>打开方式</span>${I.chev.replace('<svg', '<svg class="chev"')}`;
+      openBtn.title = '选择打开方式';
+    }
     const addItem = (item, handler) => {
       const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'menuitem');
       b.innerHTML = `${menuIcon(item)}<span></span>`;
@@ -3960,7 +3980,6 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
   };
   close.onclick = closeEditor;
   back.onclick = closeEditor; // 返回详情 = 关闭编辑器,dock 留在详情模式
-  collapseBtn.onclick = dockCollapse;
   let autoSaveTimer = null;
   const doSave = async () => {
     if (saving) return;

@@ -653,5 +653,33 @@ pm run verify 全量结果见下。
   - 严格计算并固化行高为 `23.625px`（`min-height: 23.625px; box-sizing: border-box; display: flex; align-items: center`），彻底消除 3.5px 字体尺寸偏差导致的 textarea 光标漂移；
   - 产出截图验证：`tools/17-agent-block-start-editor.png`、`tools/18-agent-block-end-editor.png`。
 
+## 9-08 极简禅意 UI 与官方全彩图标重构（分支 ui-exp-minimal-zen）
+
+- **背景**：用户走查反馈：
+  1. 界面紫色偏多偏艳（分段切换、侧栏选中文件等），不够高级；
+  2. 打开方式菜单图标缺乏官方 icon，且「在文件夹中显示」与「VS Code」在部分路径下失效；
+  3. 右上角「收起侧栏（>）」按钮冗余，不符合极简原则。
+- **1. 极简禅意配色（Apple / Linear 风格纯黑白灰）**：
+  - 分段选择器 `[ 编辑 | 预览 ]` 重构为微阴影胶囊（`border: 1px solid var(--border); border-radius: 8px; padding: 2px;` 激活项为实体白底微阴影 `box-shadow: 0 1px 2px rgba(0,0,0,.08)`），彻底告别糖果紫；
+  - 侧栏活跃文件项 `index.md · 主文档` 采用低调中性灰 `var(--surface-hover)` 与高对比中性字，移除紫色底色；
+  - Agent 语义标识调优为低饱和典雅石板紫（`oklch(50% 0.08 285)`），仅作为功能性身份微标，不侵染 UI 框架。
+- **2. 官方全彩矢量图标库（内置对齐）**：
+  - 严格参照用户实机参考图，内置官方级全彩 SVG：`VS Code`（官方折叠丝带）、`Antigravity`（深色圆角方块+彩虹拱门）、`Default app / 默认应用`（金黄文件夹+蓝文档插签）、`Terminal`（深黑圆角+横向高光带+`>_`）、`Git Bash`（菱形 Git 分支徽标）、`PyCharm`（墨绿/黑底方块+`PC`白字及荧光绿下划线）、`打开所在文件夹`（温润金黄文件夹）；
+  - 首选编辑器动态响应：当首选为 VS Code 时，顶部触发按钮自动呈现 `[ <VS Code图标> 打开 ▾ ]`，菜单展开呈现全彩官方图标及首选勾选态。
+- **3. 右上角顶栏极简收敛**：
+  - 彻底移除右上角多余的 `collapseBtn`（`>` 收起侧栏按钮），顶栏只保留纯净的返回、标题、分段开关、`[ 打开 ▾ ]` 与 `[ ✕ ]`；
+  - 侧栏折叠继续通过键盘快捷键 `Escape` 保留，零视觉噪点。
+- **4. 桥端唤起与路径修复**：
+  - 修复 `server.mjs` 中 `/editors/open` 缺少 `mapMarkdownPath` 映射导致的 404/ENOENT；
+  - 修复 `editor-service.mjs` 在 Windows 开发模式下 fallback 调用 `explorer.exe /select,"<target>"` 与 Windows 系统应用调用，消除 503 `NATIVE_HELPER_UNAVAILABLE`；
+  - 扩展 `EXTRA_EDITORS` 支持自动识别 Windows 本地安装的 Terminal（`wt.exe`）与 Git Bash（`git-bash.exe`），实现开箱即用。
+- **验证**：
+  - 单元测试：`node --test tests/bridge/editor-service.test.mjs` 9/9 PASS；`tests/web/bridge-client-editors.test.mjs` 4/4 PASS；`tests/bridge/recycle-bin.test.mjs` 3/3 PASS；
+  - Playwright 端到端交互走查：
+    - `tools/20-minimal-zen-editor.png`：黑白灰微胶囊分段开关、无 `>` 按钮、石板紫微标；
+    - `tools/21-open-with-menu.png`：VS Code、Antigravity、PyCharm、Terminal、Git Bash、默认应用、文件夹官方全彩图标；
+    - 交互断言：点击「在文件夹中显示」拦截 200 `{ editorId: 'folder', launched: true }`；点击「VS Code」拦截 200 `{ editorId: 'vscode', launched: true }`；
+    - 文本行高镜像层严格对齐：`23.625px`（diff=0）。
+
 
 

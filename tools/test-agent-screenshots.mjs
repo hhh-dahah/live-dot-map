@@ -74,6 +74,59 @@ async function run() {
   await page.screenshot({ path: 'tools/19-agent-block-preview.png' });
   console.log('Saved tools/19-agent-block-preview.png');
 
+  // 4. 测试点击「打开方式」菜单
+  page.on('response', async res => {
+    if (res.url().includes('/editors/open')) {
+      console.log('INTERCEPTED /editors/open:', res.status());
+      try { console.log('RESPONSE JSON:', await res.json()); } catch { console.log('RESPONSE TEXT:', await res.text()); }
+    }
+  });
+
+  // 截图 20: 极简禅意编辑器主界面（顶部黑白灰胶囊分段开关、无 > 冗余按钮、低饱和石板紫徽标）
+  await page.screenshot({ path: 'tools/20-minimal-zen-editor.png' });
+  console.log('Saved tools/20-minimal-zen-editor.png');
+
+  // Click 打开方式
+  console.log('Clicking 打开方式 button...');
+  await page.locator('.mdv-openwrap .mdv-btn').click();
+  await page.waitForTimeout(400);
+
+  // 截图 21: 打开方式官方全彩矢量图标菜单
+  await page.screenshot({ path: 'tools/21-open-with-menu.png' });
+  console.log('Saved tools/21-open-with-menu.png');
+
+  // Click 在文件夹中显示
+  console.log('Testing click 在文件夹中显示...');
+  const folderBtn = page.locator('.mdv-menu button:has-text("文件夹")');
+  const folderCount = await folderBtn.count();
+  console.log('Folder btn count:', folderCount);
+  if (folderCount > 0) {
+    await folderBtn.click();
+    await page.waitForTimeout(1000);
+  }
+
+  // Click 打开方式 again
+  console.log('Opening menu again for VS Code test...');
+  await page.locator('.mdv-openwrap .mdv-btn').click();
+  await page.waitForTimeout(400);
+
+  // Click VS Code
+  console.log('Testing click VS Code...');
+  const vscodeBtn = page.locator('.mdv-menu button:has-text("VS Code")');
+  const vscodeCount = await vscodeBtn.count();
+  console.log('VSCode btn count:', vscodeCount);
+  if (vscodeCount > 0) {
+    await vscodeBtn.click();
+    await page.waitForTimeout(1000);
+  }
+
+  // 检查右上角是否没有 collapseBtn (>)
+  const hasCollapseBtn = await page.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll('.mdv-head button'));
+    return btns.some(b => b.title?.includes('收起侧栏') || b.getAttribute('aria-label')?.includes('收起侧栏'));
+  });
+  console.log('Has collapse button (>):', hasCollapseBtn);
+
   await browser.close();
   console.log('Done!');
 }
