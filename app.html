@@ -599,9 +599,6 @@ body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#pan
   <header>
     <span class="t" id="panel-title"></span>
     <span class="acts">
-      <button class="icb" id="panel-collapse" title="收起侧栏" aria-label="收起侧栏" style="width:28px;height:28px">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3.5 4.5 4.5L6 12.5"/></svg>
-      </button>
       <button class="icb" id="panel-close" style="width:28px;height:28px">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 4 8 8M12 4l-8 8"/></svg>
       </button>
@@ -1801,7 +1798,7 @@ window.addEventListener('resize', updateDockSpace);
   const w = parseInt(dockStore.get('dock-w', ''), 10); if (w) el.style.setProperty('--dockw', w + 'px');
   const we = parseInt(dockStore.get('dock-we', ''), 10); if (we) el.style.setProperty('--dockwe', we + 'px');
   if (dockStore.get('dock-rail', '0') === '1') el.classList.add('rail');
-  $('#panel-collapse').onclick = dockCollapse;
+  $('#panel-collapse')?.addEventListener('click', dockCollapse);
   $('#dock-expand').onclick = dockExpand;
   $('#dock-grip').addEventListener('pointerdown', e => {
     e.preventDefault();
