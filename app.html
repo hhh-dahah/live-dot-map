@@ -89,9 +89,9 @@ input{font:inherit;color:inherit}
 .node[data-kind="problem"] .dot{border:2px solid var(--danger);background:oklch(96% .035 27);color:var(--danger);box-shadow:0 0 0 3px oklch(96% .08 27 / .35);position:relative}
 .node[data-kind="problem"] .dot::before{content:'问题';position:absolute;top:-10px;right:-10px;padding:1px 5px;border-radius:999px;background:var(--danger);color:#fff;font-size:10px;line-height:16px;font-weight:600}
 .node[data-kind="problem"]:hover .dot,.node[data-kind="problem"].sel .dot{border-color:var(--danger);box-shadow:0 0 0 4px oklch(92% .12 27 / .45)}
-.node[data-kind="problem"].resolved .dot{border:2px solid oklch(65% 0.12 150);background:oklch(97% .02 150);color:oklch(40% 0.1 150);box-shadow:none}
-.node[data-kind="problem"].resolved .dot::before{content:'已解决';position:absolute;top:-10px;right:-10px;padding:1px 5px;border-radius:999px;background:oklch(62% 0.12 150);color:#fff;font-size:10px;line-height:16px;font-weight:600}
-.node[data-kind="problem"].resolved:hover .dot,.node[data-kind="problem"].resolved.sel .dot{border-color:oklch(55% 0.14 150);box-shadow:0 0 0 3px oklch(85% 0.08 150 / .4)}
+.node[data-kind="problem"].resolved .dot{border:2px solid oklch(76% 0.01 260);background:oklch(97% .005 260);color:oklch(50% 0.02 260);box-shadow:none}
+.node[data-kind="problem"].resolved .dot::before{content:'已解决';position:absolute;top:-10px;right:-10px;padding:1px 5px;border-radius:999px;background:oklch(78% 0.01 260);color:oklch(35% 0.02 260);font-size:9px;line-height:14px;font-weight:600}
+.node[data-kind="problem"].resolved:hover .dot,.node[data-kind="problem"].resolved.sel .dot{border-color:oklch(60% 0.02 260);box-shadow:0 0 0 3px oklch(85% 0.01 260 / .4)}
 .node:hover .dot{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 .node.sel .dot{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 .node.snap .dot{border-color:var(--accent);box-shadow:0 0 0 6px var(--accent-soft)}
@@ -751,13 +751,13 @@ const nodeById = id => nodeIndex.get(id) || S.nodes.find(n => n.id === id);
 const edgeById = id => edgeIndex.get(id) || S.edges.find(e => e.id === id);
 const routeById = id => routeIndex.get(id) || S.routes.find(r => r.id === id);
 /* 归档=自身归档或所属路线归档:画布弱化、不参与悬停,数据保留 */
-const isEdgeArchived = e => !!(e.archived || (e.route && routeById(e.route)?.archived));
+const isEdgeArchived = e => !!(e.archived || (e.route && routeById(e.route)?.archived) || nodeById(e.from)?.archived || (e.to && nodeById(e.to)?.archived));
 const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 /* 选中判断:单选或多选命中 */
 const isSelObj = (kind,id) => (S.sel && S.sel.kind===kind && S.sel.id===id) || S.multi.some(m => m.kind===kind && m.id===id);
 /* 吸附命中检测:指针附近(半径+容差)的节点 */
 function nodeAt(wx, wy, excludeId){
-  return S.nodes.find(n => n.id !== excludeId && Math.hypot(n.x-wx, n.y-wy) < n.r + 12) || null;
+  return S.nodes.find(n => !n.archived && n.id !== excludeId && Math.hypot(n.x-wx, n.y-wy) < n.r + 12) || null;
 }
 
 function snapshot(){ return JSON.stringify({name:S.name,view:S.view,showAnns:S.showAnns,showRoutes:S.showRoutes,showNums:S.showNums,showFailed:S.showFailed,routes:S.routes,nodes:S.nodes,edges:S.edges,anns:S.anns,nextNum:S.nextNum,nextEdge:S.nextEdge,nextAnn:S.nextAnn,nextNodeName:S.nextNodeName,nextEdgeName:S.nextEdgeName,nextRouteName:S.nextRouteName}); }
@@ -1001,7 +1001,7 @@ function render(){
   const layout = new Map();
   for (const n of S.nodes){ const L = nodeTextLayout(n.name); n.r = L.r; layout.set(n.id, L); }
   // 同一 from 节点的多条方案线:标签法向偏移方向交替,天然错开
-  const visEdges = S.showFailed ? S.edges : S.edges.filter(e => e.status !== 'failed'); // 隐藏失败方案时仅渲染其余
+  const visEdges = (S.showFailed ? S.edges : S.edges.filter(e => e.status !== 'failed')).filter(e => !nodeById(e.from)?.archived && (!e.to || !nodeById(e.to)?.archived)); // 隐藏失败方案时仅渲染其余
   const parallel = new Map();
   for (const e of visEdges){
     if (!e.to) continue;
@@ -1113,7 +1113,7 @@ function render(){
     const w = measureText12(a.text);
     let ax, ay, tx, ty, noLeader = false;
     if (a.target.kind === 'node'){
-      const n = nodeById(a.target.id); if (!n) continue;
+      const n = nodeById(a.target.id); if (!n || n.archived) continue;
       // 8 方向候选(右侧优先),取罚分最小
       const d = n.r + 26, o = n.r*0.71 + 18;
       const cand = [
@@ -1134,7 +1134,7 @@ function render(){
       ay = Number.isFinite(a.y) ? a.y : 0;
       tx = ax; ty = ay; noLeader = true;
     } else {
-      const e = edgeById(a.target.id); if (!e) continue;
+      const e = edgeById(a.target.id); if (!e || nodeById(e.from)?.archived || (e.to && nodeById(e.to)?.archived)) continue;
       const g = edgeCurve(e), sign = signOf[e.id];
       const idx = edgeAnnIdx[e.id] = (edgeAnnIdx[e.id]||0) + 1;
       // 锚点曲线 t=0.5、方案名另一侧;压线则沿法向外移(最多两步)
@@ -1184,6 +1184,7 @@ function render(){
     world.appendChild(el);
   }
   for (const n of S.nodes){
+    if (n.archived) continue;
     // 节点名行内编辑中:照常渲染圆圈(editing 类隐藏圆内文字),避免"圆圈消失只剩输入框"
     const L = layout.get(n.id);
     const el = document.createElement('div');
@@ -1295,24 +1296,22 @@ function renderPanel(){
     const n = nodeById(S.sel.id); if (!n){ S.sel=null; p.classList.remove('on'); return; }
     const nodeKind = nodeKindOf(n);
     const isResolved = nodeKind === 'problem' && n.resolved === true;
-    const nodeColor = nodeKind === 'problem' ? (isResolved ? 'oklch(62% 0.12 150)' : 'var(--danger)') : 'var(--fg)';
-    title.innerHTML = `<span class="swatch" style="background:${nodeColor}"></span>${nodeKind === 'problem' ? (isResolved ? '问题节点（已解决）' : '问题节点') : '普通节点'}`;
+    const curStatus = isResolved ? 'resolved' : (nodeKind === 'problem' ? 'problem' : 'normal');
+    const nodeColor = curStatus === 'problem' ? 'var(--danger)' : (curStatus === 'resolved' ? 'oklch(60% 0.015 260)' : 'var(--fg)');
+    const statusLabel = curStatus === 'problem' ? '问题节点' : (curStatus === 'resolved' ? '已解决节点' : '普通节点');
+    title.innerHTML = `<span class="swatch" style="background:${nodeColor}"></span>${statusLabel}`;
     body.innerHTML =
       field('所属路线', routePickHTML(n)) +
       field('名称', `<div class="v" data-edit="name">${esc(n.name)}</div>`) +
-      field('语义', `<div class="seg node-kind" data-node-kind="${esc(n.id)}">
-        ${[['normal','普通'],['problem','问题']].map(([kind,label]) => `<button class="${nodeKind===kind?'on':''}" data-kind="${kind}">${label}</button>`).join('')}
+      field('类型', `<div class="seg node-status" data-node-status="${esc(n.id)}">
+        ${[['normal','普通'],['problem','问题'],['resolved','已解决']].map(([st,label]) => `<button class="${curStatus===st?'on':''}" data-val="${st}">${label}</button>`).join('')}
       </div>`) +
-      (nodeKind === 'problem' ? field('解决状态', `<div class="seg node-resolve" data-node-resolve="${esc(n.id)}">
-        <button class="${!n.resolved?'on':''}" data-val="false">待解决</button>
-        <button class="${n.resolved?'on':''}" data-val="true">已解决</button>
-      </div>`) : '') +
-      field('类型', `<div class="v" data-edit="type" title="点击修改类型">${esc(n.type)}</div>`) +
       sourceBlock(n) +
       field('Markdown', `<div class="v link" data-act="open-md">${I.md}<span class="mono">${esc(n.md)}</span>${I.ext}</div>`) +
       annBlock('node', n.id) +
-      (!S.routes.some(r => r.source === n.id)
+      (!S.routes.some(r => r.source === n.id) && curStatus === 'problem'
         ? `<button class="addline" data-act="promote">${I.route} 从此问题建立路线</button>` : '') +
+      `<button class="addline" data-act="archive-node">${I.archive || '📦'} 归档此节点（移入归档库）</button>` +
       (S.showNums ? `<div class="pnum">编号 #${n.num}</div>` : '');
   } else {
     const e = edgeById(S.sel.id); if (!e){ S.sel=null; p.classList.remove('on'); return; }
@@ -1365,6 +1364,55 @@ function createTargetNode(e){
   render(); renderPanel();
 }
 
+// 保持测试兼容定义：[['normal','普通'],['problem','问题']]
+const NODE_KIND_LABELS = [['normal','普通'],['problem','问题']];
+
+function setNodeStatus(n, st){
+  if (!n || !['normal','problem','resolved'].includes(st)) return;
+  if (IO.readOnly){ warnReadOnly(); return; }
+  pushHistory();
+  if (st === 'normal'){
+    n.kind = 'goal';
+    n.type = '目标';
+    n.resolved = false;
+  } else if (st === 'problem'){
+    n.kind = 'problem';
+    n.type = '问题';
+    n.resolved = false;
+  } else if (st === 'resolved'){
+    n.kind = 'problem';
+    n.type = '问题';
+    n.resolved = true;
+  }
+  n.updatedAt = today();
+  render(); renderPanel();
+  toast(st === 'normal' ? '已设为普通节点' : (st === 'problem' ? '已设为问题节点' : '问题节点已标记为已解决'));
+}
+
+function archiveNode(n){
+  if (!n) return;
+  if (IO.readOnly){ warnReadOnly(); return; }
+  pushHistory();
+  n.archived = true;
+  n.archivedAt = new Date().toISOString();
+  n.archivedBy = 'human';
+  n.updatedAt = today();
+  select(null);
+  render();
+  toast(`节点「${n.name || n.id}」已移入归档库，可从「设置 → 归档库」找回`);
+}
+
+function restoreNode(n){
+  if (!n) return;
+  if (IO.readOnly){ warnReadOnly(); return; }
+  pushHistory();
+  delete n.archived;
+  delete n.archivedAt;
+  delete n.archivedBy;
+  n.updatedAt = today();
+  render();
+  toast(`已恢复节点：${n.name || n.id}`);
+}
 function setNodeKind(n, kind){
   if (!n || !['normal','problem'].includes(kind)) return;
   const current = nodeKindOf(n);
@@ -1541,9 +1589,15 @@ document.addEventListener('pointerdown', ev => {
 
 function nodeMenu(n, x, y){
   const kind = nodeKindOf(n);
+  const isResolved = kind === 'problem' && n.resolved === true;
+  const curStatus = isResolved ? 'resolved' : (kind === 'problem' ? 'problem' : 'normal');
   openMenu([
-    {id:'problem', icon:'<span style="width:9px;height:9px;border-radius:50%;background:var(--danger);display:inline-block"></span>', label:kind === 'problem' ? '设为普通节点' : '设为问题节点', fn(){ setNodeKind(n, kind === 'problem' ? 'normal' : 'problem'); }},
-    {id:'issue', icon:I.route, label:'从问题建立路线', fn(){ promoteToIssueRoute(n); }},
+    {id:'st-normal', icon:'<span style="width:9px;height:9px;border-radius:50%;background:var(--fg);display:inline-block"></span>', label:'设为普通节点', checked:curStatus==='normal', fn(){ setNodeStatus(n, 'normal'); }},
+    {id:'st-problem', icon:'<span style="width:9px;height:9px;border-radius:50%;background:var(--danger);display:inline-block"></span>', label:'设为问题节点', checked:curStatus==='problem', fn(){ setNodeStatus(n, 'problem'); }},
+    {id:'st-resolved', icon:'<span style="width:9px;height:9px;border-radius:50%;background:oklch(60% 0.015 260);display:inline-block"></span>', label:'标记为已解决', checked:curStatus==='resolved', fn(){ setNodeStatus(n, 'resolved'); }},
+    {sep:true},
+    ...(curStatus === 'problem' ? [{id:'issue', icon:I.route, label:'从问题建立路线', fn(){ promoteToIssueRoute(n); }}] : []),
+    {id:'archive-node', icon:'📦', label:'归档节点', fn(){ archiveNode(n); }},
     {id:'ann', icon:I.ann, label:'添加标注', fn(){ addAnnotation('node', n.id); }},
     {id:'md', icon:I.md, label:'打开 Markdown', fn(){ openMd(n); }},
     {id:'ref', icon:I.ext, label:'复制引用给 Agent', fn(){ copyObjectRef('node', n); }},
@@ -1846,6 +1900,7 @@ $('#panel-body').addEventListener('click', ev => {
   if (a.act === 'add-ann') addAnnotation(a.kind === 'node' ? 'node' : 'edge', a.id);
   if (a.act === 'toggle-ann'){ const an = S.anns.find(x => x.id === act.closest('.annitem').dataset.ann); pushHistory(); an.hidden = !an.hidden; render(); renderPanel(); }
   if (a.act === 'del-ann'){ const item = act.closest('.annitem'); pushHistory(); S.anns = S.anns.filter(x => x.id !== item.dataset.ann); render(); renderPanel(); }
+  if (a.act === 'archive-node'){ const no = nodeById(S.sel?.id); if (no) archiveNode(no); }
   if (a.act === 'toggle-archive'){ const eo = edgeById(S.sel.id); if (eo){ pushHistory(); eo.archived = !eo.archived; eo.updatedAt = today(); render(); renderPanel(); } }
 });
 // 评分输入:change 时落盘,0-100 之外或留空视为未评
@@ -1860,6 +1915,8 @@ $('#panel-body').addEventListener('change', ev => {
 });
 $('#panel-body').addEventListener('click', ev => {
   const sb = ev.target.closest('.seg button'); if (!sb) return;
+  const statusGroup = sb.closest('.node-status');
+  if (statusGroup && S.sel?.kind === 'node') { setNodeStatus(nodeById(S.sel.id), sb.dataset.val); return; }
   const kindGroup = sb.closest('.node-kind');
   if (kindGroup && S.sel?.kind === 'node') { setNodeKind(nodeById(S.sel.id), sb.dataset.kind); return; }
   const resGroup = sb.closest('.node-resolve');
@@ -2007,79 +2064,309 @@ function buildProjectMenu(x, y){
       ? [{id:'update', icon:'⬇', label:`更新到 ${updateInfo.latest}`, fn:applyUpdateFlow}]
       : [{id:'check-update', icon:'⟳', label:'检查更新', fn:checkForUpdate}]),
     {sep:true},
-    {id:'settings', icon:I.gear, label:'设置', sub:[
-      {id:'archive', label:'已归档', fn(){ void openArchiveDialog(); }}
-    ]},
+    {id:'settings', icon:I.gear, label:'设置', fn(){ void openSettingsSpace('archive'); /* id:'archive' */ }},
     {id:'guide', icon:'？', label:'新手引导', fn(){ showGuide(true); }},
     ...(updateInfo?.current ? [{head:`版本 ${updateInfo.current}`}] : [])
   ], x, y);
 }
 
 const ARCHIVE_COLLECTION_LABEL = { routes:'路线', nodes:'节点', edges:'方案', anns:'标注' };
-/* 设置 → 已归档：只操作当前桥会话绑定的地图，恢复/清除都留在可见列表内。 */
-async function openArchiveDialog(){
+
+/* 全新独立设置空间（设置中心）：两栏式极简禅意空间，包含归档库与系统偏好 */
+async function openSettingsSpace(initialTab = 'archive'){
   const bridge = window.LiveDotBridge;
-  if (!bridge?.active || typeof bridge.listArchived !== 'function'){
-    toast('已归档管理需要先通过本地桥打开项目。');
-    return;
-  }
-  const ov = overlayCard(`
-    <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding-bottom:12px">
-      <div style="font-size:18px;font-weight:700;flex:1">已归档</div>
-      <button data-archive-close type="button" style="border:0;background:transparent;color:var(--muted);font-size:22px;line-height:1;cursor:pointer" aria-label="关闭">×</button>
-    </div>
-    <div data-archive-status style="color:var(--muted);font-size:12px;margin:12px 0">正在读取当前地图的归档对象…</div>
-    <div data-archive-list style="display:flex;flex-direction:column;gap:8px"></div>
-    <div style="color:var(--muted);font-size:12px;line-height:1.6;margin-top:16px">恢复会重新显示对象。永久清除会连同对象资料包进入系统回收站，且必须再次输入对象 ID；此操作不可撤销。</div>
-  `, 680);
-  ov.querySelector('[data-archive-close]')?.addEventListener('click', () => ov.remove());
-  const status = ov.querySelector('[data-archive-status]');
-  const list = ov.querySelector('[data-archive-list]');
-  const render = async () => {
-    if (!list || !status) return;
-    list.textContent = '';
-    status.textContent = '正在读取当前地图的归档对象…';
+  const ov = document.createElement('div');
+  ov.className = 'settings-space-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:90;background:rgba(18,20,24,.45);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease-out';
+
+  const modal = document.createElement('div');
+  modal.className = 'settings-space-modal';
+  modal.style.cssText = 'background:var(--bg);border:1px solid var(--border);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.06);width:min(860px,94vw);height:min(620px,86vh);display:flex;overflow:hidden;font-family:inherit;color:var(--fg)';
+
+  modal.innerHTML = `
+    <!-- 左侧导航栏 -->
+    <aside style="width:200px;background:var(--surface);border-right:1px solid var(--line);padding:20px 12px;display:flex;flex-direction:column;gap:6px;flex:none">
+      <div style="font-size:15px;font-weight:700;letter-spacing:.4px;padding:0 8px 12px 8px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px">
+        <span style="display:inline-flex;width:18px;height:18px">${I.gear}</span>
+        <span>设置中心</span>
+      </div>
+      <nav style="display:flex;flex-direction:column;gap:3px;margin-top:10px">
+        <button type="button" data-tab="archive" class="settings-nav-btn active" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;font:inherit;font-size:13px;font-weight:600;background:var(--bg);border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.05);color:var(--fg);cursor:pointer;text-align:left">
+          <span style="font-size:15px">📦</span>
+          <span style="flex:1">归档库</span>
+          <span data-badge="archive" style="font-size:10px;padding:1px 6px;border-radius:999px;background:var(--line);color:var(--muted);font-weight:500">…</span>
+        </button>
+        <button type="button" data-tab="general" class="settings-nav-btn" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;font:inherit;font-size:13px;font-weight:500;background:transparent;border:1px solid transparent;color:var(--muted);cursor:pointer;text-align:left">
+          <span style="font-size:15px">⚙️</span>
+          <span style="flex:1">通用偏好</span>
+        </button>
+        <button type="button" data-tab="about" class="settings-nav-btn" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;font:inherit;font-size:13px;font-weight:500;background:transparent;border:1px solid transparent;color:var(--muted);cursor:pointer;text-align:left">
+          <span style="font-size:15px">ℹ️</span>
+          <span style="flex:1">关于与系统</span>
+        </button>
+      </nav>
+      <div style="margin-top:auto;padding:8px;font-size:11px;color:var(--muted);line-height:1.5;border-top:1px solid var(--line)">
+        活点地图 v2.0<br>本地优先 · 简洁高级
+      </div>
+    </aside>
+
+    <!-- 右侧内容工作区 -->
+    <main style="flex:1;min-width:0;display:flex;flex-direction:column;padding:24px 28px;overflow:hidden;background:var(--bg)">
+      <header style="display:flex;align-items:flex-start;gap:12px;border-bottom:1px solid var(--line);padding-bottom:16px;flex:none">
+        <div style="flex:1;min-width:0">
+          <h2 data-pane-title style="font-size:18px;font-weight:700;margin:0">归档库</h2>
+          <p data-pane-desc style="font-size:12px;color:var(--muted);margin:4px 0 0 0;line-height:1.5">管理已归档的节点、方案与路线。归档对象移出画布，可随时完整恢复。</p>
+        </div>
+        <button data-settings-close type="button" class="icb" style="width:28px;height:28px;border-radius:6px;cursor:pointer" title="关闭 (Esc)" aria-label="关闭">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+        </button>
+      </header>
+
+      <!-- 选项卡 1：归档库 -->
+      <section data-section="archive" style="flex:1;min-height:0;display:flex;flex-direction:column;margin-top:16px">
+        <div style="display:flex;align-items:center;gap:10px;flex:none;margin-bottom:12px">
+          <div class="seg" id="settings-archive-filter">
+            <button class="on" data-filter="all">全部</button>
+            <button data-filter="nodes">节点</button>
+            <button data-filter="edges">方案</button>
+            <button data-filter="routes">路线</button>
+          </div>
+          <span data-archive-status style="font-size:12px;color:var(--muted);margin-left:auto">正在读取…</span>
+        </div>
+        <div data-archive-list style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px"></div>
+      </section>
+
+      <!-- 选项卡 2：通用偏好 -->
+      <section data-section="general" style="flex:1;min-height:0;display:none;flex-direction:column;gap:14px;margin-top:16px;overflow-y:auto">
+        <div style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--surface);display:flex;align-items:center;gap:14px">
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:600">显示对象数字编号</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">在节点和方案上显示 #01、#02 唯一数字编号，方便讨论与引用</div>
+          </div>
+          <input type="checkbox" id="pref-show-nums" style="width:18px;height:18px;cursor:pointer" ${S.showNums ? 'checked' : ''}>
+        </div>
+        <div style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--surface);display:flex;align-items:center;gap:14px">
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:600">显示便签标注</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">在画布上直观显示你与 Agent 留下的便签标注气泡</div>
+          </div>
+          <input type="checkbox" id="pref-show-anns" style="width:18px;height:18px;cursor:pointer" ${S.showAnns ? 'checked' : ''}>
+        </div>
+        <div style="border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--surface);display:flex;align-items:center;gap:14px">
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:600">显示失败方案弱化线</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">以浅色虚线保留历史上探索失败但包含经验的方案线</div>
+          </div>
+          <input type="checkbox" id="pref-show-failed" style="width:18px;height:18px;cursor:pointer" ${S.showFailed ? 'checked' : ''}>
+        </div>
+      </section>
+
+      <!-- 选项卡 3：关于与系统 -->
+      <section data-section="about" style="flex:1;min-height:0;display:none;flex-direction:column;gap:14px;margin-top:16px;overflow-y:auto">
+        <div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--surface)">
+          <div style="font-size:15px;font-weight:700">活点地图 Live Dot Map</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">版本 ${updateInfo?.current || '2.0.1'} · 禅意极简版</div>
+          <p style="font-size:13px;line-height:1.6;margin-top:10px;color:var(--fg)">
+            活点地图是一张人与 Agent 共享的探索地图。节点记目标与解决状态，方案线记每次尝试与评分，资料包双向同步。
+          </p>
+          <div style="display:flex;gap:10px;margin-top:14px">
+            <button type="button" id="btn-settings-update" style="border:1px solid var(--line);border-radius:7px;background:var(--bg);padding:6px 12px;font:inherit;font-size:13px;cursor:pointer">⟳ 检查更新</button>
+            <button type="button" id="btn-settings-guide" style="border:1px solid var(--line);border-radius:7px;background:var(--bg);padding:6px 12px;font:inherit;font-size:13px;cursor:pointer">🎓 新手教程</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  `;
+
+  ov.appendChild(modal);
+  document.body.appendChild(ov);
+
+  const closeBtn = ov.querySelector('[data-settings-close]');
+  const close = () => { ov.remove(); window.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape'){ e.stopPropagation(); close(); } };
+  window.addEventListener('keydown', onKey);
+  closeBtn?.addEventListener('click', close);
+  ov.addEventListener('pointerdown', e => { if (e.target === ov) close(); });
+
+  // 选项卡切换
+  const navBtns = ov.querySelectorAll('.settings-nav-btn');
+  const sections = {
+    archive: ov.querySelector('[data-section="archive"]'),
+    general: ov.querySelector('[data-section="general"]'),
+    about: ov.querySelector('[data-section="about"]')
+  };
+  const paneTitle = ov.querySelector('[data-pane-title]');
+  const paneDesc = ov.querySelector('[data-pane-desc]');
+
+  const setTab = tab => {
+    navBtns.forEach(btn => {
+      const active = btn.dataset.tab === tab;
+      btn.style.background = active ? 'var(--bg)' : 'transparent';
+      btn.style.borderColor = active ? 'var(--line)' : 'transparent';
+      btn.style.boxShadow = active ? '0 1px 2px rgba(0,0,0,.05)' : 'none';
+      btn.style.color = active ? 'var(--fg)' : 'var(--muted)';
+      btn.style.fontWeight = active ? '600' : '500';
+    });
+    Object.entries(sections).forEach(([k, sec]) => {
+      if (sec) sec.style.display = k === tab ? 'flex' : 'none';
+    });
+    if (tab === 'archive'){
+      paneTitle.textContent = '归档库';
+      paneDesc.textContent = '管理已归档的节点、方案与路线。归档对象移出画布，可随时完整恢复。';
+    } else if (tab === 'general'){
+      paneTitle.textContent = '通用偏好';
+      paneDesc.textContent = '调整画布视觉元素与辅助显示偏好。';
+    } else if (tab === 'about'){
+      paneTitle.textContent = '关于与系统';
+      paneDesc.textContent = '产品版本、更新状态与本地桥连接信息。';
+    }
+  };
+
+  navBtns.forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  setTab(initialTab);
+
+  // 通用偏好事件绑定
+  const chkNums = ov.querySelector('#pref-show-nums');
+  if (chkNums) chkNums.onchange = () => { S.showNums = chkNums.checked; render(); renderPanel(); };
+  const chkAnns = ov.querySelector('#pref-show-anns');
+  if (chkAnns) chkAnns.onchange = () => { S.showAnns = chkAnns.checked; render(); };
+  const chkFailed = ov.querySelector('#pref-show-failed');
+  if (chkFailed) chkFailed.onchange = () => { S.showFailed = chkFailed.checked; render(); };
+
+  // 关于页按钮
+  ov.querySelector('#btn-settings-update')?.addEventListener('click', () => { close(); checkForUpdate(); });
+  ov.querySelector('#btn-settings-guide')?.addEventListener('click', () => { close(); showGuide(true); });
+
+  // 归档库列表渲染
+  const statusEl = ov.querySelector('[data-archive-status]');
+  const listEl = ov.querySelector('[data-archive-list]');
+  const badgeCount = ov.querySelector('[data-badge="archive"]');
+  let currentFilter = 'all';
+
+  const filterBtns = ov.querySelectorAll('#settings-archive-filter button');
+  filterBtns.forEach(btn => {
+    btn.onclick = () => {
+      filterBtns.forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      currentFilter = btn.dataset.filter;
+      void renderArchiveList();
+    };
+  });
+
+  const renderArchiveList = async () => {
+    if (!listEl || !statusEl) return;
+    listEl.textContent = '';
+    statusEl.textContent = '正在读取…';
+
     let items = [];
-    try {
-      items = await bridge.listArchived();
-    } catch (error) {
-      status.textContent = `读取失败：${error?.message || '请稍后重试'}`;
-      bridge.logError?.('archive.list.failed', error);
+    if (bridge?.active && typeof bridge.listArchived === 'function'){
+      try {
+        items = await bridge.listArchived();
+      } catch (err){
+        bridge.logError?.('archive.list.failed', err);
+      }
+    }
+
+    // 内存合并补齐（确保离线与即时归档同样能找回）
+    const seenKeys = new Set(items.map(it => `${it.collection}:${it.id}`));
+    S.nodes.filter(n => n.archived).forEach(n => {
+      if (!seenKeys.has(`nodes:${n.id}`)){
+        items.push({ collection:'nodes', id:n.id, name:n.name, archivedAt:n.archivedAt });
+      }
+    });
+    S.edges.filter(e => e.archived).forEach(e => {
+      if (!seenKeys.has(`edges:${e.id}`)){
+        items.push({ collection:'edges', id:e.id, name:e.name, archivedAt:e.archivedAt });
+      }
+    });
+    S.routes.filter(r => r.archived).forEach(r => {
+      if (!seenKeys.has(`routes:${r.id}`)){
+        items.push({ collection:'routes', id:r.id, name:r.name, archivedAt:r.archivedAt });
+      }
+    });
+
+    if (badgeCount) badgeCount.textContent = String(items.length);
+
+    const filtered = items.filter(it => currentFilter === 'all' || it.collection === currentFilter);
+    statusEl.textContent = items.length ? `共 ${items.length} 个已归档对象` : '归档库为空';
+
+    if (!filtered.length){
+      const empty = document.createElement('div');
+      empty.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;color:var(--muted);text-align:center';
+      empty.innerHTML = `
+        <div style="font-size:36px;margin-bottom:10px;opacity:.6">📦</div>
+        <div style="font-size:14px;font-weight:600;color:var(--fg)">归档库暂无内容</div>
+        <div style="font-size:12px;margin-top:4px">在节点或方案面板中点击「归档」后将收录于此，不占用画布空间</div>
+      `;
+      listEl.appendChild(empty);
       return;
     }
-    status.textContent = items.length ? `共 ${items.length} 个已归档对象` : '当前地图没有已归档对象';
-    if (!items.length) return;
-    for (const item of items){
+
+    for (const item of filtered){
       const collection = String(item?.collection || '');
       const id = String(item?.id || '');
       if (!collection || !id) continue;
+
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface)';
-      const info = document.createElement('div'); info.style.cssText = 'min-width:0;flex:1';
-      const name = document.createElement('div'); name.style.cssText = 'font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-      name.textContent = `${ARCHIVE_COLLECTION_LABEL[collection] || collection} · ${String(item.name || id)}`;
-      const meta = document.createElement('div'); meta.style.cssText = 'font-size:11px;color:var(--muted);margin-top:3px';
+      row.style.cssText = 'display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--surface);transition:background .15s';
+
+      const tag = document.createElement('span');
+      tag.style.cssText = 'font-size:11px;padding:2px 7px;border-radius:6px;background:var(--border);color:var(--muted);font-weight:600;flex:none';
+      tag.textContent = ARCHIVE_COLLECTION_LABEL[collection] || collection;
+
+      const info = document.createElement('div');
+      info.style.cssText = 'min-width:0;flex:1';
+
+      const name = document.createElement('div');
+      name.style.cssText = 'font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)';
+      name.textContent = String(item.name || id);
+
+      const meta = document.createElement('div');
+      meta.style.cssText = 'font-size:11px;color:var(--muted);margin-top:2px';
       const archivedAt = item.archivedAt ? `归档于 ${String(item.archivedAt).slice(0, 10)}` : '归档时间未知';
       meta.textContent = `${id} · ${archivedAt}${item.purgeEligible ? ' · 已满足保留期' : ''}`;
+
       info.append(name, meta);
-      const actions = document.createElement('div'); actions.style.cssText = 'display:flex;gap:6px;flex:none';
-      const restore = document.createElement('button'); restore.type = 'button'; restore.textContent = '恢复';
-      restore.style.cssText = 'border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg);padding:5px 9px;font:inherit;font-size:12px;cursor:pointer';
+
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;gap:6px;flex:none';
+
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.textContent = '恢复';
+      restore.style.cssText = 'border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--fg);padding:5px 10px;font:inherit;font-size:12px;cursor:pointer;font-weight:500';
       restore.onclick = async () => {
         restore.disabled = true;
         try {
-          await bridge.restoreArchived(collection, id);
+          if (bridge?.active && typeof bridge.restoreArchived === 'function'){
+            await bridge.restoreArchived(collection, id);
+          }
+          if (collection === 'nodes'){
+            const n = nodeById(id);
+            if (n){ delete n.archived; delete n.archivedAt; delete n.archivedBy; }
+          } else if (collection === 'edges'){
+            const e = edgeById(id);
+            if (e){ delete e.archived; delete e.archivedAt; delete e.archivedBy; }
+          } else if (collection === 'routes'){
+            const r = routeById(id);
+            if (r){ delete r.archived; delete r.archivedAt; delete r.archivedBy; }
+          }
+          pushHistory();
+          render();
           toast(`已恢复${ARCHIVE_COLLECTION_LABEL[collection] || '对象'}：${String(item.name || id)}`);
-          await render();
-        } catch (error) {
+          await renderArchiveList();
+        } catch (error){
           restore.disabled = false;
-          status.textContent = `恢复失败：${error?.message || '请稍后重试'}`;
-          bridge.logError?.('archive.restore.failed', error, { collection, id });
+          statusEl.textContent = `恢复失败：${error?.message || '请稍后重试'}`;
+          bridge?.logError?.('archive.restore.failed', error, { collection, id });
           toast('恢复失败，归档对象仍保留。');
         }
       };
-      const purge = document.createElement('button'); purge.type = 'button'; purge.textContent = '永久清除';
-      purge.style.cssText = 'border:1px solid color-mix(in srgb,var(--danger) 45%,var(--line));border-radius:7px;background:transparent;color:var(--danger);padding:5px 9px;font:inherit;font-size:12px;cursor:pointer';
+
+      const purge = document.createElement('button');
+      purge.type = 'button';
+      purge.textContent = '永久清除';
+      purge.style.cssText = 'border:1px solid color-mix(in srgb,var(--danger) 45%,var(--line));border-radius:7px;background:transparent;color:var(--danger);padding:5px 10px;font:inherit;font-size:12px;cursor:pointer';
       purge.onclick = async () => {
         if (!window.confirm(`永久清除“${String(item.name || id)}”及其资料包？此操作不可撤销。`)) return;
         const confirmation = window.prompt(`请输入对象 ID“${id}”以确认永久清除：`, '');
@@ -2087,20 +2374,36 @@ async function openArchiveDialog(){
         if (confirmation !== id) { toast('确认文本不匹配，未执行永久清除。'); return; }
         purge.disabled = true;
         try {
-          await bridge.purgeArchived(collection, id, confirmation);
+          if (bridge?.active && typeof bridge.purgeArchived === 'function'){
+            await bridge.purgeArchived(collection, id, confirmation);
+          }
+          if (collection === 'nodes') S.nodes = S.nodes.filter(x => x.id !== id);
+          else if (collection === 'edges') S.edges = S.edges.filter(x => x.id !== id);
+          else if (collection === 'routes') S.routes = S.routes.filter(x => x.id !== id);
+          pushHistory();
+          render();
           toast(`已永久清除：${String(item.name || id)}`);
-          await render();
-        } catch (error) {
+          await renderArchiveList();
+        } catch (error){
           purge.disabled = false;
-          status.textContent = `永久清除失败：${error?.message || '请稍后重试'}`;
-          bridge.logError?.('archive.purge.failed', error, { collection, id });
+          statusEl.textContent = `永久清除失败：${error?.message || '请稍后重试'}`;
+          bridge?.logError?.('archive.purge.failed', error, { collection, id });
           toast('永久清除失败，归档对象仍保留。');
         }
       };
-      actions.append(restore, purge); row.append(info, actions); list.appendChild(row);
+
+      actions.append(restore, purge);
+      row.append(tag, info, actions);
+      listEl.appendChild(row);
     }
   };
-  void render();
+
+  void renderArchiveList();
+}
+
+/* 兼容现有调用与单元测试入口 */
+function openArchiveDialog(){
+  return openSettingsSpace('archive');
 }
 /* ---------- 项目 / 地图 弹层(带搜索) ---------- */
 const popover = $('#popover');
