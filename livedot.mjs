@@ -1230,9 +1230,9 @@ var init_shared = __esm({
 
 // src/cli/livedot.ts
 import { randomUUID as randomUUID12 } from "node:crypto";
-import { access as access5, lstat as lstat9, mkdir as mkdir13, readFile as readFile15, readdir as readdir7, rename as rename10, writeFile as writeFile7 } from "node:fs/promises";
+import { access as access5, lstat as lstat9, mkdir as mkdir13, readFile as readFile15, readdir as readdir7, rename as rename10, stat as stat8, writeFile as writeFile7 } from "node:fs/promises";
 import { constants as constants3 } from "node:fs";
-import { dirname as dirname13, join as join20, resolve as resolve17 } from "node:path";
+import { dirname as dirname14, join as join20, resolve as resolve17 } from "node:path";
 import { homedir as homedir8 } from "node:os";
 import { spawn as spawn4 } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -2452,14 +2452,36 @@ var ProjectStore = class _ProjectStore {
 import { randomBytes as randomBytes3, randomUUID as randomUUID8, createHash as createHash8, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { access as access4, mkdir as mkdir9, readFile as readFile11, rename as rename6, rm as rm6, writeFile as writeFile3 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname9, isAbsolute as isAbsolute4, join as join18, resolve as resolve15 } from "node:path";
+import { basename as basename5, dirname as dirname10, isAbsolute as isAbsolute4, join as join18, resolve as resolve15 } from "node:path";
 import { spawn as spawn3 } from "node:child_process";
 import { homedir as homedir6 } from "node:os";
 
 // src/bridge/current-project.mjs
+import { lstatSync, readFileSync } from "node:fs";
 import { readFile as readFile4 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join as join4, resolve as resolve2 } from "node:path";
+import { dirname as dirname3, join as join4, resolve as resolve2 } from "node:path";
+function resolveGitWorktreeMain(dir) {
+  if (!dir || typeof dir !== "string") return null;
+  try {
+    const gitPath = join4(dir, ".git");
+    const stat9 = lstatSync(gitPath);
+    if (stat9.isFile()) {
+      const content = readFileSync(gitPath, "utf8").trim();
+      const match = content.match(/^gitdir:\s*(.+)$/m);
+      if (match) {
+        const gitdir = resolve2(dir, match[1]);
+        const idx = gitdir.replace(/\\/g, "/").lastIndexOf("/.git/worktrees/");
+        if (idx !== -1) {
+          const mainGitDir = gitdir.slice(0, idx + 5);
+          return dirname3(mainGitDir);
+        }
+      }
+    }
+  } catch {
+  }
+  return null;
+}
 function currentProjectFile() {
   return process.env.LIVEDOT_CURRENT_PROJECT_FILE || join4(homedir(), ".live-dot-map", "current-project.json");
 }
@@ -2486,13 +2508,28 @@ async function readCurrentProject(options = {}) {
 }
 async function resolveProjectRootToUse(pointerRoot, fallbackRoot, options = {}) {
   const candidate = pointerRoot ?? await readCurrentProject(options).catch(() => null);
-  if (!candidate) return fallbackRoot;
-  try {
-    const resolved = await canonicalDirectory(candidate);
-    return resolved;
-  } catch {
-    return fallbackRoot;
+  if (candidate) {
+    try {
+      const resolved = await canonicalDirectory(candidate);
+      return resolved;
+    } catch {
+    }
   }
+  if (fallbackRoot) {
+    const worktreeMain = resolveGitWorktreeMain(fallbackRoot);
+    if (worktreeMain) {
+      try {
+        const resolvedMain = await canonicalDirectory(worktreeMain);
+        return resolvedMain;
+      } catch {
+      }
+    }
+    try {
+      return await canonicalDirectory(fallbackRoot);
+    } catch {
+    }
+  }
+  return fallbackRoot;
 }
 
 // src/bridge/logger.mjs
@@ -2589,7 +2626,7 @@ import {
   realpath as realpath3,
   stat as stat3
 } from "node:fs/promises";
-import { dirname as dirname3, isAbsolute as isAbsolute2, join as join6, relative as relative2, resolve as resolve3, sep } from "node:path";
+import { dirname as dirname4, isAbsolute as isAbsolute2, join as join6, relative as relative2, resolve as resolve3, sep } from "node:path";
 var MAX_MARKDOWN_BYTES = 2 * 1024 * 1024;
 var MAX_MARKDOWN_PATH = 1024;
 function inRoot(root, candidate) {
@@ -2636,7 +2673,7 @@ async function ensureNoSymlink(root, candidate, { allowMissing = true } = {}) {
   if (candidateStat && !candidateStat.isFile()) {
     throw new BridgeError("MARKDOWN_NOT_FILE", "Markdown \u8DEF\u5F84\u4E0D\u662F\u6587\u4EF6", { status: 409 });
   }
-  while (cursor !== rootReal && cursor !== dirname3(cursor)) {
+  while (cursor !== rootReal && cursor !== dirname4(cursor)) {
     try {
       const info = await lstat3(cursor);
       if (info.isSymbolicLink()) throw new BridgeError("MARKDOWN_SYMLINK_FORBIDDEN", "\u4E0D\u5141\u8BB8\u901A\u8FC7\u7B26\u53F7\u94FE\u63A5\u8BBF\u95EE Markdown", { status: 403 });
@@ -2646,7 +2683,7 @@ async function ensureNoSymlink(root, candidate, { allowMissing = true } = {}) {
     } catch (error3) {
       if (error3?.code !== "ENOENT") throw error3;
       if (!allowMissing) throw new BridgeError("MARKDOWN_NOT_FOUND", "Markdown \u6587\u4EF6\u4E0D\u5B58\u5728", { status: 404 });
-      cursor = dirname3(cursor);
+      cursor = dirname4(cursor);
     }
   }
   return { root: rootReal, stat: candidateStat };
@@ -2695,7 +2732,7 @@ var MarkdownStore = class {
       if (!create) return { path, content: "", exists: false, created: false, size: 0, etag: digest(""), updatedAt: null };
       const initial = initialMarkdown(path, title);
       if (Buffer.byteLength(initial, "utf8") > MAX_MARKDOWN_BYTES) throw new BridgeError("MARKDOWN_TOO_LARGE", "Markdown \u5185\u5BB9\u8D85\u8FC7 2 MiB \u9650\u5236", { status: 413 });
-      await mkdir4(dirname3(candidate), { recursive: true });
+      await mkdir4(dirname4(candidate), { recursive: true });
       await ensureNoSymlink(this.projectRoot, candidate, { allowMissing: true });
       try {
         await atomicWriteFile(candidate, initial);
@@ -2729,7 +2766,7 @@ var MarkdownStore = class {
     const path = normalizeRelativePath(requestedPath);
     const lockPath = this.#lockPath(path);
     try {
-      await ensureDirectory(dirname3(lockPath));
+      await ensureDirectory(dirname4(lockPath));
       await ensureNoSymlink(this.projectRoot, lockPath, { allowMissing: true });
       return await withFileLock(lockPath, () => this.#readUnlocked(path, options), { timeoutMs: 5e3, staleMs: 3e4 });
     } catch (error3) {
@@ -2748,7 +2785,7 @@ var MarkdownStore = class {
     const path = normalizeRelativePath(requestedPath);
     const lockPath = this.#lockPath(path);
     try {
-      await ensureDirectory(dirname3(lockPath));
+      await ensureDirectory(dirname4(lockPath));
       await ensureNoSymlink(this.projectRoot, lockPath, { allowMissing: true });
       return await withFileLock(lockPath, async () => {
         const { candidate } = await this.#target(path, { allowMissing: true });
@@ -2765,7 +2802,7 @@ var MarkdownStore = class {
             details: current ? { current: { path: current.path, content: current.content, size: current.size, etag: current.etag, updatedAt: current.updatedAt } } : { current: null }
           });
         }
-        await mkdir4(dirname3(candidate), { recursive: true });
+        await mkdir4(dirname4(candidate), { recursive: true });
         await ensureNoSymlink(this.projectRoot, candidate, { allowMissing: true });
         await atomicWriteFile(candidate, content);
         const metadata = await stat3(candidate);
@@ -2964,9 +3001,9 @@ var MdIndex = class {
   /** 取一张卡；指纹对不上/缺失则重读该文件刷新。mapRoot 用于拼绝对路径。 */
   async getOrRefreshCard({ mapRoot, relativePath }) {
     const absolute = join8(this.projectRoot, relativePath);
-    let stat8;
+    let stat9;
     try {
-      stat8 = await this.fs.stat(absolute);
+      stat9 = await this.fs.stat(absolute);
     } catch (error3) {
       if (error3?.code === "ENOENT") {
         this.#cards.delete(relativePath);
@@ -2976,20 +3013,20 @@ var MdIndex = class {
       throw error3;
     }
     const existing = this.#cards.get(relativePath);
-    const fresh = !existing || existing.mtimeMs !== stat8.mtimeMs || existing.bytes !== stat8.size;
+    const fresh = !existing || existing.mtimeMs !== stat9.mtimeMs || existing.bytes !== stat9.size;
     if (!fresh) return existing;
     const content = await this.fs.readFile(absolute, "utf8");
     const card = {
       path: relativePath,
       etag: digest2(content),
-      mtimeMs: stat8.mtimeMs,
-      bytes: stat8.size,
+      mtimeMs: stat9.mtimeMs,
+      bytes: stat9.size,
       title: firstHeading(content) || "",
       summary: visibleSummary(content),
       ownerKind: typeof existing?.ownerKind === "string" ? existing.ownerKind : inferOwnerKind(relativePath),
       ownerId: typeof existing?.ownerId === "string" ? existing.ownerId : inferOwnerId(relativePath),
       assets: existing?.assets ?? [],
-      updatedAt: stat8.mtime?.toISOString?.() ?? new Date(stat8.mtimeMs).toISOString()
+      updatedAt: stat9.mtime?.toISOString?.() ?? new Date(stat9.mtimeMs).toISOString()
     };
     this.#cards.set(relativePath, card);
     this.#dirty = true;
@@ -3012,19 +3049,19 @@ var MdIndex = class {
       const relativePath = `${ownerRelative}/${entry.name}`;
       try {
         const absolute = join8(directory, entry.name);
-        const stat8 = await this.fs.stat(absolute);
+        const stat9 = await this.fs.stat(absolute);
         const content = await this.fs.readFile(absolute, "utf8");
         this.#cards.set(relativePath, {
           path: relativePath,
           etag: digest2(content),
-          mtimeMs: stat8.mtimeMs,
-          bytes: stat8.size,
+          mtimeMs: stat9.mtimeMs,
+          bytes: stat9.size,
           title: firstHeading(content) || "",
           summary: visibleSummary(content),
           ownerKind: ownerKind === "nodes" ? "node" : "route",
           ownerId,
           assets,
-          updatedAt: stat8.mtime?.toISOString?.() ?? new Date(stat8.mtimeMs).toISOString()
+          updatedAt: stat9.mtime?.toISOString?.() ?? new Date(stat9.mtimeMs).toISOString()
         });
       } catch {
       }
@@ -3060,10 +3097,10 @@ var MdIndex = class {
     return this.#cards.size;
   }
   /** 校验某张卡是否仍新鲜（只 lstat，不读内容）。返回 null 表示已失效。 */
-  async isFresh(path, stat8) {
+  async isFresh(path, stat9) {
     const card = this.#cards.get(path);
     if (!card) return false;
-    return card.mtimeMs === stat8.mtimeMs && card.bytes === stat8.size;
+    return card.mtimeMs === stat9.mtimeMs && card.bytes === stat9.size;
   }
   async #withLock(operation) {
     await ensureDirectory(join8(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
@@ -3115,7 +3152,7 @@ import {
   stat as stat5
 } from "node:fs/promises";
 import { randomBytes as randomBytes2, createHash as createHash4 } from "node:crypto";
-import { basename as basename2, dirname as dirname4, extname, join as join9, relative as relative3, resolve as resolve6, sep as sep2 } from "node:path";
+import { basename as basename2, dirname as dirname5, extname, join as join9, relative as relative3, resolve as resolve6, sep as sep2 } from "node:path";
 var MAX_ASSET_BYTES = 20 * 1024 * 1024;
 var MAX_BUNDLE_FILES = 200;
 var MAX_MAP_ASSET_BYTES = 1024 * 1024 * 1024;
@@ -3290,7 +3327,7 @@ var BundleStore = class _BundleStore {
       } else if (!allowMissing) {
         throw bridgeError("BUNDLE_NOT_FOUND", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5B58\u5728", 404, { path: cursor });
       }
-      const parent = dirname4(cursor);
+      const parent = dirname5(cursor);
       if (parent === cursor || !within(rootReal, parent)) break;
       cursor = parent;
     }
@@ -3655,7 +3692,7 @@ ${right}`;
   }
   async #consumeStream(stream, temporary) {
     if (!stream || typeof stream[Symbol.asyncIterator] !== "function") throw bridgeError("BUNDLE_STREAM_REQUIRED", "\u9644\u4EF6\u5FC5\u987B\u901A\u8FC7\u53EF\u8BFB\u6D41\u5BFC\u5165", 400);
-    await ensureDirectory(dirname4(temporary));
+    await ensureDirectory(dirname5(temporary));
     const handle = await open2(temporary, "wx", 384);
     let size = 0;
     const chunks = [];
@@ -4873,7 +4910,7 @@ var ArchiveLifecycle = class {
 import { spawn } from "node:child_process";
 import { access, lstat as lstat7 } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname as dirname5, join as join14, resolve as resolve10, sep as sep4 } from "node:path";
+import { dirname as dirname6, join as join14, resolve as resolve10, sep as sep4 } from "node:path";
 var TRANSACTION_ID = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function failure(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
@@ -4883,7 +4920,7 @@ function defaultNativeHelperPath(options = {}) {
   const fromEnv = options.envHelper ?? process.env.LIVEDOT_NATIVE_HELPER;
   if (fromEnv && existsSync(fromEnv)) return resolve10(fromEnv);
   const execPath = options.execPath ?? process.execPath;
-  const fromExec = join14(dirname5(resolve10(execPath)), "..", "LiveDotMapSetup.exe");
+  const fromExec = join14(dirname6(resolve10(execPath)), "..", "LiveDotMapSetup.exe");
   if (existsSync(fromExec)) return fromExec;
   const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
   if (!localAppData) return null;
@@ -4991,7 +5028,7 @@ import { execFile as childExecFile, spawn as childSpawn } from "node:child_proce
 import { randomUUID as randomUUID5 } from "node:crypto";
 import { homedir as homedir3 } from "node:os";
 import { lstat as lstat8, mkdir as mkdir7, readdir as readdir6, readFile as readFile9, realpath as realpath6, stat as stat6 } from "node:fs/promises";
-import { dirname as dirname6, isAbsolute as isAbsolute3, join as join15, relative as relative5, resolve as resolve11, win32 } from "node:path";
+import { dirname as dirname7, isAbsolute as isAbsolute3, join as join15, relative as relative5, resolve as resolve11, win32 } from "node:path";
 var SETTINGS_VERSION = 1;
 var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "system", "folder", "manual"]);
 var EXE_NAME = /^(Code|Antigravity|pycharm64)\.exe$/i;
@@ -5216,7 +5253,7 @@ var EditorService = class _EditorService {
         break;
       } catch (error3) {
         if (!allowMissing || error3?.code !== "ENOENT") throw error3;
-        const parent = dirname6(current);
+        const parent = dirname7(current);
         if (parent === current) throw error3;
         current = parent;
       }
@@ -5429,7 +5466,7 @@ var EditorService = class _EditorService {
     return { id: "manual", label: "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F", available: true };
   }
   async #writeSettings() {
-    await mkdir7(dirname6(this.settingsPath), { recursive: true });
+    await mkdir7(dirname7(this.settingsPath), { recursive: true });
     const output = {
       version: SETTINGS_VERSION,
       preferredEditorId: this.settings.preferredEditorId || null,
@@ -5463,7 +5500,7 @@ var EditorService = class _EditorService {
     if (editorId === "folder") {
       const candidate = await this.#projectPath(relativePath, { kind: targetKind === "directory" ? "directory" : "file" });
       const metadata = await stat6(candidate);
-      const folder = isDirectory(metadata) ? candidate : dirname6(candidate);
+      const folder = isDirectory(metadata) ? candidate : dirname7(candidate);
       await this.#assertNoSymlinkEscape(folder);
       await this.#callNative("open-folder", { targetPath: isDirectory(metadata) ? folder : candidate });
       return { editorId, launched: true };
@@ -5636,7 +5673,7 @@ import { createHash as createHash7, randomUUID as randomUUID7 } from "node:crypt
 import { execFile } from "node:child_process";
 import { access as access3, copyFile as copyFile3, mkdir as mkdir8, readFile as readFile10, rename as rename5, rm as rm5, stat as stat7, writeFile as writeFile2 } from "node:fs/promises";
 import { constants as constants2 } from "node:fs";
-import { basename as basename4, dirname as dirname8, join as join17, resolve as resolve14 } from "node:path";
+import { basename as basename4, dirname as dirname9, join as join17, resolve as resolve14 } from "node:path";
 import { homedir as homedir5 } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -6316,7 +6353,7 @@ function projectIdForRoot(projectRoot) {
 // agent-kit/lib/shortcut.mjs
 import { execFileSync } from "node:child_process";
 import { homedir as homedir4 } from "node:os";
-import { dirname as dirname7, join as join16, resolve as resolve13 } from "node:path";
+import { dirname as dirname8, join as join16, resolve as resolve13 } from "node:path";
 function windowsDesktopDirectory({ platform = process.platform, env = process.env, exec = execFileSync } = {}) {
   if (platform !== "win32") return join16(homedir4(), "Desktop");
   try {
@@ -6410,7 +6447,7 @@ var map_template_default = {
 var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code", "antigravity"]);
 var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
-var skillTargetPaths = (home, id) => id === "codex" ? join17(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join17(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join17(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : join17(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
+var skillTargetPaths = (home, id) => id === "codex" ? join17(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join17(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join17(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : join17(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
 var kimiPluginRoot = (home) => join17(home, ".kimi-code", "plugins", "live-dot-map");
 var codebuddyPluginRoot = (home) => join17(home, ".codebuddy", "plugins", "live-dot-map");
 var ADAPTER_PROBES = Object.freeze({
@@ -6441,7 +6478,7 @@ async function exists2(path) {
   }
 }
 async function atomicText(path, text) {
-  await mkdir8(dirname8(path), { recursive: true });
+  await mkdir8(dirname9(path), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${randomUUID7()}`;
   await writeFile2(temp, text, { encoding: "utf8", flag: "wx" });
   await rename5(temp, path);
@@ -6474,7 +6511,7 @@ async function captureFile(path) {
 async function restoreCapturedFile(entry) {
   if (entry?.kind === "directory") return;
   if (entry?.exists) {
-    await mkdir8(dirname8(entry.path), { recursive: true });
+    await mkdir8(dirname9(entry.path), { recursive: true });
     await writeFile2(entry.path, Buffer.from(String(entry.content || ""), "base64"));
   } else {
     await rm5(entry.path, { force: true }).catch(() => void 0);
@@ -6524,7 +6561,7 @@ async function discoverEmbeddedCodeBuddy({ platform = process.platform } = {}) {
     return [match[1].trim().replace(/^"|"$/g, "").replace(/,\d+$/, "")];
   }));
   for (const iconPath of iconPaths) {
-    const installRoot = dirname8(iconPath);
+    const installRoot = dirname9(iconPath);
     const candidate = join17(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
     if (await exists2(candidate)) return candidate;
   }
@@ -6638,7 +6675,7 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
   await atomicJson(mcpPath, mcp);
   const plugin = kimiPluginRoot(home);
   const pluginRuntime = join17(plugin, "runtime", "livedot.mjs");
-  await mkdir8(dirname8(pluginRuntime), { recursive: true });
+  await mkdir8(dirname9(pluginRuntime), { recursive: true });
   if (!seaRuntime()) await copyFile3(runtime, pluginRuntime);
   const manifest = {
     name: "livedot-map",
@@ -6742,7 +6779,10 @@ async function installProject({
   let createdMapsLayout = false;
   const touched = /* @__PURE__ */ new Set([configPath, ...runtime ? [runtime] : []]);
   for (const id of /* @__PURE__ */ new Set([...Object.keys(old.installed || {}), ...Object.keys(installed)])) for (const path of adapterConfigPaths(home, id)) touched.add(path);
-  for (const id of Object.keys(installed)) touched.add(skillTargetPaths(home, id));
+  for (const id of Object.keys(installed)) {
+    const target = skillTargetPaths(home, id);
+    if (target) touched.add(target);
+  }
   const existingBackup = await readJson2(backupPath, null);
   const backupFiles = new Map(Array.isArray(existingBackup?.files) ? existingBackup.files.map((entry) => [entry.path, entry]) : []);
   for (const path of touched) if (!backupFiles.has(path)) backupFiles.set(path, await captureFile(path));
@@ -6765,7 +6805,8 @@ async function installProject({
     }
     for (const id of Object.keys(installed)) {
       const target = skillTargetPaths(home, id);
-      await mkdir8(dirname8(target), { recursive: true });
+      if (!target) continue;
+      await mkdir8(dirname9(target), { recursive: true });
       await copyFile3(canonicalSkill, target);
     }
     if (!oldMap.exists && !mapsLayoutExists) {
@@ -6947,7 +6988,7 @@ async function recordRecentProject(root) {
   } catch {
   }
   recent = [root, ...recent.filter((item) => item !== root)].slice(0, 15);
-  await mkdir9(dirname9(RECENT_PROJECTS_FILE()), { recursive: true });
+  await mkdir9(dirname10(RECENT_PROJECTS_FILE()), { recursive: true });
   await writeFile3(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
 `, "utf8");
 }
@@ -7184,15 +7225,15 @@ async function refreshAgentRuntime({ runtimeSource, homeRoot } = {}) {
   if (source.toLowerCase() === target.toLowerCase()) return false;
   const [sourceHash, targetHash] = await Promise.all([sha256File(source), sha256File(target)]);
   if (!sourceHash || sourceHash === targetHash) return false;
-  const temp = join18(dirname9(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
-  await mkdir9(dirname9(target), { recursive: true });
+  const temp = join18(dirname10(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
+  await mkdir9(dirname10(target), { recursive: true });
   await writeFile3(temp, await readFile11(source));
   await rename6(temp, target);
   return true;
 }
 function runtimeSources({ sourceRoot, runtimeSource } = {}) {
   const entry = process.argv[1] ? resolve15(process.argv[1]) : "";
-  const entryRoot = entry ? dirname9(entry) : "";
+  const entryRoot = entry ? dirname10(entry) : "";
   const roots = [
     sourceRoot,
     process.env.LIVEDOT_AGENT_KIT_SOURCE,
@@ -7414,7 +7455,7 @@ async function createBridgeServer({
   // 安装版：桥 exe 位于 <安装目录>/current/payload/，payload-manifest.json 就在旁边。
   // 用 exe 自身目录而不是 process.cwd()：启动器「正常启动」与更新器「重启」的 cwd 不一致，
   // 以 cwd 为准会导致正常启动时读不到本地安装信息（current:null），更新判定失效。
-  installRoot = process.execPath ? dirname9(resolve15(process.execPath)) : process.cwd(),
+  installRoot = process.execPath ? dirname10(resolve15(process.execPath)) : process.cwd(),
   spawnUpdater = null,
   restartOnUpdate = true,
   shutdownHandler = null
@@ -7751,7 +7792,7 @@ async function createBridgeServer({
     const buffer = Buffer.from(await response.arrayBuffer());
     const actual = createHash8("sha256").update(buffer).digest("hex");
     if (actual !== meta.sha256.toLowerCase()) throw new BridgeError("UPDATE_CHECKSUM_MISMATCH", `\u66F4\u65B0\u5305\u6821\u9A8C\u5931\u8D25\uFF08${label} \u4E0E\u6E05\u5355\u4E0D\u4E00\u81F4\uFF0C\u6587\u4EF6\u53EF\u80FD\u635F\u574F\u6216\u88AB\u7BE1\u6539\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62\uFF0C\u73B0\u6709\u7248\u672C\u4E0D\u53D7\u5F71\u54CD`, { status: 502 });
-    await mkdir9(dirname9(target), { recursive: true });
+    await mkdir9(dirname10(target), { recursive: true });
     await writeFile3(target, buffer);
   }
   async function applyUpdate() {
@@ -8679,13 +8720,13 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
 // src/bridge/project-registry.mjs
 import { randomBytes as randomBytes5, randomUUID as randomUUID10 } from "node:crypto";
 import { chmod as chmod2, mkdir as mkdir11, readFile as readFile13, rename as rename8, writeFile as writeFile5 } from "node:fs/promises";
-import { dirname as dirname11 } from "node:path";
+import { dirname as dirname12 } from "node:path";
 
 // src/bridge/runtime-state.mjs
 import { randomBytes as randomBytes4, randomUUID as randomUUID9 } from "node:crypto";
 import { execFile as execFile2 } from "node:child_process";
 import { chmod, mkdir as mkdir10, open as open3, readFile as readFile12, rename as rename7, rm as rm7, writeFile as writeFile4 } from "node:fs/promises";
-import { dirname as dirname10, join as join19, resolve as resolve16 } from "node:path";
+import { dirname as dirname11, join as join19, resolve as resolve16 } from "node:path";
 import { homedir as homedir7 } from "node:os";
 import { promisify } from "node:util";
 var execFileAsync = promisify(execFile2);
@@ -8700,7 +8741,7 @@ async function privateDirectory(path) {
   await chmod(path, 448).catch(() => void 0);
 }
 async function atomicPrivateWrite(path, value) {
-  await privateDirectory(dirname10(path));
+  await privateDirectory(dirname11(path));
   const temporary = `${path}.${process.pid}.${randomUUID9()}.tmp`;
   await writeFile4(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod(temporary, 384).catch(() => void 0);
@@ -8754,7 +8795,7 @@ async function readOrCreateControlToken(runtimeStateDir) {
   }
   const token = randomBytes4(32).toString("base64url");
   try {
-    await privateDirectory(dirname10(path));
+    await privateDirectory(dirname11(path));
     await writeFile4(path, `${token}
 `, { encoding: "utf8", mode: 384, flag: "wx" });
     await chmod(path, 384).catch(() => void 0);
@@ -8768,7 +8809,7 @@ async function readOrCreateControlToken(runtimeStateDir) {
 }
 async function acquireSingletonLock(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).lock;
-  await privateDirectory(dirname10(path));
+  await privateDirectory(dirname11(path));
   let handle;
   try {
     handle = await open3(path, "wx", 384);
@@ -8862,7 +8903,7 @@ function handleValue() {
   return `ph_${randomBytes5(24).toString("base64url")}`;
 }
 async function atomicWrite(path, data) {
-  await mkdir11(dirname11(path), { recursive: true, mode: 448 });
+  await mkdir11(dirname12(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${randomUUID10()}.tmp`;
   await writeFile5(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod2(temporary, 384).catch(() => void 0);
@@ -8954,13 +8995,13 @@ var ProjectRegistry = class _ProjectRegistry {
 // src/bridge/session-store.mjs
 import { createHash as createHash9, randomBytes as randomBytes6, randomUUID as randomUUID11 } from "node:crypto";
 import { chmod as chmod3, mkdir as mkdir12, readFile as readFile14, rename as rename9, writeFile as writeFile6 } from "node:fs/promises";
-import { dirname as dirname12 } from "node:path";
+import { dirname as dirname13 } from "node:path";
 var SCHEMA_VERSION3 = 1;
 var DAY = 24 * 60 * 60 * 1e3;
 var secret = () => randomBytes6(32).toString("base64url");
 var digest5 = (value) => createHash9("sha256").update(String(value)).digest("base64url");
 async function atomicWrite2(path, content) {
-  await mkdir12(dirname12(path), { recursive: true, mode: 448 });
+  await mkdir12(dirname13(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${randomUUID11()}.tmp`;
   await writeFile6(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod3(temporary, 384).catch(() => void 0);
@@ -9194,7 +9235,7 @@ async function recordAgentHealth2(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: value?.code ?? "HOOK_FAILED", message: String(value?.message ?? value ?? "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await mkdir13(dirname13(path), { recursive: true });
+  await mkdir13(dirname14(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${randomUUID12()}.tmp`;
   try {
     await writeFile7(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
@@ -9210,23 +9251,23 @@ async function inspectProjectQualification(projectRoot) {
     return { ok: false, code: "PROJECT_NOT_FOUND", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u6709\u6548\u9879\u76EE\u76EE\u5F55\u3002" };
   }
   const dataDirectory = join20(root, ".live-dot-map");
-  const dataMetadata = await lstat9(dataDirectory).catch(() => null);
+  const dataMetadata = await stat8(dataDirectory).catch(() => null);
   if (!dataMetadata) return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u8FD8\u6CA1\u6709\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
-  if (!dataMetadata.isDirectory() || dataMetadata.isSymbolicLink()) {
+  if (!dataMetadata.isDirectory()) {
     return { ok: false, code: "PROJECT_LAYOUT_INVALID", message: "\u6D3B\u70B9\u5730\u56FE\u6570\u636E\u76EE\u5F55\u4E0D\u662F\u53EF\u5B89\u5168\u8BFB\u53D6\u7684\u76EE\u5F55\u3002" };
   }
   const marker = async (path) => {
-    const metadata = await lstat9(path).catch(() => null);
-    return Boolean(metadata && (metadata.isFile() || metadata.isSymbolicLink()));
+    const metadata = await stat8(path).catch(() => null);
+    return Boolean(metadata && metadata.isFile());
   };
   const legacy = await marker(join20(dataDirectory, "map.json"));
   const mapsPath = join20(dataDirectory, "maps");
-  const mapsMetadata = await lstat9(mapsPath).catch(() => null);
+  const mapsMetadata = await stat8(mapsPath).catch(() => null);
   let packageMap = false;
-  if (mapsMetadata?.isDirectory() && !mapsMetadata.isSymbolicLink()) {
+  if (mapsMetadata?.isDirectory()) {
     const entries = await readdir7(mapsPath, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      if (!entry.isDirectory()) continue;
       if (await marker(join20(mapsPath, entry.name, "map.json"))) {
         packageMap = true;
         break;
@@ -9296,8 +9337,8 @@ async function probeBridgeControl(handle) {
 async function resolveAppHtmlPath(explicit) {
   const candidates = [];
   if (explicit) candidates.push(explicit);
-  if (process.argv[1]) candidates.push(join20(dirname13(resolve17(process.argv[1])), "app.html"));
-  candidates.push(join20(dirname13(process.execPath), "app.html"));
+  if (process.argv[1]) candidates.push(join20(dirname14(resolve17(process.argv[1])), "app.html"));
+  candidates.push(join20(dirname14(process.execPath), "app.html"));
   candidates.push(join20(homedir8(), ".live-dot-map", "app.html"));
   candidates.push(join20(process.cwd(), "app.html"));
   for (const candidate of [...new Set(candidates)]) {
@@ -9361,11 +9402,11 @@ async function forwardToolCall(handle, targetRoot, actor, name, args) {
 }
 async function runMcpProxy(projectRoot, actor, options) {
   const root = resolve17(projectRoot);
-  const qualification = await inspectProjectQualification(root);
+  let currentRoot = await resolveProjectRootToUse(null, root);
+  let qualification = await inspectProjectQualification(currentRoot);
   const logger = qualification.ok ? createLogger({ source: "agent" }) : noopLogger;
-  let currentRoot = root;
   let bridge = null;
-  if (qualification.ok) await logger.info("agent.mcp.start", { project: root, actor, pid: process.pid, mode: "proxy" });
+  if (qualification.ok) await logger.info("agent.mcp.start", { project: currentRoot, actor, pid: process.pid, mode: "proxy" });
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
     let request;
@@ -9381,14 +9422,16 @@ async function runMcpProxy(projectRoot, actor, options) {
       if (request.method === "initialize") result2 = { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "live-dot-map", version: "2.0.0" } };
       else if (request.method === "tools/list") result2 = { tools: toolDefinitions };
       else if (request.method === "tools/call") {
-        if (!qualification.ok) {
-          result2 = unavailableToolResult(qualification);
+        const targetRoot = await resolveProjectRootToUse(null, currentRoot);
+        const activeQual = await inspectProjectQualification(targetRoot);
+        if (!activeQual.ok) {
+          result2 = unavailableToolResult(activeQual);
         } else {
+          currentRoot = targetRoot;
+          qualification = activeQual;
           const params = request.params;
           const name = String(params.name);
           const callArgs = params.arguments ?? {};
-          const targetRoot = await resolveProjectRootToUse(null, currentRoot);
-          currentRoot = targetRoot;
           let value;
           let lastError = null;
           for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -9527,7 +9570,7 @@ async function runHook(kind, args) {
       deliveredIds = newAnns.map((ann) => String(ann.id));
     }
     if (changes.length || deliveredIds.length) {
-      await mkdir13(dirname13(watermarkPath), { recursive: true });
+      await mkdir13(dirname14(watermarkPath), { recursive: true });
       await writeFile7(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
 `, "utf8");
       const newCount = changes.filter((item) => item.label === "\u6807\u6CE8" && item.attention === "new").length;
@@ -9676,7 +9719,7 @@ async function main() {
     }
     const appPath = resolve17(typeof args.app === "string" ? args.app : join20(process.cwd(), "app.html"));
     const appHtml = await readFile15(appPath, "utf8");
-    const assetRoot = dirname13(appPath);
+    const assetRoot = dirname14(appPath);
     const staticAssets = {};
     for (const [urlPath, file, type] of [
       ["/sw.js", "sw.js", "text/javascript; charset=utf-8"],
@@ -9740,7 +9783,7 @@ async function main() {
   if (command2 === "install") {
     const root = resolve17(typeof args.project === "string" ? args.project : process.cwd());
     const runtimeSource = process.env.LIVEDOT_RUNTIME_SOURCE || process.argv[1] || process.cwd();
-    const appPath = resolve17(typeof args.app === "string" ? args.app : join20(dirname13(runtimeSource), "app.html"));
+    const appPath = resolve17(typeof args.app === "string" ? args.app : join20(dirname14(runtimeSource), "app.html"));
     const install = installProject;
     const result2 = await install({ projectRoot: root, runtimeSource, appPath, createDesktopShortcut: args["no-shortcut"] !== true, register: false });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
