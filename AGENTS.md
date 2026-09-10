@@ -1,23 +1,21 @@
-# AGENTS.md — 活点地图
-> 本文件只做项目路由；按任务读取对应文档，不在这里记录阶段历史。
+# AGENTS.md — 活点地图（Live Dot Map）
 
-## 先读什么
-- 方向、阶段与边界：`goal.md`
-- 产品定义与功能规则：`产品需求文档-PRD.md`
-- 执行历史与验证方法：`implement.md`
-- 界面与品牌：`UI设计需求文档.md`、`brand-spec.md`
-- 走查问题与当前计划：`设计细节.md`、`docs/真实用户实测记录.md`、`docs/plans/`
-- 数据与 Agent 协议：`docs/map-json-v2.md`、`docs/agent-protocol.md`（v1 仅作迁移历史）
-- 底层技术与记忆演化整合：`docs/技术架构与记忆演化.md`
+> **全局记忆原则**：本项目的所有业务状态、阶段目标、设计决策、走查问题与上下文记忆，**已全面由「活点地图」动态接管与维护**。
+> 根目录下的历史文档（如 `goal.md`、`implement.md`、旧 PRD 等）仅作为早期归档遗迹，**不再作为当前任务的决策依据**。
 
-## 项目边界
-- `canvas.html` 是冻结的验收样板；正式产品在 `app.html` 演进。
-- `landing/` 是落地页源代码（Next.js 静态导出）；`landing.html` 仅保留为旧版参考，不再作为发布入口。
-- 发布 landing 时在 `landing/` 执行 `npm run build:deploy`，只更新 `.deploy/` 的静态导出文件；不得覆盖其中的 `app.html`、`agent-kit/` 与 PWA 文件。
-- 界面文案、代码注释和文档使用简体中文。
-- 颜色使用 `:root` 的 OKLch 令牌并同步 `brand-spec.md`；绿、红、灰只表达方案状态。
-- 数据读写遵守 `docs/map-json-v2.md`；协议改动同步 `docs/agent-protocol.md` 与 `agent-kit/`。
-- Excalidraw fork 仅作参考；复制其代码须保留 MIT 版权与许可。
+## 记忆与上下文获取协议
+1. **MCP 优先**：任何 Agent 进入本项目，优先调用 `livedot-map` MCP 工具（如 `map_get_context`、`map_list_human_updates`、`map_read_markdown` 等）获取实时全局记忆与节点事实。
+2. **文件直读**：若未配置 MCP，直接读取本地 `.live-dot-map/` 目录中的地图事实 (`map.json`) 与节点资料包 (`nodes/`)。
 
-## 工作约定
-- 修改前读相关文档；完成后把重大方向更新到 `goal.md`，执行与验证追加到 `implement.md`。
+## 多工位（Git Worktree）协作准则
+本项目采用多工位物理隔离并行开发，各工位职责明确：
+- **`ui设计 html/`**：主控工位（`master` 分支），专门负责全局汇总合并、构建打包、部署发布（`landing/`、`.deploy/`）与线上运维。
+- **`live-dot-map-ui/`**：前端设计工位（`ui-exp-minimal-zen` 分支），专门负责 `app.html` 界面交互、视觉设计与自动化走查测试。
+- **`live-dot-map-backend/`**：后端架构工位（`feat-backend-memory` 分支），专门负责记忆演化算法、节点生命周期与核心数据协议。
+- **`live-dot-map-adapter/`**：适配与连接工位（`feat-agent-adapter` 分支），专门负责与 Antigravity、Claude Code、Cursor 等各家 Agent 的 MCP 通信、共享记忆与稳定性测试。
+
+## 项目硬性边界
+- 界面文案、代码注释和文档统一使用简体中文。
+- `canvas.html` 是早期冻结的原型样板；所有正式产品功能的迭代演化均在 `app.html` 中进行。
+- 颜色令牌严格使用 `:root` 的 OKLch 变量，绿、红、灰仅用于表达方案状态。
+- 数据读写与协议设计严格遵守 Map JSON v2 规范。
