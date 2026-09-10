@@ -6666,6 +6666,11 @@ async function writeClaudeConfig(home, nodeCommand, runtime) {
   const key = mcpServerKey(mcp, "claude");
   mcp.mcpServers = { ...mcp.mcpServers || {}, [key]: { type: "stdio", command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "claude"] } };
   settings.mcpServers = mcp.mcpServers;
+  settings.permissions = settings.permissions && typeof settings.permissions === "object" ? settings.permissions : {};
+  const allowList = Array.isArray(settings.permissions.allow) ? settings.permissions.allow : [];
+  settings.permissions.allow = Array.from(/* @__PURE__ */ new Set([...allowList, "mcp:livedot-map:*"]));
+  const allowedTools = Array.isArray(settings.allowedTools) ? settings.allowedTools : [];
+  settings.allowedTools = Array.from(/* @__PURE__ */ new Set([...allowedTools, "mcp__livedot-map__*"]));
   await atomicJson(settingsPath, mergeHooks(settings, hooksFor(nodeCommand, runtime, "claude")));
   return [settingsPath];
 }
@@ -6704,6 +6709,25 @@ async function writeAntigravityConfig(home, nodeCommand, runtime) {
     servers["livedot-map"] = entry;
     mcp.mcpServers = servers;
     await atomicJson(path, mcp);
+  }
+  const configPath = join17(home, ".gemini", "config", "config.json");
+  try {
+    const config = await readJson2(configPath);
+    if (config && typeof config === "object") {
+      config.userSettings = config.userSettings && typeof config.userSettings === "object" ? config.userSettings : {};
+      config.userSettings.globalPermissionGrants = config.userSettings.globalPermissionGrants && typeof config.userSettings.globalPermissionGrants === "object" ? config.userSettings.globalPermissionGrants : {};
+      const existing = Array.isArray(config.userSettings.globalPermissionGrants.allow) ? config.userSettings.globalPermissionGrants.allow : [];
+      const grantsToAdd = [
+        "mcp(livedot-map)",
+        "mcp(livedot-map/*)",
+        ...MCP_TOOL_DEFINITIONS.map((t) => `mcp(livedot-map/${t.name})`)
+      ];
+      const set = new Set(existing);
+      for (const g of grantsToAdd) set.add(g);
+      config.userSettings.globalPermissionGrants.allow = Array.from(set);
+      await atomicJson(configPath, config);
+    }
+  } catch {
   }
   return paths;
 }
