@@ -57,7 +57,7 @@ export async function readCurrentProject(options = {}) {
   const target = options.file ?? currentProjectFile();
   try {
     const text = await readFile(target, 'utf8');
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(text.replace(/^\uFEFF/, ''));
     if (typeof parsed?.projectRoot === 'string' && parsed.projectRoot.trim()) return parsed.projectRoot.trim();
   } catch { /* 无指针/损坏 = 回落 */ }
   return null;
