@@ -1,7 +1,33 @@
+import { lstatSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { atomicWriteFile, canonicalDirectory } from './fs-utils.mjs';
+
+/**
+ * 如果指定目录属于 Git linked worktree，解析并返回其主仓库物理根目录。
+ * 否则返回 null。
+ */
+export function resolveGitWorktreeMain(dir) {
+  if (!dir || typeof dir !== 'string') return null;
+  try {
+    const gitPath = join(dir, '.git');
+    const stat = lstatSync(gitPath);
+    if (stat.isFile()) {
+      const content = readFileSync(gitPath, 'utf8').trim();
+      const match = content.match(/^gitdir:\s*(.+)$/m);
+      if (match) {
+        const gitdir = resolve(dir, match[1]);
+        const idx = gitdir.replace(/\\/g, '/').lastIndexOf('/.git/worktrees/');
+        if (idx !== -1) {
+          const mainGitDir = gitdir.slice(0, idx + 5);
+          return dirname(mainGitDir);
+        }
+      }
+    }
+  } catch { /* 忽略权限或非 git 目录 */ }
+  return null;
+}
 
 /**
  * 全局「当前项目」指针 —— bug1（画布切项目 Agent 不知情）的共享状态。
@@ -39,16 +65,32 @@ export async function readCurrentProject(options = {}) {
 
 /**
  * 解析「本次调用应使用的项目根」：
- * 指针存在且目标目录真实存在 → 返回指针项目根；否则回退 fallbackRoot。
+ * 1. 指针存在且目标目录真实存在 → 返回指针项目根（跟随画布）；
+ * 2. 否则若 fallbackRoot 是 Git linked worktree → 自动回溯主仓库根（各 worktree 共享主记忆）；
+ * 3. 否则回退 fallbackRoot。
  * fail-open：目录不可达/指针损坏都回退，绝不抛错。
  */
 export async function resolveProjectRootToUse(pointerRoot, fallbackRoot, options = {}) {
   const candidate = pointerRoot ?? await readCurrentProject(options).catch(() => null);
-  if (!candidate) return fallbackRoot;
-  try {
-    const resolved = await canonicalDirectory(candidate);
-    return resolved;
-  } catch {
-    return fallbackRoot;
+  if (candidate) {
+    try {
+      const resolved = await canonicalDirectory(candidate);
+      return resolved;
+    } catch { /* 指针目录不可达，继续尝试 fallback */ }
   }
+
+  if (fallbackRoot) {
+    const worktreeMain = resolveGitWorktreeMain(fallbackRoot);
+    if (worktreeMain) {
+      try {
+        const resolvedMain = await canonicalDirectory(worktreeMain);
+        return resolvedMain;
+      } catch { /* 忽略回落 */ }
+    }
+    try {
+      return await canonicalDirectory(fallbackRoot);
+    } catch { /* 忽略回落 */ }
+  }
+
+  return fallbackRoot;
 }

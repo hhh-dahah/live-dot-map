@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { access, lstat, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -164,27 +164,25 @@ async function inspectProjectQualification(projectRoot: string): Promise<Project
   }
 
   const dataDirectory = join(root, '.live-dot-map');
-  const dataMetadata = await lstat(dataDirectory).catch(() => null);
+  const dataMetadata = await stat(dataDirectory).catch(() => null);
   if (!dataMetadata) return { ok: false, code: 'PROJECT_NOT_INITIALIZED', message: '当前目录还没有活点地图项目。' };
-  if (!dataMetadata.isDirectory() || dataMetadata.isSymbolicLink()) {
+  if (!dataMetadata.isDirectory()) {
     return { ok: false, code: 'PROJECT_LAYOUT_INVALID', message: '活点地图数据目录不是可安全读取的目录。' };
   }
 
   const marker = async (path: string): Promise<boolean> => {
-    const metadata = await lstat(path).catch(() => null);
-    // 存在但为 symlink 的 map.json 仍属于一个需要报错的项目；交给
-    // ProjectStore 的安全路径检查，不要把它误判成全新项目。
-    return Boolean(metadata && (metadata.isFile() || metadata.isSymbolicLink()));
+    const metadata = await stat(path).catch(() => null);
+    return Boolean(metadata && metadata.isFile());
   };
 
   const legacy = await marker(join(dataDirectory, 'map.json'));
   const mapsPath = join(dataDirectory, 'maps');
-  const mapsMetadata = await lstat(mapsPath).catch(() => null);
+  const mapsMetadata = await stat(mapsPath).catch(() => null);
   let packageMap = false;
-  if (mapsMetadata?.isDirectory() && !mapsMetadata.isSymbolicLink()) {
+  if (mapsMetadata?.isDirectory()) {
     const entries = await readdir(mapsPath, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      if (!entry.isDirectory()) continue;
       if (await marker(join(mapsPath, entry.name, 'map.json'))) { packageMap = true; break; }
     }
   }
@@ -337,14 +335,13 @@ async function forwardToolCall(handle: BridgeHandle, targetRoot: string, actor: 
 
 async function runMcpProxy(projectRoot: string, actor: string, options: McpOptions): Promise<void> {
   const root = resolve(projectRoot);
-  const qualification = await inspectProjectQualification(root);
+  let currentRoot = await resolveProjectRootToUse(null, root);
+  let qualification = await inspectProjectQualification(currentRoot);
   // fail-open 进程不能创建日志目录、health 文件或地图目录。transport
   // 仍然保持可用，只有 tools/call 返回结构化 isError。
   const logger = qualification.ok ? createLogger({ source: 'agent' }) : noopLogger;
-  // 项目根跟随画布当前项目（bug1）：每次调用解析全局指针，失败回落启动根。
-  let currentRoot = root;
   let bridge: BridgeHandle | null = null;
-  if (qualification.ok) await logger.info('agent.mcp.start', { project: root, actor, pid: process.pid, mode: 'proxy' });
+  if (qualification.ok) await logger.info('agent.mcp.start', { project: currentRoot, actor, pid: process.pid, mode: 'proxy' });
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
     let request: Json;
@@ -356,14 +353,16 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
       if (request.method === 'initialize') result = { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'live-dot-map', version: '2.0.0' } };
       else if (request.method === 'tools/list') result = { tools: toolDefinitions };
       else if (request.method === 'tools/call') {
-        if (!qualification.ok) {
-          result = unavailableToolResult(qualification);
+        const targetRoot = await resolveProjectRootToUse(null, currentRoot);
+        const activeQual = await inspectProjectQualification(targetRoot);
+        if (!activeQual.ok) {
+          result = unavailableToolResult(activeQual);
         } else {
+          currentRoot = targetRoot;
+          qualification = activeQual;
           const params = request.params as Json;
           const name = String(params.name);
           const callArgs = (params.arguments as Json) ?? {};
-          const targetRoot = await resolveProjectRootToUse(null, currentRoot);
-          currentRoot = targetRoot;
           // 桥句柄按进程缓存；桥死亡/换届（A4 替换）时清空缓存重探一次（含自动点火）。
           let value: unknown;
           let lastError: unknown = null;
