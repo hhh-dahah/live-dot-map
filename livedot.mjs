@@ -4923,7 +4923,14 @@ function defaultNativeHelperPath(options = {}) {
   const execPath = options.execPath ?? process.execPath;
   const fromExec = join14(dirname6(resolve10(execPath)), "..", "LiveDotMapSetup.exe");
   if (existsSync(fromExec)) return fromExec;
-  const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
+  if (options.localAppData) {
+    return join14(resolve10(options.localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+  }
+  const fromRelease = join14(process.cwd(), "installer", "winforms", "bin", "Release", "net8.0-windows", "win-x64", "LiveDotMapSetup.exe");
+  if (existsSync(fromRelease)) return fromRelease;
+  const fromDist = join14(process.cwd(), "dist", "windows-installer", "LiveDotMapSetup.exe");
+  if (existsSync(fromDist)) return fromDist;
+  const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return null;
   return join14(resolve10(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
 }
@@ -5031,8 +5038,8 @@ import { homedir as homedir3 } from "node:os";
 import { lstat as lstat8, mkdir as mkdir7, readdir as readdir6, readFile as readFile9, realpath as realpath6, stat as stat6 } from "node:fs/promises";
 import { dirname as dirname7, isAbsolute as isAbsolute3, join as join15, relative as relative5, resolve as resolve11, win32 } from "node:path";
 var SETTINGS_VERSION = 1;
-var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "system", "folder", "manual"]);
-var EXE_NAME = /^(Code|Antigravity|pycharm64)\.exe$/i;
+var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "terminal", "gitbash", "system", "folder", "manual"]);
+var EXE_NAME = /^(Code|Antigravity|pycharm64|wt|git-bash)\.exe$/i;
 var EDITOR_ID = /^[a-z][a-z0-9-]{0,31}$/;
 var EXTRA_EDITORS = [
   {
@@ -5063,6 +5070,36 @@ var EXTRA_EDITORS = [
       const programFiles = process.env.ProgramFiles;
       if (programFiles) out.push(...await scanVersionedEditors(join15(programFiles, "JetBrains"), 1));
       return out;
+    }
+  },
+  {
+    id: "terminal",
+    label: "Terminal",
+    appPaths: ["wt.exe"],
+    candidates() {
+      const out = [];
+      const local = process.env.LOCALAPPDATA;
+      if (local) out.push(join15(local, "Microsoft", "WindowsApps", "wt.exe"));
+      return out;
+    },
+    getArgs(target) {
+      return ["-d", dirname7(target)];
+    }
+  },
+  {
+    id: "gitbash",
+    label: "Git Bash",
+    appPaths: ["git-bash.exe"],
+    candidates() {
+      const out = [];
+      const programFiles = process.env.ProgramFiles;
+      if (programFiles) out.push(join15(programFiles, "Git", "git-bash.exe"));
+      const programFilesX86 = process.env["ProgramFiles(x86)"];
+      if (programFilesX86) out.push(join15(programFilesX86, "Git", "git-bash.exe"));
+      return out;
+    },
+    getArgs(target) {
+      return [`--cd=${dirname7(target)}`];
     }
   }
 ];
@@ -5404,13 +5441,13 @@ var EditorService = class _EditorService {
       if (await this.#resolveExtra(def)) editors.push({ id: def.id, label: def.label, kind: "editor", available: true });
     }
     editors.push(
-      { id: "system", label: "\u7528\u9ED8\u8BA4\u5E94\u7528\u6253\u5F00", kind: "system", available: Boolean(this.nativeHelper) },
-      { id: "folder", label: "\u5728\u6587\u4EF6\u5939\u4E2D\u663E\u793A", kind: "folder", available: Boolean(this.nativeHelper) },
+      { id: "system", label: "\u7528\u9ED8\u8BA4\u5E94\u7528\u6253\u5F00", kind: "system", available: process.platform === "win32" || Boolean(this.nativeHelper) },
+      { id: "folder", label: "\u5728\u6587\u4EF6\u5939\u4E2D\u663E\u793A", kind: "folder", available: process.platform === "win32" || Boolean(this.nativeHelper) },
       {
         id: "manual",
         label: manualAvailable ? "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F" : "\u624B\u52A8\u9009\u62E9\u7A0B\u5E8F\u2026",
         kind: "manual",
-        available: manualAvailable && Boolean(this.nativeHelper),
+        available: manualAvailable && (process.platform === "win32" || Boolean(this.nativeHelper)),
         needsPicker: !manualAvailable
       }
     );
@@ -5503,7 +5540,22 @@ var EditorService = class _EditorService {
       const metadata = await stat6(candidate);
       const folder = isDirectory(metadata) ? candidate : dirname7(candidate);
       await this.#assertNoSymlinkEscape(folder);
-      await this.#callNative("open-folder", { targetPath: isDirectory(metadata) ? folder : candidate });
+      const targetPath = isDirectory(metadata) ? folder : candidate;
+      try {
+        await this.#callNative("open-folder", { targetPath });
+      } catch (nativeErr) {
+        if (process.platform === "win32") {
+          const child = this.spawn("explorer.exe", [`/select,${targetPath}`], {
+            shell: false,
+            windowsHide: false,
+            detached: true,
+            stdio: "ignore"
+          });
+          child?.unref?.();
+        } else {
+          throw nativeErr;
+        }
+      }
       return { editorId, launched: true };
     }
     const target = await this.#projectPath(relativePath, { kind: "file" });
@@ -5516,14 +5568,43 @@ var EditorService = class _EditorService {
     if (extraDef) {
       const executable = await this.#resolveExtra(extraDef);
       if (!executable) throw bridgeError2("EDITOR_NOT_AVAILABLE", `\u672A\u68C0\u6D4B\u5230 ${extraDef.label}`, 503);
-      return { editorId, ...this.#launch(executable, [target]) };
+      const args = typeof extraDef.getArgs === "function" ? extraDef.getArgs(target) : [target];
+      return { editorId, ...this.#launch(executable, args) };
     }
     if (editorId === "system") {
-      await this.#callNative("open-default", { targetPath: target });
+      try {
+        await this.#callNative("open-default", { targetPath: target });
+      } catch (nativeErr) {
+        if (process.platform === "win32") {
+          const child = this.spawn("explorer.exe", [target], {
+            shell: false,
+            windowsHide: false,
+            detached: true,
+            stdio: "ignore"
+          });
+          child?.unref?.();
+        } else {
+          throw nativeErr;
+        }
+      }
       return { editorId, launched: true };
     }
     const manualPath = await this.#assertManualExecutable(this.settings.editors.manual.path);
-    await this.#callNative("open-manual", { executablePath: manualPath, targetPath: target });
+    try {
+      await this.#callNative("open-manual", { executablePath: manualPath, targetPath: target });
+    } catch (nativeErr) {
+      if (process.platform === "win32") {
+        const child = this.spawn(manualPath, [target], {
+          shell: false,
+          windowsHide: false,
+          detached: true,
+          stdio: "ignore"
+        });
+        child?.unref?.();
+      } else {
+        throw nativeErr;
+      }
+    }
     return { editorId, launched: true };
   }
   async saveAs({ relativePath } = {}) {
@@ -8068,7 +8149,7 @@ async function createBridgeServer({
         if (sessionStore && existingId && ticket[1].projectHandle && ticket[1].projectRoot) {
           const authorized = sessionStore.authorize(existingId, ticket[1].projectHandle);
           if (authorized) {
-            await sessionStore.persistIfDue();
+            await sessionStore.flush();
             response.setHeader("Set-Cookie", `${SESSION_COOKIE}=${existingId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(sessionStore.ttlMs / 1e3)}`);
             sendJson(response, 200, {
               csrfToken: authorized.csrfToken,
@@ -8356,9 +8437,10 @@ async function createBridgeServer({
         requireMethod(request, "POST");
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
+        const relativePath = await mapMarkdownPath(session, String(body.relativePath || ""));
         sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).open({
           editorId: String(body.editorId || ""),
-          relativePath: String(body.relativePath || ""),
+          relativePath,
           targetKind: body.targetKind === "directory" ? "directory" : "file"
         }));
         return;
@@ -8380,7 +8462,8 @@ async function createBridgeServer({
         requireMethod(request, "POST");
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
-        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath: String(body.relativePath || "") }));
+        const relativePath = await mapMarkdownPath(session, String(body.relativePath || ""));
+        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath }));
         return;
       }
       if (pathname === "/markdown") {
