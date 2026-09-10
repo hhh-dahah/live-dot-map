@@ -36,15 +36,9 @@ landing/tsconfig.tsbuildinfo
 edgeone-config.yml
 edgeone-login.png
 
-# 活点地图项目内的可再生运行态；地图事实与资料包本身仍可跟踪
-/.live-dot-map/**/.bridge/
-.live-dot-map/maps/*/.bridge/backups/
-.live-dot-map/maps/*/.bridge/snapshots/
-.live-dot-map/maps/*/.bridge/quarantine/
-.live-dot-map/maps/*/.bridge/migrations/
-.live-dot-map/maps/*/.bridge/*.lock
-.live-dot-map/maps/*/.bridge/wal.ndjson
-.live-dot-map/.bridge/*.tmp
+# 活点地图项目数据目录（单一事实源，避免多 worktree 物理复制分叉与合并冲突）
+/.live-dot-map/
+.live-dot-map/
 
 # 软件著作权申请材料与本地 LaTeX 编译环境（含营业执照等隐私信息）
 .tools/
