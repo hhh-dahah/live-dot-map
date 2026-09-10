@@ -9,4 +9,5 @@
 ## 工位职责与分工
 - **当前工位目录**：`ui设计 html`（分支 `master`）
 - **核心职责**：主工作树、稳定版本基线发布与宿主画布物理事实所在地。
+- **UI 设计工作树**：`live-dot-map-ui`（分支 `ui-exp-minimal-zen`，绝对路径 `D:\桌面\活点地图\live-dot-map\live-dot-map-ui`），负责 UI 交互、视觉与响应式设计。
 
