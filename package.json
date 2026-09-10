@@ -15,6 +15,7 @@
     "build:edgeone": "node scripts/edgeone-build.mjs",
     "build:windows-installer": "node scripts/build-windows-installer.mjs",
     "release:update": "node scripts/release-update.mjs",
+    "worktree:link": "node scripts/worktree-link.mjs",
     "build": "npm run build:core && npm run build:app && npm run build:bridge",
     "test": "npm run build:core && node --test tests/**/*.test.mjs",
     "test:core": "npm run build:core && node --test tests/core/*.test.mjs",
