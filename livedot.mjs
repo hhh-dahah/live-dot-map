@@ -1415,7 +1415,8 @@ async function readJson(path, { maxBytes = MAX_JSON_BYTES } = {}) {
     error3.details = { path, size: metadata.size, limit: maxBytes };
     throw error3;
   }
-  return JSON.parse(await readFile(path, "utf8"));
+  const text = await readFile(path, "utf8");
+  return JSON.parse(text.replace(/^\uFEFF/, ""));
 }
 async function writeJsonAtomic(path, value) {
   await atomicWriteFile(path, `${JSON.stringify(value, null, 2)}
@@ -2500,7 +2501,7 @@ async function readCurrentProject(options = {}) {
   const target = options.file ?? currentProjectFile();
   try {
     const text = await readFile4(target, "utf8");
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(text.replace(/^\uFEFF/, ""));
     if (typeof parsed?.projectRoot === "string" && parsed.projectRoot.trim()) return parsed.projectRoot.trim();
   } catch {
   }
