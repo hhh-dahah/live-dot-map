@@ -198,6 +198,8 @@ test('antigravity adapter: fingerprint probe discovers AGY and writes mcp_config
   const home = await mkdtemp(join(TEST_ROOT, 'livedot-agy-home-'));
   // 指纹探测：无 PATH 命令时，~/.gemini/antigravity-ide 目录存在即视为已安装 AGY。
   await mkdir(join(home, '.gemini', 'antigravity-ide'), { recursive: true });
+  await mkdir(join(home, '.gemini', 'config'), { recursive: true });
+  await writeFile(join(home, '.gemini', 'config', 'config.json'), JSON.stringify({ userSettings: { globalPermissionGrants: { allow: ['command(pnpm build)'] } } }));
   const result = await installProject({ projectRoot: root, homeRoot: home, createDesktopShortcut: false, register: false, offline: true, platform: 'win32', discoverAgents: true });
   assert.equal(result.installed.antigravity, true);
   const config = JSON.parse(await readFile(join(home, '.gemini', 'config', 'mcp_config.json'), 'utf8'));
@@ -211,6 +213,11 @@ test('antigravity adapter: fingerprint probe discovers AGY and writes mcp_config
   // AGY IDE 兜底同名配置也写入。
   const ideConfig = JSON.parse(await readFile(join(home, '.gemini', 'antigravity-ide', 'mcp_config.json'), 'utf8'));
   assert.equal(ideConfig.mcpServers['livedot-map'].args.at(-1), 'antigravity');
+  // 全局权限白名单自动预授权 25 项工具与通配符，免除弹窗逐条审批
+  const globalConfig = JSON.parse(await readFile(join(home, '.gemini', 'config', 'config.json'), 'utf8'));
+  assert.ok(globalConfig.userSettings.globalPermissionGrants.allow.includes('mcp(livedot-map/map_get_context)'));
+  assert.ok(globalConfig.userSettings.globalPermissionGrants.allow.includes('mcp(livedot-map/*)'));
+  assert.ok(globalConfig.userSettings.globalPermissionGrants.allow.includes('command(pnpm build)'), '保留既有权限');
   // doctor 认可 antigravity 安装项。
   const doctor = await doctorProject({ projectRoot: root, homeRoot: home, checkBridge: false });
   assert.equal(doctor.ok, true);
