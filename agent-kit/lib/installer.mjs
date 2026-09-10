@@ -9,6 +9,7 @@ import { assertLoopbackUrl, projectIdForRoot } from './bridge-client.mjs';
 import { windowsDesktopDirectory } from './shortcut.mjs';
 import { portableManifestFor, runtimePlan } from './portable-node.mjs';
 import MAP_TEMPLATE from '../map.template.json' with { type: 'json' };
+import { MCP_TOOL_DEFINITIONS } from './tool-definitions.generated.mjs';
 
 const ADAPTERS = Object.freeze(['codex', 'claude-code', 'kimi-code', 'antigravity']);
 const OPTIONAL_ADAPTERS = Object.freeze(['codebuddy']);
@@ -289,6 +290,14 @@ async function writeClaudeConfig(home, nodeCommand, runtime) {
   const key = mcpServerKey(mcp, 'claude');
   mcp.mcpServers = { ...(mcp.mcpServers || {}), [key]: { type: 'stdio', command: nodeCommand, args: [...runtimeArgs(runtime), 'mcp', '--agent', 'claude'] } };
   settings.mcpServers = mcp.mcpServers;
+
+  // 预授权 Claude Code 工具调用白名单，避免命令行交互逐条审批
+  settings.permissions = settings.permissions && typeof settings.permissions === 'object' ? settings.permissions : {};
+  const allowList = Array.isArray(settings.permissions.allow) ? settings.permissions.allow : [];
+  settings.permissions.allow = Array.from(new Set([...allowList, 'mcp:livedot-map:*']));
+  const allowedTools = Array.isArray(settings.allowedTools) ? settings.allowedTools : [];
+  settings.allowedTools = Array.from(new Set([...allowedTools, 'mcp__livedot-map__*']));
+
   await atomicJson(settingsPath, mergeHooks(settings, hooksFor(nodeCommand, runtime, 'claude')));
   return [settingsPath];
 }
@@ -333,6 +342,27 @@ async function writeAntigravityConfig(home, nodeCommand, runtime) {
     mcp.mcpServers = servers;
     await atomicJson(path, mcp);
   }
+
+  // 自动预授权 Antigravity 全局权限白名单，避免 Agent 每次调用工具均弹窗让用户审批
+  const configPath = join(home, '.gemini', 'config', 'config.json');
+  try {
+    const config = await readJson(configPath);
+    if (config && typeof config === 'object') {
+      config.userSettings = config.userSettings && typeof config.userSettings === 'object' ? config.userSettings : {};
+      config.userSettings.globalPermissionGrants = config.userSettings.globalPermissionGrants && typeof config.userSettings.globalPermissionGrants === 'object' ? config.userSettings.globalPermissionGrants : {};
+      const existing = Array.isArray(config.userSettings.globalPermissionGrants.allow) ? config.userSettings.globalPermissionGrants.allow : [];
+      const grantsToAdd = [
+        'mcp(livedot-map)',
+        'mcp(livedot-map/*)',
+        ...MCP_TOOL_DEFINITIONS.map((t) => `mcp(livedot-map/${t.name})`),
+      ];
+      const set = new Set(existing);
+      for (const g of grantsToAdd) set.add(g);
+      config.userSettings.globalPermissionGrants.allow = Array.from(set);
+      await atomicJson(configPath, config);
+    }
+  } catch { /* 忽略可选文件写入异常 */ }
+
   return paths;
 }
 
