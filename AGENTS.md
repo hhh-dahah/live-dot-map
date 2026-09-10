@@ -5,3 +5,8 @@
 ## 记忆与上下文获取协议
 1. **MCP 协议通信（标准模式）**：任何 Agent 进入本项目，应优先通过 `livedot-map` MCP 工具（如 `map_get_context`、`map_list_human_updates`、`map_read_markdown` 等）获取实时全局记忆与节点事实。
 2. **缺失配置与降级保底**：若当前环境未配置 `livedot-map` MCP 工具，应主动提示用户配置。若环境确实受限或用户暂不配置，**仅允许将本地 `.live-dot-map/` 目录作为最终保底手段进行【只读（Read-Only）】查阅，严禁私自写入或篡改底层数据文件**。
+
+## 工位职责与分工
+- **当前工位目录**：`live-dot-map-adapter`（分支 `feat-agent-adapter`）
+- **核心职责**：专职负责基础设施、多 Agent 适配、跨 Worktree 记忆共享、防冲突仲裁、Bridge 运行时稳定性治理与工具链协议支持。本工位所有操作均聚焦于此。
+
