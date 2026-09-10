@@ -159,7 +159,8 @@ export async function readJson(path, { maxBytes = MAX_JSON_BYTES } = {}) {
     error.details = { path, size: metadata.size, limit: maxBytes };
     throw error;
   }
-  return JSON.parse(await readFile(path, 'utf8'));
+  const text = await readFile(path, 'utf8');
+  return JSON.parse(text.replace(/^\uFEFF/, ''));
 }
 
 export async function writeJsonAtomic(path, value) {
