@@ -47,3 +47,9 @@ test('resolveProjectRootToUse 直接传入候选根也校验目录存在', async
   assert.equal(await resolveProjectRootToUse(a, missing), a, '候选存在则用候选');
   assert.equal(await resolveProjectRootToUse(missing, a), a, '候选不存在回落 fallback');
 });
+
+test('readCurrentProject 容忍 UTF-8 BOM 头', async (t) => {
+  const { a, pointer } = await makeRoots(t);
+  await writeFile(pointer, `\uFEFF${JSON.stringify({ projectRoot: a })}`, 'utf8');
+  assert.equal(await readCurrentProject({ file: pointer }), a, '即使带 BOM 也应正常解析');
+});
