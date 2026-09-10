@@ -48,3 +48,10 @@ edgeone-login.png
 
 # 软件著作权申请材料与本地 LaTeX 编译环境（含营业执照等隐私信息）
 .tools/
+
+# 本地临时日志、排查压缩包与临时目录
+logs/
+tmp/
+*.zip
+.codex-remote-attachments/
+tools/cnipa-word-xml/
