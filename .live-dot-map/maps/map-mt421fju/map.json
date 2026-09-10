@@ -1,17 +1,17 @@
 {
   "mapId": "map-1ezxiid",
   "version": 2,
-  "revision": 127,
-  "lastEventId": 127,
+  "revision": 199,
+  "lastEventId": 199,
   "name": "第四轮排查",
   "mapDir": ".live-dot-map/maps/map-mt421fju",
   "bundleLayoutVersion": 1,
   "createdAt": "2026-08-22T07:26:28.610Z",
-  "updatedAt": "2026-09-06T15:09:36.172Z",
+  "updatedAt": "2026-09-10T00:17:35.684Z",
   "view": {
-    "x": -1032.7907368686797,
-    "y": -16.055725458803636,
-    "k": 0.8416799932665602
+    "x": -1519.6318787324692,
+    "y": -128.30775127711524,
+    "k": 1.0000000000000002
   },
   "ui": {
     "showAnns": true,
@@ -41,10 +41,13 @@
       "md": ".live-dot-map/maps/map-mt421fju/nodes/n1/index.md",
       "createdBy": "human",
       "createdAt": "2026-08-22T07:26:37.013Z",
-      "updatedAt": "2026-08-23T08:30:10.448Z",
+      "updatedAt": "2026-09-08T08:15:23.103Z",
       "updatedBy": "human",
-      "updatedRevision": 28,
-      "resolved": true
+      "updatedRevision": 194,
+      "resolved": true,
+      "archived": true,
+      "archivedAt": "2026-09-08T08:15:23.103Z",
+      "archivedBy": "human"
     },
     {
       "id": "n2",
@@ -58,11 +61,11 @@
       "md": ".live-dot-map/maps/map-mt421fju/nodes/n2/index.md",
       "createdBy": "human",
       "createdAt": "2026-08-22T07:26:38.314Z",
-      "updatedAt": "2026-09-04T07:23:17.458Z",
+      "updatedAt": "2026-09-08T07:48:30.773Z",
       "updatedBy": "human",
-      "updatedRevision": 124,
+      "updatedRevision": 164,
       "archived": true,
-      "archivedAt": "2026-09-04T07:23:17.458Z",
+      "archivedAt": "2026-09-08T07:48:30.773Z",
       "archivedBy": "human"
     },
     {
@@ -356,12 +359,12 @@
       "md": ".live-dot-map/maps/map-mt421fju/nodes/n19/index.md",
       "createdBy": "human",
       "createdAt": "2026-09-01T02:30:03.160Z",
-      "updatedAt": "2026-09-01T03:22:25.231Z",
-      "updatedBy": "agent:kimi",
-      "updatedRevision": 81,
+      "updatedAt": "2026-09-08T08:15:23.103Z",
+      "updatedBy": "human",
+      "updatedRevision": 194,
       "archived": true,
-      "archivedAt": "2026-09-01T03:22:25.231Z",
-      "archivedBy": "agent:kimi"
+      "archivedAt": "2026-09-08T08:15:23.103Z",
+      "archivedBy": "human"
     },
     {
       "id": "n20",
@@ -424,25 +427,27 @@
       "md": ".live-dot-map/maps/map-mt421fju/nodes/n23/index.md",
       "createdBy": "human",
       "createdAt": "2026-09-03T05:06:57.506Z",
-      "updatedAt": "2026-09-03T05:10:01.677Z",
+      "updatedAt": "2026-09-08T07:31:37.118Z",
       "updatedBy": "human",
-      "updatedRevision": 115
+      "updatedRevision": 153,
+      "resolved": false
     },
     {
       "id": "n24",
       "num": "24",
       "name": "ui和一些显示问题 第二次讨论",
-      "type": "目标",
-      "kind": "goal",
+      "type": "问题",
+      "kind": "problem",
       "route": null,
       "x": 1640.121284022628,
       "y": 396.0994440631124,
       "md": ".live-dot-map/maps/map-mt421fju/nodes/n24/index.md",
       "createdBy": "human",
       "createdAt": "2026-09-03T05:08:29.910Z",
-      "updatedAt": "2026-09-06T15:09:36.172Z",
+      "updatedAt": "2026-09-08T07:58:34.784Z",
       "updatedBy": "human",
-      "updatedRevision": 127
+      "updatedRevision": 189,
+      "resolved": true
     },
     {
       "id": "n25",
@@ -451,17 +456,30 @@
       "type": "目标",
       "kind": "goal",
       "route": null,
-      "x": 1684.8732198929897,
-      "y": 499.860261998293,
+      "x": 1762.8732198929897,
+      "y": 378.52691849243365,
       "md": ".live-dot-map/maps/map-mt421fju/nodes/n25/index.md",
       "createdBy": "human",
       "createdAt": "2026-09-04T07:22:58.257Z",
-      "updatedAt": "2026-09-04T07:23:17.458Z",
+      "updatedAt": "2026-09-10T00:17:22.742Z",
       "updatedBy": "human",
-      "updatedRevision": 124,
-      "archived": true,
-      "archivedAt": "2026-09-04T07:23:17.458Z",
-      "archivedBy": "human"
+      "updatedRevision": 195
+    },
+    {
+      "id": "n26",
+      "num": "26",
+      "name": "ui面板缩放问题",
+      "type": "目标",
+      "kind": "goal",
+      "route": null,
+      "x": 1638.6318787324687,
+      "y": 534.9744077712558,
+      "md": ".live-dot-map/maps/map-mt421fju/nodes/n26/index.md",
+      "createdBy": "human",
+      "createdAt": "2026-09-10T00:17:24.122Z",
+      "updatedAt": "2026-09-10T00:17:35.684Z",
+      "updatedBy": "human",
+      "updatedRevision": 199
     }
   ],
   "edges": [],

@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cn-application-body SYSTEM "/dtdandxsl/cn-application-body-20080416.dtd"[]>
+<?xml-stylesheet type="text/xsl" href="/dtdandxsl/showxml.xsl"?>
+<cn-application-body lang="zh" country="CN">
+<cn-abstract><p id="p0001" num="0001" Italic="0">本发明涉及一种人机共享记忆的自愈索引与按需下探方法及系统，属于文件系统数据管理和人机协同技术领域。针对共享记忆重复读取正文、外部修改导致索引陈旧及人类保存内容缺少提示的问题，以结构化地图文件和对象资料包为事实源；为正文建立包含摘要和存储指纹的卡片；查询时比较修改时间和文件大小，均相等则复用摘要，否则只读取对应正文并刷新卡片；按节点、路线状态和文本相关性输出受上限约束的对象、路径及召回理由；正文按显式路径读取，资产默认返回元数据。人类经保存接口保存的正文变更写入未确认记录，确认前列入会话提示。地图命令采用基线版本、字段触达范围、预写日志和幂等命令标识处理冲突及中断恢复。</p>
+
+
+</cn-abstract>
+
+</cn-application-body>

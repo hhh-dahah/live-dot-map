@@ -1,0 +1,56 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[top=2.5cm,bottom=2.5cm,left=3.2cm,right=2.5cm,headheight=16pt,headsep=0.7cm,footskip=1.2cm]{geometry}
+\usepackage{xeCJK}
+\setCJKmainfont{SimSun}
+\setCJKfamilyfont{hei}{SimHei}
+\setCJKmonofont{SimSun}
+\setmainfont{Times New Roman}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,shapes.geometric}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{caption}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=black}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0pt}
+\setstretch{1.5}
+\setlength{\intextsep}{0pt}
+\setlength{\textfloatsep}{0pt}
+\captionsetup{labelformat=empty,font=normalsize,justification=centering}
+
+\newcommand{\heiti}{\CJKfamily{hei}}
+\newcommand{\patentheader}{ }
+\fancypagestyle{patent}{%
+  \fancyhf{}
+  \fancyhead[C]{\small\patentheader}
+  \fancyfoot[C]{\small \thepage}
+  \renewcommand{\headrulewidth}{0.5pt}
+  \renewcommand{\footrulewidth}{0pt}}
+\newcommand{\patentsectionstart}[2]{%
+  \clearpage\setcounter{page}{#2}\gdef\patentheader{#1}%
+  \pagestyle{patent}\thispagestyle{patent}}
+\newcommand{\patentdocumenttitle}[1]{\begin{center}\heiti\large #1\end{center}\vspace{0.85em}}
+\newcommand{\patentheading}[1]{\par\vspace{1.1em}\noindent{\heiti\large #1}\par\vspace{0.45em}}
+\newcommand{\patentfigurelabel}{\refstepcounter{figure}\par\vspace{0.45em}\noindent{\heiti 图~\thefigure}\par}
+
+\newcommand{\inventiontitle}{一种人机共享记忆的自愈索引与按需下探方法及系统}
+\newcommand{\paragraphno}[1]{\noindent[#1]\hspace{0.5em}\ignorespaces}
+\newenvironment{claimitem}{\begin{enumerate}[label=\arabic*.,leftmargin=2.2em,labelsep=0.45em,itemsep=1.15em,parsep=0pt,topsep=0pt]}{\end{enumerate}}
+\newcommand{\zonecode}[1]{\texttt{#1}}
+
+\input{local-config.tex}
+
+\begin{document}
+
+\input{sections/01-request.tex}
+\input{sections/02-abstract.tex}
+\input{sections/03-claims.tex}
+\input{sections/04-specification.tex}
+\input{sections/05-drawings.tex}
+
+\end{document}

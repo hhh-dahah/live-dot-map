@@ -1,0 +1,105 @@
+{
+  "revision": 5,
+  "checksum": "acd5613f231cb15fe460d095967c08abe5388739ca6de4a143bbb16111fcb9c3",
+  "createdAt": "2026-08-31T00:34:38.601Z",
+  "document": {
+    "mapId": "map-1tqft8r",
+    "version": 2,
+    "revision": 5,
+    "lastEventId": 5,
+    "name": "ui-verify-p1",
+    "mapDir": ".live-dot-map/maps/default",
+    "bundleLayoutVersion": 1,
+    "createdAt": "2026-08-29T10:37:15.332Z",
+    "updatedAt": "2026-08-31T00:13:57.012Z",
+    "view": {
+      "x": 0,
+      "y": 0,
+      "k": 1
+    },
+    "ui": {
+      "showAnns": true,
+      "showRoutes": true,
+      "showNums": false,
+      "showFailed": true
+    },
+    "counters": {
+      "num": 1,
+      "edge": 1,
+      "ann": 1,
+      "nodeName": 1,
+      "edgeName": 1,
+      "routeName": 1
+    },
+    "routes": [],
+    "nodes": [
+      {
+        "id": "n1",
+        "num": "01",
+        "name": "新节点1",
+        "type": "目标",
+        "kind": "goal",
+        "route": null,
+        "x": 498,
+        "y": 461.5,
+        "md": ".live-dot-map/maps/default/nodes/n1/index.md",
+        "createdBy": "human",
+        "createdAt": "2026-08-29T10:39:31.046Z",
+        "updatedAt": "2026-08-29T10:39:31.046Z",
+        "updatedBy": "human",
+        "updatedRevision": 1
+      },
+      {
+        "id": "n2",
+        "num": "02",
+        "name": "新节点2",
+        "type": "目标",
+        "kind": "goal",
+        "route": null,
+        "x": 200,
+        "y": 600,
+        "md": ".live-dot-map/maps/default/nodes/n2/index.md",
+        "createdBy": "human",
+        "createdAt": "2026-08-29T11:09:15.127Z",
+        "updatedAt": "2026-08-29T11:09:15.127Z",
+        "updatedBy": "human",
+        "updatedRevision": 2
+      },
+      {
+        "id": "n3",
+        "num": "03",
+        "name": "新节点3",
+        "type": "问题",
+        "kind": "problem",
+        "route": null,
+        "x": 598,
+        "y": 385,
+        "md": ".live-dot-map/maps/default/nodes/n3/index.md",
+        "createdBy": "human",
+        "createdAt": "2026-08-30T09:12:40.041Z",
+        "updatedAt": "2026-08-30T09:12:52.276Z",
+        "updatedBy": "human",
+        "updatedRevision": 4,
+        "resolved": false
+      },
+      {
+        "id": "n4",
+        "num": "04",
+        "name": "新节点4",
+        "type": "目标",
+        "kind": "goal",
+        "route": null,
+        "x": 438,
+        "y": 289,
+        "md": ".live-dot-map/maps/default/nodes/n4/index.md",
+        "createdBy": "human",
+        "createdAt": "2026-08-31T00:13:57.012Z",
+        "updatedAt": "2026-08-31T00:13:57.012Z",
+        "updatedBy": "human",
+        "updatedRevision": 5
+      }
+    ],
+    "edges": [],
+    "anns": []
+  }
+}
