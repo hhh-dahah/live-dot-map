@@ -7,6 +7,14 @@
 2. **缺失配置与降级保底**：若当前环境未配置 `livedot-map` MCP 工具，应主动提示用户配置。若环境确实受限或用户暂不配置，**仅允许将本地 `.live-dot-map/` 目录作为最终保底手段进行【只读（Read-Only）】查阅，严禁私自写入或篡改底层数据文件**。
 
 ## 工位职责与分工
-- **当前工位目录**：`live-dot-map-ui`（分支 `ui-exp-minimal-zen`）
-- **核心职责**：专职负责 UI 交互设计、视觉细节、画布体验、响应式适配与前端开发。本对话后续所有设计修改均聚焦于此工位。
+- **当前工位目录**：`live-dot-map-ui`（绝对路径：`D:\桌面\活点地图\live-dot-map\live-dot-map-ui`）
+- **当前工作分支**：`ui-exp-minimal-zen`（专属 UI 探索与设计演进分支）
+- **核心职责**：负责 UI 交互设计、视觉打磨、画布体验、响应式适配与极简风格。本对话及所有涉及 UI 设计、面板缩放、布局优化的开发与测试均聚焦于此工位。
+- **主工作树关联**：
+  - 主工程/稳定基线目录：`ui设计 html`（分支 `master`）
+  - 画布物理数据：位于主工作树 `ui设计 html/.live-dot-map`
+- **常用命令**：
+  - 构建产物：`npm run build:app`
+  - 启动服务（挂接主工程数据 + 当前工位 UI）：
+    `node livedot.mjs serve --project "D:\桌面\活点地图\live-dot-map\ui设计 html" --app "D:\桌面\活点地图\live-dot-map\live-dot-map-ui\app.html"`
 
