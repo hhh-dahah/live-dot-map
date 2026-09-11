@@ -249,6 +249,7 @@ test('A2: map_get_context 空 query 默认带出最近书写的非空主文档',
     ownerKind: 'node', ownerId: 'recent-node', fileName: 'index.md',
     content: '# 最近节点\n\n最新排障正文', baseEtag: (await service.dispatch('map_read_markdown', { ownerKind: 'node', ownerId: 'recent-node' })).etag,
     allowContentRemoval: true,
+    allowIndexModification: true,
   });
 
   const emptyQuery = await service.dispatch('map_get_context', {});
@@ -371,3 +372,58 @@ test('map_create_markdown 与 map_append_markdown 自动为 Agent 写入包裹�
   read = await service.dispatch('map_read_markdown', { ...owner, fileName: '03-written.md' });
   assert.match(read.content, /^<!-- @author: agent:test -->\n# 整篇方案内容\n\n测试\n<!-- \/@author -->/);
 });
+
+test('P0: 保护人类原声：Agent 写入或追加 index.md 默认被拒，必须新建独立文档或显式传 allowIndexModification', async (t) => {
+  const { manager, service } = await openService(t);
+  const mapKey = await createMap(manager, '原声保护地图');
+  await manager.switch(mapKey);
+  await addNode(service, mapKey, 'protect-node');
+
+  const owner = { ownerKind: 'node', ownerId: 'protect-node' };
+  const read = await service.dispatch('map_read_markdown', { ...owner, fileName: 'index.md' });
+
+  // 1. 未传 allowIndexModification 时，map_write_markdown 试图写 index.md 必须抛出 INDEX_PROTECTED
+  await assert.rejects(
+    service.dispatch('map_write_markdown', {
+      ...owner,
+      fileName: 'index.md',
+      content: '# 企图篡改原声\n\n方案',
+      baseEtag: read.etag,
+      allowContentRemoval: true,
+    }),
+    (err) => err.code === 'INDEX_PROTECTED' && err.message.includes('index.md 属于人类需求与问题原声'),
+    '应拒绝 Agent 擅自写 index.md'
+  );
+
+  // 2. 未传 allowIndexModification 时，map_append_markdown 试图追加 index.md 也必须抛出 INDEX_PROTECTED
+  await assert.rejects(
+    service.dispatch('map_append_markdown', {
+      ...owner,
+      fileName: 'index.md',
+      content: '## 企图追加方案到原声',
+      commandId: 'test-append-block',
+    }),
+    (err) => err.code === 'INDEX_PROTECTED',
+    '应拒绝 Agent 擅自追加 index.md'
+  );
+
+  // 3. 用户在提示词中明确要求修改主文档时，显式传入 allowIndexModification: true 方可放行
+  const allowed = await service.dispatch('map_write_markdown', {
+    ...owner,
+    fileName: 'index.md',
+    content: '# 人类授权修改主文档\n\n修改后的内容',
+    baseEtag: read.etag,
+    allowContentRemoval: true,
+    allowIndexModification: true,
+  });
+  assert.ok(allowed.etag);
+
+  // 4. Agent 在资料包中新建独立方案文档（如 01-proposal.md）完全正常放行
+  const proposal = await service.dispatch('map_create_markdown', {
+    ...owner,
+    fileName: '01-proposal.md',
+    content: '# 独立方案文档\n\n通过新建 md 描述方案',
+  });
+  assert.ok(proposal.etag);
+});
+

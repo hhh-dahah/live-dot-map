@@ -353,7 +353,7 @@ test('reads, creates and atomically saves project Markdown with explicit conflic
   assert.equal((await mcpRead.json()).result.content, '# 问题记录\n\n证据已补充。');
   const mcpWrite = await fetch(`${server.origin}/api/v1/mcp`, {
     method: 'POST', headers: authHeaders(session, { 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ name: 'map_write_markdown', arguments: { path, content: '# Agent 证据\n', baseEtag: savedBody.etag, allowContentRemoval: true } }),
+    body: JSON.stringify({ name: 'map_write_markdown', arguments: { path, content: '# Agent 证据\n', baseEtag: savedBody.etag, allowContentRemoval: true, allowIndexModification: true } }),
   });
   assert.equal(mcpWrite.status, 200);
   assert.equal((await mcpWrite.json()).result.content, '<!-- @author: agent:bridge -->\n# Agent 证据\n<!-- /@author -->\n');
