@@ -4255,7 +4255,13 @@ var schema = (name, description, properties = {}, required2 = []) => ({
   description,
   inputSchema: {
     type: "object",
-    properties,
+    properties: {
+      ...properties,
+      projectRoot: {
+        type: "string",
+        description: "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+      }
+    },
     ...required2.length ? { required: required2 } : {},
     additionalProperties: true
   }
@@ -5718,6 +5724,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
           "type": "integer",
           "minimum": 1,
           "maximum": 12
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5728,7 +5738,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -5746,6 +5761,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "summary": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5760,7 +5779,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "\u5217\u51FA\u9879\u76EE\u5185\u5730\u56FE\u4E0E\u5F53\u524D active-map\u3002",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -5772,6 +5796,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5785,6 +5813,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "mapKey": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5804,6 +5836,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5839,6 +5875,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeHistory": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5870,6 +5910,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
           "items": {
             "type": "object"
           }
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5886,6 +5930,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "document": {
           "type": "object"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5899,6 +5947,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "reason": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5917,6 +5969,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "now": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5943,6 +5999,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "path": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5978,6 +6038,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "allowContentRemoval": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6014,6 +6078,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "commandId": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6041,6 +6109,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6074,6 +6146,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "content": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6105,6 +6181,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "to": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6134,6 +6214,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6162,6 +6246,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6190,6 +6278,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6223,6 +6315,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "mimeType": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6251,6 +6347,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6279,6 +6379,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6310,6 +6414,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeContent": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -9460,7 +9568,11 @@ async function runMcpProxy(projectRoot, actor, options) {
       if (request.method === "initialize") result2 = { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "live-dot-map", version: "2.0.0" } };
       else if (request.method === "tools/list") result2 = { tools: toolDefinitions };
       else if (request.method === "tools/call") {
-        let targetRoot = await resolveProjectRootToUse(null, root);
+        const params = request.params;
+        const name = String(params.name);
+        const callArgs = params.arguments ?? {};
+        const explicitProject = typeof callArgs.projectRoot === "string" && callArgs.projectRoot.trim() ? String(callArgs.projectRoot).trim() : typeof callArgs.project === "string" && callArgs.project.trim() ? String(callArgs.project).trim() : null;
+        let targetRoot = await resolveProjectRootToUse(explicitProject, root);
         let activeQual = await inspectProjectQualification(targetRoot);
         if (!activeQual.ok && targetRoot !== root) {
           targetRoot = root;
@@ -9471,9 +9583,6 @@ async function runMcpProxy(projectRoot, actor, options) {
         } else {
           currentRoot = targetRoot;
           qualification = activeQual;
-          const params = request.params;
-          const name = String(params.name);
-          const callArgs = params.arguments ?? {};
           let value;
           let lastError = null;
           for (let attempt = 0; attempt < 2; attempt += 1) {
