@@ -330,10 +330,17 @@ export class ToolService {
     }
 
     const file = ownerArgs(args, mapKey);
+    const isIndexFile = (file.fileName === 'index.md' || file.name === 'index.md');
+    const isAgent = typeof this.actor === 'string' && this.actor.startsWith('agent');
+
     if (name === 'map_read_markdown') return cleanResult(await bundleStore.readMarkdown(file));
     if (name === 'map_write_markdown') {
+      // 人类原声保护：index.md 专属人类需求定义，禁止 Agent 擅自修改，必须新建独立文档描述方案
+      if (isAgent && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError('INDEX_PROTECTED', 'index.md 属于人类需求与问题原声，默认禁止 Agent 修改。请使用 map_create_markdown 在节点资料包中新建独立 .md 方案文件。仅当人类用户在对话中明确指令要求修改 index.md 时，方可显式传入 allowIndexModification: true。', { status: 403 });
+      }
       const rawContent = args.content;
-      const content = (args.wrapAuthor !== false && rawContent !== undefined && typeof this.actor === 'string' && this.actor.startsWith('agent'))
+      const content = (args.wrapAuthor !== false && rawContent !== undefined && isAgent)
         ? ensureAgentAuthorEnvelope(rawContent, this.actor)
         : rawContent;
       // 人机写入契约：默认追加式。整文替换若会删掉已有内容的行，必须显式传 allowContentRemoval。
@@ -353,6 +360,9 @@ export class ToolService {
       return { ...result, content: String(content) };
     }
     if (name === 'map_append_markdown') {
+      if (isAgent && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError('INDEX_PROTECTED', 'index.md 属于人类需求与问题原声，默认禁止 Agent 修改。请使用 map_create_markdown 在节点资料包中新建独立 .md 方案文件。仅当人类用户在对话中明确指令要求修改 index.md 时，方可显式传入 allowIndexModification: true。', { status: 403 });
+      }
       const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
       const result = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
@@ -360,6 +370,9 @@ export class ToolService {
     }
     if (name === 'map_list_bundle_files') return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === 'map_create_markdown') {
+      if (isAgent && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError('INDEX_PROTECTED', 'index.md 属于人类需求与问题原声，禁止 Agent 覆盖创建。请使用 map_create_markdown 在节点资料包中新建独立 .md 方案文件。', { status: 403 });
+      }
       const rawContent = args.content;
       const content = (args.wrapAuthor !== false && rawContent !== undefined)
         ? ensureAgentAuthorEnvelope(rawContent, this.actor)
