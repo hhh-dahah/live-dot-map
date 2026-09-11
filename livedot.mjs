@@ -4255,6 +4255,17 @@ var owner = {
   ownerKind: { type: "string", enum: ["node", "route"] },
   ownerId: { type: "string" }
 };
+function ensureAgentAuthorEnvelope(content, actor = "agent") {
+  if (typeof content !== "string") return content;
+  const trimmed = content.trim();
+  if (!trimmed) return content;
+  if (/<!--\s*@author:/i.test(content)) return content;
+  const rawActor = String(actor || "agent").trim();
+  const authorId = rawActor.startsWith("agent:") ? rawActor : `agent:${rawActor.replace(/^agent-?/, "") || "generic"}`;
+  return `<!-- @author: ${authorId} -->
+${content.endsWith("\n") ? content : content + "\n"}<!-- /@author -->
+`;
+}
 var TOOL_DEFINITIONS = Object.freeze([
   schema("map_get_context", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u7684\u7ED3\u6784\u3001\u63A8\u8FDB\u6458\u8981\u4E0E\u660E\u786E\u5173\u8054 Markdown\u3002", { query: { type: "string" }, currentNodeId: { anyOf: [{ type: "string" }, { type: "null" }] }, includeHistory: { type: "boolean" }, limit: { type: "integer", minimum: 1, maximum: 12 } }),
   schema("map_list_human_updates", "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002"),
@@ -4550,13 +4561,16 @@ var ToolService = class {
       return { ...result2, content: String(args.content) };
     }
     if (name === "map_append_markdown") {
-      const result2 = await bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
+      const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
+      const result2 = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
     if (name === "map_list_bundle_files") return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === "map_create_markdown") {
-      const result2 = await bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
+      const rawContent = args.content;
+      const content = args.wrapAuthor !== false && rawContent !== void 0 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
+      const result2 = await bundleStore.createMarkdown({ ...file, content, title: args.title });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }

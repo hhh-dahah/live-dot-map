@@ -66,6 +66,7 @@ Bridge 请求始终区分三层不透明身份：`projectHandle`（项目路由�
 读写工具与其它 MCP 工具共用 loopback 会话、项目白名单、HttpOnly/SameSite 会话和
 Origin/Host 校验；MCP、写入和 reveal 等有副作用的请求还需 CSRF。单个 Markdown
 文件及 `content` 不超过 2 MiB，请求正文另受桥默认 16 MiB body limit 限制。
+Agent 通过 `map_create_markdown` 与 `map_append_markdown` 写入的内容由服务端自动包裹 `<!-- @author: agent:<agentId> --> ... <!-- /@author -->` 成对闭合块，在画布呈现 Notion 风格专属徽标；Agent 无需手动书写该注释，直接提交正文即可。
 
 附件不走 JSON base64：浏览器使用二进制流，Agent 使用 `map_import_asset({sourcePath,ownerKind,ownerId})`。
 服务端生成资料包目标路径并校验扩展名、声明 MIME、文件头、大小、symlink/junction、保留名和 NTFS ADS；附件只返回元数据，不做全文上下文索引。

@@ -21,6 +21,18 @@ const owner = {
   ownerId: { type: 'string' },
 };
 
+/** 自动为 Agent 写入/追加的内容包裹成对 @author 闭合标签，减少 Agent 心智负担与指令开销。 */
+export function ensureAgentAuthorEnvelope(content, actor = 'agent') {
+  if (typeof content !== 'string') return content;
+  const trimmed = content.trim();
+  if (!trimmed) return content;
+  // 若已包含任一人机作者标记注释，保持原样，绝不重复包裹
+  if (/<!--\s*@author:/i.test(content)) return content;
+  const rawActor = String(actor || 'agent').trim();
+  const authorId = rawActor.startsWith('agent:') ? rawActor : `agent:${rawActor.replace(/^agent-?/, '') || 'generic'}`;
+  return `<!-- @author: ${authorId} -->\n${content.endsWith('\n') ? content : content + '\n'}<!-- /@author -->\n`;
+}
+
 /** REST、stdio 与 Agent Kit 共用的固定 24 项工具契约。 */
 export const TOOL_DEFINITIONS = Object.freeze([
   schema('map_get_context', '读取当前地图的结构、推进摘要与明确关联 Markdown。', { query: { type: 'string' }, currentNodeId: { anyOf: [{ type: 'string' }, { type: 'null' }] }, includeHistory: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 12 } }),
@@ -337,13 +349,18 @@ export class ToolService {
       return { ...result, content: String(args.content) };
     }
     if (name === 'map_append_markdown') {
-      const result = await bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
+      const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
+      const result = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result;
     }
     if (name === 'map_list_bundle_files') return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === 'map_create_markdown') {
-      const result = await bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
+      const rawContent = args.content;
+      const content = (args.wrapAuthor !== false && rawContent !== undefined)
+        ? ensureAgentAuthorEnvelope(rawContent, this.actor)
+        : rawContent;
+      const result = await bundleStore.createMarkdown({ ...file, content, title: args.title });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result;
     }
