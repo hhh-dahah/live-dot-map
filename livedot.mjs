@@ -4255,7 +4255,13 @@ var schema = (name, description, properties = {}, required2 = []) => ({
   description,
   inputSchema: {
     type: "object",
-    properties,
+    properties: {
+      ...properties,
+      projectRoot: {
+        type: "string",
+        description: "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+      }
+    },
     ...required2.length ? { required: required2 } : {},
     additionalProperties: true
   }
@@ -4264,17 +4270,6 @@ var owner = {
   ownerKind: { type: "string", enum: ["node", "route"] },
   ownerId: { type: "string" }
 };
-function ensureAgentAuthorEnvelope(content, actor = "agent") {
-  if (typeof content !== "string") return content;
-  const trimmed = content.trim();
-  if (!trimmed) return content;
-  if (/<!--\s*@author:/i.test(content)) return content;
-  const rawActor = String(actor || "agent").trim();
-  const authorId = rawActor.startsWith("agent:") ? rawActor : `agent:${rawActor.replace(/^agent-?/, "") || "generic"}`;
-  return `<!-- @author: ${authorId} -->
-${content.endsWith("\n") ? content : content + "\n"}<!-- /@author -->
-`;
-}
 var TOOL_DEFINITIONS = Object.freeze([
   schema("map_get_context", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u7684\u7ED3\u6784\u3001\u63A8\u8FDB\u6458\u8981\u4E0E\u660E\u786E\u5173\u8054 Markdown\u3002", { query: { type: "string" }, currentNodeId: { anyOf: [{ type: "string" }, { type: "null" }] }, includeHistory: { type: "boolean" }, limit: { type: "integer", minimum: 1, maximum: 12 } }),
   schema("map_list_human_updates", "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002"),
@@ -4289,7 +4284,7 @@ var TOOL_DEFINITIONS = Object.freeze([
   schema("map_checkpoint", "\u521B\u5EFA\u53EF\u6062\u590D\u68C0\u67E5\u70B9\u3002", { reason: { type: "string" } }),
   schema("map_plan_consolidation", "\u53EA\u8BFB\u751F\u6210\u53EF\u5BA1\u6838\u7684\u6574\u7406\u5EFA\u8BAE\u3002", { maxSuggestions: { type: "integer", minimum: 1, maximum: 20 }, now: { type: "string" } }),
   schema("map_read_markdown", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u8D44\u6599\u5305 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" } }),
-  schema("map_write_markdown", "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, baseEtag: { type: "string" }, allowContentRemoval: { type: "boolean" }, wrapAuthor: { type: "boolean" } }, ["content", "baseEtag"]),
+  schema("map_write_markdown", "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, baseEtag: { type: "string" }, allowContentRemoval: { type: "boolean" } }, ["content", "baseEtag"]),
   schema("map_append_markdown", "\u6309\u8DEF\u5F84\u9501\u5E42\u7B49\u8FFD\u52A0 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, commandId: { type: "string" } }, ["content", "commandId"]),
   schema("map_list_bundle_files", "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u6587\u4EF6\u3002", { ...owner, includeArchived: { type: "boolean" } }, ["ownerKind", "ownerId"]),
   schema("map_create_markdown", "\u5728\u5BF9\u8C61\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u8865\u5145 Markdown\u3002", { ...owner, fileName: { type: "string" }, title: { type: "string" }, content: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
@@ -4552,19 +4547,12 @@ var ToolService = class {
       return { mapKey, documentId: context.documentId, revision: snapshot.revision, ...this.shared.planConsolidation(document, { now: typeof args.now === "string" ? args.now : void 0, maxSuggestions: Number.isInteger(args.maxSuggestions) ? args.maxSuggestions : 12, markdown: documents.markdown }) };
     }
     const file = ownerArgs(args, mapKey);
-    const isIndexFile = file.fileName === "index.md" || file.name === "index.md";
-    const isAgent2 = typeof this.actor === "string" && this.actor.startsWith("agent");
     if (name === "map_read_markdown") return cleanResult(await bundleStore.readMarkdown(file));
     if (name === "map_write_markdown") {
-      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
-        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u9ED8\u8BA4\u7981\u6B62 Agent \u4FEE\u6539\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002\u4EC5\u5F53\u4EBA\u7C7B\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6307\u4EE4\u8981\u6C42\u4FEE\u6539 index.md \u65F6\uFF0C\u65B9\u53EF\u663E\u5F0F\u4F20\u5165 allowIndexModification: true\u3002", { status: 403 });
-      }
-      const rawContent = args.content;
-      const content = args.wrapAuthor !== false && rawContent !== void 0 && isAgent2 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
       if (args.allowContentRemoval !== true) {
         const current = await bundleStore.readMarkdown(file).catch(() => null);
         const existing = String(current?.content ?? "");
-        const next = String(content ?? "");
+        const next = String(args.content ?? "");
         if (existing.trim()) {
           const removed = existing.split(/\r?\n/).filter((line) => line.trim() && !next.includes(line.trim()));
           if (removed.length) {
@@ -4572,27 +4560,18 @@ var ToolService = class {
           }
         }
       }
-      const result2 = await bundleStore.replaceMarkdown({ ...file, content, baseEtag: args.baseEtag });
+      const result2 = await bundleStore.replaceMarkdown({ ...file, content: args.content, baseEtag: args.baseEtag });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
-      return { ...result2, content: String(content) };
+      return { ...result2, content: String(args.content) };
     }
     if (name === "map_append_markdown") {
-      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
-        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u9ED8\u8BA4\u7981\u6B62 Agent \u4FEE\u6539\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002\u4EC5\u5F53\u4EBA\u7C7B\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6307\u4EE4\u8981\u6C42\u4FEE\u6539 index.md \u65F6\uFF0C\u65B9\u53EF\u663E\u5F0F\u4F20\u5165 allowIndexModification: true\u3002", { status: 403 });
-      }
-      const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
-      const result2 = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
+      const result2 = await bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
     if (name === "map_list_bundle_files") return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === "map_create_markdown") {
-      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
-        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u7981\u6B62 Agent \u8986\u76D6\u521B\u5EFA\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002", { status: 403 });
-      }
-      const rawContent = args.content;
-      const content = args.wrapAuthor !== false && rawContent !== void 0 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
-      const result2 = await bundleStore.createMarkdown({ ...file, content, title: args.title });
+      const result2 = await bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
@@ -4959,14 +4938,7 @@ function defaultNativeHelperPath(options = {}) {
   const execPath = options.execPath ?? process.execPath;
   const fromExec = join14(dirname6(resolve10(execPath)), "..", "LiveDotMapSetup.exe");
   if (existsSync(fromExec)) return fromExec;
-  if (options.localAppData) {
-    return join14(resolve10(options.localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
-  }
-  const fromRelease = join14(process.cwd(), "installer", "winforms", "bin", "Release", "net8.0-windows", "win-x64", "LiveDotMapSetup.exe");
-  if (existsSync(fromRelease)) return fromRelease;
-  const fromDist = join14(process.cwd(), "dist", "windows-installer", "LiveDotMapSetup.exe");
-  if (existsSync(fromDist)) return fromDist;
-  const localAppData = process.env.LOCALAPPDATA;
+  const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
   if (!localAppData) return null;
   return join14(resolve10(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
 }
@@ -5074,8 +5046,8 @@ import { homedir as homedir3 } from "node:os";
 import { lstat as lstat8, mkdir as mkdir7, readdir as readdir6, readFile as readFile9, realpath as realpath6, stat as stat7 } from "node:fs/promises";
 import { dirname as dirname7, isAbsolute as isAbsolute3, join as join15, relative as relative5, resolve as resolve11, win32 } from "node:path";
 var SETTINGS_VERSION = 1;
-var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "terminal", "gitbash", "system", "folder", "manual"]);
-var EXE_NAME = /^(Code|Antigravity|pycharm64|wt|git-bash)\.exe$/i;
+var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "system", "folder", "manual"]);
+var EXE_NAME = /^(Code|Antigravity|pycharm64)\.exe$/i;
 var EDITOR_ID = /^[a-z][a-z0-9-]{0,31}$/;
 var EXTRA_EDITORS = [
   {
@@ -5106,36 +5078,6 @@ var EXTRA_EDITORS = [
       const programFiles = process.env.ProgramFiles;
       if (programFiles) out.push(...await scanVersionedEditors(join15(programFiles, "JetBrains"), 1));
       return out;
-    }
-  },
-  {
-    id: "terminal",
-    label: "Terminal",
-    appPaths: ["wt.exe"],
-    candidates() {
-      const out = [];
-      const local = process.env.LOCALAPPDATA;
-      if (local) out.push(join15(local, "Microsoft", "WindowsApps", "wt.exe"));
-      return out;
-    },
-    getArgs(target) {
-      return ["-d", dirname7(target)];
-    }
-  },
-  {
-    id: "gitbash",
-    label: "Git Bash",
-    appPaths: ["git-bash.exe"],
-    candidates() {
-      const out = [];
-      const programFiles = process.env.ProgramFiles;
-      if (programFiles) out.push(join15(programFiles, "Git", "git-bash.exe"));
-      const programFilesX86 = process.env["ProgramFiles(x86)"];
-      if (programFilesX86) out.push(join15(programFilesX86, "Git", "git-bash.exe"));
-      return out;
-    },
-    getArgs(target) {
-      return [`--cd=${dirname7(target)}`];
     }
   }
 ];
@@ -5477,13 +5419,13 @@ var EditorService = class _EditorService {
       if (await this.#resolveExtra(def)) editors.push({ id: def.id, label: def.label, kind: "editor", available: true });
     }
     editors.push(
-      { id: "system", label: "\u7528\u9ED8\u8BA4\u5E94\u7528\u6253\u5F00", kind: "system", available: process.platform === "win32" || Boolean(this.nativeHelper) },
-      { id: "folder", label: "\u5728\u6587\u4EF6\u5939\u4E2D\u663E\u793A", kind: "folder", available: process.platform === "win32" || Boolean(this.nativeHelper) },
+      { id: "system", label: "\u7528\u9ED8\u8BA4\u5E94\u7528\u6253\u5F00", kind: "system", available: Boolean(this.nativeHelper) },
+      { id: "folder", label: "\u5728\u6587\u4EF6\u5939\u4E2D\u663E\u793A", kind: "folder", available: Boolean(this.nativeHelper) },
       {
         id: "manual",
         label: manualAvailable ? "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F" : "\u624B\u52A8\u9009\u62E9\u7A0B\u5E8F\u2026",
         kind: "manual",
-        available: manualAvailable && (process.platform === "win32" || Boolean(this.nativeHelper)),
+        available: manualAvailable && Boolean(this.nativeHelper),
         needsPicker: !manualAvailable
       }
     );
@@ -5576,22 +5518,7 @@ var EditorService = class _EditorService {
       const metadata = await stat7(candidate);
       const folder = isDirectory(metadata) ? candidate : dirname7(candidate);
       await this.#assertNoSymlinkEscape(folder);
-      const targetPath = isDirectory(metadata) ? folder : candidate;
-      try {
-        await this.#callNative("open-folder", { targetPath });
-      } catch (nativeErr) {
-        if (process.platform === "win32") {
-          const child = this.spawn("explorer.exe", [`/select,${targetPath}`], {
-            shell: false,
-            windowsHide: false,
-            detached: true,
-            stdio: "ignore"
-          });
-          child?.unref?.();
-        } else {
-          throw nativeErr;
-        }
-      }
+      await this.#callNative("open-folder", { targetPath: isDirectory(metadata) ? folder : candidate });
       return { editorId, launched: true };
     }
     const target = await this.#projectPath(relativePath, { kind: "file" });
@@ -5604,43 +5531,14 @@ var EditorService = class _EditorService {
     if (extraDef) {
       const executable = await this.#resolveExtra(extraDef);
       if (!executable) throw bridgeError2("EDITOR_NOT_AVAILABLE", `\u672A\u68C0\u6D4B\u5230 ${extraDef.label}`, 503);
-      const args = typeof extraDef.getArgs === "function" ? extraDef.getArgs(target) : [target];
-      return { editorId, ...this.#launch(executable, args) };
+      return { editorId, ...this.#launch(executable, [target]) };
     }
     if (editorId === "system") {
-      try {
-        await this.#callNative("open-default", { targetPath: target });
-      } catch (nativeErr) {
-        if (process.platform === "win32") {
-          const child = this.spawn("explorer.exe", [target], {
-            shell: false,
-            windowsHide: false,
-            detached: true,
-            stdio: "ignore"
-          });
-          child?.unref?.();
-        } else {
-          throw nativeErr;
-        }
-      }
+      await this.#callNative("open-default", { targetPath: target });
       return { editorId, launched: true };
     }
     const manualPath = await this.#assertManualExecutable(this.settings.editors.manual.path);
-    try {
-      await this.#callNative("open-manual", { executablePath: manualPath, targetPath: target });
-    } catch (nativeErr) {
-      if (process.platform === "win32") {
-        const child = this.spawn(manualPath, [target], {
-          shell: false,
-          windowsHide: false,
-          detached: true,
-          stdio: "ignore"
-        });
-        child?.unref?.();
-      } else {
-        throw nativeErr;
-      }
-    }
+    await this.#callNative("open-manual", { executablePath: manualPath, targetPath: target });
     return { editorId, launched: true };
   }
   async saveAs({ relativePath } = {}) {
@@ -5826,6 +5724,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
           "type": "integer",
           "minimum": 1,
           "maximum": 12
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5836,7 +5738,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -5854,6 +5761,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "summary": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5868,7 +5779,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "\u5217\u51FA\u9879\u76EE\u5185\u5730\u56FE\u4E0E\u5F53\u524D active-map\u3002",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -5880,6 +5796,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5893,6 +5813,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "mapKey": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5912,6 +5836,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5947,6 +5875,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeHistory": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5978,6 +5910,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
           "items": {
             "type": "object"
           }
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5994,6 +5930,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "document": {
           "type": "object"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -6007,6 +5947,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "reason": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -6025,6 +5969,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "now": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -6051,6 +5999,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "path": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -6087,8 +6039,9 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         "allowContentRemoval": {
           "type": "boolean"
         },
-        "wrapAuthor": {
-          "type": "boolean"
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6125,6 +6078,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "commandId": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6152,6 +6109,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6185,6 +6146,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "content": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6216,6 +6181,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "to": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6245,6 +6214,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6273,6 +6246,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6301,6 +6278,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6334,6 +6315,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "mimeType": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6362,6 +6347,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6390,6 +6379,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6421,6 +6414,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeContent": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -8212,7 +8209,7 @@ async function createBridgeServer({
         if (sessionStore && existingId && ticket[1].projectHandle && ticket[1].projectRoot) {
           const authorized = sessionStore.authorize(existingId, ticket[1].projectHandle);
           if (authorized) {
-            await sessionStore.flush();
+            await sessionStore.persistIfDue();
             response.setHeader("Set-Cookie", `${SESSION_COOKIE}=${existingId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(sessionStore.ttlMs / 1e3)}`);
             sendJson(response, 200, {
               csrfToken: authorized.csrfToken,
@@ -8500,10 +8497,9 @@ async function createBridgeServer({
         requireMethod(request, "POST");
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
-        const relativePath = await mapMarkdownPath(session, String(body.relativePath || ""));
         sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).open({
           editorId: String(body.editorId || ""),
-          relativePath,
+          relativePath: String(body.relativePath || ""),
           targetKind: body.targetKind === "directory" ? "directory" : "file"
         }));
         return;
@@ -8525,8 +8521,7 @@ async function createBridgeServer({
         requireMethod(request, "POST");
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
-        const relativePath = await mapMarkdownPath(session, String(body.relativePath || ""));
-        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath }));
+        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath: String(body.relativePath || "") }));
         return;
       }
       if (pathname === "/markdown") {
@@ -9573,7 +9568,11 @@ async function runMcpProxy(projectRoot, actor, options) {
       if (request.method === "initialize") result2 = { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "live-dot-map", version: "2.0.0" } };
       else if (request.method === "tools/list") result2 = { tools: toolDefinitions };
       else if (request.method === "tools/call") {
-        let targetRoot = await resolveProjectRootToUse(null, root);
+        const params = request.params;
+        const name = String(params.name);
+        const callArgs = params.arguments ?? {};
+        const explicitProject = typeof callArgs.projectRoot === "string" && callArgs.projectRoot.trim() ? String(callArgs.projectRoot).trim() : typeof callArgs.project === "string" && callArgs.project.trim() ? String(callArgs.project).trim() : null;
+        let targetRoot = await resolveProjectRootToUse(explicitProject, root);
         let activeQual = await inspectProjectQualification(targetRoot);
         if (!activeQual.ok && targetRoot !== root) {
           targetRoot = root;
@@ -9584,9 +9583,6 @@ async function runMcpProxy(projectRoot, actor, options) {
         } else {
           currentRoot = targetRoot;
           qualification = activeQual;
-          const params = request.params;
-          const name = String(params.name);
-          const callArgs = params.arguments ?? {};
           let value;
           let lastError = null;
           for (let attempt = 0; attempt < 2; attempt += 1) {
