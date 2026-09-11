@@ -337,6 +337,10 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
   const root = resolve(projectRoot);
   let currentRoot = await resolveProjectRootToUse(null, root);
   let qualification = await inspectProjectQualification(currentRoot);
+  if (!qualification.ok && currentRoot !== root) {
+    currentRoot = root;
+    qualification = await inspectProjectQualification(root);
+  }
   // fail-open 进程不能创建日志目录、health 文件或地图目录。transport
   // 仍然保持可用，只有 tools/call 返回结构化 isError。
   const logger = qualification.ok ? createLogger({ source: 'agent' }) : noopLogger;
@@ -353,8 +357,12 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
       if (request.method === 'initialize') result = { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'live-dot-map', version: '2.0.0' } };
       else if (request.method === 'tools/list') result = { tools: toolDefinitions };
       else if (request.method === 'tools/call') {
-        const targetRoot = await resolveProjectRootToUse(null, currentRoot);
-        const activeQual = await inspectProjectQualification(targetRoot);
+        let targetRoot = await resolveProjectRootToUse(null, root);
+        let activeQual = await inspectProjectQualification(targetRoot);
+        if (!activeQual.ok && targetRoot !== root) {
+          targetRoot = root;
+          activeQual = await inspectProjectQualification(root);
+        }
         if (!activeQual.ok) {
           result = unavailableToolResult(activeQual);
         } else {
@@ -374,7 +382,17 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
               break;
             } catch (error) {
               lastError = error;
-              const status = (error as { httpStatus?: number })?.httpStatus;
+              const status = (error as { httpStatus?: number; code?: string })?.httpStatus;
+              const code = (error as { code?: string })?.code;
+              // 容灾自愈（Self-Healing）：若桥端报 404 或 PROJECT_NOT_FOUND，说明当前指针目标已被删除或不存在。
+              // 若当前 targetRoot 不等于 root (Agent 本身启动目录)，立即降级回退到 root 并自动重试
+              if ((status === 404 || code === 'PROJECT_NOT_FOUND') && targetRoot !== root) {
+                targetRoot = root;
+                currentRoot = root;
+                qualification = await inspectProjectQualification(root);
+                bridge = null;
+                continue;
+              }
               // fetch 网络错误（桥中途死亡）或 401（旧桥不认识控制通道）可重试一次；
               // 其余 4xx/5xx 是工具本身的真实错误，直接上报，绝不重试点火。
               if (typeof status === 'number' && status !== 401) throw error;
