@@ -357,7 +357,13 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
       if (request.method === 'initialize') result = { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'live-dot-map', version: '2.0.0' } };
       else if (request.method === 'tools/list') result = { tools: toolDefinitions };
       else if (request.method === 'tools/call') {
-        let targetRoot = await resolveProjectRootToUse(null, root);
+        const params = request.params as Json;
+        const name = String(params.name);
+        const callArgs = (params.arguments as Json) ?? {};
+        const explicitProject = typeof callArgs.projectRoot === 'string' && callArgs.projectRoot.trim()
+          ? String(callArgs.projectRoot).trim()
+          : (typeof callArgs.project === 'string' && callArgs.project.trim() ? String(callArgs.project).trim() : null);
+        let targetRoot = await resolveProjectRootToUse(explicitProject, root);
         let activeQual = await inspectProjectQualification(targetRoot);
         if (!activeQual.ok && targetRoot !== root) {
           targetRoot = root;
@@ -368,9 +374,6 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
         } else {
           currentRoot = targetRoot;
           qualification = activeQual;
-          const params = request.params as Json;
-          const name = String(params.name);
-          const callArgs = (params.arguments as Json) ?? {};
           // 桥句柄按进程缓存；桥死亡/换届（A4 替换）时清空缓存重探一次（含自动点火）。
           let value: unknown;
           let lastError: unknown = null;
