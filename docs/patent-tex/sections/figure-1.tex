@@ -1,0 +1,23 @@
+\begin{tikzpicture}[font=\scriptsize,every node/.style={align=center,inner sep=2.5pt},
+  layer/.style={draw=black,minimum width=3.05cm,minimum height=15pt},
+  rule/.style={draw=black,dashed,minimum width=1.85cm,minimum height=15pt},
+  arrow/.style={->,thick}, lead/.style={thin}]
+  \node[layer] (l1) at (0,0) {结构化地图层};
+  \node[layer,below=4pt of l1] (l2) {卡片索引层};
+  \node[layer,below=4pt of l2] (l3) {正文详情层};
+  \node[layer,below=4pt of l3] (l4) {资产文件层};
+  \node[rule,right=10pt of l1] (r1) {结构投影};
+  \node[rule,right=10pt of l2] (r2) {摘要检索};
+  \node[rule,right=10pt of l3] (r3) {显式路径读取};
+  \node[rule,right=10pt of l4] (r4) {元数据/受控读取};
+  \draw[arrow] (l1.east)--(r1.west); \draw[arrow] (l2.east)--(r2.west);
+  \draw[arrow] (l3.east)--(r3.west); \draw[arrow] (l4.east)--(r4.west);
+  \draw[lead] (l1.north east)--++(0.12,0.18) node[anchor=west]{101};
+  \draw[lead] (l2.north east)--++(0.12,0.18) node[anchor=west]{102};
+  \draw[lead] (l3.north east)--++(0.12,0.18) node[anchor=west]{103};
+  \draw[lead] (l4.north east)--++(0.12,0.18) node[anchor=west]{104};
+  \draw[lead] (r1.north east)--++(0.14,0.16) node[anchor=west]{105};
+  \draw[lead] (r2.north east)--++(0.14,0.16) node[anchor=west]{106};
+  \draw[lead] (r3.north east)--++(0.14,0.16) node[anchor=west]{107};
+  \draw[lead] (r4.north east)--++(0.14,0.16) node[anchor=west]{108};
+\end{tikzpicture}

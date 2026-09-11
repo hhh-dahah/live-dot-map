@@ -22,8 +22,15 @@ export function defaultNativeHelperPath(options = {}) {
   const execPath = options.execPath ?? process.execPath;
   const fromExec = join(dirname(resolve(execPath)), '..', 'LiveDotMapSetup.exe');
   if (existsSync(fromExec)) return fromExec;
+  if (options.localAppData) {
+    return join(resolve(options.localAppData), 'live-dot-map', 'current', 'LiveDotMapSetup.exe');
+  }
+  const fromRelease = join(process.cwd(), 'installer', 'winforms', 'bin', 'Release', 'net8.0-windows', 'win-x64', 'LiveDotMapSetup.exe');
+  if (existsSync(fromRelease)) return fromRelease;
+  const fromDist = join(process.cwd(), 'dist', 'windows-installer', 'LiveDotMapSetup.exe');
+  if (existsSync(fromDist)) return fromDist;
   // 兼容默认安装位置（LOCALAPPDATA/live-dot-map/current）。
-  const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
+  const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return null;
   return join(resolve(localAppData), 'live-dot-map', 'current', 'LiveDotMapSetup.exe');
 }

@@ -604,5 +604,166 @@ pm run verify 全量结果见下。
   - 顺带修复 `installRoot >= process.cwd()` → `dirname(process.execPath)`：启动器普通启动与更新器重启的 cwd 不一致，导致正常启动 `update/check` 读不到本地安装信息（current:null）。
   - 顺带修复 bootstrap 会话响应在带 projectHandle 时丢弃 projectRoot，导致画布项目 pill 显示「未选择项目」；三处 session/bootstrap 响应回传 projectRoot。
 - **验证**（假通道 + 安装版真机）：2.0.6→2.0.7 好路径（external exe 从 CloudBase 下载安装、桥自重启、画布恢复、数据完好、更新条消失）✓；篡改 exe sha →「更新包校验失败（livedot-bridge-win-x64.exe 与清单不一致…）」✓；external 地址换非法域名 →「外部地址域名不在白名单」✓；通道断网 →「更新服务暂时不可用」✓；「稍后」关条红点留 ✓；项目 pill 显示项目名 ✓；画布数据全程完好。
-- **测试**：全量 229 过 0 挂 3 跳过（既有 fail-open 偶发项本次未复现；串行稳定全绿）。
 - **最终通道**：v2.0.1，payloadHash `2755532c849f…`，exe 条目 external→CloudBase（`test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com`），无 installer 字段。
+
+## 9-06 极简禅意（Zen）编辑器体验升级（分支 ui-exp-minimal-zen，节点 n24）
+
+- **背景**：针对用户实测指出的通栏实线压抑、标记清除不可 Ctrl+Z 撤回、作用范围判断不明确及气泡遮挡正文等痛点，实施全面体验重构。
+- **1. 起止折角发丝标（`┌` 与 `└`）**：
+  - 取消左侧纵贯全文的通栏实线；`renderMirror` 改为多段扫描并标记 `author-start`（起始行首折角 `┌`）、`author-end`（结束行底折角 `└`）、`author-single`（单行 `[`）与 `author-mid`（中间所有行完全留白呼吸，无边框干扰）。
+  - CSS 使用 `--ac` 动态绑定琥珀金（人写）与靛蓝（Agent），折角宽 7px 高 10px，贴合左侧留白区。
+- **2. Notion 式无感段落判定 + 自由纠错选区模式**：
+  - 光标无选区时（`s === e`），自动定位当前自然段并在上方插入或替换标签；
+  - 用户有选区时（`s !== e`，如外部粘贴 AI 文本重标），精确作用于所选文本行，并在后续段落按需自动闭合/恢复原作者，赋予充分纠错空间。
+- **3. 右下角高级感微面板**：
+  - 维持在右下角 `[ ●● 笔迹 ▾ ]` 上方弹出，不悬浮遮挡打字视线；
+  - 引入 16px 毛玻璃滤镜与微阴影，顶部动态显示 `📍 段落模式：作用于当前光标段落` 或 `📍 选区模式：作用于选中的 N 字`。
+- **4. 100% 原生 Ctrl+Z 撤销保障**：
+  - `paletteWrap` 增加 `pointerdown` 的 `preventDefault()`，锁定编辑区焦点防 blur 丢失撤销事务；
+  - 标记与清除统一走单步原子的 `document.execCommand('insertText', false, ...)`，消除 `delete` 降级对 undo stack 的破坏。标记与清除均可按 Ctrl+Z 瞬时无损还原。
+- **5. Agent 回复末尾智能切回人类笔迹（Smart Auto-Handoff）**：
+  - 根因：Agent 结尾若未闭合，按流式向下继承会导致用户在文件最后接续打字被误染为 Agent（紫色折角）。
+  - 机制：在 `editor` 的 `keydown` 中检测光标是否处于 Agent 块末尾，按下 `Enter` 换行接续书写时，自动无感注入 `\n\n<!-- @author: human -->\n`，使用户的新输入天然、自动归属为人写（琥珀金），彻底消除手动标人写的认知负担，同时 `Ctrl+Z` 可单步撤回。
+  - 修复 `nodes/n24/index.md`：在用户键入的「撒大苏打」前追加 `<!-- @author: human -->`，验证紫色折角准确收拢于 Agent 尾句，用户新输入呈现琥珀金单行折角 `[`。
+- **验证**：Playwright `tools/test-smart-enter.mjs` 与 `tools/test-tail-render.mjs` 全部通过（截图 `tools/12-index-tail-verified.png`），自动切回人类归属 100% 成立。
+
+## 9-06 方案 C 落地：Notion 式成对闭合 Agent 块 + 默认纯净正文 + 高权重重点标记（分支 ui-exp-minimal-zen，节点 n24）
+
+- **决策与背景**：彻底解决流式作者向下无界渗透的脆弱性，全面转向方案 C（成对闭合 Agent 块 + 默认纯净正文），并根据用户需求引入高权重重点标记 `<mark>`。
+- **1. 纯净基线（Default Human, No Human Tags）**：
+  - 废除任何 `<!-- @author: human -->` 的概念；
+  - 默认正文 100% 纯净标准 Markdown，无任何作者注释，无任何左侧边线，打字自由无感。
+- **2. Notion 式成对闭合 Agent 块（`<!-- @author: agent... --> ... <!-- /@author -->`）**：
+  - Agent 回复必须且只能在成对标签内产生；
+  - 起始行 `tag-agent-start`：左侧紫色发丝折角 `┌`，右侧配备小巧精致的 Notion 风格微型徽标 `✦ Agent`；
+  - 结束行 `tag-agent-end`：左侧紫色发丝折角 `└`，右侧配备 `✦ /Agent` 微型徽标；
+  - 内容区：首行 `┌`，末行 `└`，中间行纯净呼吸留白；
+  - 块外绝对隔离：用户在闭合标签之后打字（如 `撒大苏打`），自然属于纯净基线，绝无误染风险。
+- **3. 高权重重点标记（`<mark>...</mark>`）**：
+  - 用户可划选任意文本（无论人类文本还是 Agent 文本），点击「⭐ 设为重点（高权重）」；
+  - 编辑区与预览区呈现一致的暖金发丝虚线下划线（`border-bottom: 2px dashed oklch(75% 0.16 80)`）与微光柔和底色；
+  - 镜像层逐行重平衡并精准映射 `<mark>` 标签，textarea 文字几何逐字符 1:1 对齐；
+  - 写入协议规范：后续 Agent 读取上下文时，将 `<mark>` 识别为人类亲自圈定、需最高优先引用的核心意图与最高约束。
+- **4. 右下角高级微面板重构（`[ ✦ 标记 ▾ ]`）**：
+  - 菜单提供：「`✦ 标为 Agent 块`」、「`⭐ 设为重点（高权重）`」、「`✕ 清除标记`」；
+  - 焦点常驻锁定，100% 支持原生 `Ctrl+Z` 瞬时单步撤销。
+- **5. 视觉极简微调：Agent 首尾徽标统一移至左侧前缀**：
+  - 响应用户反馈，去除冗余的折角线，仅保留精致微型徽标；
+  - 徽标由原本浮动在行最右侧改为直接置于标签最左侧前缀：起始行 `[ ✦ Agent ] <!-- @author: ... -->`，结束行 `[ ✦ /Agent ] <!-- /@author -->`；
+  - 严格计算并固化行高为 `23.625px`（`min-height: 23.625px; box-sizing: border-box; display: flex; align-items: center`），彻底消除 3.5px 字体尺寸偏差导致的 textarea 光标漂移；
+  - 产出截图验证：`tools/17-agent-block-start-editor.png`、`tools/18-agent-block-end-editor.png`。
+
+## 9-08 极简禅意 UI 与官方全彩图标重构（分支 ui-exp-minimal-zen）
+
+- **背景**：用户走查反馈：
+  1. 界面紫色偏多偏艳（分段切换、侧栏选中文件等），不够高级；
+  2. 打开方式菜单图标缺乏官方 icon，且「在文件夹中显示」与「VS Code」在部分路径下失效；
+  3. 右上角「收起侧栏（>）」按钮冗余，不符合极简原则。
+- **1. 极简禅意配色（Apple / Linear 风格纯黑白灰）**：
+  - 分段选择器 `[ 编辑 | 预览 ]` 重构为微阴影胶囊（`border: 1px solid var(--border); border-radius: 8px; padding: 2px;` 激活项为实体白底微阴影 `box-shadow: 0 1px 2px rgba(0,0,0,.08)`），彻底告别糖果紫；
+  - 侧栏活跃文件项 `index.md · 主文档` 采用低调中性灰 `var(--surface-hover)` 与高对比中性字，移除紫色底色；
+  - Agent 语义标识调优为低饱和典雅石板紫（`oklch(50% 0.08 285)`），仅作为功能性身份微标，不侵染 UI 框架。
+- **2. 官方全彩矢量图标库（内置对齐）**：
+  - 严格参照用户实机参考图，内置官方级全彩 SVG：`VS Code`（官方折叠丝带）、`Antigravity`（深色圆角方块+彩虹拱门）、`Default app / 默认应用`（金黄文件夹+蓝文档插签）、`Terminal`（深黑圆角+横向高光带+`>_`）、`Git Bash`（菱形 Git 分支徽标）、`PyCharm`（墨绿/黑底方块+`PC`白字及荧光绿下划线）、`打开所在文件夹`（温润金黄文件夹）；
+  - 首选编辑器动态响应：当首选为 VS Code 时，顶部触发按钮自动呈现 `[ <VS Code图标> 打开 ▾ ]`，菜单展开呈现全彩官方图标及首选勾选态。
+- **3. 右上角顶栏极简收敛**：
+  - 彻底移除右上角多余的 `collapseBtn`（`>` 收起侧栏按钮），顶栏只保留纯净的返回、标题、分段开关、`[ 打开 ▾ ]` 与 `[ ✕ ]`；
+  - 侧栏折叠继续通过键盘快捷键 `Escape` 保留，零视觉噪点。
+- **4. 桥端唤起与路径修复**：
+  - 修复 `server.mjs` 中 `/editors/open` 缺少 `mapMarkdownPath` 映射导致的 404/ENOENT；
+  - 修复 `editor-service.mjs` 在 Windows 开发模式下 fallback 调用 `explorer.exe /select,"<target>"` 与 Windows 系统应用调用，消除 503 `NATIVE_HELPER_UNAVAILABLE`；
+  - 扩展 `EXTRA_EDITORS` 支持自动识别 Windows 本地安装的 Terminal（`wt.exe`）与 Git Bash（`git-bash.exe`），实现开箱即用。
+- **验证**：
+  - 单元测试：`node --test tests/bridge/editor-service.test.mjs` 9/9 PASS；`tests/web/bridge-client-editors.test.mjs` 4/4 PASS；`tests/bridge/recycle-bin.test.mjs` 3/3 PASS；
+  - Playwright 端到端交互走查：
+    - `tools/20-minimal-zen-editor.png`：黑白灰微胶囊分段开关、无 `>` 按钮、石板紫微标；
+    - `tools/21-open-with-menu.png`：VS Code、Antigravity、PyCharm、Terminal、Git Bash、默认应用、文件夹官方全彩图标；
+    - 交互断言：点击「在文件夹中显示」拦截 200 `{ editorId: 'folder', launched: true }`；点击「VS Code」拦截 200 `{ editorId: 'vscode', launched: true }`；
+    - 文本行高镜像层严格对齐：`23.625px`（diff=0）。
+
+### 2026-09-08 节点侧栏顶栏收敛与极简去噪
+- **背景**：在完成 Markdown 全屏/抽屉顶栏去噪后，普通节点与边属性面板（`#panel`）右上角依然保留了收起箭头（`>`，即 `#panel-collapse`），与关闭按钮（`✕`）并排，存在视觉冗余且不符合极简原则（快捷键与边缘拖拽已能收折侧栏）。
+- **修改**：
+  - 从 `app.html` 的 `#panel header .acts` 中彻底移除 `#panel-collapse` 按钮，顶栏右侧仅保留纯粹的 `✕` 关闭按钮；
+  - 侧栏事件绑定切换为可选链保护（`$('#panel-collapse')?.addEventListener(...)`），消除 DOM 节点缺失引发的运行时中断风险。
+- **验证**：
+  - Playwright 端到端断言：节点详情面板打开后，`#panel header .acts` 内按钮数量严格为 1，`#panel-collapse` 元素为 null，`#panel-close` 正常生效；
+  - 视觉验证产物：`tools/22-panel-header-no-collapse.png`、`tools/22-panel-overview.png`；
+  - 全量自动化测试：230/230 项测试全部通过（pass 230, fail 0）。
+
+### 2026-09-08 节点状态三态收敛、节点归档与独立设置空间
+- **背景**：
+  1. 用户指出节点状态在属性侧栏中存在「语义：普通/问题」及「解决状态：待解决/已解决」的分叉层级，不够简洁直观；
+  2. 节点解决后原亮绿刺眼，希望转为极具质感与低存在感的高级中性灰；
+  3. 需要节点归档能力：归档后从画布移出进入归档库，不留视觉杂音，且随时能在设置中完整找回；
+  4. 汉堡菜单中的「设置」不再是多级悬浮小弹层，需要直达一个专属的「独立空间（设置中心）」，为未来扩展更多系统与偏好设置预留空间，并保持 Linear / Apple 级极简禅意。
+- **修改**：
+  1. **状态三态平铺收敛**：
+     - 在 `app.html` 节点详情侧栏中将二级分支合并为单行三态分段选择器：`[ 普通 | 问题 | 已解决 ]`；
+     - 底层数据模型平滑映射：普通 (`kind:'goal', type:'目标', resolved:false`)、问题 (`kind:'problem', type:'问题', resolved:false`)、已解决 (`kind:'problem', type:'问题', resolved:true`)，100% 保持协议向后兼容；
+     - 调优已解决节点的调色板：采用低饱和、高对比石板中性灰边框 (`oklch(76% 0.01 260)`) 与极淡灰底 (`oklch(97% 0.005 260)`)，彻底移除亮绿高光与刺眼绿标。
+  2. **节点归档机制与画布过滤**：
+     - 属性侧栏与右键菜单增加入口：`📦 归档此节点（移入归档库）`；
+     - 归档后 `n.archived = true`，画布自动跳过该节点绘制，关联方案线与标注随之隐入归档库；
+     - 空间索引与吸附自动跳过归档节点。
+  3. **全新独立设置空间（设置中心）**：
+     - 点击主菜单 `☰` 中的「设置」直达两栏式全局设置模态空间（`openSettingsSpace('archive')`）；
+     - **左侧导航**：归档库（带徽标统计）、通用偏好（预留编号、标注、失败线开关）、关于与系统（版本、更新与健康度）；
+     - **右侧归档库管理区**：支持分类筛选（全部/节点/方案/路线），展示对象信息卡片，支持一键「恢复」回到画布原位，支持 ID 二次确认「永久清除」。
+- **验证**：
+  - 全量自动化单元测试：`npm test` 230/230 PASS（pass 230, fail 0, skipped 3）；
+  - Playwright 端到端走查：
+    - `tools/23-node-resolved-gray.png`：三态分段切换到「已解决」，节点呈现高级低存在感石板灰，顶栏微标变灰；
+    - `tools/24-node-archived-canvas.png`：点击归档后节点从画布移出，弹出找回引导 Toast；
+    - `tools/25-settings-space-archive.png`：独立设置空间两栏式居中展示，归档库精准收录该节点；
+    - `tools/26-node-restored-canvas.png`：点击恢复后关闭设置空间，节点完好无损重现于画布原位。
+
+### 2026-09-08 节点归档确认弹窗、属性面板归档按键收敛入省略号菜单、已解决节点无字低存在感优化
+- **背景**：
+  1. 节点归档需要二次确认阻断，要求居中弹出包含解释说明的确认弹窗（含「确认归档」与「取消」），防止误触导致节点从画布移出；
+  2. 属性侧栏主面板不要直接放置归档按钮，符合极简与高聚合原则，将归档入口收归底部省略号（`...`）更多菜单中；
+  3. 已解决节点在画布上不要有右上角「已解决」文字徽标，影响整体视觉观感；
+  4. 已解决节点的视觉层级需进一步弱化，探索更低存在感的方案（降低不透明度至 0.62，超细 hairline 灰边，去阴影，hover/选中时平滑回弹）。
+- **修改**：
+  1. **归档二次确认弹窗**：
+     - `archiveNode(n)` 接入居中模态弹窗 `confirmDialog`，提供弹窗标题「归档节点」、说明文案（「归档后节点将从当前画布移出以保持工作区整洁，关联方案线与标注同步收录。数据不会删除，随时可在「设置 → 归档库」中找回并一键恢复至画布。」）及「确认归档」/「取消」按钮；
+     - 对话框文本区域新增 `white-space: pre-line`，段落排版自然工整。
+  2. **归档入口收纳至省略号更多菜单**：
+     - 从 `renderPanel` 的 `#panel-body` 中彻底移除 `data-act="archive-node"` 按钮，主面板保持纯净专注；
+     - 底部省略号按钮 `#panel-more` 触发的 `nodeMenu` 包含 `📦 归档节点…`，并优化菜单弹出坐标紧贴省略号按钮上方。
+  3. **已解决节点极致低存在感**：
+     - 完全移除已解决节点右上角文字徽标（`.node[data-kind="problem"].resolved .dot::before { content:none; display:none }`）；
+     - 画布常态下设置 `opacity: 0.62; transition: opacity .15s ease`，搭配 1.5px 超细淡边框 `oklch(82% .006 285)` 与柔和文字 `oklch(60% .012 285)`，无高光无发光外圈，轻盈融入背景；
+     - 悬浮及选中态（`:hover`, `.sel`）透明度平滑恢复为 1，并附加微弱聚焦外圈，确保交互可读性与操作掌控感。
+- **验证**：
+  - 全量自动化测试：`npm test` 230/230 PASS（pass 230, fail 0, skipped 3）；
+  - Playwright 端到端走查与截图留痕：
+    - `tools/27-node-resolved-low-profile.png`：已解决节点无字、超细淡灰边、低透明度自然隐于背景；
+    - `tools/28-archive-confirm-dialog.png`：居中归档确认模态弹窗，清晰呈现操作影响与恢复提示；主侧栏面板无多余归档按钮；
+    - `tools/29-panel-more-menu.png`：底部省略号点击弹出紧凑菜单，清晰列出「📦 归档节点…」；
+    - `tools/30-settings-space-archived.png`：归档后画布节点即刻隐去，独立设置空间归档库精准收录并可一键恢复。
+
+### 2026-09-10 UI面板无极缩放、Markdown导航解耦与窄屏/分屏自适应防遮挡
+- **背景**：
+  1. Markdown 编辑器头部导航中，左侧按钮与右侧关闭 `✕` 曾均返回属性详情，用户指出逻辑混淆且左侧箭头方向与直觉不符；期望左侧明确返回节点详情卡片，右侧 `✕` 彻底关闭整个抽屉返回干净画布；
+  2. 右侧抽屉面板此前限制在较狭窄的固定范围（例如 240px），在小窗口或分屏使用时占用过宽；需要支持无级自由缩放（无级调宽下探至 180px/280px，支持拖拽磁吸折叠与双击复原）；
+  3. 窄屏/分屏（如 450px 宽度）模式下，项目药丸组件被挤压至 10px 无法点击，画布中央工具栏与底部缩放条被右侧面板物理遮挡截断；需要响应式自适应防遮挡，折叠项目药丸为单图标入口并下挂聚合导航菜单，工具栏微型化与次级工具折叠入省略号。
+- **修改**：
+  1. **Markdown 编辑器导航解耦**：
+     - 左侧返回按钮重构为文字+图标的明确语义操作：`‹ 详情`（`.mdv-back-btn`），点击仅退出 Markdown 编辑器退回节点属性卡片；
+     - 右侧关闭按钮 `✕`（`.mdv-close`）专用于关闭整个侧栏抽屉（触发 `select(null)`），恢复画布完全视野；未保存内容时均统一接入 `confirmDialog` 防丢失；
+  2. **侧栏面板无极缩放（180px~96vw）与磁吸折叠**：
+     - 调宽手柄 `#dock-grip` 热区从 8px 扩宽至 14px，加入半透明垂直 pill 指示条，悬停/拖拽时流畅变色提示；
+     - 最小宽度全面下探：普通属性面板允许缩小至 180px，Markdown 编辑面板允许缩小至 280px；
+     - 磁吸自动折叠：向右拖拽宽度 < 110px 时自动吸附折叠为 36px 边缘停靠条（`.rail`），双击手柄快速在折叠与历史宽度间往返切换；
+  3. **窄屏与分屏自适应防遮挡（`.narrow-dock` & `.tiny-dock`）**：
+     - 动态计算画布有效可用宽度（`window.innerWidth - dockWidth`），在有效可视区域小于 560px 时激活 `.narrow-dock`，小于 380px 时激活 `.tiny-dock`；
+     - **项目药丸极简折叠**：顶栏左侧 `#project-pill` 自动折叠为单个 38x38px 图标按钮，隐藏文件夹名称、状态徽标与多余按钮，仅保留清爽文件夹图标；点击弹出包含「项目、地图、设置中心、整理地图、新手引导」的聚合导航浮层；
+     - **工具栏与缩放条防遮挡**：解除绝对居中定位，工具栏按钮紧凑化（32x32px）、隐藏快捷键徽章；`.tiny-dock` 下将「新建方案线」与「添加标注」自动折叠至 `#more-btn` 省略号菜单内；底部缩放条自动隐去撤销/重做按钮，确保工具栏与缩放条绝不与侧栏面板发生任何物理重叠。
+- **验证**：
+  - 全量自动化测试：`npm test` 230/230 PASS（pass 230, fail 0, skipped 3）；
+  - Playwright 端到端走查与高保真截图：
+    - `tools/31-markdown-nav-decoupled.png`：左侧清晰标注 `‹ 详情`，右侧 `✕` 彻底关闭侧栏；点击测试分别返回属性卡片与画布；
+    - `tools/32-narrow-dock-no-overlap.png`：450px 窄窗口下面板缩至 200px，项目药丸呈 38x38px 单图标，工具栏与缩放条完美布局在左侧可用区内，严格零像素物理重合；
+    - `tools/33-compact-nav-menu.png`：点击 38x38px 折叠项目图标，即刻展开 5 合 1 聚合导航菜单（项目选择、切换地图、设置中心、整理地图、新手引导）；
+    - `tools/34-narrow-toolbar-more-menu.png`：点击工具栏省略号 `...`，新建方案线 (L) 与添加标注 (M) 无缝收纳其中，次级功能完整可用。

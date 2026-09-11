@@ -1,0 +1,196 @@
+This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.12 Portable) (preloaded format=xelatex.fmt)
+ restricted \write18 enabled.
+entering extended mode
+(main.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2025-12-24>
+(D:\tools\miktex\texmfs\install\tex/latex/base\article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(D:\tools\miktex\texmfs\install\tex/latex/base\size12.clo))
+(D:\tools\miktex\texmfs\install\tex/latex/geometry\geometry.sty
+(D:\tools\miktex\texmfs\install\tex/latex/graphics\keyval.sty)
+(D:\tools\miktex\texmfs\install\tex/generic/iftex\ifvtex.sty
+(D:\tools\miktex\texmfs\install\tex/generic/iftex\iftex.sty))
+(D:\tools\miktex\texmfs\install\tex/latex/geometry\geometry.cfg))
+(D:\tools\miktex\texmfs\install\tex/xelatex/xecjk\xeCJK.sty
+
+LaTeX Warning: You have requested release `2026/06/01' of LaTeX,
+               but only release `2025-11-01' is available.
+
+(D:\tools\miktex\texmfs\install\tex/latex/l3kernel\expl3.sty
+(D:\tools\miktex\texmfs\install\tex/latex/l3backend\l3backend-xetex.def))
+(D:\tools\miktex\texmfs\install\tex/latex/ctex\ctexhook.sty
+
+LaTeX Warning: You have requested release `2026/06/01' of LaTeX,
+               but only release `2025-11-01' is available.
+
+) (D:\tools\miktex\texmfs\install\tex/latex/ctex\ctexpatch.sty
+
+LaTeX Warning: You have requested release `2026/06/01' of LaTeX,
+               but only release `2025-11-01' is available.
+
+) (D:\tools\miktex\texmfs\install\tex/latex/l3packages/xtemplate\xtemplate.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/fontspec\fontspec.sty
+(D:\tools\miktex\texmfs\install\tex/latex/l3packages/xparse\xparse.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/fontspec\fontspec-xetex.sty
+(D:\tools\miktex\texmfs\install\tex/latex/base\fontenc.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/fontspec\fontspec.cfg)))
+(D:\tools\miktex\texmfs\install\tex/xelatex/xecjk\xeCJK.cfg))
+(D:\tools\miktex\texmfs\install\tex/latex/graphics\graphicx.sty
+(D:\tools\miktex\texmfs\install\tex/latex/graphics\graphics.sty
+(D:\tools\miktex\texmfs\install\tex/latex/graphics\trig.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/graphics-cfg\graphics.cfg)
+(D:\tools\miktex\texmfs\install\tex/latex/graphics-def\xetex.def)))
+(D:\tools\miktex\texmfs\install\tex/latex/pgf/frontendlayer\tikz.sty
+(D:\tools\miktex\texmfs\install\tex/latex/pgf/basiclayer\pgf.sty
+(D:\tools\miktex\texmfs\install\tex/latex/pgf/utilities\pgfrcs.sty
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/utilities\pgfutil-common.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/utilities\pgfutil-latex.def)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/utilities\pgfrcs.code.tex
+(D:\tools\miktex\texmfs\install\tex/generic/pgf\pgf.revision.tex)))
+(D:\tools\miktex\texmfs\install\tex/latex/pgf/basiclayer\pgfcore.sty
+(D:\tools\miktex\texmfs\install\tex/latex/pgf/systemlayer\pgfsys.sty
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/systemlayer\pgfsys.code.tex
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/utilities\pgfkeys.code.tex
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/utilities\pgfkeyslibraryfiltere
+d.code.tex))
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/systemlayer\pgf.cfg)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/systemlayer\pgfsys-xetex.def
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/systemlayer\pgfsys-dvipdfmx.def
+
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/systemlayer\pgfsys-common-pdf.d
+ef))))
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/systemlayer\pgfsyssoftpath.code
+.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/systemlayer\pgfsysprotocol.code
+.tex)) (D:\tools\miktex\texmfs\install\tex/latex/xcolor\xcolor.sty
+(D:\tools\miktex\texmfs\install\tex/latex/graphics-cfg\color.cfg)
+(D:\tools\miktex\texmfs\install\tex/latex/graphics\mathcolor.ltx))
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcore.code.tex
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmath.code.tex
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathutil.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathparser.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathfunctions.code.tex)
+
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathfunctions.basic.cod
+e.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathfunctions.trigonome
+tric.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathfunctions.random.co
+de.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathfunctions.compariso
+n.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathfunctions.base.code
+.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathfunctions.round.cod
+e.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathfunctions.misc.code
+.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathfunctions.integerar
+ithmetics.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathcalc.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmathfloat.code.tex))
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfint.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcorepoints.code.t
+ex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcorepathconstruct
+.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcorepathusage.cod
+e.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcorescopes.code.t
+ex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcoregraphicstate.
+code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcoretransformatio
+ns.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcorequick.code.te
+x)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcoreobjects.code.
+tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcorepathprocessin
+g.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcorearrows.code.t
+ex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcoreshade.code.te
+x)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcoreimage.code.te
+x)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcoreexternal.code
+.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcorelayers.code.t
+ex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcoretransparency.
+code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcorepatterns.code
+.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/basiclayer\pgfcorerdf.code.tex)
+))
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/modules\pgfmoduleshapes.code.te
+x)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/modules\pgfmoduleplot.code.tex)
+
+(D:\tools\miktex\texmfs\install\tex/latex/pgf/compatibility\pgfcomp-version-0-6
+5.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/pgf/compatibility\pgfcomp-version-1-1
+8.sty)) (D:\tools\miktex\texmfs\install\tex/latex/pgf/utilities\pgffor.sty
+(D:\tools\miktex\texmfs\install\tex/latex/pgf/utilities\pgfkeys.sty
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/utilities\pgfkeys.code.tex))
+(D:\tools\miktex\texmfs\install\tex/latex/pgf/math\pgfmath.sty
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/math\pgfmath.code.tex))
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/utilities\pgffor.code.tex))
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/frontendlayer/tikz\tikz.code.te
+x
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/libraries\pgflibraryplothandler
+s.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/modules\pgfmodulematrix.code.te
+x)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/frontendlayer/tikz/libraries\ti
+kzlibrarytopaths.code.tex)))
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/frontendlayer/tikz/libraries\ti
+kzlibrarypositioning.code.tex)
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/frontendlayer/tikz/libraries\ti
+kzlibraryshapes.geometric.code.tex
+(D:\tools\miktex\texmfs\install\tex/generic/pgf/libraries/shapes\pgflibraryshap
+es.geometric.code.tex))
+(D:\tools\miktex\texmfs\install\tex/latex/tools\array.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/booktabs\booktabs.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/enumitem\enumitem.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/hyperref\hyperref.sty
+(D:\tools\miktex\texmfs\install\tex/latex/kvsetkeys\kvsetkeys.sty)
+(D:\tools\miktex\texmfs\install\tex/generic/kvdefinekeys\kvdefinekeys.sty)
+(D:\tools\miktex\texmfs\install\tex/generic/pdfescape\pdfescape.sty
+(D:\tools\miktex\texmfs\install\tex/generic/ltxcmds\ltxcmds.sty)
+(D:\tools\miktex\texmfs\install\tex/generic/pdftexcmds\pdftexcmds.sty
+(D:\tools\miktex\texmfs\install\tex/generic/infwarerr\infwarerr.sty)))
+(D:\tools\miktex\texmfs\install\tex/latex/hycolor\hycolor.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/hyperref\nameref.sty
+(D:\tools\miktex\texmfs\install\tex/latex/refcount\refcount.sty)
+(D:\tools\miktex\texmfs\install\tex/generic/gettitlestring\gettitlestring.sty
+(D:\tools\miktex\texmfs\install\tex/latex/kvoptions\kvoptions.sty)))
+(D:\tools\miktex\texmfs\install\tex/latex/etoolbox\etoolbox.sty)
+(D:\tools\miktex\texmfs\install\tex/generic/stringenc\stringenc.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/hyperref\pd1enc.def)
+(D:\tools\miktex\texmfs\install\tex/generic/intcalc\intcalc.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/hyperref\puenc.def)
+(D:\tools\miktex\texmfs\install\tex/latex/url\url.sty)
+(D:\tools\miktex\texmfs\install\tex/generic/bitset\bitset.sty
+(D:\tools\miktex\texmfs\install\tex/generic/bigintcalc\bigintcalc.sty)))
+(D:\tools\miktex\texmfs\install\tex/latex/hyperref\hxetex.def
+(D:\tools\miktex\texmfs\install\tex/latex/rerunfilecheck\rerunfilecheck.sty
+(D:\tools\miktex\texmfs\install\tex/generic/uniquecounter\uniquecounter.sty)))
+(D:\tools\miktex\texmfs\install\tex/latex/setspace\setspace.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/fancyhdr\fancyhdr.sty)
+(D:\tools\miktex\texmfs\install\tex/latex/caption\caption.sty
+(D:\tools\miktex\texmfs\install\tex/latex/caption\caption3.sty))
+(local-config.tex) (main.aux)
+*geometry* driver: auto-detecting
+*geometry* detected driver: xetex
+(main.out) (main.out) (sections/01-request.tex) (sections/02-abstract.tex
+[1] (sections/figure-1.tex)) (sections/03-claims.tex [1] [1] [2])
+(sections/04-specification.tex [3] [1] [2] [3] [4] [5] [6] [7])
+(sections/05-drawings.tex [8] (sections/figure-1.tex) [1] [2] [3] [4] [5]
+miktex-dvipdfmx: major issue: So far, you have not checked for MiKTeX updates.
+[6] [7] [8]) [9] (main.aux) )
+Output written on main.pdf (22 pages).
+Transcript written on main.log.
+xelatex: major issue: So far, you have not checked for MiKTeX updates.

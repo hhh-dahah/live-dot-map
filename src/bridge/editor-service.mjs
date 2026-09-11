@@ -7,8 +7,8 @@ import { BridgeError } from './errors.mjs';
 import { atomicWriteFile } from './fs-utils.mjs';
 
 const SETTINGS_VERSION = 1;
-const WINDOWS_EDITOR_IDS = new Set(['vscode', 'antigravity', 'pycharm', 'system', 'folder', 'manual']);
-const EXE_NAME = /^(Code|Antigravity|pycharm64)\.exe$/i;
+const WINDOWS_EDITOR_IDS = new Set(['vscode', 'antigravity', 'pycharm', 'terminal', 'gitbash', 'system', 'folder', 'manual']);
+const EXE_NAME = /^(Code|Antigravity|pycharm64|wt|git-bash)\.exe$/i;
 const EDITOR_ID = /^[a-z][a-z0-9-]{0,31}$/;
 
 /* VS Code 之外按同一套安全校验探测的编辑器:注册表 App Paths + 常见安装路径,
@@ -43,6 +43,36 @@ const EXTRA_EDITORS = [
       const programFiles = process.env.ProgramFiles;
       if (programFiles) out.push(...await scanVersionedEditors(join(programFiles, 'JetBrains'), 1));
       return out;
+    },
+  },
+  {
+    id: 'terminal',
+    label: 'Terminal',
+    appPaths: ['wt.exe'],
+    candidates() {
+      const out = [];
+      const local = process.env.LOCALAPPDATA;
+      if (local) out.push(join(local, 'Microsoft', 'WindowsApps', 'wt.exe'));
+      return out;
+    },
+    getArgs(target) {
+      return ['-d', dirname(target)];
+    },
+  },
+  {
+    id: 'gitbash',
+    label: 'Git Bash',
+    appPaths: ['git-bash.exe'],
+    candidates() {
+      const out = [];
+      const programFiles = process.env.ProgramFiles;
+      if (programFiles) out.push(join(programFiles, 'Git', 'git-bash.exe'));
+      const programFilesX86 = process.env['ProgramFiles(x86)'];
+      if (programFilesX86) out.push(join(programFilesX86, 'Git', 'git-bash.exe'));
+      return out;
+    },
+    getArgs(target) {
+      return [`--cd=${dirname(target)}`];
     },
   },
 ];
@@ -433,13 +463,13 @@ export class EditorService {
       if (await this.#resolveExtra(def)) editors.push({ id: def.id, label: def.label, kind: 'editor', available: true });
     }
     editors.push(
-      { id: 'system', label: '用默认应用打开', kind: 'system', available: Boolean(this.nativeHelper) },
-      { id: 'folder', label: '在文件夹中显示', kind: 'folder', available: Boolean(this.nativeHelper) },
+      { id: 'system', label: '用默认应用打开', kind: 'system', available: process.platform === 'win32' || Boolean(this.nativeHelper) },
+      { id: 'folder', label: '在文件夹中显示', kind: 'folder', available: process.platform === 'win32' || Boolean(this.nativeHelper) },
       {
         id: 'manual',
         label: manualAvailable ? '手动选择的程序' : '手动选择程序…',
         kind: 'manual',
-        available: manualAvailable && Boolean(this.nativeHelper),
+        available: manualAvailable && (process.platform === 'win32' || Boolean(this.nativeHelper)),
         needsPicker: !manualAvailable,
       },
     );
@@ -541,8 +571,23 @@ export class EditorService {
       const metadata = await stat(candidate);
       const folder = isDirectory(metadata) ? candidate : dirname(candidate);
       await this.#assertNoSymlinkEscape(folder);
-      // 文件目标直达：传文件路径，由原生助手用 explorer /select 打开所在文件夹并选中该文件。
-      await this.#callNative('open-folder', { targetPath: isDirectory(metadata) ? folder : candidate });
+      // 文件目标直达：传文件路径，由原生助手或 explorer.exe /select 打开所在文件夹并选中该文件。
+      const targetPath = isDirectory(metadata) ? folder : candidate;
+      try {
+        await this.#callNative('open-folder', { targetPath });
+      } catch (nativeErr) {
+        if (process.platform === 'win32') {
+          const child = this.spawn('explorer.exe', [`/select,${targetPath}`], {
+            shell: false,
+            windowsHide: false,
+            detached: true,
+            stdio: 'ignore',
+          });
+          child?.unref?.();
+        } else {
+          throw nativeErr;
+        }
+      }
       return { editorId, launched: true };
     }
     const target = await this.#projectPath(relativePath, { kind: 'file' });
@@ -555,14 +600,43 @@ export class EditorService {
     if (extraDef) {
       const executable = await this.#resolveExtra(extraDef);
       if (!executable) throw bridgeError('EDITOR_NOT_AVAILABLE', `未检测到 ${extraDef.label}`, 503);
-      return { editorId, ...this.#launch(executable, [target]) };
+      const args = typeof extraDef.getArgs === 'function' ? extraDef.getArgs(target) : [target];
+      return { editorId, ...this.#launch(executable, args) };
     }
     if (editorId === 'system') {
-      await this.#callNative('open-default', { targetPath: target });
+      try {
+        await this.#callNative('open-default', { targetPath: target });
+      } catch (nativeErr) {
+        if (process.platform === 'win32') {
+          const child = this.spawn('explorer.exe', [target], {
+            shell: false,
+            windowsHide: false,
+            detached: true,
+            stdio: 'ignore',
+          });
+          child?.unref?.();
+        } else {
+          throw nativeErr;
+        }
+      }
       return { editorId, launched: true };
     }
     const manualPath = await this.#assertManualExecutable(this.settings.editors.manual.path);
-    await this.#callNative('open-manual', { executablePath: manualPath, targetPath: target });
+    try {
+      await this.#callNative('open-manual', { executablePath: manualPath, targetPath: target });
+    } catch (nativeErr) {
+      if (process.platform === 'win32') {
+        const child = this.spawn(manualPath, [target], {
+          shell: false,
+          windowsHide: false,
+          detached: true,
+          stdio: 'ignore',
+        });
+        child?.unref?.();
+      } else {
+        throw nativeErr;
+      }
+    }
     return { editorId, launched: true };
   }
 
