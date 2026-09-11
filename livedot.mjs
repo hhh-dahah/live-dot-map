@@ -4543,10 +4543,15 @@ var ToolService = class {
       return { mapKey, documentId: context.documentId, revision: snapshot.revision, ...this.shared.planConsolidation(document, { now: typeof args.now === "string" ? args.now : void 0, maxSuggestions: Number.isInteger(args.maxSuggestions) ? args.maxSuggestions : 12, markdown: documents.markdown }) };
     }
     const file = ownerArgs(args, mapKey);
+    const isIndexFile = file.fileName === "index.md" || file.name === "index.md";
+    const isAgent2 = typeof this.actor === "string" && this.actor.startsWith("agent");
     if (name === "map_read_markdown") return cleanResult(await bundleStore.readMarkdown(file));
     if (name === "map_write_markdown") {
+      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u9ED8\u8BA4\u7981\u6B62 Agent \u4FEE\u6539\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002\u4EC5\u5F53\u4EBA\u7C7B\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6307\u4EE4\u8981\u6C42\u4FEE\u6539 index.md \u65F6\uFF0C\u65B9\u53EF\u663E\u5F0F\u4F20\u5165 allowIndexModification: true\u3002", { status: 403 });
+      }
       const rawContent = args.content;
-      const content = args.wrapAuthor !== false && rawContent !== void 0 && typeof this.actor === "string" && this.actor.startsWith("agent") ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
+      const content = args.wrapAuthor !== false && rawContent !== void 0 && isAgent2 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
       if (args.allowContentRemoval !== true) {
         const current = await bundleStore.readMarkdown(file).catch(() => null);
         const existing = String(current?.content ?? "");
@@ -4563,6 +4568,9 @@ var ToolService = class {
       return { ...result2, content: String(content) };
     }
     if (name === "map_append_markdown") {
+      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u9ED8\u8BA4\u7981\u6B62 Agent \u4FEE\u6539\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002\u4EC5\u5F53\u4EBA\u7C7B\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6307\u4EE4\u8981\u6C42\u4FEE\u6539 index.md \u65F6\uFF0C\u65B9\u53EF\u663E\u5F0F\u4F20\u5165 allowIndexModification: true\u3002", { status: 403 });
+      }
       const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
       const result2 = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
@@ -4570,6 +4578,9 @@ var ToolService = class {
     }
     if (name === "map_list_bundle_files") return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === "map_create_markdown") {
+      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u7981\u6B62 Agent \u8986\u76D6\u521B\u5EFA\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002", { status: 403 });
+      }
       const rawContent = args.content;
       const content = args.wrapAuthor !== false && rawContent !== void 0 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
       const result2 = await bundleStore.createMarkdown({ ...file, content, title: args.title });
