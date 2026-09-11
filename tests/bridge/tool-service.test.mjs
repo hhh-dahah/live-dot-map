@@ -111,7 +111,7 @@ test('Bundle Markdown 经 ToolService 完成 read/write/append/create/rename/arc
   const created = await service.dispatch('map_create_markdown', { ...owner, fileName: 'note.md', content: '# 初稿\n\n正文' });
   assert.equal(created.name, 'note.md');
   let read = await service.dispatch('map_read_markdown', { ...owner, fileName: 'note.md' });
-  assert.equal(read.content, '# 初稿\n\n正文');
+  assert.equal(read.content, '<!-- @author: agent:test -->\n# 初稿\n\n正文\n<!-- /@author -->\n');
 
   const replaced = await service.dispatch('map_write_markdown', { ...owner, fileName: 'note.md', content: '# 修改\n\n版本二', baseEtag: read.etag, allowContentRemoval: true });
   assert.equal(replaced.content, '# 修改\n\n版本二');
@@ -143,7 +143,7 @@ test('map_write_markdown 默认追加式：删已有行被拒，显式 allowCont
   await manager.switch(mapKey);
   await addNode(service, mapKey, 'contract-node');
   const owner = { ownerKind: 'node', ownerId: 'contract-node' };
-  await service.dispatch('map_create_markdown', { ...owner, fileName: 'note.md', content: '# 人类原话\n\n第一行\n第二行' });
+  await service.dispatch('map_create_markdown', { ...owner, fileName: 'note.md', content: '# 人类原话\n\n第一行\n第二行', wrapAuthor: false });
 
   // 1) 纯追加式替换（旧行全部保留）不需要标志
   let read = await service.dispatch('map_read_markdown', { ...owner, fileName: 'note.md' });
@@ -317,4 +317,40 @@ test('B2: 建节点命令提交成功即原子补建 index.md，无“有记录�
   assert.equal(ensuredAgain.name, 'index.md');
   const readAgain = await service.dispatch('map_read_markdown', { ownerKind: 'node', ownerId: 'atomic-node' });
   assert.equal(readAgain.etag, read.etag);
+});
+
+test('map_create_markdown 与 map_append_markdown 自动为 Agent 写入包裹成对 @author 闭合块，减少 Agent 负担', async (t) => {
+  const { manager, service } = await openService(t);
+  const mapKey = await createMap(manager, '自动标记地图');
+  await manager.switch(mapKey);
+  await addNode(service, mapKey, 'agent-tag-node');
+  const owner = { ownerKind: 'node', ownerId: 'agent-tag-node' };
+
+  // 1. map_create_markdown 传入未标记的方案内容，系统自动补齐成对 @author 闭合标签
+  await service.dispatch('map_create_markdown', {
+    ...owner,
+    fileName: '01-proposal.md',
+    content: '# 方案一：全量记忆包格式\n\n核心内容',
+  });
+  let read = await service.dispatch('map_read_markdown', { ...owner, fileName: '01-proposal.md' });
+  assert.match(read.content, /^<!-- @author: agent:test -->\n# 方案一：全量记忆包格式\n\n核心内容\n<!-- \/@author -->/);
+
+  // 2. 若 Agent 已自行包含 @author 标签，绝不重复包裹
+  await service.dispatch('map_create_markdown', {
+    ...owner,
+    fileName: '02-already-tagged.md',
+    content: '<!-- @author: agent:custom -->\n# 自带标签\n<!-- /@author -->\n',
+  });
+  read = await service.dispatch('map_read_markdown', { ...owner, fileName: '02-already-tagged.md' });
+  assert.equal(read.content, '<!-- @author: agent:custom -->\n# 自带标签\n<!-- /@author -->\n');
+
+  // 3. map_append_markdown 自动包裹追加段落，不污染前文
+  await service.dispatch('map_append_markdown', {
+    ...owner,
+    fileName: '01-proposal.md',
+    content: '## 新增补充要点',
+    commandId: 'append-test-1',
+  });
+  read = await service.dispatch('map_read_markdown', { ...owner, fileName: '01-proposal.md' });
+  assert.match(read.content, /<!-- @author: agent:test -->\n## 新增补充要点\n<!-- \/@author -->/);
 });
