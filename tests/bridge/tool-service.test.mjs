@@ -114,7 +114,7 @@ test('Bundle Markdown 经 ToolService 完成 read/write/append/create/rename/arc
   assert.equal(read.content, '<!-- @author: agent:test -->\n# 初稿\n\n正文\n<!-- /@author -->\n');
 
   const replaced = await service.dispatch('map_write_markdown', { ...owner, fileName: 'note.md', content: '# 修改\n\n版本二', baseEtag: read.etag, allowContentRemoval: true });
-  assert.equal(replaced.content, '# 修改\n\n版本二');
+  assert.equal(replaced.content, '<!-- @author: agent:test -->\n# 修改\n\n版本二\n<!-- /@author -->\n');
   const appended = await service.dispatch('map_append_markdown', { ...owner, fileName: 'note.md', content: '追加证据', commandId: 'append-note-1' });
   assert.equal(appended.name, 'note.md');
   read = await service.dispatch('map_read_markdown', { ...owner, fileName: 'note.md' });
@@ -160,7 +160,7 @@ test('map_write_markdown 默认追加式：删已有行被拒，显式 allowCont
   assert.equal(read.content.includes('第二行'), true);
 
   // 3) 显式 allowContentRemoval 放行
-  const rewritten = await service.dispatch('map_write_markdown', { ...owner, fileName: 'note.md', content: '# 只剩标题\n', baseEtag: read.etag, allowContentRemoval: true });
+  const rewritten = await service.dispatch('map_write_markdown', { ...owner, fileName: 'note.md', content: '# 只剩标题\n', baseEtag: read.etag, allowContentRemoval: true, wrapAuthor: false });
   assert.equal(rewritten.content, '# 只剩标题\n');
 });
 
@@ -353,4 +353,21 @@ test('map_create_markdown 与 map_append_markdown 自动为 Agent 写入包裹�
   });
   read = await service.dispatch('map_read_markdown', { ...owner, fileName: '01-proposal.md' });
   assert.match(read.content, /<!-- @author: agent:test -->\n## 新增补充要点\n<!-- \/@author -->/);
+
+  // 4. map_write_markdown 自动包裹 Agent 覆盖写入的内容
+  const created3 = await service.dispatch('map_create_markdown', {
+    ...owner,
+    fileName: '03-written.md',
+    content: '# 初始内容\n',
+    wrapAuthor: false,
+  });
+  await service.dispatch('map_write_markdown', {
+    ...owner,
+    fileName: '03-written.md',
+    content: '# 整篇方案内容\n\n测试',
+    baseEtag: created3.etag,
+    allowContentRemoval: true,
+  });
+  read = await service.dispatch('map_read_markdown', { ...owner, fileName: '03-written.md' });
+  assert.match(read.content, /^<!-- @author: agent:test -->\n# 整篇方案内容\n\n测试\n<!-- \/@author -->/);
 });

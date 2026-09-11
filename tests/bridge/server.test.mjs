@@ -356,7 +356,7 @@ test('reads, creates and atomically saves project Markdown with explicit conflic
     body: JSON.stringify({ name: 'map_write_markdown', arguments: { path, content: '# Agent 证据\n', baseEtag: savedBody.etag, allowContentRemoval: true } }),
   });
   assert.equal(mcpWrite.status, 200);
-  assert.equal((await mcpWrite.json()).result.content, '# Agent 证据\n');
+  assert.equal((await mcpWrite.json()).result.content, '<!-- @author: agent:bridge -->\n# Agent 证据\n<!-- /@author -->\n');
   const racePath = '.live-dot-map/nodes/race/index.md';
   const raceCreated = await fetch(`${server.origin}/markdown?path=${encodeURIComponent(racePath)}&create=1&title=${encodeURIComponent('并发')}`, { headers });
   const raceBase = await raceCreated.json();

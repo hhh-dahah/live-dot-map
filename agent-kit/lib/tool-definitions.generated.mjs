@@ -286,6 +286,9 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "allowContentRemoval": {
           "type": "boolean"
+        },
+        "wrapAuthor": {
+          "type": "boolean"
         }
       },
       "required": [
