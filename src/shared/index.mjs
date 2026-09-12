@@ -264,6 +264,9 @@ function markLegacyTranslated(document) {
 function assertName(value) {
   if (typeof value !== "string" || value.trim().length === 0 || value.length > MAX_NAME) throw mapError("INVALID_NAME", 422, "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u4E14\u4E0D\u80FD\u8D85\u8FC7 80 \u5B57");
 }
+function assertItemName(value) {
+  if (typeof value !== "string" || value.length > MAX_NAME) throw mapError("INVALID_NAME", 422, "\u540D\u79F0\u5FC5\u987B\u662F\u5B57\u7B26\u4E32\u4E14\u4E0D\u80FD\u8D85\u8FC7 80 \u5B57");
+}
 function isAgent(actor) {
   return typeof actor === "string" && actor.startsWith("agent:");
 }
@@ -289,7 +292,7 @@ function applyOne(document, command, actor, revision, now) {
     const value = cleanRecord(command.value, "value");
     if (typeof value.id !== "string" || !ID.test(value.id)) throw mapError("INVALID_ID", 422, "\u65B0\u5BF9\u8C61 ID \u65E0\u6548");
     if (getList(document, command.collection).some((v) => v.id === value.id)) throw mapError("DUPLICATE_ID", 409, `\u5BF9\u8C61 ${value.id} \u5DF2\u5B58\u5728`);
-    if (command.collection !== "anns") assertName(value.name);
+    if (command.collection !== "anns") assertItemName(value.name);
     if (command.collection === "nodes") {
       if (value.kind !== void 0 && !["goal", "problem", "result"].includes(String(value.kind))) throw mapError("INVALID_NODE_KIND", 422, "\u8282\u70B9 kind \u5FC5\u987B\u662F goal\u3001problem \u6216 result");
       value.kind = normalizeNodeKind(value.kind ?? value.type) === "problem" ? "problem" : "goal";
@@ -321,7 +324,7 @@ function applyOne(document, command, actor, revision, now) {
     const item = findItem(document, command.collection, command.id);
     const patch = cleanRecord(command.patch, "patch");
     for (const key of ["id", "createdAt", "createdBy", "updatedAt", "updatedBy", "updatedRevision"]) delete patch[key];
-    if ("name" in patch) assertName(patch.name);
+    if ("name" in patch) assertItemName(patch.name);
     if (command.collection === "nodes" && "kind" in patch) {
       if (!["goal", "problem", "result"].includes(String(patch.kind))) throw mapError("INVALID_NODE_KIND", 422, "\u8282\u70B9 kind \u5FC5\u987B\u662F goal\u3001problem \u6216 result");
       patch.kind = patch.kind === "problem" ? "problem" : "goal";
