@@ -3,21 +3,21 @@
   "product": "live-dot-map",
   "version": "2.0.1",
   "channel": "internal-rc",
-  "payloadHash": "8c5c049a94c6d5456f56d414824f59af9bd764ebf412a58b2f426348a1c2bace",
+  "payloadHash": "9ff20597b00857059244ef855b88e86336129cba34565257f680b37c2a4510ff",
   "installer": {
     "bytes": 196300279,
-    "sha256": "e422127b6d406bfd9738877a8ac2ec90de8702d681699d968775fb26e47fdce1",
+    "sha256": "9dc8b3ebb786f34598ddd0bce92850cf5bf4b7842f31aef482e93595c47cda14",
     "url": "LiveDotMapSetup.exe"
   },
   "files": {
     "app.html": {
       "bytes": 397821,
-      "sha256": "d088944364d2d77fcb3f5c803085d7f5fee43ff41238e8e783f8f682399297c2",
+      "sha256": "cc6b3cf52e4368842e6f130d605e83c81b2fdfd1fd65b524cfddb23c9ccaebea",
       "url": "payload/app.html"
     },
     "livedot-bridge-win-x64.exe": {
-      "bytes": 92334080,
-      "sha256": "2afc13b4ba09f99d7f19e2a275de4aa82f206937ef073715e1e3320c84f82922",
+      "bytes": 92333568,
+      "sha256": "0c039f3f33d3724e39991d6f62733aba2a2d71f38cbd13f6d95edac34c552f82",
       "url": "payload/livedot-bridge-win-x64.exe"
     },
     "manifest.webmanifest": {
@@ -62,7 +62,7 @@
     },
     "payload-manifest.json": {
       "bytes": 1782,
-      "sha256": "b82f11e7d87c60ab95f94450807c2702351aab860818aa5f96c5c81eee26df2a",
+      "sha256": "3af347fd33026e8789ee86ba41850438d81e8d52e2fbf14fe87467b38d1590ae",
       "url": "payload/payload-manifest.json"
     }
   }
