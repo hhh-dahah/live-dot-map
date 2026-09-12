@@ -285,6 +285,9 @@ function markLegacyTranslated(document) {
 function assertName(value) {
   if (typeof value !== "string" || value.trim().length === 0 || value.length > MAX_NAME) throw mapError("INVALID_NAME", 422, "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u4E14\u4E0D\u80FD\u8D85\u8FC7 80 \u5B57");
 }
+function assertItemName(value) {
+  if (typeof value !== "string" || value.length > MAX_NAME) throw mapError("INVALID_NAME", 422, "\u540D\u79F0\u5FC5\u987B\u662F\u5B57\u7B26\u4E32\u4E14\u4E0D\u80FD\u8D85\u8FC7 80 \u5B57");
+}
 function isAgent(actor) {
   return typeof actor === "string" && actor.startsWith("agent:");
 }
@@ -310,7 +313,7 @@ function applyOne(document, command2, actor, revision, now) {
     const value = cleanRecord(command2.value, "value");
     if (typeof value.id !== "string" || !ID2.test(value.id)) throw mapError("INVALID_ID", 422, "\u65B0\u5BF9\u8C61 ID \u65E0\u6548");
     if (getList(document, command2.collection).some((v) => v.id === value.id)) throw mapError("DUPLICATE_ID", 409, `\u5BF9\u8C61 ${value.id} \u5DF2\u5B58\u5728`);
-    if (command2.collection !== "anns") assertName(value.name);
+    if (command2.collection !== "anns") assertItemName(value.name);
     if (command2.collection === "nodes") {
       if (value.kind !== void 0 && !["goal", "problem", "result"].includes(String(value.kind))) throw mapError("INVALID_NODE_KIND", 422, "\u8282\u70B9 kind \u5FC5\u987B\u662F goal\u3001problem \u6216 result");
       value.kind = normalizeNodeKind(value.kind ?? value.type) === "problem" ? "problem" : "goal";
@@ -342,7 +345,7 @@ function applyOne(document, command2, actor, revision, now) {
     const item = findItem(document, command2.collection, command2.id);
     const patch = cleanRecord(command2.patch, "patch");
     for (const key of ["id", "createdAt", "createdBy", "updatedAt", "updatedBy", "updatedRevision"]) delete patch[key];
-    if ("name" in patch) assertName(patch.name);
+    if ("name" in patch) assertItemName(patch.name);
     if (command2.collection === "nodes" && "kind" in patch) {
       if (!["goal", "problem", "result"].includes(String(patch.kind))) throw mapError("INVALID_NODE_KIND", 422, "\u8282\u70B9 kind \u5FC5\u987B\u662F goal\u3001problem \u6216 result");
       patch.kind = patch.kind === "problem" ? "problem" : "goal";
@@ -1230,7 +1233,7 @@ var init_shared = __esm({
 
 // src/cli/livedot.ts
 import { randomUUID as randomUUID12 } from "node:crypto";
-import { access as access5, lstat as lstat9, mkdir as mkdir13, readFile as readFile15, readdir as readdir7, rename as rename10, stat as stat8, writeFile as writeFile7 } from "node:fs/promises";
+import { access as access5, lstat as lstat9, mkdir as mkdir13, readFile as readFile15, readdir as readdir7, rename as rename10, stat as stat9, writeFile as writeFile7 } from "node:fs/promises";
 import { constants as constants3 } from "node:fs";
 import { dirname as dirname14, join as join20, resolve as resolve17 } from "node:path";
 import { homedir as homedir8 } from "node:os";
@@ -2459,15 +2462,15 @@ import { homedir as homedir6 } from "node:os";
 
 // src/bridge/current-project.mjs
 import { lstatSync, readFileSync } from "node:fs";
-import { readFile as readFile4 } from "node:fs/promises";
-import { homedir } from "node:os";
+import { readFile as readFile4, stat as stat3 } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { dirname as dirname3, join as join4, resolve as resolve2 } from "node:path";
 function resolveGitWorktreeMain(dir) {
   if (!dir || typeof dir !== "string") return null;
   try {
     const gitPath = join4(dir, ".git");
-    const stat9 = lstatSync(gitPath);
-    if (stat9.isFile()) {
+    const stat10 = lstatSync(gitPath);
+    if (stat10.isFile()) {
       const content = readFileSync(gitPath, "utf8").trim();
       const match = content.match(/^gitdir:\s*(.+)$/m);
       if (match) {
@@ -2484,7 +2487,9 @@ function resolveGitWorktreeMain(dir) {
   return null;
 }
 function currentProjectFile() {
-  return process.env.LIVEDOT_CURRENT_PROJECT_FILE || join4(homedir(), ".live-dot-map", "current-project.json");
+  if (process.env.LIVEDOT_CURRENT_PROJECT_FILE) return process.env.LIVEDOT_CURRENT_PROJECT_FILE;
+  if (process.env.LIVEDOT_TEST_ROOT) return join4(process.env.LIVEDOT_TEST_ROOT, "current-project.json");
+  return join4(homedir(), ".live-dot-map", "current-project.json");
 }
 async function recordCurrentProject(projectRoot, options = {}) {
   try {
@@ -2512,7 +2517,14 @@ async function resolveProjectRootToUse(pointerRoot, fallbackRoot, options = {}) 
   if (candidate) {
     try {
       const resolved = await canonicalDirectory(candidate);
-      return resolved;
+      const tempPrefix = resolve2(tmpdir()).toLowerCase();
+      const isTemp = resolved.toLowerCase().startsWith(tempPrefix);
+      if (!isTemp || options.allowTemp) {
+        const hasLiveDotMap = await stat3(join4(resolved, ".live-dot-map")).then((s) => s.isDirectory()).catch(() => false);
+        if (hasLiveDotMap) {
+          return resolved;
+        }
+      }
     } catch {
     }
   }
@@ -2625,7 +2637,7 @@ import {
   mkdir as mkdir4,
   readFile as readFile5,
   realpath as realpath3,
-  stat as stat3
+  stat as stat4
 } from "node:fs/promises";
 import { dirname as dirname4, isAbsolute as isAbsolute2, join as join6, relative as relative2, resolve as resolve3, sep } from "node:path";
 var MAX_MARKDOWN_BYTES = 2 * 1024 * 1024;
@@ -2727,7 +2739,7 @@ var MarkdownStore = class {
     const { path, candidate } = await this.#target(requestedPath, { allowMissing: true });
     let metadata;
     try {
-      metadata = await stat3(candidate);
+      metadata = await stat4(candidate);
     } catch (error3) {
       if (error3?.code !== "ENOENT") throw error3;
       if (!create) return { path, content: "", exists: false, created: false, size: 0, etag: digest(""), updatedAt: null };
@@ -2740,7 +2752,7 @@ var MarkdownStore = class {
       } catch (writeError) {
         throw new BridgeError("MARKDOWN_WRITE_FAILED", "Markdown \u521B\u5EFA\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5", { status: 503, cause: writeError });
       }
-      metadata = await stat3(candidate);
+      metadata = await stat4(candidate);
       return result(path, initial, metadata, { created: true });
     }
     if (create && metadata.size === 0) {
@@ -2748,7 +2760,7 @@ var MarkdownStore = class {
       await atomicWriteFile(candidate, initial).catch((error3) => {
         throw new BridgeError("MARKDOWN_WRITE_FAILED", "Markdown \u521D\u59CB\u5316\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5", { status: 503, cause: error3 });
       });
-      metadata = await stat3(candidate);
+      metadata = await stat4(candidate);
       return result(path, initial, metadata, { created: true });
     }
     if (metadata.size > MAX_MARKDOWN_BYTES) throw new BridgeError("MARKDOWN_TOO_LARGE", "Markdown \u6587\u4EF6\u8D85\u8FC7 2 MiB \u9650\u5236", { status: 413, details: { size: metadata.size, limit: MAX_MARKDOWN_BYTES } });
@@ -2806,7 +2818,7 @@ var MarkdownStore = class {
         await mkdir4(dirname4(candidate), { recursive: true });
         await ensureNoSymlink(this.projectRoot, candidate, { allowMissing: true });
         await atomicWriteFile(candidate, content);
-        const metadata = await stat3(candidate);
+        const metadata = await stat4(candidate);
         return result(path, content, metadata);
       }, { timeoutMs: 5e3, staleMs: 3e4 });
     } catch (error3) {
@@ -2817,13 +2829,13 @@ var MarkdownStore = class {
   }
   async reveal(requestedPath) {
     const { path, candidate } = await this.#target(requestedPath, { allowMissing: true });
-    const exists3 = await stat3(candidate).then(() => true).catch((error3) => error3?.code === "ENOENT" ? false : Promise.reject(error3));
+    const exists3 = await stat4(candidate).then(() => true).catch((error3) => error3?.code === "ENOENT" ? false : Promise.reject(error3));
     return { path, exists: exists3, opened: false };
   }
 };
 
 // src/bridge/human-md-updates.mjs
-import { readFile as readFile6, stat as stat4 } from "node:fs/promises";
+import { readFile as readFile6, stat as stat5 } from "node:fs/promises";
 import { join as join7, resolve as resolve4 } from "node:path";
 var DEFAULT_MAX_LOG_BYTES = 512 * 1024;
 var HumanMdUpdateLog = class {
@@ -2904,7 +2916,7 @@ var HumanMdUpdateLog = class {
   async #compactIfNeeded() {
     let size = 0;
     try {
-      size = (await stat4(this.logPath)).size;
+      size = (await stat5(this.logPath)).size;
     } catch {
       return;
     }
@@ -3002,9 +3014,9 @@ var MdIndex = class {
   /** 取一张卡；指纹对不上/缺失则重读该文件刷新。mapRoot 用于拼绝对路径。 */
   async getOrRefreshCard({ mapRoot, relativePath }) {
     const absolute = join8(this.projectRoot, relativePath);
-    let stat9;
+    let stat10;
     try {
-      stat9 = await this.fs.stat(absolute);
+      stat10 = await this.fs.stat(absolute);
     } catch (error3) {
       if (error3?.code === "ENOENT") {
         this.#cards.delete(relativePath);
@@ -3014,20 +3026,20 @@ var MdIndex = class {
       throw error3;
     }
     const existing = this.#cards.get(relativePath);
-    const fresh = !existing || existing.mtimeMs !== stat9.mtimeMs || existing.bytes !== stat9.size;
+    const fresh = !existing || existing.mtimeMs !== stat10.mtimeMs || existing.bytes !== stat10.size;
     if (!fresh) return existing;
     const content = await this.fs.readFile(absolute, "utf8");
     const card = {
       path: relativePath,
       etag: digest2(content),
-      mtimeMs: stat9.mtimeMs,
-      bytes: stat9.size,
+      mtimeMs: stat10.mtimeMs,
+      bytes: stat10.size,
       title: firstHeading(content) || "",
       summary: visibleSummary(content),
       ownerKind: typeof existing?.ownerKind === "string" ? existing.ownerKind : inferOwnerKind(relativePath),
       ownerId: typeof existing?.ownerId === "string" ? existing.ownerId : inferOwnerId(relativePath),
       assets: existing?.assets ?? [],
-      updatedAt: stat9.mtime?.toISOString?.() ?? new Date(stat9.mtimeMs).toISOString()
+      updatedAt: stat10.mtime?.toISOString?.() ?? new Date(stat10.mtimeMs).toISOString()
     };
     this.#cards.set(relativePath, card);
     this.#dirty = true;
@@ -3050,19 +3062,19 @@ var MdIndex = class {
       const relativePath = `${ownerRelative}/${entry.name}`;
       try {
         const absolute = join8(directory, entry.name);
-        const stat9 = await this.fs.stat(absolute);
+        const stat10 = await this.fs.stat(absolute);
         const content = await this.fs.readFile(absolute, "utf8");
         this.#cards.set(relativePath, {
           path: relativePath,
           etag: digest2(content),
-          mtimeMs: stat9.mtimeMs,
-          bytes: stat9.size,
+          mtimeMs: stat10.mtimeMs,
+          bytes: stat10.size,
           title: firstHeading(content) || "",
           summary: visibleSummary(content),
           ownerKind: ownerKind === "nodes" ? "node" : "route",
           ownerId,
           assets,
-          updatedAt: stat9.mtime?.toISOString?.() ?? new Date(stat9.mtimeMs).toISOString()
+          updatedAt: stat10.mtime?.toISOString?.() ?? new Date(stat10.mtimeMs).toISOString()
         });
       } catch {
       }
@@ -3098,10 +3110,10 @@ var MdIndex = class {
     return this.#cards.size;
   }
   /** 校验某张卡是否仍新鲜（只 lstat，不读内容）。返回 null 表示已失效。 */
-  async isFresh(path, stat9) {
+  async isFresh(path, stat10) {
     const card = this.#cards.get(path);
     if (!card) return false;
-    return card.mtimeMs === stat9.mtimeMs && card.bytes === stat9.size;
+    return card.mtimeMs === stat10.mtimeMs && card.bytes === stat10.size;
   }
   async #withLock(operation) {
     await ensureDirectory(join8(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
@@ -3150,7 +3162,7 @@ import {
   rm as rm3,
   readFile as readFile7,
   realpath as realpath4,
-  stat as stat5
+  stat as stat6
 } from "node:fs/promises";
 import { randomBytes as randomBytes2, createHash as createHash4 } from "node:crypto";
 import { basename as basename2, dirname as dirname5, extname, join as join9, relative as relative3, resolve as resolve6, sep as sep2 } from "node:path";
@@ -3393,7 +3405,7 @@ var BundleStore = class _BundleStore {
     return output;
   }
   async #fileInfo(info, entry) {
-    const metadata = await stat5(entry.path);
+    const metadata = await stat6(entry.path);
     const isIndex = entry.name === "index.md";
     const isMarkdown = isIndex || /\.md$/i.test(entry.name);
     const type = isMarkdown ? { mime: "text/markdown; charset=utf-8", kind: "markdown" } : contentTypeFor(entry.name);
@@ -3677,7 +3689,7 @@ ${right}`;
       }
     }
     let total = incomingBytes;
-    for (const entry of mapEntries) total += (await stat5(entry.path)).size;
+    for (const entry of mapEntries) total += (await stat6(entry.path)).size;
     if (total > MAX_MAP_ASSET_BYTES) throw bridgeError("BUNDLE_SIZE_QUOTA", "\u5355\u5730\u56FE\u9644\u4EF6\u603B\u91CF\u8D85\u8FC7 1 GiB", 413);
   }
   async #withMapLock(operation) {
@@ -3718,7 +3730,7 @@ ${right}`;
   async #copySource(sourcePath, temporary, { allowExternal = false } = {}) {
     const candidate = allowExternal ? resolve6(sourcePath) : resolve6(this.projectRoot, sourcePath);
     if (!allowExternal) await this.#assertSafePath(this.projectRoot, candidate, { allowMissing: false });
-    const before = await stat5(candidate);
+    const before = await stat6(candidate);
     if (!before.isFile()) throw bridgeError("BUNDLE_SOURCE_NOT_FILE", "\u9644\u4EF6\u6E90\u5FC5\u987B\u662F\u666E\u901A\u6587\u4EF6", 400);
     if (before.size > MAX_ASSET_BYTES) throw bridgeError("BUNDLE_ASSET_TOO_LARGE", "\u5355\u9644\u4EF6\u8D85\u8FC7 20 MiB", 413, { limit: MAX_ASSET_BYTES });
     let handle;
@@ -3728,7 +3740,7 @@ ${right}`;
       const opened = await handle.stat();
       if (!opened.isFile() || !compareStats(before, opened)) throw bridgeError("BUNDLE_SOURCE_CHANGED", "\u9644\u4EF6\u6E90\u5728\u5BFC\u5165\u524D\u5DF2\u53D8\u5316", 409);
       const result2 = await this.#consumeStream(handle.createReadStream(), temporary);
-      const after = await stat5(candidate);
+      const after = await stat6(candidate);
       if (!compareStats(before, after) || result2.size !== before.size) throw bridgeError("BUNDLE_SOURCE_CHANGED", "\u9644\u4EF6\u6E90\u5728\u5BFC\u5165\u8FC7\u7A0B\u4E2D\u53D1\u751F\u53D8\u5316", 409);
       return result2;
     } catch (error3) {
@@ -4246,7 +4258,13 @@ var schema = (name, description, properties = {}, required2 = []) => ({
   description,
   inputSchema: {
     type: "object",
-    properties,
+    properties: {
+      ...properties,
+      projectRoot: {
+        type: "string",
+        description: "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+      }
+    },
     ...required2.length ? { required: required2 } : {},
     additionalProperties: true
   }
@@ -5062,7 +5080,7 @@ var NativeRecycleBin = class {
 import { execFile as childExecFile, spawn as childSpawn } from "node:child_process";
 import { randomUUID as randomUUID5 } from "node:crypto";
 import { homedir as homedir3 } from "node:os";
-import { lstat as lstat8, mkdir as mkdir7, readdir as readdir6, readFile as readFile9, realpath as realpath6, stat as stat6 } from "node:fs/promises";
+import { lstat as lstat8, mkdir as mkdir7, readdir as readdir6, readFile as readFile9, realpath as realpath6, stat as stat7 } from "node:fs/promises";
 import { dirname as dirname7, isAbsolute as isAbsolute3, join as join15, relative as relative5, resolve as resolve11, win32 } from "node:path";
 var SETTINGS_VERSION = 1;
 var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "terminal", "gitbash", "system", "folder", "manual"]);
@@ -5564,7 +5582,7 @@ var EditorService = class _EditorService {
     }
     if (editorId === "folder") {
       const candidate = await this.#projectPath(relativePath, { kind: targetKind === "directory" ? "directory" : "file" });
-      const metadata = await stat6(candidate);
+      const metadata = await stat7(candidate);
       const folder = isDirectory(metadata) ? candidate : dirname7(candidate);
       await this.#assertNoSymlinkEscape(folder);
       const targetPath = isDirectory(metadata) ? folder : candidate;
@@ -5780,7 +5798,7 @@ var sharedBridgeContract = Object.freeze({
 // agent-kit/lib/installer.mjs
 import { createHash as createHash7, randomUUID as randomUUID7 } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access as access3, copyFile as copyFile3, mkdir as mkdir8, readFile as readFile10, rename as rename5, rm as rm5, stat as stat7, writeFile as writeFile2 } from "node:fs/promises";
+import { access as access3, copyFile as copyFile3, mkdir as mkdir8, readFile as readFile10, rename as rename5, rm as rm5, stat as stat8, writeFile as writeFile2 } from "node:fs/promises";
 import { constants as constants2 } from "node:fs";
 import { basename as basename4, dirname as dirname9, join as join17, resolve as resolve14 } from "node:path";
 import { homedir as homedir5 } from "node:os";
@@ -5817,6 +5835,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
           "type": "integer",
           "minimum": 1,
           "maximum": 12
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5827,7 +5849,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -5845,6 +5872,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "summary": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5859,7 +5890,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "\u5217\u51FA\u9879\u76EE\u5185\u5730\u56FE\u4E0E\u5F53\u524D active-map\u3002",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -5871,6 +5907,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5884,6 +5924,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "mapKey": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5903,6 +5947,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5938,6 +5986,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeHistory": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5969,6 +6021,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
           "items": {
             "type": "object"
           }
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5985,6 +6041,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "document": {
           "type": "object"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5998,6 +6058,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "reason": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -6016,6 +6080,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "now": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -6042,6 +6110,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "path": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -6080,6 +6152,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "wrapAuthor": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6116,6 +6192,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "commandId": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6143,6 +6223,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6176,6 +6260,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "content": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6207,6 +6295,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "to": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6236,6 +6328,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6264,6 +6360,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6292,6 +6392,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6325,6 +6429,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "mimeType": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6353,6 +6461,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6381,6 +6493,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6412,6 +6528,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeContent": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6612,7 +6732,7 @@ function sha256(bytes) {
 }
 async function captureFile(path) {
   try {
-    const metadata = await stat7(path);
+    const metadata = await stat8(path);
     if (metadata.isDirectory()) return { path, exists: true, kind: "directory", sha256: null, content: null };
     const bytes = await readFile10(path);
     return { path, exists: true, kind: "file", sha256: sha256(bytes), content: bytes.toString("base64") };
@@ -9389,18 +9509,18 @@ async function inspectProjectQualification(projectRoot) {
     return { ok: false, code: "PROJECT_NOT_FOUND", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u6709\u6548\u9879\u76EE\u76EE\u5F55\u3002" };
   }
   const dataDirectory = join20(root, ".live-dot-map");
-  const dataMetadata = await stat8(dataDirectory).catch(() => null);
+  const dataMetadata = await stat9(dataDirectory).catch(() => null);
   if (!dataMetadata) return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u8FD8\u6CA1\u6709\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
   if (!dataMetadata.isDirectory()) {
     return { ok: false, code: "PROJECT_LAYOUT_INVALID", message: "\u6D3B\u70B9\u5730\u56FE\u6570\u636E\u76EE\u5F55\u4E0D\u662F\u53EF\u5B89\u5168\u8BFB\u53D6\u7684\u76EE\u5F55\u3002" };
   }
   const marker = async (path) => {
-    const metadata = await stat8(path).catch(() => null);
+    const metadata = await stat9(path).catch(() => null);
     return Boolean(metadata && metadata.isFile());
   };
   const legacy = await marker(join20(dataDirectory, "map.json"));
   const mapsPath = join20(dataDirectory, "maps");
-  const mapsMetadata = await stat8(mapsPath).catch(() => null);
+  const mapsMetadata = await stat9(mapsPath).catch(() => null);
   let packageMap = false;
   if (mapsMetadata?.isDirectory()) {
     const entries = await readdir7(mapsPath, { withFileTypes: true }).catch(() => []);
@@ -9542,6 +9662,10 @@ async function runMcpProxy(projectRoot, actor, options) {
   const root = resolve17(projectRoot);
   let currentRoot = await resolveProjectRootToUse(null, root);
   let qualification = await inspectProjectQualification(currentRoot);
+  if (!qualification.ok && currentRoot !== root) {
+    currentRoot = root;
+    qualification = await inspectProjectQualification(root);
+  }
   const logger = qualification.ok ? createLogger({ source: "agent" }) : noopLogger;
   let bridge = null;
   if (qualification.ok) await logger.info("agent.mcp.start", { project: currentRoot, actor, pid: process.pid, mode: "proxy" });
@@ -9560,16 +9684,21 @@ async function runMcpProxy(projectRoot, actor, options) {
       if (request.method === "initialize") result2 = { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "live-dot-map", version: "2.0.0" } };
       else if (request.method === "tools/list") result2 = { tools: toolDefinitions };
       else if (request.method === "tools/call") {
-        const targetRoot = await resolveProjectRootToUse(null, currentRoot);
-        const activeQual = await inspectProjectQualification(targetRoot);
+        const params = request.params;
+        const name = String(params.name);
+        const callArgs = params.arguments ?? {};
+        const explicitProject = typeof callArgs.projectRoot === "string" && callArgs.projectRoot.trim() ? String(callArgs.projectRoot).trim() : typeof callArgs.project === "string" && callArgs.project.trim() ? String(callArgs.project).trim() : null;
+        let targetRoot = await resolveProjectRootToUse(explicitProject, root);
+        let activeQual = await inspectProjectQualification(targetRoot);
+        if (!activeQual.ok && targetRoot !== root) {
+          targetRoot = root;
+          activeQual = await inspectProjectQualification(root);
+        }
         if (!activeQual.ok) {
           result2 = unavailableToolResult(activeQual);
         } else {
           currentRoot = targetRoot;
           qualification = activeQual;
-          const params = request.params;
-          const name = String(params.name);
-          const callArgs = params.arguments ?? {};
           let value;
           let lastError = null;
           for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -9581,6 +9710,14 @@ async function runMcpProxy(projectRoot, actor, options) {
             } catch (error3) {
               lastError = error3;
               const status = error3?.httpStatus;
+              const code = error3?.code;
+              if ((status === 404 || code === "PROJECT_NOT_FOUND") && targetRoot !== root) {
+                targetRoot = root;
+                currentRoot = root;
+                qualification = await inspectProjectQualification(root);
+                bridge = null;
+                continue;
+              }
               if (typeof status === "number" && status !== 401) throw error3;
               bridge = null;
             }
@@ -9783,7 +9920,9 @@ async function main() {
   const { command: command2, args } = parseArgs(process.argv.slice(2));
   if (command2 === "serve") {
     const logger = createLogger({ source: "bridge" });
-    const projectRoot = resolve17(required(args, "project"));
+    const requestedRoot = resolve17(required(args, "project"));
+    const worktreeMain = resolveGitWorktreeMain(requestedRoot);
+    const projectRoot = await canonicalDirectory(worktreeMain ?? requestedRoot).catch(() => requestedRoot);
     const runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? resolve17(args["runtime-state-dir"]) : void 0;
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });

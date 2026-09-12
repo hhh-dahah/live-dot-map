@@ -1,6 +1,6 @@
 import { lstatSync, readFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { readFile, stat } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { atomicWriteFile, canonicalDirectory } from './fs-utils.mjs';
 
@@ -37,7 +37,9 @@ export function resolveGitWorktreeMain(dir) {
  * 写入/读取均 fail-open：指针失效时回退调用方自己的项目根，绝不阻断主流程。
  */
 export function currentProjectFile() {
-  return process.env.LIVEDOT_CURRENT_PROJECT_FILE || join(homedir(), '.live-dot-map', 'current-project.json');
+  if (process.env.LIVEDOT_CURRENT_PROJECT_FILE) return process.env.LIVEDOT_CURRENT_PROJECT_FILE;
+  if (process.env.LIVEDOT_TEST_ROOT) return join(process.env.LIVEDOT_TEST_ROOT, 'current-project.json');
+  return join(homedir(), '.live-dot-map', 'current-project.json');
 }
 
 /** HTTP 桥在项目根变化时调用；写入失败仅 warn 不抛（fail-open）。 */
@@ -65,18 +67,30 @@ export async function readCurrentProject(options = {}) {
 
 /**
  * 解析「本次调用应使用的项目根」：
- * 1. 指针存在且目标目录真实存在 → 返回指针项目根（跟随画布）；
+ * 1. 指针存在、非系统临时目录且包含有效的 .live-dot-map → 返回指针项目根（跟随画布）；
  * 2. 否则若 fallbackRoot 是 Git linked worktree → 自动回溯主仓库根（各 worktree 共享主记忆）；
  * 3. 否则回退 fallbackRoot。
- * fail-open：目录不可达/指针损坏都回退，绝不抛错。
+ * fail-open：目录不可达/临时目录污染/指针损坏都回退，绝不抛错。
  */
 export async function resolveProjectRootToUse(pointerRoot, fallbackRoot, options = {}) {
   const candidate = pointerRoot ?? await readCurrentProject(options).catch(() => null);
   if (candidate) {
     try {
       const resolved = await canonicalDirectory(candidate);
-      return resolved;
-    } catch { /* 指针目录不可达，继续尝试 fallback */ }
+      // 深度有效性防御：
+      // 1. 绝不能属于系统临时目录（tmpdir），彻底掐灭测试临时目录污染
+      const tempPrefix = resolve(tmpdir()).toLowerCase();
+      const isTemp = resolved.toLowerCase().startsWith(tempPrefix);
+      if (!isTemp || options.allowTemp) {
+        // 2. 目录下必须物理包含 .live-dot-map 目录
+        const hasLiveDotMap = await stat(join(resolved, '.live-dot-map'))
+          .then((s) => s.isDirectory())
+          .catch(() => false);
+        if (hasLiveDotMap) {
+          return resolved;
+        }
+      }
+    } catch { /* 指针目录不可达/无效，继续尝试 fallback */ }
   }
 
   if (fallbackRoot) {
