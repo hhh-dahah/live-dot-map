@@ -6,7 +6,7 @@
   "payloadHash": "74ce2a6c9307f50fa212b5473b82397b81d7618cb855f3c374daa582cf1b7a81",
   "installer": {
     "bytes": 196300279,
-    "sha256": "479dd011bca47e7719b2e14581a258209a1ee0d2eb1d8ed8d58e6f4ed92067fd",
+    "sha256": "9504c2b4c21e294037667b9ca2121289c27a7dcdaa124c67279e5a62d806d919",
     "url": "LiveDotMapSetup.exe"
   },
   "files": {
@@ -62,7 +62,7 @@
     },
     "payload-manifest.json": {
       "bytes": 1782,
-      "sha256": "6d168a357038f63ff8d1794b30681994944feed8de2cb43b6b1c8378d415f91f",
+      "sha256": "0576470b32eb63806b2bde3819d4bca5b51d8ecafc445e3970d7c1fdc6570c73",
       "url": "payload/payload-manifest.json"
     }
   }

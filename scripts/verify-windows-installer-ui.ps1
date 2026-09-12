@@ -55,7 +55,13 @@ function Get-Window($process) {
   for ($i = 0; $i -lt 40; $i++) {
     Start-Sleep -Milliseconds 500
     $process.Refresh()
-    if ($process.MainWindowHandle -ne 0) { return [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle) }
+    $condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id)
+    $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $condition)
+    foreach ($w in $windows) {
+      if ($w.Current.ControlType -eq [System.Windows.Automation.ControlType]::Window -and -not [string]::IsNullOrWhiteSpace($w.Current.Name)) {
+        return $w
+      }
+    }
   }
   throw '安装器窗口未出现'
 }
@@ -77,11 +83,14 @@ function Get-Buttons($window) {
 }
 
 function Invoke-Button($window, [string]$name) {
-  foreach ($button in (Get-Buttons $window)) {
-    if ($button.Current.Name -eq $name) {
-      $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-      return
+  for ($i = 0; $i -lt 40; $i++) {
+    foreach ($button in (Get-Buttons $window)) {
+      if ($button.Current.Name -eq $name) {
+        $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        return
+      }
     }
+    Start-Sleep -Milliseconds 500
   }
   throw "未找到按钮: $name"
 }
@@ -98,8 +107,14 @@ function Get-StatusText($window) {
 try {
   $proc = Start-Process -FilePath $exe -PassThru
   $window = Get-Window $proc
-  $buttons = Get-Buttons $window
-  $names = @($buttons | ForEach-Object { $_.Current.Name })
+  $deadline = (Get-Date).AddSeconds(20)
+  $names = @()
+  while ((Get-Date) -lt $deadline) {
+    $buttons = Get-Buttons $window
+    $names = @($buttons | ForEach-Object { $_.Current.Name })
+    if ($names -contains '安装并打开画布') { break }
+    Start-Sleep -Milliseconds 500
+  }
   foreach ($requiredButton in @('更改位置', '安装并打开画布')) {
     if ($names -notcontains $requiredButton) { throw ('未找到安装器按钮: ' + $requiredButton + ' / ' + ($names -join '|')) }
   }
