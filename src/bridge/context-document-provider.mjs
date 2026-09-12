@@ -8,6 +8,7 @@ import {
 import { extname, join, relative, resolve, sep } from 'node:path';
 import { BridgeError } from './errors.mjs';
 import { isSafeMapId } from './maps.mjs';
+import { ASSET_TYPES as STORE_ASSET_TYPES } from './bundle-store.mjs';
 
 /**
  * ContextDocumentProvider 是 Agent 上下文的唯一文件入口。
@@ -18,16 +19,9 @@ import { isSafeMapId } from './maps.mjs';
  */
 const MAX_MARKDOWN_BYTES = 2 * 1024 * 1024;
 const SAFE_OWNER_ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
-const ASSET_TYPES = Object.freeze({
-  '.png': { kind: 'png', mimeType: 'image/png' },
-  '.jpg': { kind: 'jpeg', mimeType: 'image/jpeg' },
-  '.jpeg': { kind: 'jpeg', mimeType: 'image/jpeg' },
-  '.webp': { kind: 'webp', mimeType: 'image/webp' },
-  '.gif': { kind: 'gif', mimeType: 'image/gif' },
-  '.pdf': { kind: 'pdf', mimeType: 'application/pdf' },
-  '.docx': { kind: 'docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
-  '.svg': { kind: 'svg', mimeType: 'image/svg+xml' },
-});
+const ASSET_TYPES = Object.freeze(Object.fromEntries(
+  Object.entries(STORE_ASSET_TYPES).map(([ext, val]) => [ext, { kind: val.kind, mimeType: val.mime ?? val.mimeType }])
+));
 const RESERVED_DATA_DIRS = new Set(['.bridge', '.archive', 'backups', 'snapshots', 'quarantine', 'wal', 'locks']);
 
 function contextError(code, message, status = 403, details) {

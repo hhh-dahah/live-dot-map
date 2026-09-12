@@ -16,10 +16,10 @@ import { BridgeError } from './errors.mjs';
 import { atomicWriteFile, ensureDirectory, withFileLock, writeJsonAtomic, readJson } from './fs-utils.mjs';
 import { mapDirectory, isSafeMapId } from './maps.mjs';
 
-/** 资料包单文件硬上限。浏览器端应使用二进制流而不是 base64。 */
-export const MAX_ASSET_BYTES = 20 * 1024 * 1024;
-export const MAX_BUNDLE_FILES = 200;
-export const MAX_MAP_ASSET_BYTES = 1024 * 1024 * 1024;
+/** 资料包单文件硬上限（默认 2 GiB，满足本地科研仿真、工程大包与数据集）。浏览器端使用流式管道。 */
+export const MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
+export const MAX_BUNDLE_FILES = 1000;
+export const MAX_MAP_ASSET_BYTES = 50 * 1024 * 1024 * 1024; // 50 GiB
 
 const MAX_NAME_BYTES = 255;
 const OWNER_KINDS = new Map([
@@ -28,15 +28,74 @@ const OWNER_KINDS = new Map([
   ['route', 'routes'],
   ['routes', 'routes'],
 ]);
+const DANGEROUS_EXTENSIONS = new Set([
+  '.exe', '.bat', '.cmd', '.msi', '.vbs', '.vbe', '.scr', '.pif', '.com', '.cpl', '.hta',
+]);
 const ASSET_TYPES = Object.freeze({
-  '.png': { mime: 'image/png', kind: 'png' },
-  '.jpg': { mime: 'image/jpeg', kind: 'jpeg' },
-  '.jpeg': { mime: 'image/jpeg', kind: 'jpeg' },
-  '.webp': { mime: 'image/webp', kind: 'webp' },
-  '.gif': { mime: 'image/gif', kind: 'gif' },
-  '.pdf': { mime: 'application/pdf', kind: 'pdf' },
-  '.docx': { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', kind: 'docx' },
+  // 图片与多媒体
+  '.png': { mime: 'image/png', kind: 'png', disposition: 'inline' },
+  '.jpg': { mime: 'image/jpeg', kind: 'jpeg', disposition: 'inline' },
+  '.jpeg': { mime: 'image/jpeg', kind: 'jpeg', disposition: 'inline' },
+  '.webp': { mime: 'image/webp', kind: 'webp', disposition: 'inline' },
+  '.gif': { mime: 'image/gif', kind: 'gif', disposition: 'inline' },
   '.svg': { mime: 'image/svg+xml', kind: 'svg', disposition: 'attachment' },
+  '.bmp': { mime: 'image/bmp', kind: 'bmp', disposition: 'inline' },
+  '.ico': { mime: 'image/x-icon', kind: 'ico', disposition: 'inline' },
+  '.mp4': { mime: 'video/mp4', kind: 'mp4', disposition: 'inline' },
+  '.mp3': { mime: 'audio/mpeg', kind: 'mp3', disposition: 'inline' },
+  '.wav': { mime: 'audio/wav', kind: 'wav', disposition: 'inline' },
+
+  // 文档与论文素材
+  '.pdf': { mime: 'application/pdf', kind: 'pdf', disposition: 'inline' },
+  '.docx': { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', kind: 'docx', disposition: 'attachment' },
+  '.doc': { mime: 'application/msword', kind: 'doc', disposition: 'attachment' },
+  '.pptx': { mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', kind: 'pptx', disposition: 'attachment' },
+  '.ppt': { mime: 'application/vnd.ms-powerpoint', kind: 'ppt', disposition: 'attachment' },
+  '.md': { mime: 'text/markdown; charset=utf-8', kind: 'markdown', disposition: 'inline' },
+  '.txt': { mime: 'text/plain; charset=utf-8', kind: 'txt', disposition: 'inline' },
+  '.tex': { mime: 'application/x-tex', kind: 'tex', disposition: 'attachment' },
+
+  // 压缩包与工程归档
+  '.zip': { mime: 'application/zip', kind: 'zip', disposition: 'attachment' },
+  '.7z': { mime: 'application/x-7z-compressed', kind: '7z', disposition: 'attachment' },
+  '.rar': { mime: 'application/vnd.rar', kind: 'rar', disposition: 'attachment' },
+  '.tar': { mime: 'application/x-tar', kind: 'tar', disposition: 'attachment' },
+  '.gz': { mime: 'application/gzip', kind: 'gz', disposition: 'attachment' },
+  '.bz2': { mime: 'application/x-bzip2', kind: 'bz2', disposition: 'attachment' },
+
+  // 科学计算、数据与数据库
+  '.csv': { mime: 'text/csv; charset=utf-8', kind: 'csv', disposition: 'attachment' },
+  '.tsv': { mime: 'text/tab-separated-values; charset=utf-8', kind: 'tsv', disposition: 'attachment' },
+  '.xlsx': { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', kind: 'xlsx', disposition: 'attachment' },
+  '.xls': { mime: 'application/vnd.ms-excel', kind: 'xls', disposition: 'attachment' },
+  '.parquet': { mime: 'application/vnd.apache.parquet', kind: 'parquet', disposition: 'attachment' },
+  '.h5': { mime: 'application/x-hdf5', kind: 'h5', disposition: 'attachment' },
+  '.hdf5': { mime: 'application/x-hdf5', kind: 'hdf5', disposition: 'attachment' },
+  '.pkl': { mime: 'application/octet-stream', kind: 'pkl', disposition: 'attachment' },
+  '.npy': { mime: 'application/octet-stream', kind: 'npy', disposition: 'attachment' },
+  '.npz': { mime: 'application/octet-stream', kind: 'npz', disposition: 'attachment' },
+  '.mat': { mime: 'application/octet-stream', kind: 'mat', disposition: 'attachment' },
+  '.sqlite': { mime: 'application/vnd.sqlite3', kind: 'sqlite', disposition: 'attachment' },
+  '.db': { mime: 'application/vnd.sqlite3', kind: 'db', disposition: 'attachment' },
+  '.sql': { mime: 'application/sql', kind: 'sql', disposition: 'attachment' },
+
+  // 代码与脚本
+  '.py': { mime: 'text/x-python; charset=utf-8', kind: 'py', disposition: 'attachment' },
+  '.ipynb': { mime: 'application/x-ipynb+json', kind: 'ipynb', disposition: 'attachment' },
+  '.m': { mime: 'text/x-matlab; charset=utf-8', kind: 'm', disposition: 'attachment' },
+  '.r': { mime: 'text/x-r; charset=utf-8', kind: 'r', disposition: 'attachment' },
+  '.c': { mime: 'text/x-c; charset=utf-8', kind: 'c', disposition: 'attachment' },
+  '.cpp': { mime: 'text/x-c++src; charset=utf-8', kind: 'cpp', disposition: 'attachment' },
+  '.h': { mime: 'text/x-c; charset=utf-8', kind: 'h', disposition: 'attachment' },
+  '.rs': { mime: 'text/rust; charset=utf-8', kind: 'rs', disposition: 'attachment' },
+  '.go': { mime: 'text/x-go; charset=utf-8', kind: 'go', disposition: 'attachment' },
+  '.java': { mime: 'text/x-java-source; charset=utf-8', kind: 'java', disposition: 'attachment' },
+  '.ts': { mime: 'application/typescript; charset=utf-8', kind: 'ts', disposition: 'attachment' },
+  '.js': { mime: 'application/javascript; charset=utf-8', kind: 'js', disposition: 'attachment' },
+  '.json': { mime: 'application/json; charset=utf-8', kind: 'json', disposition: 'inline' },
+  '.yaml': { mime: 'text/yaml; charset=utf-8', kind: 'yaml', disposition: 'inline' },
+  '.yml': { mime: 'text/yaml; charset=utf-8', kind: 'yml', disposition: 'inline' },
+  '.toml': { mime: 'text/x-toml; charset=utf-8', kind: 'toml', disposition: 'inline' },
 });
 const ASSET_EXTENSIONS = new Set(Object.keys(ASSET_TYPES));
 const RESERVED_DEVICE_NAMES = /^(con|prn|aux|nul|clock\$|com[1-9]|lpt[1-9])(?:\..*)?$/i;
@@ -112,8 +171,9 @@ function normalizeFileName(fileName, { asset = false } = {}) {
   if (value.startsWith('.')) throw bridgeError('BUNDLE_NAME_INVALID', '资料包文件名不能以点开头', 400);
   if (caseKey(value) === 'index.md') return 'index.md';
   if (!/\.md$/i.test(value) && !asset) throw bridgeError('BUNDLE_MARKDOWN_REQUIRED', '补充资料必须是 .md 文件', 415);
-  if (asset && !ASSET_EXTENSIONS.has(extname(value).toLowerCase())) {
-    throw bridgeError('BUNDLE_ASSET_TYPE_UNSUPPORTED', '附件类型不在允许清单内', 415);
+  const ext = extname(value).toLowerCase();
+  if (DANGEROUS_EXTENSIONS.has(ext)) {
+    throw bridgeError('BUNDLE_ASSET_TYPE_FORBIDDEN', `禁止导入系统可执行文件：${ext}`, 403);
   }
   return value;
 }
@@ -124,23 +184,36 @@ function titleMarkdown(name, title) {
 }
 
 function contentTypeFor(fileName) {
-  const type = ASSET_TYPES[extname(fileName).toLowerCase()];
-  if (!type) throw bridgeError('BUNDLE_ASSET_TYPE_UNSUPPORTED', '附件类型不在允许清单内', 415);
+  const ext = extname(fileName).toLowerCase();
+  if (DANGEROUS_EXTENSIONS.has(ext)) {
+    throw bridgeError('BUNDLE_ASSET_TYPE_FORBIDDEN', `禁止导入系统可执行文件：${ext}`, 403);
+  }
+  const type = ASSET_TYPES[ext] ?? { mime: 'application/octet-stream', kind: ext.slice(1) || 'bin', disposition: 'attachment' };
   return type;
 }
 
 function headerMatches(kind, header) {
+  // 危险二进制防御：非可执行文件严禁包含 Windows PE 头 (MZ)
+  if (header.length >= 2 && header[0] === 0x4d && header[1] === 0x5a) {
+    return false;
+  }
   if (kind === 'png') return header.length >= 8 && header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   if (kind === 'jpeg') return header.length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
   if (kind === 'webp') return header.length >= 12 && header.toString('ascii', 0, 4) === 'RIFF' && header.toString('ascii', 8, 12) === 'WEBP';
   if (kind === 'gif') return header.length >= 6 && ['GIF87a', 'GIF89a'].includes(header.toString('ascii', 0, 6));
   if (kind === 'pdf') return header.subarray(0, 5).toString('ascii') === '%PDF-';
-  if (kind === 'docx') return header.length >= 4 && header[0] === 0x50 && header[1] === 0x4b && header[2] === 0x03 && header[3] === 0x04;
+  if (kind === 'docx' || kind === 'pptx' || kind === 'xlsx' || kind === 'zip') {
+    return header.length >= 4 && header[0] === 0x50 && header[1] === 0x4b && (header[2] === 0x03 || header[2] === 0x05 || header[2] === 0x07);
+  }
+  if (kind === '7z') return header.length >= 6 && header[0] === 0x37 && header[1] === 0x7a && header[2] === 0xbc && header[3] === 0xaf && header[4] === 0x27 && header[5] === 0x1c;
+  if (kind === 'gz') return header.length >= 2 && header[0] === 0x1f && header[1] === 0x8b;
+  if (kind === 'rar') return header.length >= 4 && header.toString('ascii', 0, 4) === 'Rar!';
+  if (kind === 'sqlite' || kind === 'db') return header.length >= 16 && header.toString('ascii', 0, 16).startsWith('SQLite format 3');
   if (kind === 'svg') {
     const text = header.toString('utf8').replace(/^\uFEFF/, '').trimStart();
     return /^(?:<\?xml\b[^>]*>\s*)?<svg(?:\s|>)/i.test(text);
   }
-  return false;
+  return true;
 }
 
 function normalizeMime(mimeType) {
@@ -180,6 +253,9 @@ export class BundleStore {
     this.faultInjector = value.faultInjector ?? (() => undefined);
     this.lockRoot = join(this.mapRoot, '.bridge', 'bundle-locks');
     this.commandRoot = join(this.mapRoot, '.bridge', 'bundle-commands');
+    this.maxAssetBytes = value.maxAssetBytes ?? MAX_ASSET_BYTES;
+    this.maxBundleFiles = value.maxBundleFiles ?? MAX_BUNDLE_FILES;
+    this.maxMapAssetBytes = value.maxMapAssetBytes ?? MAX_MAP_ASSET_BYTES;
   }
 
   static async open(options) {
@@ -584,7 +660,7 @@ export class BundleStore {
 
   async #quota(info, incomingBytes = 0) {
     const entries = await this.#entries(info, { includeArchived: true });
-    if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError('BUNDLE_FILE_QUOTA', '单资料包最多保存 200 个文件', 413);
+    if (entries.length >= this.maxBundleFiles) throw bridgeError('BUNDLE_FILE_QUOTA', `单资料包最多保存 ${this.maxBundleFiles} 个文件`, 413);
     const mapEntries = [];
     for (const ownerKind of ['nodes', 'routes']) {
       const kindRoot = join(this.mapRoot, ownerKind);
@@ -599,7 +675,7 @@ export class BundleStore {
     }
     let total = incomingBytes;
     for (const entry of mapEntries) total += (await stat(entry.path)).size;
-    if (total > MAX_MAP_ASSET_BYTES) throw bridgeError('BUNDLE_SIZE_QUOTA', '单地图附件总量超过 1 GiB', 413);
+    if (total > this.maxMapAssetBytes) throw bridgeError('BUNDLE_SIZE_QUOTA', `单地图附件总量超过 ${Math.round(this.maxMapAssetBytes / (1024 * 1024 * 1024))} GiB`, 413);
   }
 
   async #withMapLock(operation) {
@@ -625,7 +701,7 @@ export class BundleStore {
       for await (const chunk of stream) {
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         size += buffer.length;
-        if (size > MAX_ASSET_BYTES) throw bridgeError('BUNDLE_ASSET_TOO_LARGE', '单附件超过 20 MiB', 413, { limit: MAX_ASSET_BYTES });
+        if (size > this.maxAssetBytes) throw bridgeError('BUNDLE_ASSET_TOO_LARGE', `单附件超过限制（最大 ${Math.round(this.maxAssetBytes / (1024 * 1024))} MiB）`, 413, { limit: this.maxAssetBytes });
         if (headerSize < 8192) {
           chunks.push(buffer.subarray(0, Math.min(buffer.length, 8192 - headerSize)));
           headerSize += Math.min(buffer.length, 8192 - headerSize);
@@ -645,7 +721,7 @@ export class BundleStore {
     if (!allowExternal) await this.#assertSafePath(this.projectRoot, candidate, { allowMissing: false });
     const before = await stat(candidate);
     if (!before.isFile()) throw bridgeError('BUNDLE_SOURCE_NOT_FILE', '附件源必须是普通文件', 400);
-    if (before.size > MAX_ASSET_BYTES) throw bridgeError('BUNDLE_ASSET_TOO_LARGE', '单附件超过 20 MiB', 413, { limit: MAX_ASSET_BYTES });
+    if (before.size > this.maxAssetBytes) throw bridgeError('BUNDLE_ASSET_TOO_LARGE', `单附件超过限制（最大 ${Math.round(this.maxAssetBytes / (1024 * 1024))} MiB）`, 413, { limit: this.maxAssetBytes });
     let handle;
     try {
       const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);

@@ -169,10 +169,12 @@ test('streams allowed assets, checks MIME and magic, and allocates case-insensit
     store.importAsset({ ownerKind: 'node', ownerId: 'n1', fileName: 'bad.jpg', stream: Readable.from([png]), mimeType: 'image/png' }),
     (error) => error.code === 'BUNDLE_MIME_MISMATCH',
   );
+  store.maxAssetBytes = 1024;
   await assert.rejects(
-    store.importAsset({ ownerKind: 'node', ownerId: 'n1', fileName: 'large.png', stream: Readable.from([Buffer.alloc(MAX_ASSET_BYTES + 1)]), mimeType: 'image/png' }),
+    store.importAsset({ ownerKind: 'node', ownerId: 'n1', fileName: 'large.png', stream: Readable.from([Buffer.alloc(1025)]), mimeType: 'image/png' }),
     (error) => error.code === 'BUNDLE_ASSET_TOO_LARGE',
   );
+  store.maxAssetBytes = MAX_ASSET_BYTES;
 });
 
 test('forces SVG attachment disposition and imports only project-local regular source files', async (t) => {

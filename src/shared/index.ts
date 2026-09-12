@@ -62,10 +62,10 @@ const ISO_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const DANGEROUS_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const MAX_NAME = 80;
 const MAX_ANN = 4000;
-const MAX_AGENT_OBJECTS_PER_ENVELOPE = 10;
-const MAX_AGENT_NEW_NODES_PER_ENVELOPE = 5;
-const MAX_AGENT_MILESTONES_PER_ENVELOPE = 2;
-const MAX_INITIAL_MAP_NODES = 15;
+const MAX_AGENT_OBJECTS_PER_ENVELOPE = 50;
+const MAX_AGENT_NEW_NODES_PER_ENVELOPE = 30;
+const MAX_AGENT_MILESTONES_PER_ENVELOPE = 10;
+const MAX_INITIAL_MAP_NODES = 50;
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -573,10 +573,10 @@ export function applyCommandEnvelope(document: MapDocument, envelope: CommandEnv
   if (isAgent(envelope.actor)) {
     const objectCommands = envelope.commands.filter((command) => ['create', 'update', 'archive', 'restore', 'delete'].includes(command.op));
     const nodeCreates = envelope.commands.filter((command) => command.op === 'create' && command.collection === 'nodes') as Array<{ op: 'create'; collection: 'nodes'; value: Record<string, unknown> }>;
-    if (objectCommands.length > MAX_AGENT_OBJECTS_PER_ENVELOPE) throw mapError('AGENT_BATCH_LIMIT', 422, 'Agent 单次最多修改 10 个对象，请先合并或让人选择', { maxObjects: MAX_AGENT_OBJECTS_PER_ENVELOPE, suggestion: '压缩执行碎片，保留项目/路线级结论' });
-    if (nodeCreates.length > MAX_AGENT_NEW_NODES_PER_ENVELOPE) throw mapError('AGENT_NODE_LIMIT', 422, 'Agent 单次最多新增 5 个活跃节点，请先合并或分阶段提交', { maxNodes: MAX_AGENT_NEW_NODES_PER_ENVELOPE, suggestion: '只保留目标、阶段、结果或审核门' });
+    if (objectCommands.length > MAX_AGENT_OBJECTS_PER_ENVELOPE) throw mapError('AGENT_BATCH_LIMIT', 422, `Agent 单次最多修改 ${MAX_AGENT_OBJECTS_PER_ENVELOPE} 个对象，请先合并或让人选择`, { maxObjects: MAX_AGENT_OBJECTS_PER_ENVELOPE, suggestion: '压缩执行碎片，保留项目/路线级结论' });
+    if (nodeCreates.length > MAX_AGENT_NEW_NODES_PER_ENVELOPE) throw mapError('AGENT_NODE_LIMIT', 422, `Agent 单次最多新增 ${MAX_AGENT_NEW_NODES_PER_ENVELOPE} 个活跃节点，请先合并或分阶段提交`, { maxNodes: MAX_AGENT_NEW_NODES_PER_ENVELOPE, suggestion: '只保留目标、阶段、结果或审核门' });
     const activeNodes = document.nodes.filter((node) => visibleNode(document, node)).length;
-    if (agentInitialMap && activeNodes + nodeCreates.length > MAX_INITIAL_MAP_NODES) throw mapError('AGENT_INITIAL_MAP_LIMIT', 422, '首次初始化地图最多保留 15 个活跃节点，请压缩为目标、阶段、路线和待判断事项', { maxInitialNodes: MAX_INITIAL_MAP_NODES, suggestion: '不要按文件、目录、函数或聊天轮次建节点' });
+    if (agentInitialMap && activeNodes + nodeCreates.length > MAX_INITIAL_MAP_NODES) throw mapError('AGENT_INITIAL_MAP_LIMIT', 422, `首次初始化地图最多保留 ${MAX_INITIAL_MAP_NODES} 个活跃节点，请压缩为目标、阶段、路线和待判断事项`, { maxInitialNodes: MAX_INITIAL_MAP_NODES, suggestion: '不要按文件、目录、函数或聊天轮次建节点' });
   }
   const revision = document.revision + 1;
   const now = utcNow(options.now);

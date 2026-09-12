@@ -6,17 +6,17 @@
   "signed": false,
   "sourceReleaseManifest": {
     "bytes": 1176,
-    "sha256": "edf8cbabc5eeb1ea7a487165d5d4d318b8edb4f67e61c1ecc35f447c6528e358"
+    "sha256": "85dcc9b3d23f8552099c7c0897f9a46edeb72211c9b98b7b0aae489d6e3f79c6"
   },
-  "payloadHash": "9ff20597b00857059244ef855b88e86336129cba34565257f680b37c2a4510ff",
+  "payloadHash": "74ce2a6c9307f50fa212b5473b82397b81d7618cb855f3c374daa582cf1b7a81",
   "files": {
     "app.html": {
       "bytes": 397821,
       "sha256": "cc6b3cf52e4368842e6f130d605e83c81b2fdfd1fd65b524cfddb23c9ccaebea"
     },
     "livedot-bridge-win-x64.exe": {
-      "bytes": 92333568,
-      "sha256": "0c039f3f33d3724e39991d6f62733aba2a2d71f38cbd13f6d95edac34c552f82"
+      "bytes": 92339712,
+      "sha256": "7469297047a76dfe550573ebe9f85a49a22384c8f81e8ce45b0267fa63df8b83"
     },
     "manifest.webmanifest": {
       "bytes": 550,
@@ -24,7 +24,7 @@
     },
     "sw.js": {
       "bytes": 1870,
-      "sha256": "41ac0851be6cbbc0ddab6d98163669aebd668f161aa77e8bc8e59cb622bba73c"
+      "sha256": "f5fcd4b0d4486f437e703819056ddab1654736942d010e2812b4db2b79b7506a"
     },
     "favicon.ico": {
       "bytes": 24645,

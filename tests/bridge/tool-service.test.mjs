@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { join } from 'node:path';
 import { MapManager } from '../../src/bridge/map-manager.mjs';
@@ -213,6 +214,42 @@ test('Bundle Asset 经 ToolService 完成 list/import/archive/restore', async (t
   assert.equal(restored.archived, false);
   listed = await service.dispatch('map_list_assets', { ...owner });
   assert.equal(listed.assets.some((file) => file.name === 'evidence.png'), true);
+});
+
+test('map_import_asset 支持导入项目外绝对路径资产（如 zip 和 py 脚本）', async (t) => {
+  const { manager, service } = await openService(t);
+  const mapKey = await createMap(manager, '通用资产地图');
+  await manager.switch(mapKey);
+  await addNode(service, mapKey, 'external-asset-node');
+  const owner = { ownerKind: 'node', ownerId: 'external-asset-node' };
+
+  const outsideDir = await mkdtemp(join(tmpdir(), 'live-dot-map-outside-'));
+  t.after(() => import('node:fs/promises').then(({ rm }) => rm(outsideDir, { recursive: true, force: true })));
+
+  // 创建外部 zip 文件（PK0304）
+  const zipPath = join(outsideDir, 'dataset.zip');
+  const zipHeader = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00]);
+  await writeFile(zipPath, zipHeader);
+
+  // 创建外部 py 脚本
+  const pyPath = join(outsideDir, 'verify.py');
+  await writeFile(pyPath, 'print("simulation completed")\n');
+
+  // 1. 导入外部绝对路径 zip
+  const importedZip = await service.dispatch('map_import_asset', { ...owner, sourcePath: zipPath });
+  assert.equal(importedZip.name, 'dataset.zip');
+  assert.equal(importedZip.mimeType, 'application/zip');
+  assert.equal(importedZip.disposition, 'attachment');
+
+  // 2. 导入外部绝对路径 py
+  const importedPy = await service.dispatch('map_import_asset', { ...owner, sourcePath: pyPath });
+  assert.equal(importedPy.name, 'verify.py');
+  assert.equal(importedPy.mimeType, 'text/x-python; charset=utf-8');
+  assert.equal(importedPy.disposition, 'attachment');
+
+  const assets = await service.dispatch('map_list_assets', { ...owner });
+  assert.ok(assets.assets.some((a) => a.name === 'dataset.zip'));
+  assert.ok(assets.assets.some((a) => a.name === 'verify.py'));
 });
 
 test('归档对象 owner 不进入默认 context，includeHistory 才能重新检索', async (t) => {
