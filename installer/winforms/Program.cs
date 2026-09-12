@@ -337,6 +337,10 @@ internal static class EmbeddedPayloadSource
                 Directory.CreateDirectory(staging);
                 using (var archive = new ZipArchive(new MemoryStream(bytes), ZipArchiveMode.Read))
                     archive.ExtractToDirectory(staging);
+
+                // 单文件分发模式：将运行中的安装器本体放进源目录，确保后续整体复制时自带产品入口
+                LauncherForm.CopyCurrentProcessExecutable(Path.Combine(staging, "LiveDotMapSetup.exe"));
+
                 if (Directory.Exists(targetRoot)) Directory.Delete(targetRoot, recursive: true);
                 Directory.Move(staging, targetRoot);
                 File.WriteAllText(marker, DateTimeOffset.UtcNow.ToString("O"));
@@ -348,6 +352,14 @@ internal static class EmbeddedPayloadSource
             finally
             {
                 try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); } catch { /* 占用中则跳过 */ }
+            }
+        }
+        else
+        {
+            var cachedExe = Path.Combine(targetRoot, "LiveDotMapSetup.exe");
+            if (!File.Exists(cachedExe))
+            {
+                LauncherForm.CopyCurrentProcessExecutable(cachedExe);
             }
         }
 
@@ -914,10 +926,12 @@ internal sealed class LauncherForm : Form
         {
             AppendStatus("正在复制并校验本地程序文件…");
             await CopyDirectoryAsync(SourceRoot, temporary);
+            EnsureLauncherExecutable(temporary);
             var copied = PayloadVerifier.Verify(Path.Combine(temporary, "payload"));
             if (!copied.Ok) throw new InvalidOperationException($"复制后校验失败：{string.Join("；", copied.Errors)}");
             AppendStatus("文件校验通过，正在写入安装目录…");
             await MoveDirectoryWithRecoveryMessageAsync(temporary, InstalledRoot, "写入新的程序目录", false);
+            EnsureLauncherExecutable(InstalledRoot);
             await RemoveLegacyShortcutsAsync();
             await CreateProductShortcutsAsync(InstalledRoot);
             AppendStatus($"已安装到：{InstalledRoot}");
@@ -963,12 +977,14 @@ internal sealed class LauncherForm : Form
         {
             AppendStatus(isUpdate ? "检测到新版本，正在备份并更新…" : "检测到已有安装不完整，正在自动备份并修复…");
             await CopyDirectoryAsync(SourceRoot, temporary);
+            EnsureLauncherExecutable(temporary);
             var copied = PayloadVerifier.Verify(Path.Combine(temporary, "payload"));
             if (!copied.Ok) throw new InvalidOperationException($"复制后校验失败：{string.Join("；", copied.Errors)}");
             if (Directory.Exists(InstalledRoot)) await MoveDirectoryWithRecoveryMessageAsync(InstalledRoot, previous, "备份现有程序", true);
             try
             {
                 await MoveDirectoryWithRecoveryMessageAsync(temporary, InstalledRoot, "写入修复后的程序", false);
+                EnsureLauncherExecutable(InstalledRoot);
             }
             catch
             {
@@ -1155,6 +1171,57 @@ internal sealed class LauncherForm : Form
         return fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static bool CopyCurrentProcessExecutable(string destinationPath)
+    {
+        try
+        {
+            var processPath = Environment.ProcessPath;
+            if (!string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath))
+            {
+                var dir = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+                File.Copy(processPath, destinationPath, true);
+                return true;
+            }
+        }
+        catch { }
+
+        try
+        {
+            var mainModulePath = Process.GetCurrentProcess().MainModule?.FileName;
+            if (!string.IsNullOrWhiteSpace(mainModulePath) && File.Exists(mainModulePath))
+            {
+                var dir = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+                File.Copy(mainModulePath, destinationPath, true);
+                return true;
+            }
+        }
+        catch { }
+
+        return false;
+    }
+
+    private void EnsureLauncherExecutable(string targetRoot)
+    {
+        var targetExe = Path.Combine(targetRoot, "LiveDotMapSetup.exe");
+        if (File.Exists(targetExe)) return;
+
+        if (CopyCurrentProcessExecutable(targetExe)) return;
+
+        var existingExe = Path.Combine(InstalledRoot, "LiveDotMapSetup.exe");
+        if (File.Exists(existingExe))
+        {
+            try { File.Copy(existingExe, targetExe, true); return; } catch { }
+        }
+
+        var baseExe = Path.Combine(AppContext.BaseDirectory, "LiveDotMapSetup.exe");
+        if (File.Exists(baseExe))
+        {
+            try { File.Copy(baseExe, targetExe, true); } catch { }
+        }
+    }
+
     private void OpenProduct(string installedRoot)
     {
         var app = Path.Combine(installedRoot, "payload", "app.html");
@@ -1165,6 +1232,10 @@ internal sealed class LauncherForm : Form
             return;
         }
         var launcher = Path.Combine(installedRoot, "LiveDotMapSetup.exe");
+        if (!File.Exists(launcher))
+        {
+            EnsureLauncherExecutable(installedRoot);
+        }
         if (!File.Exists(launcher)) throw new InvalidOperationException("找不到产品入口，请先完成修复。");
         var info = new ProcessStartInfo { FileName = launcher, UseShellExecute = false, WorkingDirectory = installedRoot };
         info.ArgumentList.Add("--open");
