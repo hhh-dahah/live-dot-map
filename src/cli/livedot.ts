@@ -21,7 +21,8 @@ import {
   writeBridgeState,
 } from '../bridge/runtime-state.mjs';
 import { loadSharedAdapter } from '../bridge/shared-adapter.mjs';
-import { readCurrentProject, resolveProjectRootToUse } from '../bridge/current-project.mjs';
+import { readCurrentProject, resolveGitWorktreeMain, resolveProjectRootToUse } from '../bridge/current-project.mjs';
+import { canonicalDirectory } from '../bridge/fs-utils.mjs';
 import { doctorProject, installProject, uninstallProject } from '../../agent-kit/lib/installer.mjs';
 
 if (isSea()) process.env.LIVEDOT_SEA = '1';
@@ -611,7 +612,12 @@ async function main(): Promise<void> {
   const { command, args } = parseArgs(process.argv.slice(2));
   if (command === 'serve') {
     const logger = createLogger({ source: 'bridge' });
-    const projectRoot = resolve(required(args, 'project'));
+    // Git linked worktree（如 live-dot-map-adapter 工位）直接注册主仓库根：
+    // 各工位的 .live-dot-map 是指向主工作区的 junction，注册工位路径会被 PATH_ESCAPE 拒绝；
+    // 与 MCP 的 resolveProjectRootToUse「worktree 回溯主仓库」行为一致。canonicalDirectory 兼做 realpath 归一。
+    const requestedRoot = resolve(required(args, 'project'));
+    const worktreeMain = resolveGitWorktreeMain(requestedRoot);
+    const projectRoot = await canonicalDirectory(worktreeMain ?? requestedRoot).catch(() => requestedRoot);
     const runtimeStateDir = typeof args['runtime-state-dir'] === 'string' ? resolve(args['runtime-state-dir']) : undefined;
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });
