@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "livedot-map": {
+      "command": "node",
+      "args": [
+        ".live-dot-map/livedot.mjs",
+        "mcp",
+        "--agent",
+        "qoder"
+      ]
+    }
+  }
+}

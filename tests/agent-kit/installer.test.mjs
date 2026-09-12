@@ -26,7 +26,7 @@ test('install writes global agent plugins while keeping the project data-only', 
   assert.equal(dataEntries0.includes('active-map'), true);
   // 项目零配置：项目内不再出现 .codex/.claude/.kimi-code/.codebuddy/.mcp.json/hook.cmd。
   const projectEntries = await readdir(root);
-  for (const forbidden of ['.codex', '.claude', '.kimi-code', '.codebuddy', '.mcp.json']) {
+  for (const forbidden of ['.codex', '.claude', '.kimi-code', '.codebuddy', '.qoder', '.mcp.json']) {
     assert.equal(projectEntries.includes(forbidden), false, `project must not contain ${forbidden}`);
   }
   const dataEntries = await readdir(join(root, '.live-dot-map'));
@@ -226,3 +226,33 @@ test('antigravity adapter: fingerprint probe discovers AGY and writes mcp_config
   await assert.rejects(access(join(home, '.gemini', 'antigravity-ide', 'mcp_config.json')));
   await assert.rejects(access(join(home, '.gemini', 'config', 'mcp_config.json')));
 });
+
+test('qoder adapter: directory fingerprint probe discovers Qoder and writes mcp.json', async () => {
+  const root = await mkdtemp(join(TEST_ROOT, 'livedot-qoder-'));
+  const home = await mkdtemp(join(TEST_ROOT, 'livedot-qoder-home-'));
+  // 指纹探测：~/.qoder-cn 存在即视为已安装 Qoder
+  await mkdir(join(home, '.qoder-cn'), { recursive: true });
+  const result = await installProject({ projectRoot: root, homeRoot: home, createDesktopShortcut: false, register: false, offline: true, platform: 'win32', discoverAgents: true });
+  assert.equal(result.installed.qoder, true);
+  const mcpPath = join(home, '.qoder-cn', 'mcp.json');
+  const config = JSON.parse(await readFile(mcpPath, 'utf8'));
+  const server = config.mcpServers['livedot-map'];
+  assert.ok(server, 'Qoder mcp.json 必须包含 livedot-map 服务器');
+  assert.equal(server.command, process.execPath);
+  assert.equal(server.args.includes('mcp'), true);
+  assert.equal(server.args.includes('--agent'), true);
+  assert.equal(server.args.at(-1), 'qoder');
+  assert.equal(server.args.includes('--project'), false, '全局 MCP 配置不带 --project');
+  // 检查 Skill 安装到 ~/.qoder-cn/skills/live-dot-map/SKILL.md
+  const skillContent = await readFile(join(home, '.qoder-cn', 'skills', 'live-dot-map', 'SKILL.md'), 'utf8');
+  assert.match(skillContent, /map_plan_consolidation/);
+  // doctor 认可 qoder 安装项
+  const doctor = await doctorProject({ projectRoot: root, homeRoot: home, checkBridge: false });
+  assert.equal(doctor.ok, true);
+  // 卸载：还原全局配置并保留地图
+  const uninstall = await uninstallProject({ projectRoot: root, platform: 'win32' });
+  assert.equal(uninstall.ok, true);
+  assert.equal(uninstall.mapPreserved, true);
+  await assert.rejects(access(mcpPath));
+});
+

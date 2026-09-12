@@ -1436,10 +1436,9 @@ export async function createBridgeServer({
         } catch { /* 未接入项目仍返回未安装/已发现状态 */ }
         const trust = config.trust && typeof config.trust === 'object' ? config.trust : {};
         const healthRecords = await readAgentHealth(root);
-        // Optional Tencent adapter stays hidden until the user actually has
-        // CodeBuddy/WorkBuddy or project configuration; the novice UI keeps
-        // the default list focused on the three first-party adapters.
-        const agents = Object.values(detected).filter((item) => item.id !== 'codebuddy' || item.discovered).map((item) => {
+        // Optional adapters stay hidden until the user actually has them installed
+        // or project configuration; the novice UI keeps the default list focused.
+        const agents = Object.values(detected).filter((item) => (item.id !== 'codebuddy' && item.id !== 'qoder') || item.discovered).map((item) => {
           const id = String(item.id);
           const health = healthRecords[id] || healthRecords[id.replace(/-code$/, '')] || (id === 'claude-code' ? healthRecords.claude : id === 'kimi-code' ? healthRecords.kimi : null);
           let state = 'not_installed';

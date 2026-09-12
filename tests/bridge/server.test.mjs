@@ -467,7 +467,7 @@ test('returns truthful five-state Agent discovery for the opened project', async
   const body = await response.json();
   assert.deepEqual(Object.keys(body.states).sort(), ['awaiting_trust', 'connected', 'discovered', 'error', 'not_installed'].sort());
   assert.ok(body.agents.length >= 3);
-  assert.deepEqual(new Set(body.agents.map((agent) => agent.id)), new Set(['codex', 'claude-code', 'kimi-code', 'antigravity', ...(body.agents.some((agent) => agent.id === 'codebuddy') ? ['codebuddy'] : [])]));
+  assert.deepEqual(new Set(body.agents.map((agent) => agent.id)), new Set(['codex', 'claude-code', 'kimi-code', 'antigravity', ...(body.agents.some((agent) => agent.id === 'codebuddy') ? ['codebuddy'] : []), ...(body.agents.some((agent) => agent.id === 'qoder') ? ['qoder'] : [])]));
   for (const agent of body.agents) {
     assert.ok(['awaiting_trust', 'connected', 'discovered', 'error', 'not_installed'].includes(agent.state));
     assert.equal(typeof agent.discovered, 'boolean');
@@ -482,6 +482,7 @@ test('opening a project auto-configures only detected Agents and preserves trust
     'claude-code': { id: 'claude-code', configured: false, executable: false, discovered: false },
     'kimi-code': { id: 'kimi-code', configured: false, executable: false, discovered: false },
     codebuddy: { id: 'codebuddy', configured: false, executable: false, discovered: false },
+    qoder: { id: 'qoder', configured: false, executable: false, discovered: false },
   };
   const first = await ensureProjectAgentConfig(root, {
     platform: 'linux',

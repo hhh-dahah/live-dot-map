@@ -11,6 +11,7 @@ const targets = [
   join(root, 'agent-kit', 'adapters', 'claude-code', 'skills', 'live-dot-map', 'SKILL.md'),
   join(root, 'agent-kit', 'adapters', 'kimi-code', 'skills', 'live-dot-map', 'SKILL.md'),
   join(root, 'agent-kit', 'adapters', 'codebuddy', 'skills', 'live-dot-map', 'SKILL.md'),
+  join(root, 'agent-kit', 'adapters', 'qoder', 'skills', 'live-dot-map', 'SKILL.md'),
 ];
 for (const target of targets) {
   await mkdir(dirname(target), { recursive: true });

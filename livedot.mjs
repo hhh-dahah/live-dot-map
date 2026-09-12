@@ -5969,7 +5969,7 @@ var sharedBridgeContract = Object.freeze({
 import { createHash as createHash7, randomUUID as randomUUID7 } from "node:crypto";
 import { execFile } from "node:child_process";
 import { access as access3, copyFile as copyFile3, mkdir as mkdir8, readFile as readFile10, rename as rename5, rm as rm5, stat as stat8, writeFile as writeFile2 } from "node:fs/promises";
-import { constants as constants2 } from "node:fs";
+import { constants as constants2, existsSync as existsSync2 } from "node:fs";
 import { basename as basename4, dirname as dirname9, join as join17, resolve as resolve14 } from "node:path";
 import { homedir as homedir5 } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -6856,9 +6856,9 @@ var map_template_default = {
 
 // agent-kit/lib/installer.mjs
 var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code", "antigravity"]);
-var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy"]);
+var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy", "qoder"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
-var skillTargetPaths = (home, id) => id === "codex" ? join17(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join17(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join17(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : join17(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
+var skillTargetPaths = (home, id) => id === "codex" ? join17(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join17(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join17(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : id === "codebuddy" ? join17(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : existsSync2(join17(home, ".qoder")) && !existsSync2(join17(home, ".qoder-cn")) ? join17(home, ".qoder", "skills", "live-dot-map", "SKILL.md") : join17(home, ".qoder-cn", "skills", "live-dot-map", "SKILL.md");
 var kimiPluginRoot = (home) => join17(home, ".kimi-code", "plugins", "live-dot-map");
 var codebuddyPluginRoot = (home) => join17(home, ".codebuddy", "plugins", "live-dot-map");
 var ADAPTER_PROBES = Object.freeze({
@@ -6866,19 +6866,46 @@ var ADAPTER_PROBES = Object.freeze({
   "claude-code": ["claude", "claude-code"],
   "kimi-code": ["kimi", "kimi-code"],
   antigravity: ["antigravity", "agy"],
-  codebuddy: ["codebuddy", "codebuddy-code", "workbuddy"]
+  codebuddy: ["codebuddy", "codebuddy-code", "workbuddy"],
+  qoder: ["qoder", "qoderclicn", "qodercli"]
 });
 function adapterFingerprints(id, { platform, home }) {
-  if (id !== "antigravity") return [];
-  const local = process.env.LOCALAPPDATA;
-  const programFiles = process.env.ProgramFiles;
-  const out = [];
-  if (platform === "win32") {
-    if (local) out.push(join17(local, "Programs", "Antigravity", "Antigravity.exe"));
-    if (programFiles) out.push(join17(programFiles, "Antigravity", "Antigravity.exe"));
+  if (id === "antigravity") {
+    const local = process.env.LOCALAPPDATA;
+    const programFiles = process.env.ProgramFiles;
+    const out = [];
+    if (platform === "win32") {
+      if (local) out.push(join17(local, "Programs", "Antigravity", "Antigravity.exe"));
+      if (programFiles) out.push(join17(programFiles, "Antigravity", "Antigravity.exe"));
+    }
+    out.push(join17(home, ".gemini", "antigravity-ide"));
+    return out;
   }
-  out.push(join17(home, ".gemini", "antigravity-ide"));
-  return out;
+  if (id === "qoder") {
+    const out = [
+      join17(home, ".qoder-cn"),
+      join17(home, ".qoder")
+    ];
+    const appData = process.env.APPDATA;
+    const local = process.env.LOCALAPPDATA;
+    const programFiles = process.env.ProgramFiles;
+    if (platform === "win32") {
+      if (appData) {
+        out.push(join17(appData, "QoderCN"));
+        out.push(join17(appData, "Qoder"));
+      }
+      if (local) {
+        out.push(join17(local, "Programs", "QoderCN", "QoderCN.exe"));
+        out.push(join17(local, "Programs", "Qoder", "Qoder.exe"));
+      }
+      if (programFiles) {
+        out.push(join17(programFiles, "QoderCN", "QoderCN.exe"));
+        out.push(join17(programFiles, "Qoder", "Qoder.exe"));
+      }
+    }
+    return out;
+  }
+  return [];
 }
 async function exists2(path) {
   try {
@@ -6928,7 +6955,20 @@ async function restoreCapturedFile(entry) {
     await rm5(entry.path, { force: true }).catch(() => void 0);
   }
 }
-var adapterConfigPaths = (home, id) => id === "codex" ? [join17(home, ".codex", "config.toml"), join17(home, ".codex", "hooks.json")] : id === "claude-code" ? [join17(home, ".claude", "settings.json")] : id === "kimi-code" ? [join17(home, ".kimi-code", "mcp.json"), join17(kimiPluginRoot(home), "kimi.plugin.json")] : id === "antigravity" ? [join17(home, ".gemini", "config", "mcp_config.json"), join17(home, ".gemini", "antigravity-ide", "mcp_config.json")] : [join17(home, ".codebuddy", "settings.json"), join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+function qoderConfigPaths(home) {
+  const paths = [
+    join17(home, ".qoder-cn", "mcp.json"),
+    join17(home, ".qoder", "mcp.json")
+  ];
+  if (process.env.APPDATA && (process.env.APPDATA.startsWith(home) || home === homedir5())) {
+    paths.push(
+      join17(process.env.APPDATA, "QoderCN", "SharedClientCache", "mcp.json"),
+      join17(process.env.APPDATA, "Qoder", "SharedClientCache", "mcp.json")
+    );
+  }
+  return paths;
+}
+var adapterConfigPaths = (home, id) => id === "codex" ? [join17(home, ".codex", "config.toml"), join17(home, ".codex", "hooks.json")] : id === "claude-code" ? [join17(home, ".claude", "settings.json")] : id === "kimi-code" ? [join17(home, ".kimi-code", "mcp.json"), join17(kimiPluginRoot(home), "kimi.plugin.json")] : id === "antigravity" ? [join17(home, ".gemini", "config", "mcp_config.json"), join17(home, ".gemini", "antigravity-ide", "mcp_config.json")] : id === "codebuddy" ? [join17(home, ".codebuddy", "settings.json"), join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), "hooks", "hooks.json")] : qoderConfigPaths(home);
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === "1";
 }
@@ -7162,6 +7202,18 @@ async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
   await atomicJson(join17(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
   return [settingsPath, join17(plugin, ".codebuddy-plugin", "plugin.json"), join17(plugin, ".workbuddy-plugin", "plugin.json"), join17(plugin, "hooks", "hooks.json")];
 }
+async function writeQoderConfig(home, nodeCommand, runtime) {
+  const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "qoder"] };
+  const paths = qoderConfigPaths(home);
+  for (const path of paths) {
+    const mcp = await readJson2(path);
+    const servers = mcp.mcpServers && typeof mcp.mcpServers === "object" ? mcp.mcpServers : {};
+    servers["livedot-map"] = entry;
+    mcp.mcpServers = servers;
+    await atomicJson(path, mcp);
+  }
+  return paths;
+}
 async function installProject({
   projectRoot = process.cwd(),
   sourceRoot,
@@ -7270,6 +7322,7 @@ async function installProject({
     if (installed["kimi-code"]) await writeKimiConfig(home, nodeCommand, runtime);
     if (installed.antigravity) await writeAntigravityConfig(home, nodeCommand, runtime);
     if (installed.codebuddy) await writeCodeBuddyConfig(home, nodeCommand, runtime);
+    if (installed.qoder) await writeQoderConfig(home, nodeCommand, runtime);
     const config = {
       ...old,
       version: 2,
@@ -7303,7 +7356,7 @@ async function installProject({
       detectedAgents: detected,
       bridge: { registered: true, mode: "project-config" },
       shortcut: null,
-      trustRequired: Object.fromEntries(Object.keys(installed).map((id) => [id, id === "codex" ? "\u5728 Codex \u5168\u5C40 hooks \u4E2D\u786E\u8BA4\u6D3B\u70B9\u5730\u56FE hook\uFF08\u4E00\u6B21\u6027\uFF09" : id === "claude-code" ? "\u5728 Claude Code \u8BBE\u7F6E\u4E2D\u786E\u8BA4 hooks \u4E0E MCP\uFF08\u4E00\u6B21\u6027\uFF09" : id === "kimi-code" ? `\u5728 Kimi \u6267\u884C /plugins install ${kimiPluginRoot(home)}` : "\u5728 WorkBuddy/CodeBuddy \u63D2\u4EF6\u9762\u677F\u5BA1\u6838\u5E76\u542F\u7528 hooks \u4E0E MCP"])),
+      trustRequired: Object.fromEntries(Object.keys(installed).map((id) => [id, id === "codex" ? "\u5728 Codex \u5168\u5C40 hooks \u4E2D\u786E\u8BA4\u6D3B\u70B9\u5730\u56FE hook\uFF08\u4E00\u6B21\u6027\uFF09" : id === "claude-code" ? "\u5728 Claude Code \u8BBE\u7F6E\u4E2D\u786E\u8BA4 hooks \u4E0E MCP\uFF08\u4E00\u6B21\u6027\uFF09" : id === "kimi-code" ? `\u5728 Kimi \u6267\u884C /plugins install ${kimiPluginRoot(home)}` : id === "qoder" ? "\u5728 Qoder \u8BBE\u7F6E\u6216\u547D\u4EE4\u9762\u677F\u4E2D\u786E\u8BA4\u542F\u7528 livedot-map MCP\uFF08\u6216\u91CD\u542F\u751F\u6548\uFF09" : "\u5728 WorkBuddy/CodeBuddy \u63D2\u4EF6\u9762\u677F\u5BA1\u6838\u5E76\u542F\u7528 hooks \u4E0E MCP"])),
       runtimePlan: runtimePlan({ offline })
     };
     if (register && bridgeClient) {
@@ -7392,6 +7445,7 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
   if (installed["kimi-code"]) expected.push(["kimi-mcp", join17(home, ".kimi-code", "mcp.json")], ["kimi-plugin", join17(kimiPluginRoot(home), "kimi.plugin.json")]);
   if (installed.antigravity) expected.push(["antigravity-mcp", join17(home, ".gemini", "config", "mcp_config.json")]);
   if (installed.codebuddy) expected.push(["codebuddy-hooks", join17(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
+  if (installed.qoder) expected.push(["qoder-mcp", existsSync2(join17(home, ".qoder-cn", "mcp.json")) ? join17(home, ".qoder-cn", "mcp.json") : join17(home, ".qoder", "mcp.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
   checks.push({ name: "map", ok: await exists2(join17(root, ".live-dot-map", "map.json")) || await exists2(join17(root, ".live-dot-map", "maps")), detail: join17(root, ".live-dot-map") });
@@ -8693,7 +8747,7 @@ async function createBridgeServer({
         }
         const trust = config.trust && typeof config.trust === "object" ? config.trust : {};
         const healthRecords = await readAgentHealth(root);
-        const agents = Object.values(detected).filter((item) => item.id !== "codebuddy" || item.discovered).map((item) => {
+        const agents = Object.values(detected).filter((item) => item.id !== "codebuddy" && item.id !== "qoder" || item.discovered).map((item) => {
           const id = String(item.id);
           const health = healthRecords[id] || healthRecords[id.replace(/-code$/, "")] || (id === "claude-code" ? healthRecords.claude : id === "kimi-code" ? healthRecords.kimi : null);
           let state = "not_installed";
