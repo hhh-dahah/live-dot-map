@@ -341,6 +341,9 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         "allowContentRemoval": {
           "type": "boolean"
         },
+        "wrapAuthor": {
+          "type": "boolean"
+        },
         "projectRoot": {
           "type": "string",
           "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
