@@ -66,6 +66,41 @@ test('SessionStart stays silent when nothing changed since the watermark', async
   assert.equal(output, '');
 });
 
+test('UserPromptSubmit stays silent when nothing changed since the watermark', async () => {
+  const root = await mkdtemp(join(TEST_ROOT, 'livedot-user-prompt-silent-'));
+  await mkdir(join(root, '.live-dot-map'), { recursive: true });
+  const now = new Date('2026-08-15T10:00:00.000Z');
+  const map = baseMap();
+  map.nodes = [{ id: 'n1', name: '开始', updatedAt: '2026-08-15T08:00:00.000Z' }];
+  await writeFile(join(root, '.live-dot-map', 'map.json'), `${JSON.stringify(map, null, 2)}\n`);
+  await writeFile(join(root, '.live-dot-map', 'agent-read.json'), `${JSON.stringify({ version: 1, updatedAt: '2026-08-15T09:00:00.000Z' }, null, 2)}\n`);
+  const client = fakeClient({ updates: [] });
+  let output = 'none';
+  const result = await runUserPromptSubmit({ client, write: (value) => { output = value; }, now, projectRoot: root });
+  assert.equal(result.ok, true);
+  assert.equal(output, '');
+});
+
+test('UserPromptSubmit reports incremental changes and delivers new annotations', async () => {
+  const root = await mkdtemp(join(TEST_ROOT, 'livedot-user-prompt-changes-'));
+  await mkdir(join(root, '.live-dot-map'), { recursive: true });
+  const now = new Date('2026-08-15T10:00:00.000Z');
+  const map = baseMap();
+  map.nodes = [{ id: 'n3', name: '新问题', updatedAt: '2026-08-15T09:59:00.000Z' }];
+  await writeFile(join(root, '.live-dot-map', 'map.json'), `${JSON.stringify(map, null, 2)}\n`);
+  await writeFile(join(root, '.live-dot-map', 'agent-read.json'), `${JSON.stringify({ version: 1, updatedAt: '2026-08-15T09:58:00.000Z' }, null, 2)}\n`);
+  const client = fakeClient({ updates: [{ id: 'ann:human1', attention: 'new', text: '请看标注' }] });
+  let output = '';
+  const result = await runUserPromptSubmit({ client, write: (value) => { output += value; }, now, projectRoot: root });
+  assert.equal(result.ok, true);
+  assert.match(output, /n3/);
+  assert.match(output, /新问题/);
+  assert.match(output, /提示：自上次以来画布有/);
+  assert.match(output, /MCP 工具/);
+  const watermark = JSON.parse(await readFile(join(root, '.live-dot-map', 'agent-read.json'), 'utf8'));
+  assert.equal(watermark.updatedAt, now.toISOString());
+});
+
 test('hook failures do not claim success', async () => {
   const client = fakeClient({ fail: true });
   let output = '';

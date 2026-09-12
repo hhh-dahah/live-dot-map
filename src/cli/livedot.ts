@@ -559,17 +559,53 @@ async function runHook(kind: string, args: Args): Promise<void> {
     return;
   }
   if (kind === 'user-prompt') {
-    let prompt = typeof args.prompt === 'string' ? args.prompt : '';
-    if (!prompt && !process.stdin.isTTY) {
-      let raw = '';
-      for await (const chunk of process.stdin) raw += chunk;
-      try {
-        const input = JSON.parse(raw) as Json;
-        prompt = String(input.prompt ?? input.user_prompt ?? input.input ?? raw);
-      } catch { prompt = raw; }
+    // 增量变更通知（无事不打扰）：只检查自上次水位以来的变动与新标注。
+    // 无变动时完全静默（0 Token 开销），彻底杜绝在多轮会话中重复注入全量地图上下文导致上下文爆炸。
+    const watermarkPath = join(root, '.live-dot-map', 'agent-read.json');
+    let watermark = 0;
+    try {
+      const parsed = JSON.parse(await readFile(watermarkPath, 'utf8')) as Json;
+      if (typeof parsed?.updatedAt === 'string') watermark = Date.parse(parsed.updatedAt);
+    } catch { /* 首次运行 */ }
+    const since = watermark || Date.now();
+    const changes: { label: string; id: string; name: string; status: string; attention: string }[] = [];
+    const collections: [string, string][] = [['nodes', '节点'], ['edges', '方案'], ['anns', '标注'], ['routes', '路线']];
+    for (const [collection, label] of collections) {
+      for (const item of Array.isArray((document as Json)[collection]) ? (document as Json)[collection] as Json[] : []) {
+        const updated = Date.parse(String(item.updatedAt));
+        if (Number.isFinite(updated) && updated > since) {
+          changes.push({
+            label,
+            id: String(item.id),
+            name: String(item.name ?? item.text ?? ''),
+            status: item.status ? String(item.status) : '',
+            attention: item.attention ? String(item.attention) : '',
+          });
+        }
+      }
     }
-    const context = await tools.dispatch('map_get_context', { query: prompt });
-    process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: JSON.stringify(compactHookContext(context)) } })}\n`);
+    const newAnns = (document.anns as Json[]).filter((ann) => (ann as Json).source === 'human' && (ann as Json).attention === 'new');
+    let deliveredIds: string[] = [];
+    if (newAnns.length) {
+      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: 'deliver_annotations', ids: newAnns.map((ann) => String((ann as Json).id)), deliveryId: sessionId }]) as never);
+      deliveredIds = newAnns.map((ann) => String((ann as Json).id));
+    }
+    if (changes.length || deliveredIds.length) {
+      await mkdir(dirname(watermarkPath), { recursive: true });
+      await writeFile(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8');
+      const newCount = changes.filter((item) => item.label === '标注' && item.attention === 'new').length;
+      const lines = changes.slice(0, 5).map((item) => `${item.label} ${item.id}${item.name ? `「${item.name}」` : ''}${item.status ? `(${item.status})` : ''}`);
+      const output = {
+        hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: [
+          `[活点地图] 提示：自上次以来画布有 ${changes.length} 处更新${newCount ? `（含 ${newCount} 条新标注）` : ''}：`,
+          ...lines,
+          changes.length > 5 ? `…共 ${changes.length} 处` : '',
+          '如需详情可随时调用 MCP 工具（如 map_list_human_updates / map_get_context）。',
+        ].filter(Boolean).join('\n') },
+      };
+      process.stdout.write(`${JSON.stringify(output)}\n`);
+    }
+    // 无变更且无新交付：零输出（无事不打扰，0 Token 消耗）。
     await recordAgentHealth(root, actor, 'hook:user-prompt', 'ok');
     await manager.close();
     return;

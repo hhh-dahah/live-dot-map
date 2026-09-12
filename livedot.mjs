@@ -9438,29 +9438,6 @@ function unavailableToolResult(qualification) {
 function envelope(projectId, revision, actor, sessionId, commands) {
   return { projectId, baseRevision: revision, commandId: `cmd-${randomUUID12()}`, actor, sessionId, commands };
 }
-function compactHookContext(value) {
-  const context = value && typeof value === "object" ? value : {};
-  const objects = Array.isArray(context.objects) ? context.objects : [];
-  const markdown = Array.isArray(context.markdown) ? context.markdown : [];
-  return {
-    revision: context.revision,
-    projection: context.projection,
-    objects: objects.slice(0, 6).map((item) => ({
-      kind: item.kind,
-      id: item.id,
-      score: item.score,
-      source: item.source,
-      reasons: Array.isArray(item.reasons) ? item.reasons.slice(0, 3) : [],
-      relationPath: Array.isArray(item.relationPath) ? item.relationPath.slice(0, 3) : []
-    })),
-    markdown: markdown.slice(0, 2).map((item) => ({
-      path: item.path,
-      score: item.score,
-      reasons: Array.isArray(item.reasons) ? item.reasons.slice(0, 2) : [],
-      snippet: typeof item.snippet === "string" ? item.snippet.slice(0, 360) : ""
-    }))
-  };
-}
 var toolDefinitions = TOOL_DEFINITIONS;
 var BRIDGE_IGNITE_TIMEOUT_MS = Number(process.env.LIVEDOT_MCP_IGNITE_TIMEOUT_MS) || 15e3;
 function bridgeUnavailableError(message) {
@@ -9754,20 +9731,53 @@ async function runHook(kind, args) {
     return;
   }
   if (kind === "user-prompt") {
-    let prompt = typeof args.prompt === "string" ? args.prompt : "";
-    if (!prompt && !process.stdin.isTTY) {
-      let raw = "";
-      for await (const chunk of process.stdin) raw += chunk;
-      try {
-        const input = JSON.parse(raw);
-        prompt = String(input.prompt ?? input.user_prompt ?? input.input ?? raw);
-      } catch {
-        prompt = raw;
+    const watermarkPath = join20(root, ".live-dot-map", "agent-read.json");
+    let watermark = 0;
+    try {
+      const parsed = JSON.parse(await readFile15(watermarkPath, "utf8"));
+      if (typeof parsed?.updatedAt === "string") watermark = Date.parse(parsed.updatedAt);
+    } catch {
+    }
+    const since = watermark || Date.now();
+    const changes = [];
+    const collections = [["nodes", "\u8282\u70B9"], ["edges", "\u65B9\u6848"], ["anns", "\u6807\u6CE8"], ["routes", "\u8DEF\u7EBF"]];
+    for (const [collection, label] of collections) {
+      for (const item of Array.isArray(document[collection]) ? document[collection] : []) {
+        const updated = Date.parse(String(item.updatedAt));
+        if (Number.isFinite(updated) && updated > since) {
+          changes.push({
+            label,
+            id: String(item.id),
+            name: String(item.name ?? item.text ?? ""),
+            status: item.status ? String(item.status) : "",
+            attention: item.attention ? String(item.attention) : ""
+          });
+        }
       }
     }
-    const context = await tools.dispatch("map_get_context", { query: prompt });
-    process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: JSON.stringify(compactHookContext(context)) } })}
+    const newAnns = document.anns.filter((ann) => ann.source === "human" && ann.attention === "new");
+    let deliveredIds = [];
+    if (newAnns.length) {
+      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: "deliver_annotations", ids: newAnns.map((ann) => String(ann.id)), deliveryId: sessionId }]));
+      deliveredIds = newAnns.map((ann) => String(ann.id));
+    }
+    if (changes.length || deliveredIds.length) {
+      await mkdir13(dirname14(watermarkPath), { recursive: true });
+      await writeFile7(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+`, "utf8");
+      const newCount = changes.filter((item) => item.label === "\u6807\u6CE8" && item.attention === "new").length;
+      const lines = changes.slice(0, 5).map((item) => `${item.label} ${item.id}${item.name ? `\u300C${item.name}\u300D` : ""}${item.status ? `(${item.status})` : ""}`);
+      const output = {
+        hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: [
+          `[\u6D3B\u70B9\u5730\u56FE] \u63D0\u793A\uFF1A\u81EA\u4E0A\u6B21\u4EE5\u6765\u753B\u5E03\u6709 ${changes.length} \u5904\u66F4\u65B0${newCount ? `\uFF08\u542B ${newCount} \u6761\u65B0\u6807\u6CE8\uFF09` : ""}\uFF1A`,
+          ...lines,
+          changes.length > 5 ? `\u2026\u5171 ${changes.length} \u5904` : "",
+          "\u5982\u9700\u8BE6\u60C5\u53EF\u968F\u65F6\u8C03\u7528 MCP \u5DE5\u5177\uFF08\u5982 map_list_human_updates / map_get_context\uFF09\u3002"
+        ].filter(Boolean).join("\n") }
+      };
+      process.stdout.write(`${JSON.stringify(output)}
 `);
+    }
     await recordAgentHealth2(root, actor, "hook:user-prompt", "ok");
     await manager.close();
     return;
