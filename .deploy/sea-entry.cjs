@@ -285,6 +285,9 @@ function markLegacyTranslated(document) {
 function assertName(value) {
   if (typeof value !== "string" || value.trim().length === 0 || value.length > MAX_NAME) throw mapError("INVALID_NAME", 422, "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u4E14\u4E0D\u80FD\u8D85\u8FC7 80 \u5B57");
 }
+function assertItemName(value) {
+  if (typeof value !== "string" || value.length > MAX_NAME) throw mapError("INVALID_NAME", 422, "\u540D\u79F0\u5FC5\u987B\u662F\u5B57\u7B26\u4E32\u4E14\u4E0D\u80FD\u8D85\u8FC7 80 \u5B57");
+}
 function isAgent(actor) {
   return typeof actor === "string" && actor.startsWith("agent:");
 }
@@ -310,7 +313,7 @@ function applyOne(document, command2, actor, revision, now) {
     const value = cleanRecord(command2.value, "value");
     if (typeof value.id !== "string" || !ID2.test(value.id)) throw mapError("INVALID_ID", 422, "\u65B0\u5BF9\u8C61 ID \u65E0\u6548");
     if (getList(document, command2.collection).some((v) => v.id === value.id)) throw mapError("DUPLICATE_ID", 409, `\u5BF9\u8C61 ${value.id} \u5DF2\u5B58\u5728`);
-    if (command2.collection !== "anns") assertName(value.name);
+    if (command2.collection !== "anns") assertItemName(value.name);
     if (command2.collection === "nodes") {
       if (value.kind !== void 0 && !["goal", "problem", "result"].includes(String(value.kind))) throw mapError("INVALID_NODE_KIND", 422, "\u8282\u70B9 kind \u5FC5\u987B\u662F goal\u3001problem \u6216 result");
       value.kind = normalizeNodeKind(value.kind ?? value.type) === "problem" ? "problem" : "goal";
@@ -342,7 +345,7 @@ function applyOne(document, command2, actor, revision, now) {
     const item = findItem(document, command2.collection, command2.id);
     const patch = cleanRecord(command2.patch, "patch");
     for (const key of ["id", "createdAt", "createdBy", "updatedAt", "updatedBy", "updatedRevision"]) delete patch[key];
-    if ("name" in patch) assertName(patch.name);
+    if ("name" in patch) assertItemName(patch.name);
     if (command2.collection === "nodes" && "kind" in patch) {
       if (!["goal", "problem", "result"].includes(String(patch.kind))) throw mapError("INVALID_NODE_KIND", 422, "\u8282\u70B9 kind \u5FC5\u987B\u662F goal\u3001problem \u6216 result");
       patch.kind = patch.kind === "problem" ? "problem" : "goal";
@@ -1231,7 +1234,7 @@ var init_shared = __esm({
 // src/cli/livedot.ts
 var import_node_crypto17 = require("node:crypto");
 var import_promises20 = require("node:fs/promises");
-var import_node_fs4 = require("node:fs");
+var import_node_fs5 = require("node:fs");
 var import_node_path24 = require("node:path");
 var import_node_os8 = require("node:os");
 var import_node_child_process8 = require("node:child_process");
@@ -1405,7 +1408,8 @@ async function readJson(path, { maxBytes = MAX_JSON_BYTES } = {}) {
     error3.details = { path, size: metadata.size, limit: maxBytes };
     throw error3;
   }
-  return JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+  const text = await (0, import_promises.readFile)(path, "utf8");
+  return JSON.parse(text.replace(/^\uFEFF/, ""));
 }
 async function writeJsonAtomic(path, value) {
   await atomicWriteFile(path, `${JSON.stringify(value, null, 2)}
@@ -2447,11 +2451,35 @@ var import_node_child_process6 = require("node:child_process");
 var import_node_os6 = require("node:os");
 
 // src/bridge/current-project.mjs
+var import_node_fs = require("node:fs");
 var import_promises4 = require("node:fs/promises");
 var import_node_os = require("node:os");
 var import_node_path5 = require("node:path");
+function resolveGitWorktreeMain(dir) {
+  if (!dir || typeof dir !== "string") return null;
+  try {
+    const gitPath = (0, import_node_path5.join)(dir, ".git");
+    const stat10 = (0, import_node_fs.lstatSync)(gitPath);
+    if (stat10.isFile()) {
+      const content = (0, import_node_fs.readFileSync)(gitPath, "utf8").trim();
+      const match = content.match(/^gitdir:\s*(.+)$/m);
+      if (match) {
+        const gitdir = (0, import_node_path5.resolve)(dir, match[1]);
+        const idx = gitdir.replace(/\\/g, "/").lastIndexOf("/.git/worktrees/");
+        if (idx !== -1) {
+          const mainGitDir = gitdir.slice(0, idx + 5);
+          return (0, import_node_path5.dirname)(mainGitDir);
+        }
+      }
+    }
+  } catch {
+  }
+  return null;
+}
 function currentProjectFile() {
-  return process.env.LIVEDOT_CURRENT_PROJECT_FILE || (0, import_node_path5.join)((0, import_node_os.homedir)(), ".live-dot-map", "current-project.json");
+  if (process.env.LIVEDOT_CURRENT_PROJECT_FILE) return process.env.LIVEDOT_CURRENT_PROJECT_FILE;
+  if (process.env.LIVEDOT_TEST_ROOT) return (0, import_node_path5.join)(process.env.LIVEDOT_TEST_ROOT, "current-project.json");
+  return (0, import_node_path5.join)((0, import_node_os.homedir)(), ".live-dot-map", "current-project.json");
 }
 async function recordCurrentProject(projectRoot, options = {}) {
   try {
@@ -2468,7 +2496,7 @@ async function readCurrentProject(options = {}) {
   const target = options.file ?? currentProjectFile();
   try {
     const text = await (0, import_promises4.readFile)(target, "utf8");
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(text.replace(/^\uFEFF/, ""));
     if (typeof parsed?.projectRoot === "string" && parsed.projectRoot.trim()) return parsed.projectRoot.trim();
   } catch {
   }
@@ -2476,13 +2504,36 @@ async function readCurrentProject(options = {}) {
 }
 async function resolveProjectRootToUse(pointerRoot, fallbackRoot, options = {}) {
   const candidate = pointerRoot ?? await readCurrentProject(options).catch(() => null);
-  if (!candidate) return fallbackRoot;
-  try {
-    const resolved = await canonicalDirectory(candidate);
-    return resolved;
-  } catch {
-    return fallbackRoot;
+  if (candidate) {
+    try {
+      const resolved = await canonicalDirectory(candidate);
+      const tempPrefix = (0, import_node_path5.resolve)((0, import_node_os.tmpdir)()).toLowerCase();
+      const isTemp = resolved.toLowerCase().startsWith(tempPrefix);
+      const allowTemp = Boolean(options.allowTemp || process.env.LIVEDOT_TEST_ALLOW_TEMP || process.env.LIVEDOT_TEST_ROOT);
+      if (!isTemp || allowTemp) {
+        const hasLiveDotMap = await (0, import_promises4.stat)((0, import_node_path5.join)(resolved, ".live-dot-map")).then((s) => s.isDirectory()).catch(() => false);
+        if (hasLiveDotMap) {
+          return resolved;
+        }
+      }
+    } catch {
+    }
   }
+  if (fallbackRoot) {
+    const worktreeMain = resolveGitWorktreeMain(fallbackRoot);
+    if (worktreeMain) {
+      try {
+        const resolvedMain = await canonicalDirectory(worktreeMain);
+        return resolvedMain;
+      } catch {
+      }
+    }
+    try {
+      return await canonicalDirectory(fallbackRoot);
+    } catch {
+    }
+  }
+  return fallbackRoot;
 }
 
 // src/bridge/logger.mjs
@@ -2948,9 +2999,9 @@ var MdIndex = class {
   /** 取一张卡；指纹对不上/缺失则重读该文件刷新。mapRoot 用于拼绝对路径。 */
   async getOrRefreshCard({ mapRoot, relativePath }) {
     const absolute = (0, import_node_path9.join)(this.projectRoot, relativePath);
-    let stat8;
+    let stat10;
     try {
-      stat8 = await this.fs.stat(absolute);
+      stat10 = await this.fs.stat(absolute);
     } catch (error3) {
       if (error3?.code === "ENOENT") {
         this.#cards.delete(relativePath);
@@ -2960,20 +3011,20 @@ var MdIndex = class {
       throw error3;
     }
     const existing = this.#cards.get(relativePath);
-    const fresh = !existing || existing.mtimeMs !== stat8.mtimeMs || existing.bytes !== stat8.size;
+    const fresh = !existing || existing.mtimeMs !== stat10.mtimeMs || existing.bytes !== stat10.size;
     if (!fresh) return existing;
     const content = await this.fs.readFile(absolute, "utf8");
     const card = {
       path: relativePath,
       etag: digest2(content),
-      mtimeMs: stat8.mtimeMs,
-      bytes: stat8.size,
+      mtimeMs: stat10.mtimeMs,
+      bytes: stat10.size,
       title: firstHeading(content) || "",
       summary: visibleSummary(content),
       ownerKind: typeof existing?.ownerKind === "string" ? existing.ownerKind : inferOwnerKind(relativePath),
       ownerId: typeof existing?.ownerId === "string" ? existing.ownerId : inferOwnerId(relativePath),
       assets: existing?.assets ?? [],
-      updatedAt: stat8.mtime?.toISOString?.() ?? new Date(stat8.mtimeMs).toISOString()
+      updatedAt: stat10.mtime?.toISOString?.() ?? new Date(stat10.mtimeMs).toISOString()
     };
     this.#cards.set(relativePath, card);
     this.#dirty = true;
@@ -2996,19 +3047,19 @@ var MdIndex = class {
       const relativePath = `${ownerRelative}/${entry.name}`;
       try {
         const absolute = (0, import_node_path9.join)(directory, entry.name);
-        const stat8 = await this.fs.stat(absolute);
+        const stat10 = await this.fs.stat(absolute);
         const content = await this.fs.readFile(absolute, "utf8");
         this.#cards.set(relativePath, {
           path: relativePath,
           etag: digest2(content),
-          mtimeMs: stat8.mtimeMs,
-          bytes: stat8.size,
+          mtimeMs: stat10.mtimeMs,
+          bytes: stat10.size,
           title: firstHeading(content) || "",
           summary: visibleSummary(content),
           ownerKind: ownerKind === "nodes" ? "node" : "route",
           ownerId,
           assets,
-          updatedAt: stat8.mtime?.toISOString?.() ?? new Date(stat8.mtimeMs).toISOString()
+          updatedAt: stat10.mtime?.toISOString?.() ?? new Date(stat10.mtimeMs).toISOString()
         });
       } catch {
       }
@@ -3044,10 +3095,10 @@ var MdIndex = class {
     return this.#cards.size;
   }
   /** 校验某张卡是否仍新鲜（只 lstat，不读内容）。返回 null 表示已失效。 */
-  async isFresh(path, stat8) {
+  async isFresh(path, stat10) {
     const card = this.#cards.get(path);
     if (!card) return false;
-    return card.mtimeMs === stat8.mtimeMs && card.bytes === stat8.size;
+    return card.mtimeMs === stat10.mtimeMs && card.bytes === stat10.size;
   }
   async #withLock(operation) {
     await ensureDirectory((0, import_node_path9.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
@@ -3086,7 +3137,7 @@ var import_node_crypto6 = require("node:crypto");
 var import_node_path11 = require("node:path");
 
 // src/bridge/bundle-store.mjs
-var import_node_fs = require("node:fs");
+var import_node_fs2 = require("node:fs");
 var import_promises9 = require("node:fs/promises");
 var import_node_crypto5 = require("node:crypto");
 var import_node_path10 = require("node:path");
@@ -3659,7 +3710,7 @@ ${right}`;
     if (before.size > MAX_ASSET_BYTES) throw bridgeError("BUNDLE_ASSET_TOO_LARGE", "\u5355\u9644\u4EF6\u8D85\u8FC7 20 MiB", 413, { limit: MAX_ASSET_BYTES });
     let handle;
     try {
-      const flags = import_node_fs.constants.O_RDONLY | (import_node_fs.constants.O_NOFOLLOW ?? 0);
+      const flags = import_node_fs2.constants.O_RDONLY | (import_node_fs2.constants.O_NOFOLLOW ?? 0);
       handle = await (0, import_promises9.open)(candidate, flags);
       const opened = await handle.stat();
       if (!opened.isFile() || !compareStats(before, opened)) throw bridgeError("BUNDLE_SOURCE_CHANGED", "\u9644\u4EF6\u6E90\u5728\u5BFC\u5165\u524D\u5DF2\u53D8\u5316", 409);
@@ -3709,7 +3760,7 @@ ${right}`;
     const info = this.#ownerInfo(input);
     const entry = await this.#resolveEntry(info, input.fileName, { archived: Boolean(input.archived ?? options.archived), asset: true });
     const metadata = await this.#fileInfo(info, entry);
-    return { ...metadata, stream: (0, import_node_fs.createReadStream)(entry.path) };
+    return { ...metadata, stream: (0, import_node_fs2.createReadStream)(entry.path) };
   }
 };
 
@@ -4177,7 +4228,13 @@ var schema = (name, description, properties = {}, required2 = []) => ({
   description,
   inputSchema: {
     type: "object",
-    properties,
+    properties: {
+      ...properties,
+      projectRoot: {
+        type: "string",
+        description: "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+      }
+    },
     ...required2.length ? { required: required2 } : {},
     additionalProperties: true
   }
@@ -4186,6 +4243,17 @@ var owner = {
   ownerKind: { type: "string", enum: ["node", "route"] },
   ownerId: { type: "string" }
 };
+function ensureAgentAuthorEnvelope(content, actor = "agent") {
+  if (typeof content !== "string") return content;
+  const trimmed = content.trim();
+  if (!trimmed) return content;
+  if (/<!--\s*@author:/i.test(content)) return content;
+  const rawActor = String(actor || "agent").trim();
+  const authorId = rawActor.startsWith("agent:") ? rawActor : `agent:${rawActor.replace(/^agent-?/, "") || "generic"}`;
+  return `<!-- @author: ${authorId} -->
+${content.endsWith("\n") ? content : content + "\n"}<!-- /@author -->
+`;
+}
 var TOOL_DEFINITIONS = Object.freeze([
   schema("map_get_context", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u7684\u7ED3\u6784\u3001\u63A8\u8FDB\u6458\u8981\u4E0E\u660E\u786E\u5173\u8054 Markdown\u3002", { query: { type: "string" }, currentNodeId: { anyOf: [{ type: "string" }, { type: "null" }] }, includeHistory: { type: "boolean" }, limit: { type: "integer", minimum: 1, maximum: 12 } }),
   schema("map_list_human_updates", "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002"),
@@ -4200,7 +4268,7 @@ var TOOL_DEFINITIONS = Object.freeze([
   schema("map_checkpoint", "\u521B\u5EFA\u53EF\u6062\u590D\u68C0\u67E5\u70B9\u3002", { reason: { type: "string" } }),
   schema("map_plan_consolidation", "\u53EA\u8BFB\u751F\u6210\u53EF\u5BA1\u6838\u7684\u6574\u7406\u5EFA\u8BAE\u3002", { maxSuggestions: { type: "integer", minimum: 1, maximum: 20 }, now: { type: "string" } }),
   schema("map_read_markdown", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u8D44\u6599\u5305 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" } }),
-  schema("map_write_markdown", "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, baseEtag: { type: "string" }, allowContentRemoval: { type: "boolean" } }, ["content", "baseEtag"]),
+  schema("map_write_markdown", "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, baseEtag: { type: "string" }, allowContentRemoval: { type: "boolean" }, wrapAuthor: { type: "boolean" } }, ["content", "baseEtag"]),
   schema("map_append_markdown", "\u6309\u8DEF\u5F84\u9501\u5E42\u7B49\u8FFD\u52A0 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, commandId: { type: "string" } }, ["content", "commandId"]),
   schema("map_list_bundle_files", "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u6587\u4EF6\u3002", { ...owner, includeArchived: { type: "boolean" } }, ["ownerKind", "ownerId"]),
   schema("map_create_markdown", "\u5728\u5BF9\u8C61\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u8865\u5145 Markdown\u3002", { ...owner, fileName: { type: "string" }, title: { type: "string" }, content: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
@@ -4463,12 +4531,19 @@ var ToolService = class {
       return { mapKey, documentId: context.documentId, revision: snapshot.revision, ...this.shared.planConsolidation(document, { now: typeof args.now === "string" ? args.now : void 0, maxSuggestions: Number.isInteger(args.maxSuggestions) ? args.maxSuggestions : 12, markdown: documents.markdown }) };
     }
     const file = ownerArgs(args, mapKey);
+    const isIndexFile = file.fileName === "index.md" || file.name === "index.md";
+    const isAgent2 = typeof this.actor === "string" && this.actor.startsWith("agent");
     if (name === "map_read_markdown") return cleanResult(await bundleStore.readMarkdown(file));
     if (name === "map_write_markdown") {
+      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u9ED8\u8BA4\u7981\u6B62 Agent \u4FEE\u6539\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002\u4EC5\u5F53\u4EBA\u7C7B\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6307\u4EE4\u8981\u6C42\u4FEE\u6539 index.md \u65F6\uFF0C\u65B9\u53EF\u663E\u5F0F\u4F20\u5165 allowIndexModification: true\u3002", { status: 403 });
+      }
+      const rawContent = args.content;
+      const content = args.wrapAuthor !== false && rawContent !== void 0 && isAgent2 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
       if (args.allowContentRemoval !== true) {
         const current = await bundleStore.readMarkdown(file).catch(() => null);
         const existing = String(current?.content ?? "");
-        const next = String(args.content ?? "");
+        const next = String(content ?? "");
         if (existing.trim()) {
           const removed = existing.split(/\r?\n/).filter((line) => line.trim() && !next.includes(line.trim()));
           if (removed.length) {
@@ -4476,18 +4551,27 @@ var ToolService = class {
           }
         }
       }
-      const result2 = await bundleStore.replaceMarkdown({ ...file, content: args.content, baseEtag: args.baseEtag });
+      const result2 = await bundleStore.replaceMarkdown({ ...file, content, baseEtag: args.baseEtag });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
-      return { ...result2, content: String(args.content) };
+      return { ...result2, content: String(content) };
     }
     if (name === "map_append_markdown") {
-      const result2 = await bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
+      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u9ED8\u8BA4\u7981\u6B62 Agent \u4FEE\u6539\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002\u4EC5\u5F53\u4EBA\u7C7B\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6307\u4EE4\u8981\u6C42\u4FEE\u6539 index.md \u65F6\uFF0C\u65B9\u53EF\u663E\u5F0F\u4F20\u5165 allowIndexModification: true\u3002", { status: 403 });
+      }
+      const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
+      const result2 = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
     if (name === "map_list_bundle_files") return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === "map_create_markdown") {
-      const result2 = await bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
+      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u7981\u6B62 Agent \u8986\u76D6\u521B\u5EFA\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002", { status: 403 });
+      }
+      const rawContent = args.content;
+      const content = args.wrapAuthor !== false && rawContent !== void 0 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
+      const result2 = await bundleStore.createMarkdown({ ...file, content, title: args.title });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
@@ -4836,7 +4920,7 @@ var ArchiveLifecycle = class {
 // src/bridge/recycle-bin.mjs
 var import_node_child_process = require("node:child_process");
 var import_promises12 = require("node:fs/promises");
-var import_node_fs2 = require("node:fs");
+var import_node_fs3 = require("node:fs");
 var import_node_path15 = require("node:path");
 var TRANSACTION_ID = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function failure(code, message, status = 503, details) {
@@ -4845,11 +4929,18 @@ function failure(code, message, status = 503, details) {
 function defaultNativeHelperPath(options = {}) {
   if (options.helperPath) return (0, import_node_path15.resolve)(options.helperPath);
   const fromEnv = options.envHelper ?? process.env.LIVEDOT_NATIVE_HELPER;
-  if (fromEnv && (0, import_node_fs2.existsSync)(fromEnv)) return (0, import_node_path15.resolve)(fromEnv);
+  if (fromEnv && (0, import_node_fs3.existsSync)(fromEnv)) return (0, import_node_path15.resolve)(fromEnv);
   const execPath = options.execPath ?? process.execPath;
   const fromExec = (0, import_node_path15.join)((0, import_node_path15.dirname)((0, import_node_path15.resolve)(execPath)), "..", "LiveDotMapSetup.exe");
-  if ((0, import_node_fs2.existsSync)(fromExec)) return fromExec;
-  const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
+  if ((0, import_node_fs3.existsSync)(fromExec)) return fromExec;
+  if (options.localAppData) {
+    return (0, import_node_path15.join)((0, import_node_path15.resolve)(options.localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+  }
+  const fromRelease = (0, import_node_path15.join)(process.cwd(), "installer", "winforms", "bin", "Release", "net8.0-windows", "win-x64", "LiveDotMapSetup.exe");
+  if ((0, import_node_fs3.existsSync)(fromRelease)) return fromRelease;
+  const fromDist = (0, import_node_path15.join)(process.cwd(), "dist", "windows-installer", "LiveDotMapSetup.exe");
+  if ((0, import_node_fs3.existsSync)(fromDist)) return fromDist;
+  const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return null;
   return (0, import_node_path15.join)((0, import_node_path15.resolve)(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
 }
@@ -4957,8 +5048,8 @@ var import_node_os3 = require("node:os");
 var import_promises13 = require("node:fs/promises");
 var import_node_path16 = require("node:path");
 var SETTINGS_VERSION = 1;
-var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "system", "folder", "manual"]);
-var EXE_NAME = /^(Code|Antigravity|pycharm64)\.exe$/i;
+var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "terminal", "gitbash", "system", "folder", "manual"]);
+var EXE_NAME = /^(Code|Antigravity|pycharm64|wt|git-bash)\.exe$/i;
 var EDITOR_ID = /^[a-z][a-z0-9-]{0,31}$/;
 var EXTRA_EDITORS = [
   {
@@ -4989,6 +5080,36 @@ var EXTRA_EDITORS = [
       const programFiles = process.env.ProgramFiles;
       if (programFiles) out.push(...await scanVersionedEditors((0, import_node_path16.join)(programFiles, "JetBrains"), 1));
       return out;
+    }
+  },
+  {
+    id: "terminal",
+    label: "Terminal",
+    appPaths: ["wt.exe"],
+    candidates() {
+      const out = [];
+      const local = process.env.LOCALAPPDATA;
+      if (local) out.push((0, import_node_path16.join)(local, "Microsoft", "WindowsApps", "wt.exe"));
+      return out;
+    },
+    getArgs(target) {
+      return ["-d", (0, import_node_path16.dirname)(target)];
+    }
+  },
+  {
+    id: "gitbash",
+    label: "Git Bash",
+    appPaths: ["git-bash.exe"],
+    candidates() {
+      const out = [];
+      const programFiles = process.env.ProgramFiles;
+      if (programFiles) out.push((0, import_node_path16.join)(programFiles, "Git", "git-bash.exe"));
+      const programFilesX86 = process.env["ProgramFiles(x86)"];
+      if (programFilesX86) out.push((0, import_node_path16.join)(programFilesX86, "Git", "git-bash.exe"));
+      return out;
+    },
+    getArgs(target) {
+      return [`--cd=${(0, import_node_path16.dirname)(target)}`];
     }
   }
 ];
@@ -5330,13 +5451,13 @@ var EditorService = class _EditorService {
       if (await this.#resolveExtra(def)) editors.push({ id: def.id, label: def.label, kind: "editor", available: true });
     }
     editors.push(
-      { id: "system", label: "\u7528\u9ED8\u8BA4\u5E94\u7528\u6253\u5F00", kind: "system", available: Boolean(this.nativeHelper) },
-      { id: "folder", label: "\u5728\u6587\u4EF6\u5939\u4E2D\u663E\u793A", kind: "folder", available: Boolean(this.nativeHelper) },
+      { id: "system", label: "\u7528\u9ED8\u8BA4\u5E94\u7528\u6253\u5F00", kind: "system", available: process.platform === "win32" || Boolean(this.nativeHelper) },
+      { id: "folder", label: "\u5728\u6587\u4EF6\u5939\u4E2D\u663E\u793A", kind: "folder", available: process.platform === "win32" || Boolean(this.nativeHelper) },
       {
         id: "manual",
         label: manualAvailable ? "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F" : "\u624B\u52A8\u9009\u62E9\u7A0B\u5E8F\u2026",
         kind: "manual",
-        available: manualAvailable && Boolean(this.nativeHelper),
+        available: manualAvailable && (process.platform === "win32" || Boolean(this.nativeHelper)),
         needsPicker: !manualAvailable
       }
     );
@@ -5429,7 +5550,22 @@ var EditorService = class _EditorService {
       const metadata = await (0, import_promises13.stat)(candidate);
       const folder = isDirectory(metadata) ? candidate : (0, import_node_path16.dirname)(candidate);
       await this.#assertNoSymlinkEscape(folder);
-      await this.#callNative("open-folder", { targetPath: isDirectory(metadata) ? folder : candidate });
+      const targetPath = isDirectory(metadata) ? folder : candidate;
+      try {
+        await this.#callNative("open-folder", { targetPath });
+      } catch (nativeErr) {
+        if (process.platform === "win32") {
+          const child = this.spawn("explorer.exe", [`/select,${targetPath}`], {
+            shell: false,
+            windowsHide: false,
+            detached: true,
+            stdio: "ignore"
+          });
+          child?.unref?.();
+        } else {
+          throw nativeErr;
+        }
+      }
       return { editorId, launched: true };
     }
     const target = await this.#projectPath(relativePath, { kind: "file" });
@@ -5442,14 +5578,43 @@ var EditorService = class _EditorService {
     if (extraDef) {
       const executable = await this.#resolveExtra(extraDef);
       if (!executable) throw bridgeError2("EDITOR_NOT_AVAILABLE", `\u672A\u68C0\u6D4B\u5230 ${extraDef.label}`, 503);
-      return { editorId, ...this.#launch(executable, [target]) };
+      const args = typeof extraDef.getArgs === "function" ? extraDef.getArgs(target) : [target];
+      return { editorId, ...this.#launch(executable, args) };
     }
     if (editorId === "system") {
-      await this.#callNative("open-default", { targetPath: target });
+      try {
+        await this.#callNative("open-default", { targetPath: target });
+      } catch (nativeErr) {
+        if (process.platform === "win32") {
+          const child = this.spawn("explorer.exe", [target], {
+            shell: false,
+            windowsHide: false,
+            detached: true,
+            stdio: "ignore"
+          });
+          child?.unref?.();
+        } else {
+          throw nativeErr;
+        }
+      }
       return { editorId, launched: true };
     }
     const manualPath = await this.#assertManualExecutable(this.settings.editors.manual.path);
-    await this.#callNative("open-manual", { executablePath: manualPath, targetPath: target });
+    try {
+      await this.#callNative("open-manual", { executablePath: manualPath, targetPath: target });
+    } catch (nativeErr) {
+      if (process.platform === "win32") {
+        const child = this.spawn(manualPath, [target], {
+          shell: false,
+          windowsHide: false,
+          detached: true,
+          stdio: "ignore"
+        });
+        child?.unref?.();
+      } else {
+        throw nativeErr;
+      }
+    }
     return { editorId, launched: true };
   }
   async saveAs({ relativePath } = {}) {
@@ -5599,7 +5764,7 @@ var sharedBridgeContract = Object.freeze({
 var import_node_crypto12 = require("node:crypto");
 var import_node_child_process5 = require("node:child_process");
 var import_promises15 = require("node:fs/promises");
-var import_node_fs3 = require("node:fs");
+var import_node_fs4 = require("node:fs");
 var import_node_path19 = require("node:path");
 var import_node_os5 = require("node:os");
 var import_node_url = require("node:url");
@@ -5635,6 +5800,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
           "type": "integer",
           "minimum": 1,
           "maximum": 12
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5645,7 +5814,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -5663,6 +5837,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "summary": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5677,7 +5855,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "\u5217\u51FA\u9879\u76EE\u5185\u5730\u56FE\u4E0E\u5F53\u524D active-map\u3002",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -5689,6 +5872,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5702,6 +5889,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "mapKey": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5721,6 +5912,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5756,6 +5951,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeHistory": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5787,6 +5986,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
           "items": {
             "type": "object"
           }
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5803,6 +6006,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "document": {
           "type": "object"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5816,6 +6023,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "reason": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5834,6 +6045,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "now": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5860,6 +6075,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "path": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5895,6 +6114,13 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "allowContentRemoval": {
           "type": "boolean"
+        },
+        "wrapAuthor": {
+          "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5931,6 +6157,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "commandId": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5958,6 +6188,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5991,6 +6225,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "content": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6022,6 +6260,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "to": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6051,6 +6293,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6079,6 +6325,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6107,6 +6357,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6140,6 +6394,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "mimeType": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6168,6 +6426,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6196,6 +6458,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6227,6 +6493,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeContent": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6371,21 +6641,34 @@ var map_template_default = {
 };
 
 // agent-kit/lib/installer.mjs
-var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code"]);
+var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code", "antigravity"]);
 var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
-var skillTargetPaths = (home, id) => id === "codex" ? (0, import_node_path19.join)(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? (0, import_node_path19.join)(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? (0, import_node_path19.join)(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : (0, import_node_path19.join)(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
+var skillTargetPaths = (home, id) => id === "codex" ? (0, import_node_path19.join)(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? (0, import_node_path19.join)(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? (0, import_node_path19.join)(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : (0, import_node_path19.join)(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
 var kimiPluginRoot = (home) => (0, import_node_path19.join)(home, ".kimi-code", "plugins", "live-dot-map");
 var codebuddyPluginRoot = (home) => (0, import_node_path19.join)(home, ".codebuddy", "plugins", "live-dot-map");
 var ADAPTER_PROBES = Object.freeze({
   codex: ["codex"],
   "claude-code": ["claude", "claude-code"],
   "kimi-code": ["kimi", "kimi-code"],
+  antigravity: ["antigravity", "agy"],
   codebuddy: ["codebuddy", "codebuddy-code", "workbuddy"]
 });
+function adapterFingerprints(id, { platform, home }) {
+  if (id !== "antigravity") return [];
+  const local = process.env.LOCALAPPDATA;
+  const programFiles = process.env.ProgramFiles;
+  const out = [];
+  if (platform === "win32") {
+    if (local) out.push((0, import_node_path19.join)(local, "Programs", "Antigravity", "Antigravity.exe"));
+    if (programFiles) out.push((0, import_node_path19.join)(programFiles, "Antigravity", "Antigravity.exe"));
+  }
+  out.push((0, import_node_path19.join)(home, ".gemini", "antigravity-ide"));
+  return out;
+}
 async function exists2(path) {
   try {
-    await (0, import_promises15.access)(path, import_node_fs3.constants.F_OK);
+    await (0, import_promises15.access)(path, import_node_fs4.constants.F_OK);
     return true;
   } catch {
     return false;
@@ -6431,7 +6714,7 @@ async function restoreCapturedFile(entry) {
     await (0, import_promises15.rm)(entry.path, { force: true }).catch(() => void 0);
   }
 }
-var adapterConfigPaths = (home, id) => id === "codex" ? [(0, import_node_path19.join)(home, ".codex", "config.toml"), (0, import_node_path19.join)(home, ".codex", "hooks.json")] : id === "claude-code" ? [(0, import_node_path19.join)(home, ".claude", "settings.json")] : id === "kimi-code" ? [(0, import_node_path19.join)(home, ".kimi-code", "mcp.json"), (0, import_node_path19.join)(kimiPluginRoot(home), "kimi.plugin.json")] : [(0, import_node_path19.join)(home, ".codebuddy", "settings.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+var adapterConfigPaths = (home, id) => id === "codex" ? [(0, import_node_path19.join)(home, ".codex", "config.toml"), (0, import_node_path19.join)(home, ".codex", "hooks.json")] : id === "claude-code" ? [(0, import_node_path19.join)(home, ".claude", "settings.json")] : id === "kimi-code" ? [(0, import_node_path19.join)(home, ".kimi-code", "mcp.json"), (0, import_node_path19.join)(kimiPluginRoot(home), "kimi.plugin.json")] : id === "antigravity" ? [(0, import_node_path19.join)(home, ".gemini", "config", "mcp_config.json"), (0, import_node_path19.join)(home, ".gemini", "antigravity-ide", "mcp_config.json")] : [(0, import_node_path19.join)(home, ".codebuddy", "settings.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), "hooks", "hooks.json")];
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === "1";
 }
@@ -6499,7 +6782,8 @@ async function detectInstalledAdapters({ projectRoot = process.cwd(), platform =
       }
     }
     const embeddedPath = id === "codebuddy" && !executable ? await discoverEmbeddedCodeBuddy({ platform }) : null;
-    return [id, { id, configured, executable: executable || Boolean(embeddedPath), executableSource: embeddedPath ? "workbuddy-embedded" : null, discovered: configured || executable || Boolean(embeddedPath) }];
+    const fingerprint = executable ? "" : (await Promise.all(adapterFingerprints(id, { platform, home }).map(async (path) => await exists2(path) ? path : ""))).find(Boolean) || "";
+    return [id, { id, configured, executable: executable || Boolean(embeddedPath), executableSource: embeddedPath ? "workbuddy-embedded" : null, discovered: configured || executable || Boolean(embeddedPath) || Boolean(fingerprint) }];
   }));
   return Object.fromEntries(checks);
 }
@@ -6578,6 +6862,11 @@ async function writeClaudeConfig(home, nodeCommand, runtime) {
   const key = mcpServerKey(mcp, "claude");
   mcp.mcpServers = { ...mcp.mcpServers || {}, [key]: { type: "stdio", command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "claude"] } };
   settings.mcpServers = mcp.mcpServers;
+  settings.permissions = settings.permissions && typeof settings.permissions === "object" ? settings.permissions : {};
+  const allowList = Array.isArray(settings.permissions.allow) ? settings.permissions.allow : [];
+  settings.permissions.allow = Array.from(/* @__PURE__ */ new Set([...allowList, "mcp:livedot-map:*"]));
+  const allowedTools = Array.isArray(settings.allowedTools) ? settings.allowedTools : [];
+  settings.allowedTools = Array.from(/* @__PURE__ */ new Set([...allowedTools, "mcp__livedot-map__*"]));
   await atomicJson(settingsPath, mergeHooks(settings, hooksFor(nodeCommand, runtime, "claude")));
   return [settingsPath];
 }
@@ -6603,6 +6892,40 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
   };
   await atomicJson((0, import_node_path19.join)(plugin, "kimi.plugin.json"), manifest);
   return [mcpPath, (0, import_node_path19.join)(plugin, "kimi.plugin.json")];
+}
+async function writeAntigravityConfig(home, nodeCommand, runtime) {
+  const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "antigravity"] };
+  const paths = [
+    (0, import_node_path19.join)(home, ".gemini", "config", "mcp_config.json"),
+    (0, import_node_path19.join)(home, ".gemini", "antigravity-ide", "mcp_config.json")
+  ];
+  for (const path of paths) {
+    const mcp = await readJson2(path);
+    const servers = mcp.mcpServers && typeof mcp.mcpServers === "object" ? mcp.mcpServers : {};
+    servers["livedot-map"] = entry;
+    mcp.mcpServers = servers;
+    await atomicJson(path, mcp);
+  }
+  const configPath = (0, import_node_path19.join)(home, ".gemini", "config", "config.json");
+  try {
+    const config = await readJson2(configPath);
+    if (config && typeof config === "object") {
+      config.userSettings = config.userSettings && typeof config.userSettings === "object" ? config.userSettings : {};
+      config.userSettings.globalPermissionGrants = config.userSettings.globalPermissionGrants && typeof config.userSettings.globalPermissionGrants === "object" ? config.userSettings.globalPermissionGrants : {};
+      const existing = Array.isArray(config.userSettings.globalPermissionGrants.allow) ? config.userSettings.globalPermissionGrants.allow : [];
+      const grantsToAdd = [
+        "mcp(livedot-map)",
+        "mcp(livedot-map/*)",
+        ...MCP_TOOL_DEFINITIONS.map((t) => `mcp(livedot-map/${t.name})`)
+      ];
+      const set = new Set(existing);
+      for (const g of grantsToAdd) set.add(g);
+      config.userSettings.globalPermissionGrants.allow = Array.from(set);
+      await atomicJson(configPath, config);
+    }
+  } catch {
+  }
+  return paths;
 }
 async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
   const settingsPath = (0, import_node_path19.join)(home, ".codebuddy", "settings.json");
@@ -6677,7 +7000,10 @@ async function installProject({
   let createdMapsLayout = false;
   const touched = /* @__PURE__ */ new Set([configPath, ...runtime ? [runtime] : []]);
   for (const id of /* @__PURE__ */ new Set([...Object.keys(old.installed || {}), ...Object.keys(installed)])) for (const path of adapterConfigPaths(home, id)) touched.add(path);
-  for (const id of Object.keys(installed)) touched.add(skillTargetPaths(home, id));
+  for (const id of Object.keys(installed)) {
+    const target = skillTargetPaths(home, id);
+    if (target) touched.add(target);
+  }
   const existingBackup = await readJson2(backupPath, null);
   const backupFiles = new Map(Array.isArray(existingBackup?.files) ? existingBackup.files.map((entry) => [entry.path, entry]) : []);
   for (const path of touched) if (!backupFiles.has(path)) backupFiles.set(path, await captureFile(path));
@@ -6700,6 +7026,7 @@ async function installProject({
     }
     for (const id of Object.keys(installed)) {
       const target = skillTargetPaths(home, id);
+      if (!target) continue;
       await (0, import_promises15.mkdir)((0, import_node_path19.dirname)(target), { recursive: true });
       await (0, import_promises15.copyFile)(canonicalSkill, target);
     }
@@ -6727,6 +7054,7 @@ async function installProject({
     if (installed.codex) await writeCodexConfig(home, nodeCommand, runtime);
     if (installed["claude-code"]) await writeClaudeConfig(home, nodeCommand, runtime);
     if (installed["kimi-code"]) await writeKimiConfig(home, nodeCommand, runtime);
+    if (installed.antigravity) await writeAntigravityConfig(home, nodeCommand, runtime);
     if (installed.codebuddy) await writeCodeBuddyConfig(home, nodeCommand, runtime);
     const config = {
       ...old,
@@ -6813,6 +7141,12 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
     }
   }
   const launcherPaths = [(0, import_node_path19.join)(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), (0, import_node_path19.join)(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
+  const homeRoot = config.homeRoot ? (0, import_node_path19.resolve)(config.homeRoot) : null;
+  if (homeRoot && config.installed?.antigravity) {
+    for (const name of ["antigravity", "antigravity-ide", "antigravity-cli"]) {
+      await (0, import_promises15.rm)((0, import_node_path19.join)(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
+    }
+  }
   if (platform === "win32") {
     const desktop = windowsDesktopDirectory({ platform, env, exec });
     launcherPaths.push((0, import_node_path19.join)(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), (0, import_node_path19.join)(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
@@ -6842,6 +7176,7 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
   if (installed.codex) expected.push(["codex-hooks", (0, import_node_path19.join)(home, ".codex", "hooks.json")], ["codex-mcp", (0, import_node_path19.join)(home, ".codex", "config.toml")]);
   if (installed["claude-code"]) expected.push(["claude-hooks", (0, import_node_path19.join)(home, ".claude", "settings.json")]);
   if (installed["kimi-code"]) expected.push(["kimi-mcp", (0, import_node_path19.join)(home, ".kimi-code", "mcp.json")], ["kimi-plugin", (0, import_node_path19.join)(kimiPluginRoot(home), "kimi.plugin.json")]);
+  if (installed.antigravity) expected.push(["antigravity-mcp", (0, import_node_path19.join)(home, ".gemini", "config", "mcp_config.json")]);
   if (installed.codebuddy) expected.push(["codebuddy-hooks", (0, import_node_path19.join)(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", (0, import_node_path19.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
@@ -7953,7 +8288,7 @@ async function createBridgeServer({
         if (sessionStore && existingId && ticket[1].projectHandle && ticket[1].projectRoot) {
           const authorized = sessionStore.authorize(existingId, ticket[1].projectHandle);
           if (authorized) {
-            await sessionStore.persistIfDue();
+            await sessionStore.flush();
             response.setHeader("Set-Cookie", `${SESSION_COOKIE}=${existingId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(sessionStore.ttlMs / 1e3)}`);
             sendJson(response, 200, {
               csrfToken: authorized.csrfToken,
@@ -8241,9 +8576,10 @@ async function createBridgeServer({
         requireMethod(request, "POST");
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
+        const relativePath = await mapMarkdownPath(session, String(body.relativePath || ""));
         sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).open({
           editorId: String(body.editorId || ""),
-          relativePath: String(body.relativePath || ""),
+          relativePath,
           targetKind: body.targetKind === "directory" ? "directory" : "file"
         }));
         return;
@@ -8265,7 +8601,8 @@ async function createBridgeServer({
         requireMethod(request, "POST");
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
-        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath: String(body.relativePath || "") }));
+        const relativePath = await mapMarkdownPath(session, String(body.relativePath || ""));
+        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath }));
         return;
       }
       if (pathname === "/markdown") {
@@ -9137,23 +9474,23 @@ async function inspectProjectQualification(projectRoot) {
     return { ok: false, code: "PROJECT_NOT_FOUND", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u6709\u6548\u9879\u76EE\u76EE\u5F55\u3002" };
   }
   const dataDirectory = (0, import_node_path24.join)(root, ".live-dot-map");
-  const dataMetadata = await (0, import_promises20.lstat)(dataDirectory).catch(() => null);
+  const dataMetadata = await (0, import_promises20.stat)(dataDirectory).catch(() => null);
   if (!dataMetadata) return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u8FD8\u6CA1\u6709\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
-  if (!dataMetadata.isDirectory() || dataMetadata.isSymbolicLink()) {
+  if (!dataMetadata.isDirectory()) {
     return { ok: false, code: "PROJECT_LAYOUT_INVALID", message: "\u6D3B\u70B9\u5730\u56FE\u6570\u636E\u76EE\u5F55\u4E0D\u662F\u53EF\u5B89\u5168\u8BFB\u53D6\u7684\u76EE\u5F55\u3002" };
   }
   const marker = async (path) => {
-    const metadata = await (0, import_promises20.lstat)(path).catch(() => null);
-    return Boolean(metadata && (metadata.isFile() || metadata.isSymbolicLink()));
+    const metadata = await (0, import_promises20.stat)(path).catch(() => null);
+    return Boolean(metadata && metadata.isFile());
   };
   const legacy = await marker((0, import_node_path24.join)(dataDirectory, "map.json"));
   const mapsPath = (0, import_node_path24.join)(dataDirectory, "maps");
-  const mapsMetadata = await (0, import_promises20.lstat)(mapsPath).catch(() => null);
+  const mapsMetadata = await (0, import_promises20.stat)(mapsPath).catch(() => null);
   let packageMap = false;
-  if (mapsMetadata?.isDirectory() && !mapsMetadata.isSymbolicLink()) {
+  if (mapsMetadata?.isDirectory()) {
     const entries = await (0, import_promises20.readdir)(mapsPath, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      if (!entry.isDirectory()) continue;
       if (await marker((0, import_node_path24.join)(mapsPath, entry.name, "map.json"))) {
         packageMap = true;
         break;
@@ -9163,7 +9500,7 @@ async function inspectProjectQualification(projectRoot) {
   if (!legacy && !packageMap) {
     return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u662F\u5DF2\u521D\u59CB\u5316\u7684\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
   }
-  const writableTarget = packageMap ? await (0, import_promises20.access)(mapsPath, import_node_fs4.constants.W_OK).then(() => true).catch(() => false) : await (0, import_promises20.access)(dataDirectory, import_node_fs4.constants.W_OK).then(() => true).catch(() => false);
+  const writableTarget = packageMap ? await (0, import_promises20.access)(mapsPath, import_node_fs5.constants.W_OK).then(() => true).catch(() => false) : await (0, import_promises20.access)(dataDirectory, import_node_fs5.constants.W_OK).then(() => true).catch(() => false);
   if (!writableTarget) return { ok: false, code: "PROJECT_READONLY", message: "\u5F53\u524D\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u76EE\u5F55\u4E0D\u53EF\u5199\u3002" };
   return { ok: true };
 }
@@ -9228,7 +9565,7 @@ async function resolveAppHtmlPath(explicit) {
   candidates.push((0, import_node_path24.join)((0, import_node_os8.homedir)(), ".live-dot-map", "app.html"));
   candidates.push((0, import_node_path24.join)(process.cwd(), "app.html"));
   for (const candidate of [...new Set(candidates)]) {
-    if (await (0, import_promises20.access)(candidate, import_node_fs4.constants.F_OK).then(() => true).catch(() => false)) return candidate;
+    if (await (0, import_promises20.access)(candidate, import_node_fs5.constants.F_OK).then(() => true).catch(() => false)) return candidate;
   }
   return null;
 }
@@ -9288,11 +9625,15 @@ async function forwardToolCall(handle, targetRoot, actor, name, args) {
 }
 async function runMcpProxy(projectRoot, actor, options) {
   const root = (0, import_node_path24.resolve)(projectRoot);
-  const qualification = await inspectProjectQualification(root);
+  let currentRoot = await resolveProjectRootToUse(null, root);
+  let qualification = await inspectProjectQualification(currentRoot);
+  if (!qualification.ok && currentRoot !== root) {
+    currentRoot = root;
+    qualification = await inspectProjectQualification(root);
+  }
   const logger = qualification.ok ? createLogger({ source: "agent" }) : noopLogger;
-  let currentRoot = root;
   let bridge = null;
-  if (qualification.ok) await logger.info("agent.mcp.start", { project: root, actor, pid: process.pid, mode: "proxy" });
+  if (qualification.ok) await logger.info("agent.mcp.start", { project: currentRoot, actor, pid: process.pid, mode: "proxy" });
   const lines = (0, import_node_readline.createInterface)({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
     let request;
@@ -9308,14 +9649,21 @@ async function runMcpProxy(projectRoot, actor, options) {
       if (request.method === "initialize") result2 = { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "live-dot-map", version: "2.0.0" } };
       else if (request.method === "tools/list") result2 = { tools: toolDefinitions };
       else if (request.method === "tools/call") {
-        if (!qualification.ok) {
-          result2 = unavailableToolResult(qualification);
+        const params = request.params;
+        const name = String(params.name);
+        const callArgs = params.arguments ?? {};
+        const explicitProject = typeof callArgs.projectRoot === "string" && callArgs.projectRoot.trim() ? String(callArgs.projectRoot).trim() : typeof callArgs.project === "string" && callArgs.project.trim() ? String(callArgs.project).trim() : null;
+        let targetRoot = await resolveProjectRootToUse(explicitProject, root);
+        let activeQual = await inspectProjectQualification(targetRoot);
+        if (!activeQual.ok && targetRoot !== root) {
+          targetRoot = root;
+          activeQual = await inspectProjectQualification(root);
+        }
+        if (!activeQual.ok) {
+          result2 = unavailableToolResult(activeQual);
         } else {
-          const params = request.params;
-          const name = String(params.name);
-          const callArgs = params.arguments ?? {};
-          const targetRoot = await resolveProjectRootToUse(null, currentRoot);
           currentRoot = targetRoot;
+          qualification = activeQual;
           let value;
           let lastError = null;
           for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -9327,6 +9675,14 @@ async function runMcpProxy(projectRoot, actor, options) {
             } catch (error3) {
               lastError = error3;
               const status = error3?.httpStatus;
+              const code = error3?.code;
+              if ((status === 404 || code === "PROJECT_NOT_FOUND") && targetRoot !== root) {
+                targetRoot = root;
+                currentRoot = root;
+                qualification = await inspectProjectQualification(root);
+                bridge = null;
+                continue;
+              }
               if (typeof status === "number" && status !== 401) throw error3;
               bridge = null;
             }
@@ -9529,7 +9885,9 @@ async function main() {
   const { command: command2, args } = parseArgs(process.argv.slice(2));
   if (command2 === "serve") {
     const logger = createLogger({ source: "bridge" });
-    const projectRoot = (0, import_node_path24.resolve)(required(args, "project"));
+    const requestedRoot = (0, import_node_path24.resolve)(required(args, "project"));
+    const worktreeMain = resolveGitWorktreeMain(requestedRoot);
+    const projectRoot = await canonicalDirectory(worktreeMain ?? requestedRoot).catch(() => requestedRoot);
     const runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? (0, import_node_path24.resolve)(args["runtime-state-dir"]) : void 0;
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });
@@ -9690,7 +10048,7 @@ async function main() {
     if (!result2.ok && result2.reason !== "not-installed") process.exitCode = 1;
     return;
   }
-  process.stdout.write("\u6D3B\u70B9\u5730\u56FE v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n");
+  process.stdout.write("\u6D3B\u70B9\u5730\u56FE v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n");
 }
 void main().catch(async (error3) => {
   const parsed = parseArgs(process.argv.slice(2));

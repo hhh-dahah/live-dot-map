@@ -111,7 +111,7 @@ assert.equal(updateManifest.schema, 1);
 assert.equal(updateManifest.product, 'live-dot-map');
 assert.equal(updateManifest.version, payloadManifest.version, 'update manifest version differs from payload');
 for (const [relative, entry] of Object.entries(payloadManifest.files ?? {})) {
-  const deployed = join(updateDir, relative);
+  const deployed = join(updateDir, 'payload', relative);
   await access(deployed, constants.F_OK);
   assert.equal(await fileDigest(deployed), entry.sha256, `update payload differs: ${relative}`);
   assert.equal(updateManifest.files?.[relative]?.sha256, entry.sha256, `update manifest hash mismatch: ${relative}`);
