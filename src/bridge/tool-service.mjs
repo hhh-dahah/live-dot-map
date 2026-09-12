@@ -39,6 +39,96 @@ export function ensureAgentAuthorEnvelope(content, actor = 'agent') {
   return `<!-- @author: ${authorId} -->\n${content.endsWith('\n') ? content : content + '\n'}<!-- /@author -->\n`;
 }
 
+/** 提取文档中所有由人类书写的文本行（即剔除任何 @author 闭合块后的非空文本行） */
+export function extractHumanLines(markdown) {
+  if (typeof markdown !== 'string') return [];
+  const lines = markdown.split(/\r?\n/);
+  const humanLines = [];
+  let inAgent = false;
+  for (const rawLine of lines) {
+    let line = rawLine.trim();
+    if (!line) continue;
+
+    if (inAgent) {
+      if (/<!--\s*\/@author\s*-->/i.test(line)) {
+        inAgent = false;
+        const afterClose = line.replace(/^[\s\S]*?<!--\s*\/@author\s*-->/i, '').trim();
+        if (afterClose) {
+          humanLines.push(afterClose);
+        }
+      }
+      continue;
+    }
+
+    while (/<!--\s*@author:\s*(agent|system)[^\s>]*\s*-->[\s\S]*?<!--\s*\/@author\s*-->/i.test(line)) {
+      line = line.replace(/<!--\s*@author:\s*(agent|system)[^\s>]*\s*-->[\s\S]*?<!--\s*\/@author\s*-->/i, '').trim();
+    }
+    if (!line) continue;
+
+    if (/<!--\s*@author:\s*(agent|system)[^\s>]*\s*-->/i.test(line)) {
+      inAgent = true;
+      const beforeStart = line.replace(/<!--\s*@author:\s*(agent|system)[^\s>]*\s*-->[\s\S]*$/i, '').trim();
+      if (beforeStart) {
+        humanLines.push(beforeStart);
+      }
+      continue;
+    }
+
+    if (/^<!--\s*@author:\s*(human|none|clear)\s*-->$/i.test(line)) {
+      continue;
+    }
+
+    humanLines.push(line);
+  }
+  return humanLines;
+}
+
+/** 智能维护节点资料包在 index.md 中的索引区段（自动登记与同步，绝不碰人类原文） */
+export async function syncBundleIndexToMainMarkdown(bundleStore, ownerKind, ownerId) {
+  if (!bundleStore || !ownerKind || !ownerId) return;
+  try {
+    const list = await bundleStore.list({ ownerKind, ownerId, includeArchived: false });
+    const otherFiles = (list || []).filter((f) => f.fileName !== 'index.md' && f.name !== 'index.md');
+
+    const indexEntry = await bundleStore.readMarkdown({ ownerKind, ownerId, fileName: 'index.md' }).catch(() => null);
+    if (!indexEntry || typeof indexEntry.content !== 'string') return;
+    const currentContent = indexEntry.content;
+
+    let indexSection = '';
+    if (otherFiles.length > 0) {
+      const items = otherFiles.map((f) => {
+        const icon = f.kind === 'markdown' ? '📄' : (f.kind === 'png' || f.kind === 'jpg' || f.kind === 'jpeg' || f.kind === 'svg' || f.kind === 'gif') ? '🖼️' : '📎';
+        const sizeKb = f.size ? ` (${(f.size / 1024).toFixed(1)} KB)` : '';
+        return `- ${icon} [${f.fileName}](${f.fileName})${sizeKb}`;
+      }).join('\n');
+      indexSection = `<!-- @author: system:bundle-index -->\n## 📁 节点资料包索引\n${items}\n<!-- /@author -->\n`;
+    }
+
+    const bundleIndexRegex = /<!--\s*@author:\s*system:bundle-index\s*-->[\s\S]*?<!--\s*\/@author\s*-->\r?\n?/i;
+    let nextContent = '';
+    if (bundleIndexRegex.test(currentContent)) {
+      nextContent = currentContent.replace(bundleIndexRegex, indexSection ? `${indexSection}` : '').trimEnd() + '\n';
+    } else if (indexSection) {
+      const sep = currentContent.endsWith('\n\n') ? '' : currentContent.endsWith('\n') ? '\n' : '\n\n';
+      nextContent = `${currentContent}${sep}${indexSection}`;
+    } else {
+      return;
+    }
+
+    if (nextContent.trim() !== currentContent.trim()) {
+      await bundleStore.replaceMarkdown({
+        ownerKind,
+        ownerId,
+        fileName: 'index.md',
+        content: nextContent,
+        baseEtag: indexEntry.etag,
+      }).catch(() => {});
+    }
+  } catch {
+    // 资料包索引自动同步属于贴心增强，出错不阻断主操作
+  }
+}
+
 /** REST、stdio 与 Agent Kit 共用的固定 24 项工具契约。 */
 export const TOOL_DEFINITIONS = Object.freeze([
   schema('map_get_context', '读取当前地图的结构、推进摘要与明确关联 Markdown。', { query: { type: 'string' }, currentNodeId: { anyOf: [{ type: 'string' }, { type: 'null' }] }, includeHistory: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 12 } }),
@@ -54,15 +144,15 @@ export const TOOL_DEFINITIONS = Object.freeze([
   schema('map_checkpoint', '创建可恢复检查点。', { reason: { type: 'string' } }),
   schema('map_plan_consolidation', '只读生成可审核的整理建议。', { maxSuggestions: { type: 'integer', minimum: 1, maximum: 20 }, now: { type: 'string' } }),
   schema('map_read_markdown', '读取当前地图资料包 Markdown。', { ...owner, fileName: { type: 'string' }, path: { type: 'string' } }),
-  schema('map_write_markdown', '用 baseEtag 原子替换资料包 Markdown。默认追加式：若替换会删除已有内容的行将被拒绝（REWRITE_REMOVES_CONTENT），请优先用 map_append_markdown；确属用户明确要求改写时才传 allowContentRemoval: true。', { ...owner, fileName: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' }, baseEtag: { type: 'string' }, allowContentRemoval: { type: 'boolean' }, wrapAuthor: { type: 'boolean' } }, ['content', 'baseEtag']),
-  schema('map_append_markdown', '按路径锁幂等追加 Markdown。', { ...owner, fileName: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' }, commandId: { type: 'string' } }, ['content', 'commandId']),
+  schema('map_write_markdown', '用 baseEtag 原子替换资料包 Markdown。全域人类原声保护：严禁删除或覆盖人类原始文字（违规将被拒绝 HUMAN_CONTENT_PROTECTED）；默认追加式：若替换会删除已有内容的行将被拒绝（REWRITE_REMOVES_CONTENT），请优先用 map_append_markdown；确属用户明确要求改写时才传 allowContentRemoval: true。', { ...owner, fileName: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' }, baseEtag: { type: 'string' }, allowContentRemoval: { type: 'boolean' }, allowHumanContentOverride: { type: 'boolean' }, allowIndexModification: { type: 'boolean' }, wrapAuthor: { type: 'boolean' } }, ['content', 'baseEtag']),
+  schema('map_append_markdown', '按路径锁幂等追加 Markdown。可在任意文件（含 index.md）末尾安全追加 Agent 结论、回复或补充要点，自动包裹成对 @author 闭合标签，绝不破坏上方已有的人类原话。', { ...owner, fileName: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' }, commandId: { type: 'string' } }, ['content', 'commandId']),
   schema('map_list_bundle_files', '列出对象资料包文件。', { ...owner, includeArchived: { type: 'boolean' } }, ['ownerKind', 'ownerId']),
-  schema('map_create_markdown', '在对象资料包中新建补充 Markdown。', { ...owner, fileName: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
+  schema('map_create_markdown', '在对象资料包中新建补充 Markdown（如 01-方案.md）。创建后系统将在 index.md 自动同步登记资料包索引。', { ...owner, fileName: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
   schema('map_rename_bundle_file', '改名补充 Markdown 或附件。', { ...owner, from: { type: 'string' }, to: { type: 'string' } }, ['ownerKind', 'ownerId', 'from', 'to']),
   schema('map_archive_bundle_file', '归档补充 Markdown。', { ...owner, fileName: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
   schema('map_restore_bundle_file', '恢复补充 Markdown。', { ...owner, fileName: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
   schema('map_list_assets', '列出对象资料包附件元数据。', { ...owner, includeArchived: { type: 'boolean' } }, ['ownerKind', 'ownerId']),
-  schema('map_import_asset', '从 sourcePath（支持项目内相对路径或本机任意绝对路径）流式导入附件（支持 zip、数据包、代码、图片、文档等各类文件）。', { ...owner, sourcePath: { type: 'string' }, fileName: { type: 'string' }, mimeType: { type: 'string' }, allowExternalPath: { type: 'boolean' } }, ['ownerKind', 'ownerId', 'sourcePath']),
+  schema('map_import_asset', '从 sourcePath（支持项目内相对路径或本机任意绝对路径）流式导入附件（支持 zip、数据包、代码、图片、文档等各类文件）。导入后系统将在 index.md 自动同步登记资料包索引。', { ...owner, sourcePath: { type: 'string' }, fileName: { type: 'string' }, mimeType: { type: 'string' }, allowExternalPath: { type: 'boolean' } }, ['ownerKind', 'ownerId', 'sourcePath']),
   schema('map_archive_asset', '归档对象附件。', { ...owner, fileName: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
   schema('map_restore_asset', '恢复对象附件。', { ...owner, fileName: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
   schema('map_read_asset', '返回对象附件路径与元数据（不搬运二进制）。文本类附 content，二进制可传 includeContent 取 base64。', { ...owner, fileName: { type: 'string' }, includeContent: { type: 'boolean' } }, ['ownerKind', 'ownerId', 'fileName']),
@@ -341,19 +431,28 @@ export class ToolService {
 
     if (name === 'map_read_markdown') return cleanResult(await bundleStore.readMarkdown(file));
     if (name === 'map_write_markdown') {
-      // 人类原声保护：index.md 专属人类需求定义，禁止 Agent 擅自修改，必须新建独立文档描述方案
-      if (isAgent && isIndexFile && args.allowIndexModification !== true) {
-        throw new BridgeError('INDEX_PROTECTED', 'index.md 属于人类需求与问题原声，默认禁止 Agent 修改。请使用 map_create_markdown 在节点资料包中新建独立 .md 方案文件。仅当人类用户在对话中明确指令要求修改 index.md 时，方可显式传入 allowIndexModification: true。', { status: 403 });
-      }
       const rawContent = args.content;
       const content = (args.wrapAuthor !== false && rawContent !== undefined && isAgent)
         ? ensureAgentAuthorEnvelope(rawContent, this.actor)
         : rawContent;
+
+      const current = await bundleStore.readMarkdown(file).catch(() => null);
+      const existing = String(current?.content ?? '');
+      const next = String(content ?? '');
+
+      // 全域人类原声保护：无论在哪个文件（index.md 或其他子文档），人类书写的文字禁止被 Agent 覆盖或删改
+      if (isAgent && args.allowHumanContentOverride !== true && args.allowIndexModification !== true) {
+        const existingHumanLines = extractHumanLines(existing);
+        if (existingHumanLines.length) {
+          const missing = existingHumanLines.filter((line) => !next.includes(line));
+          if (missing.length > 0) {
+            throw new BridgeError('HUMAN_CONTENT_PROTECTED', `整文替换缺失了人类原始文本（共 ${missing.length} 行，如：“${missing[0].slice(0, 30)}”）。人类书写内容在任何文件下均受到绝对保护，禁止 Agent 擅自覆盖或删减。请改用 map_append_markdown 进行追加，或确保在替换内容中完整保留人类原话。`, { status: 403 });
+          }
+        }
+      }
+
       // 人机写入契约：默认追加式。整文替换若会删掉已有内容的行，必须显式传 allowContentRemoval。
       if (args.allowContentRemoval !== true) {
-        const current = await bundleStore.readMarkdown(file).catch(() => null);
-        const existing = String(current?.content ?? '');
-        const next = String(content ?? '');
         if (existing.trim()) {
           const removed = existing.split(/\r?\n/).filter((line) => line.trim() && !next.includes(line.trim()));
           if (removed.length) {
@@ -366,9 +465,6 @@ export class ToolService {
       return { ...result, content: String(content) };
     }
     if (name === 'map_append_markdown') {
-      if (isAgent && isIndexFile && args.allowIndexModification !== true) {
-        throw new BridgeError('INDEX_PROTECTED', 'index.md 属于人类需求与问题原声，默认禁止 Agent 修改。请使用 map_create_markdown 在节点资料包中新建独立 .md 方案文件。仅当人类用户在对话中明确指令要求修改 index.md 时，方可显式传入 allowIndexModification: true。', { status: 403 });
-      }
       const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
       const result = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
@@ -376,29 +472,33 @@ export class ToolService {
     }
     if (name === 'map_list_bundle_files') return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === 'map_create_markdown') {
-      if (isAgent && isIndexFile && args.allowIndexModification !== true) {
-        throw new BridgeError('INDEX_PROTECTED', 'index.md 属于人类需求与问题原声，禁止 Agent 覆盖创建。请使用 map_create_markdown 在节点资料包中新建独立 .md 方案文件。', { status: 403 });
+      if (isIndexFile) {
+        throw new BridgeError('BUNDLE_INDEX_CREATE_USE_ENSURE', 'index.md 是节点主文档，已在节点创建时自动初始化。如需追加内容请使用 map_append_markdown，如需补充方案文档请传入独立文件名（如 01-proposal.md）。', { status: 409 });
       }
       const rawContent = args.content;
       const content = (args.wrapAuthor !== false && rawContent !== undefined)
         ? ensureAgentAuthorEnvelope(rawContent, this.actor)
         : rawContent;
       const result = await bundleStore.createMarkdown({ ...file, content, title: args.title });
+      await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result;
     }
     if (name === 'map_rename_bundle_file') {
       const result = await bundleStore.rename({ ownerKind: file.ownerKind, ownerId: file.ownerId, from: args.from, to: args.to });
+      await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result;
     }
     if (name === 'map_archive_bundle_file' || name === 'map_archive_asset') {
       const result = await bundleStore.archive(file);
+      await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result;
     }
     if (name === 'map_restore_bundle_file' || name === 'map_restore_asset') {
       const result = await bundleStore.restore(file);
+      await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result;
     }
@@ -416,6 +516,7 @@ export class ToolService {
         mimeType: args.mimeType,
         allowExternalPath: isExt || args.allowExternalPath === true,
       });
+      await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result;
     }

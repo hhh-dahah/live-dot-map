@@ -392,7 +392,7 @@ test('map_create_markdown 与 map_append_markdown 自动为 Agent 写入包裹�
   read = await service.dispatch('map_read_markdown', { ...owner, fileName: '01-proposal.md' });
   assert.match(read.content, /<!-- @author: agent:test -->\n## 新增补充要点\n<!-- \/@author -->/);
 
-  // 4. map_write_markdown 自动包裹 Agent 覆盖写入的内容
+  // 4. map_write_markdown 自动包裹 Agent 覆盖写入的内容（覆盖非 Agent 标记内容传 allowHumanContentOverride）
   const created3 = await service.dispatch('map_create_markdown', {
     ...owner,
     fileName: '03-written.md',
@@ -405,62 +405,106 @@ test('map_create_markdown 与 map_append_markdown 自动为 Agent 写入包裹�
     content: '# 整篇方案内容\n\n测试',
     baseEtag: created3.etag,
     allowContentRemoval: true,
+    allowHumanContentOverride: true,
   });
   read = await service.dispatch('map_read_markdown', { ...owner, fileName: '03-written.md' });
   assert.match(read.content, /^<!-- @author: agent:test -->\n# 整篇方案内容\n\n测试\n<!-- \/@author -->/);
 });
 
-test('P0: 保护人类原声：Agent 写入或追加 index.md 默认被拒，必须新建独立文档或显式传 allowIndexModification', async (t) => {
+test('全域人类原声保护与 index.md 节点索引中枢：Agent 追加放行、改写保护与资料包索引联动', async (t) => {
   const { manager, service } = await openService(t);
-  const mapKey = await createMap(manager, '原声保护地图');
+  const mapKey = await createMap(manager, '全域原声保护地图');
   await manager.switch(mapKey);
-  await addNode(service, mapKey, 'protect-node');
+  await addNode(service, mapKey, 'hub-node');
 
-  const owner = { ownerKind: 'node', ownerId: 'protect-node' };
-  const read = await service.dispatch('map_read_markdown', { ...owner, fileName: 'index.md' });
+  const owner = { ownerKind: 'node', ownerId: 'hub-node' };
 
-  // 1. 未传 allowIndexModification 时，map_write_markdown 试图写 index.md 必须抛出 INDEX_PROTECTED
+  // 1. 模拟人类在 index.md 中写下了原始问题与诉求
+  const initial = await service.dispatch('map_read_markdown', { ...owner, fileName: 'index.md' });
+  const humanPrompt = '# hub-node\n\n请帮我设计一个高可用的分布式索引服务，要求支持秒级故障自愈。';
+  await (await manager.resolve({ mapKey })).bundleStore.replaceMarkdown({
+    ...owner,
+    fileName: 'index.md',
+    content: humanPrompt,
+    baseEtag: initial.etag,
+  });
+
+  const readHuman = await service.dispatch('map_read_markdown', { ...owner, fileName: 'index.md' });
+  assert.equal(readHuman.content, humanPrompt);
+
+  // 2. Agent 往 index.md 追加内容（map_append_markdown）：放行！
+  // 自动包裹成对 @author 闭合块，且上方人类原声完好无损
+  const appended = await service.dispatch('map_append_markdown', {
+    ...owner,
+    fileName: 'index.md',
+    content: '## 🤖 Agent 方案建议\n建议采用基于 Raft 的一致性状态机实现。',
+    commandId: 'cmd-append-solution-1',
+  });
+  assert.ok(appended.etag);
+
+  const afterAppend = await service.dispatch('map_read_markdown', { ...owner, fileName: 'index.md' });
+  assert.match(afterAppend.content, /# hub-node\n\n请帮我设计一个高可用的分布式索引服务/);
+  assert.match(afterAppend.content, /<!-- @author: agent:test -->\n## 🤖 Agent 方案建议\n建议采用基于 Raft 的一致性状态机实现。\n<!-- \/@author -->/);
+
+  // 3. Agent 企图通过 map_write_markdown 抹除/删减人类文字：坚决拦截抛出 HUMAN_CONTENT_PROTECTED
   await assert.rejects(
     service.dispatch('map_write_markdown', {
       ...owner,
       fileName: 'index.md',
-      content: '# 企图篡改原声\n\n方案',
-      baseEtag: read.etag,
+      content: '# 企图篡改抹除人类原声\n\n直接替换全文',
+      baseEtag: afterAppend.etag,
       allowContentRemoval: true,
     }),
-    (err) => err.code === 'INDEX_PROTECTED' && err.message.includes('index.md 属于人类需求与问题原声'),
-    '应拒绝 Agent 擅自写 index.md'
+    (err) => err.code === 'HUMAN_CONTENT_PROTECTED' && err.message.includes('人类原始文本'),
+    '应拒绝抹除人类原声'
   );
 
-  // 2. 未传 allowIndexModification 时，map_append_markdown 试图追加 index.md 也必须抛出 INDEX_PROTECTED
-  await assert.rejects(
-    service.dispatch('map_append_markdown', {
-      ...owner,
-      fileName: 'index.md',
-      content: '## 企图追加方案到原声',
-      commandId: 'test-append-block',
-    }),
-    (err) => err.code === 'INDEX_PROTECTED',
-    '应拒绝 Agent 擅自追加 index.md'
-  );
-
-  // 3. 用户在提示词中明确要求修改主文档时，显式传入 allowIndexModification: true 方可放行
-  const allowed = await service.dispatch('map_write_markdown', {
+  // 4. Agent 在完整保留人类原声的前提下，更新自身 Agent 块：放行！
+  const preservedContent = `${humanPrompt}\n\n<!-- @author: agent:test -->\n## 🤖 Agent 方案建议（精化版）\n更新为 Multi-Raft 分区架构。\n<!-- /@author -->\n`;
+  const updated = await service.dispatch('map_write_markdown', {
     ...owner,
     fileName: 'index.md',
-    content: '# 人类授权修改主文档\n\n修改后的内容',
-    baseEtag: read.etag,
+    content: preservedContent,
+    baseEtag: afterAppend.etag,
     allowContentRemoval: true,
-    allowIndexModification: true,
   });
-  assert.ok(allowed.etag);
+  assert.ok(updated.etag);
+  const afterUpdate = await service.dispatch('map_read_markdown', { ...owner, fileName: 'index.md' });
+  assert.equal(afterUpdate.content, preservedContent);
 
-  // 4. Agent 在资料包中新建独立方案文档（如 01-proposal.md）完全正常放行
-  const proposal = await service.dispatch('map_create_markdown', {
+  // 5. 全域保护：在资料包子文档（如 01-notes.md）中若有人类书写内容，Agent 试图覆盖同样被拦截
+  const noteFile = await service.dispatch('map_create_markdown', {
     ...owner,
-    fileName: '01-proposal.md',
-    content: '# 独立方案文档\n\n通过新建 md 描述方案',
+    fileName: '01-notes.md',
+    content: '# 架构要点\n\n人类补充：注意跨机房延迟。',
+    wrapAuthor: false, // 模拟人类书写，不带 agent tag
   });
-  assert.ok(proposal.etag);
+  await assert.rejects(
+    service.dispatch('map_write_markdown', {
+      ...owner,
+      fileName: '01-notes.md',
+      content: '# 架构要点\n\nAgent 抹掉了人类补充的延迟要求',
+      baseEtag: noteFile.etag,
+      allowContentRemoval: true,
+    }),
+    (err) => err.code === 'HUMAN_CONTENT_PROTECTED',
+    '子文档的人类原声同样受全域保护'
+  );
+
+  // 6. 资料包索引自动联动：创建子文档后，index.md 自动登记该文档的索引条目
+  const indexWithBundle = await service.dispatch('map_read_markdown', { ...owner, fileName: 'index.md' });
+  assert.match(indexWithBundle.content, /## 📁 节点资料包索引/);
+  assert.match(indexWithBundle.content, /\[01-notes\.md\]\(01-notes\.md\)/);
+
+  // 7. 用户明确指令要求覆盖（allowHumanContentOverride: true）时允许改写
+  const overridden = await service.dispatch('map_write_markdown', {
+    ...owner,
+    fileName: '01-notes.md',
+    content: '# 彻底重写文档\n\n用户明确要求',
+    baseEtag: noteFile.etag,
+    allowContentRemoval: true,
+    allowHumanContentOverride: true,
+  });
+  assert.ok(overridden.etag);
 });
 

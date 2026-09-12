@@ -67,6 +67,8 @@ Bridge 请求始终区分三层不透明身份：`projectHandle`（项目路由�
 Origin/Host 校验；MCP、写入和 reveal 等有副作用的请求还需 CSRF。单个 Markdown
 文件及 `content` 不超过 2 MiB，请求正文另受桥默认 16 MiB body limit 限制。
 Agent 通过 `map_create_markdown` 与 `map_append_markdown` 写入的内容由服务端自动包裹 `<!-- @author: agent:<agentId> --> ... <!-- /@author -->` 成对闭合块，在画布呈现 Notion 风格专属徽标；Agent 无需手动书写该注释，直接提交正文即可。
+任何文件（无论 `index.md` 还是资料包子文档）中凡属于人类书写的文字（即 Agent 闭合块之外的自然内容），Agent 绝对禁止覆盖或删改；`map_write_markdown` 自动核验并拦截篡改人类文字的行为（`HUMAN_CONTENT_PROTECTED`）。
+节点主文档 `index.md` 是节点的中心索引卡（Node Hub，地位相当于节点的 `AGENTS.md`）：上半部分承载人类原始诉求，下半部分承载 Agent 回复建议与资料包索引清单。Agent 可使用 `map_append_markdown` 往 `index.md` 安全追加阶段性答复与跟进建议；在资料包中新建补充文档（如 `01-xxx.md`）或导入附件时，系统将自动在 `index.md` 维护资料包索引，让后续 Agent 调用 `map_get_context` 读到 `index.md` 时能瞬间洞悉节点全貌与全部关联文档。
 
 附件不走 JSON base64：浏览器使用二进制流，Agent 使用 `map_import_asset({sourcePath,ownerKind,ownerId})`。
 服务端生成资料包目标路径并校验扩展名、声明 MIME、文件头、大小、symlink/junction、保留名和 NTFS ADS；附件只返回元数据，不做全文上下文索引。
