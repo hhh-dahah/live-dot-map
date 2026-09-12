@@ -6,13 +6,13 @@
   "signed": false,
   "sourceReleaseManifest": {
     "bytes": 1176,
-    "sha256": "0d61af9b34315489d853f0ca0080f6a4625e9050d7a0c19f53c8eede805b0748"
+    "sha256": "bbbb5184f123394d77b8e531fef6b8535bd4f403b1b0eaa5b4b2c8029878ff63"
   },
-  "payloadHash": "da5d9fe9118e780a4162f04ba76d607cf5867090b5a75d01f7b5fb13ef1058f8",
+  "payloadHash": "8c5c049a94c6d5456f56d414824f59af9bd764ebf412a58b2f426348a1c2bace",
   "files": {
     "app.html": {
-      "bytes": 341821,
-      "sha256": "f0b3480320216051955c771cf7c25d5ad830476e503e6b71f6343ed6b242c59a"
+      "bytes": 397821,
+      "sha256": "d088944364d2d77fcb3f5c803085d7f5fee43ff41238e8e783f8f682399297c2"
     },
     "livedot-bridge-win-x64.exe": {
       "bytes": 92334080,
