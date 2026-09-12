@@ -2519,7 +2519,8 @@ async function resolveProjectRootToUse(pointerRoot, fallbackRoot, options = {}) 
       const resolved = await canonicalDirectory(candidate);
       const tempPrefix = resolve2(tmpdir()).toLowerCase();
       const isTemp = resolved.toLowerCase().startsWith(tempPrefix);
-      if (!isTemp || options.allowTemp) {
+      const allowTemp = Boolean(options.allowTemp || process.env.LIVEDOT_TEST_ALLOW_TEMP || process.env.LIVEDOT_TEST_ROOT);
+      if (!isTemp || allowTemp) {
         const hasLiveDotMap = await stat3(join4(resolved, ".live-dot-map")).then((s) => s.isDirectory()).catch(() => false);
         if (hasLiveDotMap) {
           return resolved;
