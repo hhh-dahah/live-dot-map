@@ -61,6 +61,39 @@ test('节点 kind 与地图名称通过受限命令保存，问题节点优先�
   }, { now: NOW }), (error) => error.code === 'INVALID_NODE_KIND');
 });
 
+test('空名称节点/连线合法（与文档 schema 对齐），超长与非字符串仍拒绝，地图名保持非空', () => {
+  const map = createEmptyMap({ name: '测试', now: NOW, mapId: 'map-test' });
+  const withEmpty = applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: 0, commandId: 'empty-names', actor: 'human', sessionId: 'session-1',
+    commands: [
+      { op: 'create', collection: 'routes', value: { id: 'r1', name: '', source: null, main: true } },
+      { op: 'create', collection: 'nodes', value: { id: 'n1', num: '01', name: '', type: '目的', route: 'r1', x: 0, y: 0 } },
+      { op: 'create', collection: 'nodes', value: { id: 'n2', num: '02', name: '目标', type: '目的', route: 'r1', x: 200, y: 0 } },
+      { op: 'create', collection: 'edges', value: { id: 'e1', from: 'n1', to: 'n2', name: '', status: 'pending', route: 'r1' } },
+    ],
+  }, { now: NOW });
+  assert.equal(withEmpty.edges[0].name, '');
+  assert.equal(withEmpty.nodes[0].name, '');
+  const updated = applyCommandEnvelope(withEmpty, {
+    projectId: 'project-test', baseRevision: withEmpty.revision, commandId: 'empty-update', actor: 'human', sessionId: 'session-1',
+    commands: [{ op: 'update', collection: 'edges', id: 'e1', patch: { name: '' } }],
+  }, { now: NOW });
+  assert.equal(updated.edges[0].name, '');
+  assert.equal(validateMapDocument(updated).ok, true);
+  assert.throws(() => applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: 0, commandId: 'long-name', actor: 'human', sessionId: 'session-1',
+    commands: [{ op: 'create', collection: 'nodes', value: { id: 'n9', num: '09', name: 'x'.repeat(81), type: '目的', route: null, x: 0, y: 0 } }],
+  }, { now: NOW }), (error) => error.code === 'INVALID_NAME');
+  assert.throws(() => applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: 0, commandId: 'non-string-name', actor: 'human', sessionId: 'session-1',
+    commands: [{ op: 'create', collection: 'nodes', value: { id: 'n9', num: '09', name: 42, type: '目的', route: null, x: 0, y: 0 } }],
+  }, { now: NOW }), (error) => error.code === 'INVALID_NAME');
+  assert.throws(() => applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: 0, commandId: 'empty-map-name', actor: 'human', sessionId: 'session-1',
+    commands: [{ op: 'set_meta', patch: { name: '' } }],
+  }, { now: NOW }), (error) => error.code === 'INVALID_NAME');
+});
+
 test('项目投影提供主路线、当前节点、待验证候选和人类更新', () => {
   const map = baseMap();
   const projected = buildProjectProjection(map, { now: NOW });
