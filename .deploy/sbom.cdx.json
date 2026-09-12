@@ -192,6 +192,12 @@
     },
     {
       "type": "library",
+      "name": "fflate",
+      "version": "0.8.3",
+      "scope": "build"
+    },
+    {
+      "type": "library",
       "name": "fsevents",
       "version": "2.3.2",
       "scope": "build"

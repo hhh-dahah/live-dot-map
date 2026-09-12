@@ -3,27 +3,32 @@
   "product": "live-dot-map",
   "version": "2.0.1",
   "channel": "internal-rc",
-  "payloadHash": "2755532c849f6392be9b2b243432b2efca2068614015546a7518037458d87d21",
+  "payloadHash": "da5d9fe9118e780a4162f04ba76d607cf5867090b5a75d01f7b5fb13ef1058f8",
+  "installer": {
+    "bytes": 196279799,
+    "sha256": "d890a0279bbe3f1dfd4cc848edd0e088c011f35d43d7ec09ca92d9b002affffa",
+    "url": "LiveDotMapSetup.exe"
+  },
   "files": {
-    "agent-kit/skills/live-dot-map/SKILL.md": {
-      "bytes": 7438,
-      "sha256": "8786bfcfe5deb078dd05bce4c8cd3e4ff03b7ece780a623219c9ef3844014fb5",
-      "url": "payload/agent-kit/skills/live-dot-map/SKILL.md"
-    },
-    "agent-kit/skills/live-dot-map/templates/attempt.md": {
-      "bytes": 301,
-      "sha256": "fd2cd25386e29e5919febbab0308c2cbc8b6bfd2e5f652b8273c4d20c989c1db",
-      "url": "payload/agent-kit/skills/live-dot-map/templates/attempt.md"
-    },
     "app.html": {
-      "bytes": 309868,
-      "sha256": "9f7f118b892d35df8e97d5479581b0995a01eb386d3fbcf48e8dd331c656c1c2",
+      "bytes": 341821,
+      "sha256": "f0b3480320216051955c771cf7c25d5ad830476e503e6b71f6343ed6b242c59a",
       "url": "payload/app.html"
     },
-    "assets/app-icon.ico": {
-      "bytes": 24645,
-      "sha256": "eab21d3e55f211882354435dde318e457079e98f7dc6d67cc111af15a01bc4bf",
-      "url": "payload/assets/app-icon.ico"
+    "livedot-bridge-win-x64.exe": {
+      "bytes": 92334080,
+      "sha256": "2afc13b4ba09f99d7f19e2a275de4aa82f206937ef073715e1e3320c84f82922",
+      "url": "payload/livedot-bridge-win-x64.exe"
+    },
+    "manifest.webmanifest": {
+      "bytes": 550,
+      "sha256": "aa41be332276032d399a3644c993aa9a5fc3bb24736d339d36bcfb9af1188439",
+      "url": "payload/manifest.webmanifest"
+    },
+    "sw.js": {
+      "bytes": 1870,
+      "sha256": "41ac0851be6cbbc0ddab6d98163669aebd668f161aa77e8bc8e59cb622bba73c",
+      "url": "payload/sw.js"
     },
     "favicon.ico": {
       "bytes": 24645,
@@ -40,25 +45,24 @@
       "sha256": "5eaa4169f40fe375b270b73082c25263c1d8cfa5792621e8672b8e61de030834",
       "url": "payload/icons/icon-512.png"
     },
-    "livedot-bridge-win-x64.exe": {
-      "bytes": 92307456,
-      "sha256": "1b0c9a4852597738c4e4f69b9612f754fdbda42934e34d7231039156c15da1cb",
-      "url": "https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com/windows-installer/payload/livedot-bridge-win-x64.exe",
-      "external": true
+    "assets/app-icon.ico": {
+      "bytes": 24645,
+      "sha256": "eab21d3e55f211882354435dde318e457079e98f7dc6d67cc111af15a01bc4bf",
+      "url": "payload/assets/app-icon.ico"
     },
-    "manifest.webmanifest": {
-      "bytes": 565,
-      "sha256": "ca9928a4d0562b12a03627798fc221cff2c96137f6ea607bda98dc6d6956bf89",
-      "url": "payload/manifest.webmanifest"
+    "agent-kit/skills/live-dot-map/SKILL.md": {
+      "bytes": 7724,
+      "sha256": "e2ad05b9c6706b8b1324ff95d8e09c01bb31123a367c52be0cb16e4c5109285d",
+      "url": "payload/agent-kit/skills/live-dot-map/SKILL.md"
     },
-    "sw.js": {
-      "bytes": 1918,
-      "sha256": "aa9f8971e558f2feb7cec46c918225ff944ea12d69abd46eeab776ae90fcc828",
-      "url": "payload/sw.js"
+    "agent-kit/skills/live-dot-map/templates/attempt.md": {
+      "bytes": 290,
+      "sha256": "8c818cd96efdce7d36551f8a76cef1291b99d11d883f92376aac80c56031bc80",
+      "url": "payload/agent-kit/skills/live-dot-map/templates/attempt.md"
     },
     "payload-manifest.json": {
-      "bytes": 1681,
-      "sha256": "50dc2a572d1f59a4b38f4c6ff228f4c66c918a6643669261b9ceb1b68bdfdfa6",
+      "bytes": 1782,
+      "sha256": "f964d88e6ebc4fdead834f05711957d8ae04f77f0012b865ffe0c5ba524b2df8",
       "url": "payload/payload-manifest.json"
     }
   }

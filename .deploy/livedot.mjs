@@ -285,6 +285,9 @@ function markLegacyTranslated(document) {
 function assertName(value) {
   if (typeof value !== "string" || value.trim().length === 0 || value.length > MAX_NAME) throw mapError("INVALID_NAME", 422, "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A\u4E14\u4E0D\u80FD\u8D85\u8FC7 80 \u5B57");
 }
+function assertItemName(value) {
+  if (typeof value !== "string" || value.length > MAX_NAME) throw mapError("INVALID_NAME", 422, "\u540D\u79F0\u5FC5\u987B\u662F\u5B57\u7B26\u4E32\u4E14\u4E0D\u80FD\u8D85\u8FC7 80 \u5B57");
+}
 function isAgent(actor) {
   return typeof actor === "string" && actor.startsWith("agent:");
 }
@@ -310,7 +313,7 @@ function applyOne(document, command2, actor, revision, now) {
     const value = cleanRecord(command2.value, "value");
     if (typeof value.id !== "string" || !ID2.test(value.id)) throw mapError("INVALID_ID", 422, "\u65B0\u5BF9\u8C61 ID \u65E0\u6548");
     if (getList(document, command2.collection).some((v) => v.id === value.id)) throw mapError("DUPLICATE_ID", 409, `\u5BF9\u8C61 ${value.id} \u5DF2\u5B58\u5728`);
-    if (command2.collection !== "anns") assertName(value.name);
+    if (command2.collection !== "anns") assertItemName(value.name);
     if (command2.collection === "nodes") {
       if (value.kind !== void 0 && !["goal", "problem", "result"].includes(String(value.kind))) throw mapError("INVALID_NODE_KIND", 422, "\u8282\u70B9 kind \u5FC5\u987B\u662F goal\u3001problem \u6216 result");
       value.kind = normalizeNodeKind(value.kind ?? value.type) === "problem" ? "problem" : "goal";
@@ -342,7 +345,7 @@ function applyOne(document, command2, actor, revision, now) {
     const item = findItem(document, command2.collection, command2.id);
     const patch = cleanRecord(command2.patch, "patch");
     for (const key of ["id", "createdAt", "createdBy", "updatedAt", "updatedBy", "updatedRevision"]) delete patch[key];
-    if ("name" in patch) assertName(patch.name);
+    if ("name" in patch) assertItemName(patch.name);
     if (command2.collection === "nodes" && "kind" in patch) {
       if (!["goal", "problem", "result"].includes(String(patch.kind))) throw mapError("INVALID_NODE_KIND", 422, "\u8282\u70B9 kind \u5FC5\u987B\u662F goal\u3001problem \u6216 result");
       patch.kind = patch.kind === "problem" ? "problem" : "goal";
@@ -1230,9 +1233,9 @@ var init_shared = __esm({
 
 // src/cli/livedot.ts
 import { randomUUID as randomUUID12 } from "node:crypto";
-import { access as access5, lstat as lstat9, mkdir as mkdir13, readFile as readFile15, readdir as readdir7, rename as rename10, writeFile as writeFile7 } from "node:fs/promises";
+import { access as access5, lstat as lstat9, mkdir as mkdir13, readFile as readFile15, readdir as readdir7, rename as rename10, stat as stat9, writeFile as writeFile7 } from "node:fs/promises";
 import { constants as constants3 } from "node:fs";
-import { dirname as dirname13, join as join20, resolve as resolve17 } from "node:path";
+import { dirname as dirname14, join as join20, resolve as resolve17 } from "node:path";
 import { homedir as homedir8 } from "node:os";
 import { spawn as spawn4 } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -1415,7 +1418,8 @@ async function readJson(path, { maxBytes = MAX_JSON_BYTES } = {}) {
     error3.details = { path, size: metadata.size, limit: maxBytes };
     throw error3;
   }
-  return JSON.parse(await readFile(path, "utf8"));
+  const text = await readFile(path, "utf8");
+  return JSON.parse(text.replace(/^\uFEFF/, ""));
 }
 async function writeJsonAtomic(path, value) {
   await atomicWriteFile(path, `${JSON.stringify(value, null, 2)}
@@ -2452,16 +2456,40 @@ var ProjectStore = class _ProjectStore {
 import { randomBytes as randomBytes3, randomUUID as randomUUID8, createHash as createHash8, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { access as access4, mkdir as mkdir9, readFile as readFile11, rename as rename6, rm as rm6, writeFile as writeFile3 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname9, isAbsolute as isAbsolute4, join as join18, resolve as resolve15 } from "node:path";
+import { basename as basename5, dirname as dirname10, isAbsolute as isAbsolute4, join as join18, resolve as resolve15 } from "node:path";
 import { spawn as spawn3 } from "node:child_process";
 import { homedir as homedir6 } from "node:os";
 
 // src/bridge/current-project.mjs
-import { readFile as readFile4 } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join as join4, resolve as resolve2 } from "node:path";
+import { lstatSync, readFileSync } from "node:fs";
+import { readFile as readFile4, stat as stat3 } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { dirname as dirname3, join as join4, resolve as resolve2 } from "node:path";
+function resolveGitWorktreeMain(dir) {
+  if (!dir || typeof dir !== "string") return null;
+  try {
+    const gitPath = join4(dir, ".git");
+    const stat10 = lstatSync(gitPath);
+    if (stat10.isFile()) {
+      const content = readFileSync(gitPath, "utf8").trim();
+      const match = content.match(/^gitdir:\s*(.+)$/m);
+      if (match) {
+        const gitdir = resolve2(dir, match[1]);
+        const idx = gitdir.replace(/\\/g, "/").lastIndexOf("/.git/worktrees/");
+        if (idx !== -1) {
+          const mainGitDir = gitdir.slice(0, idx + 5);
+          return dirname3(mainGitDir);
+        }
+      }
+    }
+  } catch {
+  }
+  return null;
+}
 function currentProjectFile() {
-  return process.env.LIVEDOT_CURRENT_PROJECT_FILE || join4(homedir(), ".live-dot-map", "current-project.json");
+  if (process.env.LIVEDOT_CURRENT_PROJECT_FILE) return process.env.LIVEDOT_CURRENT_PROJECT_FILE;
+  if (process.env.LIVEDOT_TEST_ROOT) return join4(process.env.LIVEDOT_TEST_ROOT, "current-project.json");
+  return join4(homedir(), ".live-dot-map", "current-project.json");
 }
 async function recordCurrentProject(projectRoot, options = {}) {
   try {
@@ -2478,7 +2506,7 @@ async function readCurrentProject(options = {}) {
   const target = options.file ?? currentProjectFile();
   try {
     const text = await readFile4(target, "utf8");
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(text.replace(/^\uFEFF/, ""));
     if (typeof parsed?.projectRoot === "string" && parsed.projectRoot.trim()) return parsed.projectRoot.trim();
   } catch {
   }
@@ -2486,13 +2514,36 @@ async function readCurrentProject(options = {}) {
 }
 async function resolveProjectRootToUse(pointerRoot, fallbackRoot, options = {}) {
   const candidate = pointerRoot ?? await readCurrentProject(options).catch(() => null);
-  if (!candidate) return fallbackRoot;
-  try {
-    const resolved = await canonicalDirectory(candidate);
-    return resolved;
-  } catch {
-    return fallbackRoot;
+  if (candidate) {
+    try {
+      const resolved = await canonicalDirectory(candidate);
+      const tempPrefix = resolve2(tmpdir()).toLowerCase();
+      const isTemp = resolved.toLowerCase().startsWith(tempPrefix);
+      const allowTemp = Boolean(options.allowTemp || process.env.LIVEDOT_TEST_ALLOW_TEMP || process.env.LIVEDOT_TEST_ROOT);
+      if (!isTemp || allowTemp) {
+        const hasLiveDotMap = await stat3(join4(resolved, ".live-dot-map")).then((s) => s.isDirectory()).catch(() => false);
+        if (hasLiveDotMap) {
+          return resolved;
+        }
+      }
+    } catch {
+    }
   }
+  if (fallbackRoot) {
+    const worktreeMain = resolveGitWorktreeMain(fallbackRoot);
+    if (worktreeMain) {
+      try {
+        const resolvedMain = await canonicalDirectory(worktreeMain);
+        return resolvedMain;
+      } catch {
+      }
+    }
+    try {
+      return await canonicalDirectory(fallbackRoot);
+    } catch {
+    }
+  }
+  return fallbackRoot;
 }
 
 // src/bridge/logger.mjs
@@ -2587,9 +2638,9 @@ import {
   mkdir as mkdir4,
   readFile as readFile5,
   realpath as realpath3,
-  stat as stat3
+  stat as stat4
 } from "node:fs/promises";
-import { dirname as dirname3, isAbsolute as isAbsolute2, join as join6, relative as relative2, resolve as resolve3, sep } from "node:path";
+import { dirname as dirname4, isAbsolute as isAbsolute2, join as join6, relative as relative2, resolve as resolve3, sep } from "node:path";
 var MAX_MARKDOWN_BYTES = 2 * 1024 * 1024;
 var MAX_MARKDOWN_PATH = 1024;
 function inRoot(root, candidate) {
@@ -2636,7 +2687,7 @@ async function ensureNoSymlink(root, candidate, { allowMissing = true } = {}) {
   if (candidateStat && !candidateStat.isFile()) {
     throw new BridgeError("MARKDOWN_NOT_FILE", "Markdown \u8DEF\u5F84\u4E0D\u662F\u6587\u4EF6", { status: 409 });
   }
-  while (cursor !== rootReal && cursor !== dirname3(cursor)) {
+  while (cursor !== rootReal && cursor !== dirname4(cursor)) {
     try {
       const info = await lstat3(cursor);
       if (info.isSymbolicLink()) throw new BridgeError("MARKDOWN_SYMLINK_FORBIDDEN", "\u4E0D\u5141\u8BB8\u901A\u8FC7\u7B26\u53F7\u94FE\u63A5\u8BBF\u95EE Markdown", { status: 403 });
@@ -2646,7 +2697,7 @@ async function ensureNoSymlink(root, candidate, { allowMissing = true } = {}) {
     } catch (error3) {
       if (error3?.code !== "ENOENT") throw error3;
       if (!allowMissing) throw new BridgeError("MARKDOWN_NOT_FOUND", "Markdown \u6587\u4EF6\u4E0D\u5B58\u5728", { status: 404 });
-      cursor = dirname3(cursor);
+      cursor = dirname4(cursor);
     }
   }
   return { root: rootReal, stat: candidateStat };
@@ -2689,20 +2740,20 @@ var MarkdownStore = class {
     const { path, candidate } = await this.#target(requestedPath, { allowMissing: true });
     let metadata;
     try {
-      metadata = await stat3(candidate);
+      metadata = await stat4(candidate);
     } catch (error3) {
       if (error3?.code !== "ENOENT") throw error3;
       if (!create) return { path, content: "", exists: false, created: false, size: 0, etag: digest(""), updatedAt: null };
       const initial = initialMarkdown(path, title);
       if (Buffer.byteLength(initial, "utf8") > MAX_MARKDOWN_BYTES) throw new BridgeError("MARKDOWN_TOO_LARGE", "Markdown \u5185\u5BB9\u8D85\u8FC7 2 MiB \u9650\u5236", { status: 413 });
-      await mkdir4(dirname3(candidate), { recursive: true });
+      await mkdir4(dirname4(candidate), { recursive: true });
       await ensureNoSymlink(this.projectRoot, candidate, { allowMissing: true });
       try {
         await atomicWriteFile(candidate, initial);
       } catch (writeError) {
         throw new BridgeError("MARKDOWN_WRITE_FAILED", "Markdown \u521B\u5EFA\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5", { status: 503, cause: writeError });
       }
-      metadata = await stat3(candidate);
+      metadata = await stat4(candidate);
       return result(path, initial, metadata, { created: true });
     }
     if (create && metadata.size === 0) {
@@ -2710,7 +2761,7 @@ var MarkdownStore = class {
       await atomicWriteFile(candidate, initial).catch((error3) => {
         throw new BridgeError("MARKDOWN_WRITE_FAILED", "Markdown \u521D\u59CB\u5316\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5", { status: 503, cause: error3 });
       });
-      metadata = await stat3(candidate);
+      metadata = await stat4(candidate);
       return result(path, initial, metadata, { created: true });
     }
     if (metadata.size > MAX_MARKDOWN_BYTES) throw new BridgeError("MARKDOWN_TOO_LARGE", "Markdown \u6587\u4EF6\u8D85\u8FC7 2 MiB \u9650\u5236", { status: 413, details: { size: metadata.size, limit: MAX_MARKDOWN_BYTES } });
@@ -2729,7 +2780,7 @@ var MarkdownStore = class {
     const path = normalizeRelativePath(requestedPath);
     const lockPath = this.#lockPath(path);
     try {
-      await ensureDirectory(dirname3(lockPath));
+      await ensureDirectory(dirname4(lockPath));
       await ensureNoSymlink(this.projectRoot, lockPath, { allowMissing: true });
       return await withFileLock(lockPath, () => this.#readUnlocked(path, options), { timeoutMs: 5e3, staleMs: 3e4 });
     } catch (error3) {
@@ -2748,7 +2799,7 @@ var MarkdownStore = class {
     const path = normalizeRelativePath(requestedPath);
     const lockPath = this.#lockPath(path);
     try {
-      await ensureDirectory(dirname3(lockPath));
+      await ensureDirectory(dirname4(lockPath));
       await ensureNoSymlink(this.projectRoot, lockPath, { allowMissing: true });
       return await withFileLock(lockPath, async () => {
         const { candidate } = await this.#target(path, { allowMissing: true });
@@ -2765,10 +2816,10 @@ var MarkdownStore = class {
             details: current ? { current: { path: current.path, content: current.content, size: current.size, etag: current.etag, updatedAt: current.updatedAt } } : { current: null }
           });
         }
-        await mkdir4(dirname3(candidate), { recursive: true });
+        await mkdir4(dirname4(candidate), { recursive: true });
         await ensureNoSymlink(this.projectRoot, candidate, { allowMissing: true });
         await atomicWriteFile(candidate, content);
-        const metadata = await stat3(candidate);
+        const metadata = await stat4(candidate);
         return result(path, content, metadata);
       }, { timeoutMs: 5e3, staleMs: 3e4 });
     } catch (error3) {
@@ -2779,13 +2830,13 @@ var MarkdownStore = class {
   }
   async reveal(requestedPath) {
     const { path, candidate } = await this.#target(requestedPath, { allowMissing: true });
-    const exists3 = await stat3(candidate).then(() => true).catch((error3) => error3?.code === "ENOENT" ? false : Promise.reject(error3));
+    const exists3 = await stat4(candidate).then(() => true).catch((error3) => error3?.code === "ENOENT" ? false : Promise.reject(error3));
     return { path, exists: exists3, opened: false };
   }
 };
 
 // src/bridge/human-md-updates.mjs
-import { readFile as readFile6, stat as stat4 } from "node:fs/promises";
+import { readFile as readFile6, stat as stat5 } from "node:fs/promises";
 import { join as join7, resolve as resolve4 } from "node:path";
 var DEFAULT_MAX_LOG_BYTES = 512 * 1024;
 var HumanMdUpdateLog = class {
@@ -2866,7 +2917,7 @@ var HumanMdUpdateLog = class {
   async #compactIfNeeded() {
     let size = 0;
     try {
-      size = (await stat4(this.logPath)).size;
+      size = (await stat5(this.logPath)).size;
     } catch {
       return;
     }
@@ -2964,9 +3015,9 @@ var MdIndex = class {
   /** 取一张卡；指纹对不上/缺失则重读该文件刷新。mapRoot 用于拼绝对路径。 */
   async getOrRefreshCard({ mapRoot, relativePath }) {
     const absolute = join8(this.projectRoot, relativePath);
-    let stat8;
+    let stat10;
     try {
-      stat8 = await this.fs.stat(absolute);
+      stat10 = await this.fs.stat(absolute);
     } catch (error3) {
       if (error3?.code === "ENOENT") {
         this.#cards.delete(relativePath);
@@ -2976,20 +3027,20 @@ var MdIndex = class {
       throw error3;
     }
     const existing = this.#cards.get(relativePath);
-    const fresh = !existing || existing.mtimeMs !== stat8.mtimeMs || existing.bytes !== stat8.size;
+    const fresh = !existing || existing.mtimeMs !== stat10.mtimeMs || existing.bytes !== stat10.size;
     if (!fresh) return existing;
     const content = await this.fs.readFile(absolute, "utf8");
     const card = {
       path: relativePath,
       etag: digest2(content),
-      mtimeMs: stat8.mtimeMs,
-      bytes: stat8.size,
+      mtimeMs: stat10.mtimeMs,
+      bytes: stat10.size,
       title: firstHeading(content) || "",
       summary: visibleSummary(content),
       ownerKind: typeof existing?.ownerKind === "string" ? existing.ownerKind : inferOwnerKind(relativePath),
       ownerId: typeof existing?.ownerId === "string" ? existing.ownerId : inferOwnerId(relativePath),
       assets: existing?.assets ?? [],
-      updatedAt: stat8.mtime?.toISOString?.() ?? new Date(stat8.mtimeMs).toISOString()
+      updatedAt: stat10.mtime?.toISOString?.() ?? new Date(stat10.mtimeMs).toISOString()
     };
     this.#cards.set(relativePath, card);
     this.#dirty = true;
@@ -3012,19 +3063,19 @@ var MdIndex = class {
       const relativePath = `${ownerRelative}/${entry.name}`;
       try {
         const absolute = join8(directory, entry.name);
-        const stat8 = await this.fs.stat(absolute);
+        const stat10 = await this.fs.stat(absolute);
         const content = await this.fs.readFile(absolute, "utf8");
         this.#cards.set(relativePath, {
           path: relativePath,
           etag: digest2(content),
-          mtimeMs: stat8.mtimeMs,
-          bytes: stat8.size,
+          mtimeMs: stat10.mtimeMs,
+          bytes: stat10.size,
           title: firstHeading(content) || "",
           summary: visibleSummary(content),
           ownerKind: ownerKind === "nodes" ? "node" : "route",
           ownerId,
           assets,
-          updatedAt: stat8.mtime?.toISOString?.() ?? new Date(stat8.mtimeMs).toISOString()
+          updatedAt: stat10.mtime?.toISOString?.() ?? new Date(stat10.mtimeMs).toISOString()
         });
       } catch {
       }
@@ -3060,10 +3111,10 @@ var MdIndex = class {
     return this.#cards.size;
   }
   /** 校验某张卡是否仍新鲜（只 lstat，不读内容）。返回 null 表示已失效。 */
-  async isFresh(path, stat8) {
+  async isFresh(path, stat10) {
     const card = this.#cards.get(path);
     if (!card) return false;
-    return card.mtimeMs === stat8.mtimeMs && card.bytes === stat8.size;
+    return card.mtimeMs === stat10.mtimeMs && card.bytes === stat10.size;
   }
   async #withLock(operation) {
     await ensureDirectory(join8(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
@@ -3112,10 +3163,10 @@ import {
   rm as rm3,
   readFile as readFile7,
   realpath as realpath4,
-  stat as stat5
+  stat as stat6
 } from "node:fs/promises";
 import { randomBytes as randomBytes2, createHash as createHash4 } from "node:crypto";
-import { basename as basename2, dirname as dirname4, extname, join as join9, relative as relative3, resolve as resolve6, sep as sep2 } from "node:path";
+import { basename as basename2, dirname as dirname5, extname, join as join9, relative as relative3, resolve as resolve6, sep as sep2 } from "node:path";
 var MAX_ASSET_BYTES = 20 * 1024 * 1024;
 var MAX_BUNDLE_FILES = 200;
 var MAX_MAP_ASSET_BYTES = 1024 * 1024 * 1024;
@@ -3290,7 +3341,7 @@ var BundleStore = class _BundleStore {
       } else if (!allowMissing) {
         throw bridgeError("BUNDLE_NOT_FOUND", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5B58\u5728", 404, { path: cursor });
       }
-      const parent = dirname4(cursor);
+      const parent = dirname5(cursor);
       if (parent === cursor || !within(rootReal, parent)) break;
       cursor = parent;
     }
@@ -3355,7 +3406,7 @@ var BundleStore = class _BundleStore {
     return output;
   }
   async #fileInfo(info, entry) {
-    const metadata = await stat5(entry.path);
+    const metadata = await stat6(entry.path);
     const isIndex = entry.name === "index.md";
     const isMarkdown = isIndex || /\.md$/i.test(entry.name);
     const type = isMarkdown ? { mime: "text/markdown; charset=utf-8", kind: "markdown" } : contentTypeFor(entry.name);
@@ -3639,7 +3690,7 @@ ${right}`;
       }
     }
     let total = incomingBytes;
-    for (const entry of mapEntries) total += (await stat5(entry.path)).size;
+    for (const entry of mapEntries) total += (await stat6(entry.path)).size;
     if (total > MAX_MAP_ASSET_BYTES) throw bridgeError("BUNDLE_SIZE_QUOTA", "\u5355\u5730\u56FE\u9644\u4EF6\u603B\u91CF\u8D85\u8FC7 1 GiB", 413);
   }
   async #withMapLock(operation) {
@@ -3655,7 +3706,7 @@ ${right}`;
   }
   async #consumeStream(stream, temporary) {
     if (!stream || typeof stream[Symbol.asyncIterator] !== "function") throw bridgeError("BUNDLE_STREAM_REQUIRED", "\u9644\u4EF6\u5FC5\u987B\u901A\u8FC7\u53EF\u8BFB\u6D41\u5BFC\u5165", 400);
-    await ensureDirectory(dirname4(temporary));
+    await ensureDirectory(dirname5(temporary));
     const handle = await open2(temporary, "wx", 384);
     let size = 0;
     const chunks = [];
@@ -3680,7 +3731,7 @@ ${right}`;
   async #copySource(sourcePath, temporary, { allowExternal = false } = {}) {
     const candidate = allowExternal ? resolve6(sourcePath) : resolve6(this.projectRoot, sourcePath);
     if (!allowExternal) await this.#assertSafePath(this.projectRoot, candidate, { allowMissing: false });
-    const before = await stat5(candidate);
+    const before = await stat6(candidate);
     if (!before.isFile()) throw bridgeError("BUNDLE_SOURCE_NOT_FILE", "\u9644\u4EF6\u6E90\u5FC5\u987B\u662F\u666E\u901A\u6587\u4EF6", 400);
     if (before.size > MAX_ASSET_BYTES) throw bridgeError("BUNDLE_ASSET_TOO_LARGE", "\u5355\u9644\u4EF6\u8D85\u8FC7 20 MiB", 413, { limit: MAX_ASSET_BYTES });
     let handle;
@@ -3690,7 +3741,7 @@ ${right}`;
       const opened = await handle.stat();
       if (!opened.isFile() || !compareStats(before, opened)) throw bridgeError("BUNDLE_SOURCE_CHANGED", "\u9644\u4EF6\u6E90\u5728\u5BFC\u5165\u524D\u5DF2\u53D8\u5316", 409);
       const result2 = await this.#consumeStream(handle.createReadStream(), temporary);
-      const after = await stat5(candidate);
+      const after = await stat6(candidate);
       if (!compareStats(before, after) || result2.size !== before.size) throw bridgeError("BUNDLE_SOURCE_CHANGED", "\u9644\u4EF6\u6E90\u5728\u5BFC\u5165\u8FC7\u7A0B\u4E2D\u53D1\u751F\u53D8\u5316", 409);
       return result2;
     } catch (error3) {
@@ -4208,7 +4259,13 @@ var schema = (name, description, properties = {}, required2 = []) => ({
   description,
   inputSchema: {
     type: "object",
-    properties,
+    properties: {
+      ...properties,
+      projectRoot: {
+        type: "string",
+        description: "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+      }
+    },
     ...required2.length ? { required: required2 } : {},
     additionalProperties: true
   }
@@ -4217,6 +4274,17 @@ var owner = {
   ownerKind: { type: "string", enum: ["node", "route"] },
   ownerId: { type: "string" }
 };
+function ensureAgentAuthorEnvelope(content, actor = "agent") {
+  if (typeof content !== "string") return content;
+  const trimmed = content.trim();
+  if (!trimmed) return content;
+  if (/<!--\s*@author:/i.test(content)) return content;
+  const rawActor = String(actor || "agent").trim();
+  const authorId = rawActor.startsWith("agent:") ? rawActor : `agent:${rawActor.replace(/^agent-?/, "") || "generic"}`;
+  return `<!-- @author: ${authorId} -->
+${content.endsWith("\n") ? content : content + "\n"}<!-- /@author -->
+`;
+}
 var TOOL_DEFINITIONS = Object.freeze([
   schema("map_get_context", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u7684\u7ED3\u6784\u3001\u63A8\u8FDB\u6458\u8981\u4E0E\u660E\u786E\u5173\u8054 Markdown\u3002", { query: { type: "string" }, currentNodeId: { anyOf: [{ type: "string" }, { type: "null" }] }, includeHistory: { type: "boolean" }, limit: { type: "integer", minimum: 1, maximum: 12 } }),
   schema("map_list_human_updates", "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002"),
@@ -4231,7 +4299,7 @@ var TOOL_DEFINITIONS = Object.freeze([
   schema("map_checkpoint", "\u521B\u5EFA\u53EF\u6062\u590D\u68C0\u67E5\u70B9\u3002", { reason: { type: "string" } }),
   schema("map_plan_consolidation", "\u53EA\u8BFB\u751F\u6210\u53EF\u5BA1\u6838\u7684\u6574\u7406\u5EFA\u8BAE\u3002", { maxSuggestions: { type: "integer", minimum: 1, maximum: 20 }, now: { type: "string" } }),
   schema("map_read_markdown", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u8D44\u6599\u5305 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" } }),
-  schema("map_write_markdown", "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, baseEtag: { type: "string" }, allowContentRemoval: { type: "boolean" } }, ["content", "baseEtag"]),
+  schema("map_write_markdown", "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, baseEtag: { type: "string" }, allowContentRemoval: { type: "boolean" }, wrapAuthor: { type: "boolean" } }, ["content", "baseEtag"]),
   schema("map_append_markdown", "\u6309\u8DEF\u5F84\u9501\u5E42\u7B49\u8FFD\u52A0 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, commandId: { type: "string" } }, ["content", "commandId"]),
   schema("map_list_bundle_files", "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u6587\u4EF6\u3002", { ...owner, includeArchived: { type: "boolean" } }, ["ownerKind", "ownerId"]),
   schema("map_create_markdown", "\u5728\u5BF9\u8C61\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u8865\u5145 Markdown\u3002", { ...owner, fileName: { type: "string" }, title: { type: "string" }, content: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
@@ -4494,12 +4562,19 @@ var ToolService = class {
       return { mapKey, documentId: context.documentId, revision: snapshot.revision, ...this.shared.planConsolidation(document, { now: typeof args.now === "string" ? args.now : void 0, maxSuggestions: Number.isInteger(args.maxSuggestions) ? args.maxSuggestions : 12, markdown: documents.markdown }) };
     }
     const file = ownerArgs(args, mapKey);
+    const isIndexFile = file.fileName === "index.md" || file.name === "index.md";
+    const isAgent2 = typeof this.actor === "string" && this.actor.startsWith("agent");
     if (name === "map_read_markdown") return cleanResult(await bundleStore.readMarkdown(file));
     if (name === "map_write_markdown") {
+      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u9ED8\u8BA4\u7981\u6B62 Agent \u4FEE\u6539\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002\u4EC5\u5F53\u4EBA\u7C7B\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6307\u4EE4\u8981\u6C42\u4FEE\u6539 index.md \u65F6\uFF0C\u65B9\u53EF\u663E\u5F0F\u4F20\u5165 allowIndexModification: true\u3002", { status: 403 });
+      }
+      const rawContent = args.content;
+      const content = args.wrapAuthor !== false && rawContent !== void 0 && isAgent2 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
       if (args.allowContentRemoval !== true) {
         const current = await bundleStore.readMarkdown(file).catch(() => null);
         const existing = String(current?.content ?? "");
-        const next = String(args.content ?? "");
+        const next = String(content ?? "");
         if (existing.trim()) {
           const removed = existing.split(/\r?\n/).filter((line) => line.trim() && !next.includes(line.trim()));
           if (removed.length) {
@@ -4507,18 +4582,27 @@ var ToolService = class {
           }
         }
       }
-      const result2 = await bundleStore.replaceMarkdown({ ...file, content: args.content, baseEtag: args.baseEtag });
+      const result2 = await bundleStore.replaceMarkdown({ ...file, content, baseEtag: args.baseEtag });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
-      return { ...result2, content: String(args.content) };
+      return { ...result2, content: String(content) };
     }
     if (name === "map_append_markdown") {
-      const result2 = await bundleStore.appendMarkdown({ ...file, content: args.content, commandId: args.commandId });
+      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u9ED8\u8BA4\u7981\u6B62 Agent \u4FEE\u6539\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002\u4EC5\u5F53\u4EBA\u7C7B\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6307\u4EE4\u8981\u6C42\u4FEE\u6539 index.md \u65F6\uFF0C\u65B9\u53EF\u663E\u5F0F\u4F20\u5165 allowIndexModification: true\u3002", { status: 403 });
+      }
+      const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
+      const result2 = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
     if (name === "map_list_bundle_files") return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === "map_create_markdown") {
-      const result2 = await bundleStore.createMarkdown({ ...file, content: args.content, title: args.title });
+      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
+        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u7981\u6B62 Agent \u8986\u76D6\u521B\u5EFA\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002", { status: 403 });
+      }
+      const rawContent = args.content;
+      const content = args.wrapAuthor !== false && rawContent !== void 0 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
+      const result2 = await bundleStore.createMarkdown({ ...file, content, title: args.title });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
@@ -4873,7 +4957,7 @@ var ArchiveLifecycle = class {
 import { spawn } from "node:child_process";
 import { access, lstat as lstat7 } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname as dirname5, join as join14, resolve as resolve10, sep as sep4 } from "node:path";
+import { dirname as dirname6, join as join14, resolve as resolve10, sep as sep4 } from "node:path";
 var TRANSACTION_ID = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function failure(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
@@ -4883,9 +4967,16 @@ function defaultNativeHelperPath(options = {}) {
   const fromEnv = options.envHelper ?? process.env.LIVEDOT_NATIVE_HELPER;
   if (fromEnv && existsSync(fromEnv)) return resolve10(fromEnv);
   const execPath = options.execPath ?? process.execPath;
-  const fromExec = join14(dirname5(resolve10(execPath)), "..", "LiveDotMapSetup.exe");
+  const fromExec = join14(dirname6(resolve10(execPath)), "..", "LiveDotMapSetup.exe");
   if (existsSync(fromExec)) return fromExec;
-  const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
+  if (options.localAppData) {
+    return join14(resolve10(options.localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+  }
+  const fromRelease = join14(process.cwd(), "installer", "winforms", "bin", "Release", "net8.0-windows", "win-x64", "LiveDotMapSetup.exe");
+  if (existsSync(fromRelease)) return fromRelease;
+  const fromDist = join14(process.cwd(), "dist", "windows-installer", "LiveDotMapSetup.exe");
+  if (existsSync(fromDist)) return fromDist;
+  const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return null;
   return join14(resolve10(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
 }
@@ -4990,11 +5081,11 @@ var NativeRecycleBin = class {
 import { execFile as childExecFile, spawn as childSpawn } from "node:child_process";
 import { randomUUID as randomUUID5 } from "node:crypto";
 import { homedir as homedir3 } from "node:os";
-import { lstat as lstat8, mkdir as mkdir7, readdir as readdir6, readFile as readFile9, realpath as realpath6, stat as stat6 } from "node:fs/promises";
-import { dirname as dirname6, isAbsolute as isAbsolute3, join as join15, relative as relative5, resolve as resolve11, win32 } from "node:path";
+import { lstat as lstat8, mkdir as mkdir7, readdir as readdir6, readFile as readFile9, realpath as realpath6, stat as stat7 } from "node:fs/promises";
+import { dirname as dirname7, isAbsolute as isAbsolute3, join as join15, relative as relative5, resolve as resolve11, win32 } from "node:path";
 var SETTINGS_VERSION = 1;
-var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "system", "folder", "manual"]);
-var EXE_NAME = /^(Code|Antigravity|pycharm64)\.exe$/i;
+var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "terminal", "gitbash", "system", "folder", "manual"]);
+var EXE_NAME = /^(Code|Antigravity|pycharm64|wt|git-bash)\.exe$/i;
 var EDITOR_ID = /^[a-z][a-z0-9-]{0,31}$/;
 var EXTRA_EDITORS = [
   {
@@ -5025,6 +5116,36 @@ var EXTRA_EDITORS = [
       const programFiles = process.env.ProgramFiles;
       if (programFiles) out.push(...await scanVersionedEditors(join15(programFiles, "JetBrains"), 1));
       return out;
+    }
+  },
+  {
+    id: "terminal",
+    label: "Terminal",
+    appPaths: ["wt.exe"],
+    candidates() {
+      const out = [];
+      const local = process.env.LOCALAPPDATA;
+      if (local) out.push(join15(local, "Microsoft", "WindowsApps", "wt.exe"));
+      return out;
+    },
+    getArgs(target) {
+      return ["-d", dirname7(target)];
+    }
+  },
+  {
+    id: "gitbash",
+    label: "Git Bash",
+    appPaths: ["git-bash.exe"],
+    candidates() {
+      const out = [];
+      const programFiles = process.env.ProgramFiles;
+      if (programFiles) out.push(join15(programFiles, "Git", "git-bash.exe"));
+      const programFilesX86 = process.env["ProgramFiles(x86)"];
+      if (programFilesX86) out.push(join15(programFilesX86, "Git", "git-bash.exe"));
+      return out;
+    },
+    getArgs(target) {
+      return [`--cd=${dirname7(target)}`];
     }
   }
 ];
@@ -5216,7 +5337,7 @@ var EditorService = class _EditorService {
         break;
       } catch (error3) {
         if (!allowMissing || error3?.code !== "ENOENT") throw error3;
-        const parent = dirname6(current);
+        const parent = dirname7(current);
         if (parent === current) throw error3;
         current = parent;
       }
@@ -5366,13 +5487,13 @@ var EditorService = class _EditorService {
       if (await this.#resolveExtra(def)) editors.push({ id: def.id, label: def.label, kind: "editor", available: true });
     }
     editors.push(
-      { id: "system", label: "\u7528\u9ED8\u8BA4\u5E94\u7528\u6253\u5F00", kind: "system", available: Boolean(this.nativeHelper) },
-      { id: "folder", label: "\u5728\u6587\u4EF6\u5939\u4E2D\u663E\u793A", kind: "folder", available: Boolean(this.nativeHelper) },
+      { id: "system", label: "\u7528\u9ED8\u8BA4\u5E94\u7528\u6253\u5F00", kind: "system", available: process.platform === "win32" || Boolean(this.nativeHelper) },
+      { id: "folder", label: "\u5728\u6587\u4EF6\u5939\u4E2D\u663E\u793A", kind: "folder", available: process.platform === "win32" || Boolean(this.nativeHelper) },
       {
         id: "manual",
         label: manualAvailable ? "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F" : "\u624B\u52A8\u9009\u62E9\u7A0B\u5E8F\u2026",
         kind: "manual",
-        available: manualAvailable && Boolean(this.nativeHelper),
+        available: manualAvailable && (process.platform === "win32" || Boolean(this.nativeHelper)),
         needsPicker: !manualAvailable
       }
     );
@@ -5429,7 +5550,7 @@ var EditorService = class _EditorService {
     return { id: "manual", label: "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F", available: true };
   }
   async #writeSettings() {
-    await mkdir7(dirname6(this.settingsPath), { recursive: true });
+    await mkdir7(dirname7(this.settingsPath), { recursive: true });
     const output = {
       version: SETTINGS_VERSION,
       preferredEditorId: this.settings.preferredEditorId || null,
@@ -5462,10 +5583,25 @@ var EditorService = class _EditorService {
     }
     if (editorId === "folder") {
       const candidate = await this.#projectPath(relativePath, { kind: targetKind === "directory" ? "directory" : "file" });
-      const metadata = await stat6(candidate);
-      const folder = isDirectory(metadata) ? candidate : dirname6(candidate);
+      const metadata = await stat7(candidate);
+      const folder = isDirectory(metadata) ? candidate : dirname7(candidate);
       await this.#assertNoSymlinkEscape(folder);
-      await this.#callNative("open-folder", { targetPath: isDirectory(metadata) ? folder : candidate });
+      const targetPath = isDirectory(metadata) ? folder : candidate;
+      try {
+        await this.#callNative("open-folder", { targetPath });
+      } catch (nativeErr) {
+        if (process.platform === "win32") {
+          const child = this.spawn("explorer.exe", [`/select,${targetPath}`], {
+            shell: false,
+            windowsHide: false,
+            detached: true,
+            stdio: "ignore"
+          });
+          child?.unref?.();
+        } else {
+          throw nativeErr;
+        }
+      }
       return { editorId, launched: true };
     }
     const target = await this.#projectPath(relativePath, { kind: "file" });
@@ -5478,14 +5614,43 @@ var EditorService = class _EditorService {
     if (extraDef) {
       const executable = await this.#resolveExtra(extraDef);
       if (!executable) throw bridgeError2("EDITOR_NOT_AVAILABLE", `\u672A\u68C0\u6D4B\u5230 ${extraDef.label}`, 503);
-      return { editorId, ...this.#launch(executable, [target]) };
+      const args = typeof extraDef.getArgs === "function" ? extraDef.getArgs(target) : [target];
+      return { editorId, ...this.#launch(executable, args) };
     }
     if (editorId === "system") {
-      await this.#callNative("open-default", { targetPath: target });
+      try {
+        await this.#callNative("open-default", { targetPath: target });
+      } catch (nativeErr) {
+        if (process.platform === "win32") {
+          const child = this.spawn("explorer.exe", [target], {
+            shell: false,
+            windowsHide: false,
+            detached: true,
+            stdio: "ignore"
+          });
+          child?.unref?.();
+        } else {
+          throw nativeErr;
+        }
+      }
       return { editorId, launched: true };
     }
     const manualPath = await this.#assertManualExecutable(this.settings.editors.manual.path);
-    await this.#callNative("open-manual", { executablePath: manualPath, targetPath: target });
+    try {
+      await this.#callNative("open-manual", { executablePath: manualPath, targetPath: target });
+    } catch (nativeErr) {
+      if (process.platform === "win32") {
+        const child = this.spawn(manualPath, [target], {
+          shell: false,
+          windowsHide: false,
+          detached: true,
+          stdio: "ignore"
+        });
+        child?.unref?.();
+      } else {
+        throw nativeErr;
+      }
+    }
     return { editorId, launched: true };
   }
   async saveAs({ relativePath } = {}) {
@@ -5634,9 +5799,9 @@ var sharedBridgeContract = Object.freeze({
 // agent-kit/lib/installer.mjs
 import { createHash as createHash7, randomUUID as randomUUID7 } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access as access3, copyFile as copyFile3, mkdir as mkdir8, readFile as readFile10, rename as rename5, rm as rm5, stat as stat7, writeFile as writeFile2 } from "node:fs/promises";
+import { access as access3, copyFile as copyFile3, mkdir as mkdir8, readFile as readFile10, rename as rename5, rm as rm5, stat as stat8, writeFile as writeFile2 } from "node:fs/promises";
 import { constants as constants2 } from "node:fs";
-import { basename as basename4, dirname as dirname8, join as join17, resolve as resolve14 } from "node:path";
+import { basename as basename4, dirname as dirname9, join as join17, resolve as resolve14 } from "node:path";
 import { homedir as homedir5 } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -5671,6 +5836,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
           "type": "integer",
           "minimum": 1,
           "maximum": 12
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5681,7 +5850,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -5699,6 +5873,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "summary": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5713,7 +5891,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "\u5217\u51FA\u9879\u76EE\u5185\u5730\u56FE\u4E0E\u5F53\u524D active-map\u3002",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -5725,6 +5908,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5738,6 +5925,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "mapKey": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5757,6 +5948,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5792,6 +5987,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeHistory": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5823,6 +6022,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
           "items": {
             "type": "object"
           }
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5839,6 +6042,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "document": {
           "type": "object"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5852,6 +6059,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "reason": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5870,6 +6081,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "now": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5896,6 +6111,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "path": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
@@ -5931,6 +6150,13 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "allowContentRemoval": {
           "type": "boolean"
+        },
+        "wrapAuthor": {
+          "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5967,6 +6193,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "commandId": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -5994,6 +6224,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6027,6 +6261,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "content": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6058,6 +6296,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "to": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6087,6 +6329,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6115,6 +6361,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6143,6 +6393,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6176,6 +6430,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "mimeType": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6204,6 +6462,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6232,6 +6494,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6263,6 +6529,10 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeContent": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
@@ -6316,7 +6586,7 @@ function projectIdForRoot(projectRoot) {
 // agent-kit/lib/shortcut.mjs
 import { execFileSync } from "node:child_process";
 import { homedir as homedir4 } from "node:os";
-import { dirname as dirname7, join as join16, resolve as resolve13 } from "node:path";
+import { dirname as dirname8, join as join16, resolve as resolve13 } from "node:path";
 function windowsDesktopDirectory({ platform = process.platform, env = process.env, exec = execFileSync } = {}) {
   if (platform !== "win32") return join16(homedir4(), "Desktop");
   try {
@@ -6407,18 +6677,31 @@ var map_template_default = {
 };
 
 // agent-kit/lib/installer.mjs
-var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code"]);
+var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code", "antigravity"]);
 var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
-var skillTargetPaths = (home, id) => id === "codex" ? join17(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join17(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join17(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : join17(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
+var skillTargetPaths = (home, id) => id === "codex" ? join17(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join17(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join17(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : join17(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
 var kimiPluginRoot = (home) => join17(home, ".kimi-code", "plugins", "live-dot-map");
 var codebuddyPluginRoot = (home) => join17(home, ".codebuddy", "plugins", "live-dot-map");
 var ADAPTER_PROBES = Object.freeze({
   codex: ["codex"],
   "claude-code": ["claude", "claude-code"],
   "kimi-code": ["kimi", "kimi-code"],
+  antigravity: ["antigravity", "agy"],
   codebuddy: ["codebuddy", "codebuddy-code", "workbuddy"]
 });
+function adapterFingerprints(id, { platform, home }) {
+  if (id !== "antigravity") return [];
+  const local = process.env.LOCALAPPDATA;
+  const programFiles = process.env.ProgramFiles;
+  const out = [];
+  if (platform === "win32") {
+    if (local) out.push(join17(local, "Programs", "Antigravity", "Antigravity.exe"));
+    if (programFiles) out.push(join17(programFiles, "Antigravity", "Antigravity.exe"));
+  }
+  out.push(join17(home, ".gemini", "antigravity-ide"));
+  return out;
+}
 async function exists2(path) {
   try {
     await access3(path, constants2.F_OK);
@@ -6428,7 +6711,7 @@ async function exists2(path) {
   }
 }
 async function atomicText(path, text) {
-  await mkdir8(dirname8(path), { recursive: true });
+  await mkdir8(dirname9(path), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${randomUUID7()}`;
   await writeFile2(temp, text, { encoding: "utf8", flag: "wx" });
   await rename5(temp, path);
@@ -6450,7 +6733,7 @@ function sha256(bytes) {
 }
 async function captureFile(path) {
   try {
-    const metadata = await stat7(path);
+    const metadata = await stat8(path);
     if (metadata.isDirectory()) return { path, exists: true, kind: "directory", sha256: null, content: null };
     const bytes = await readFile10(path);
     return { path, exists: true, kind: "file", sha256: sha256(bytes), content: bytes.toString("base64") };
@@ -6461,13 +6744,13 @@ async function captureFile(path) {
 async function restoreCapturedFile(entry) {
   if (entry?.kind === "directory") return;
   if (entry?.exists) {
-    await mkdir8(dirname8(entry.path), { recursive: true });
+    await mkdir8(dirname9(entry.path), { recursive: true });
     await writeFile2(entry.path, Buffer.from(String(entry.content || ""), "base64"));
   } else {
     await rm5(entry.path, { force: true }).catch(() => void 0);
   }
 }
-var adapterConfigPaths = (home, id) => id === "codex" ? [join17(home, ".codex", "config.toml"), join17(home, ".codex", "hooks.json")] : id === "claude-code" ? [join17(home, ".claude", "settings.json")] : id === "kimi-code" ? [join17(home, ".kimi-code", "mcp.json"), join17(kimiPluginRoot(home), "kimi.plugin.json")] : [join17(home, ".codebuddy", "settings.json"), join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+var adapterConfigPaths = (home, id) => id === "codex" ? [join17(home, ".codex", "config.toml"), join17(home, ".codex", "hooks.json")] : id === "claude-code" ? [join17(home, ".claude", "settings.json")] : id === "kimi-code" ? [join17(home, ".kimi-code", "mcp.json"), join17(kimiPluginRoot(home), "kimi.plugin.json")] : id === "antigravity" ? [join17(home, ".gemini", "config", "mcp_config.json"), join17(home, ".gemini", "antigravity-ide", "mcp_config.json")] : [join17(home, ".codebuddy", "settings.json"), join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), "hooks", "hooks.json")];
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === "1";
 }
@@ -6511,7 +6794,7 @@ async function discoverEmbeddedCodeBuddy({ platform = process.platform } = {}) {
     return [match[1].trim().replace(/^"|"$/g, "").replace(/,\d+$/, "")];
   }));
   for (const iconPath of iconPaths) {
-    const installRoot = dirname8(iconPath);
+    const installRoot = dirname9(iconPath);
     const candidate = join17(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
     if (await exists2(candidate)) return candidate;
   }
@@ -6535,7 +6818,8 @@ async function detectInstalledAdapters({ projectRoot = process.cwd(), platform =
       }
     }
     const embeddedPath = id === "codebuddy" && !executable ? await discoverEmbeddedCodeBuddy({ platform }) : null;
-    return [id, { id, configured, executable: executable || Boolean(embeddedPath), executableSource: embeddedPath ? "workbuddy-embedded" : null, discovered: configured || executable || Boolean(embeddedPath) }];
+    const fingerprint = executable ? "" : (await Promise.all(adapterFingerprints(id, { platform, home }).map(async (path) => await exists2(path) ? path : ""))).find(Boolean) || "";
+    return [id, { id, configured, executable: executable || Boolean(embeddedPath), executableSource: embeddedPath ? "workbuddy-embedded" : null, discovered: configured || executable || Boolean(embeddedPath) || Boolean(fingerprint) }];
   }));
   return Object.fromEntries(checks);
 }
@@ -6614,6 +6898,11 @@ async function writeClaudeConfig(home, nodeCommand, runtime) {
   const key = mcpServerKey(mcp, "claude");
   mcp.mcpServers = { ...mcp.mcpServers || {}, [key]: { type: "stdio", command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "claude"] } };
   settings.mcpServers = mcp.mcpServers;
+  settings.permissions = settings.permissions && typeof settings.permissions === "object" ? settings.permissions : {};
+  const allowList = Array.isArray(settings.permissions.allow) ? settings.permissions.allow : [];
+  settings.permissions.allow = Array.from(/* @__PURE__ */ new Set([...allowList, "mcp:livedot-map:*"]));
+  const allowedTools = Array.isArray(settings.allowedTools) ? settings.allowedTools : [];
+  settings.allowedTools = Array.from(/* @__PURE__ */ new Set([...allowedTools, "mcp__livedot-map__*"]));
   await atomicJson(settingsPath, mergeHooks(settings, hooksFor(nodeCommand, runtime, "claude")));
   return [settingsPath];
 }
@@ -6624,7 +6913,7 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
   await atomicJson(mcpPath, mcp);
   const plugin = kimiPluginRoot(home);
   const pluginRuntime = join17(plugin, "runtime", "livedot.mjs");
-  await mkdir8(dirname8(pluginRuntime), { recursive: true });
+  await mkdir8(dirname9(pluginRuntime), { recursive: true });
   if (!seaRuntime()) await copyFile3(runtime, pluginRuntime);
   const manifest = {
     name: "livedot-map",
@@ -6639,6 +6928,40 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
   };
   await atomicJson(join17(plugin, "kimi.plugin.json"), manifest);
   return [mcpPath, join17(plugin, "kimi.plugin.json")];
+}
+async function writeAntigravityConfig(home, nodeCommand, runtime) {
+  const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "antigravity"] };
+  const paths = [
+    join17(home, ".gemini", "config", "mcp_config.json"),
+    join17(home, ".gemini", "antigravity-ide", "mcp_config.json")
+  ];
+  for (const path of paths) {
+    const mcp = await readJson2(path);
+    const servers = mcp.mcpServers && typeof mcp.mcpServers === "object" ? mcp.mcpServers : {};
+    servers["livedot-map"] = entry;
+    mcp.mcpServers = servers;
+    await atomicJson(path, mcp);
+  }
+  const configPath = join17(home, ".gemini", "config", "config.json");
+  try {
+    const config = await readJson2(configPath);
+    if (config && typeof config === "object") {
+      config.userSettings = config.userSettings && typeof config.userSettings === "object" ? config.userSettings : {};
+      config.userSettings.globalPermissionGrants = config.userSettings.globalPermissionGrants && typeof config.userSettings.globalPermissionGrants === "object" ? config.userSettings.globalPermissionGrants : {};
+      const existing = Array.isArray(config.userSettings.globalPermissionGrants.allow) ? config.userSettings.globalPermissionGrants.allow : [];
+      const grantsToAdd = [
+        "mcp(livedot-map)",
+        "mcp(livedot-map/*)",
+        ...MCP_TOOL_DEFINITIONS.map((t) => `mcp(livedot-map/${t.name})`)
+      ];
+      const set = new Set(existing);
+      for (const g of grantsToAdd) set.add(g);
+      config.userSettings.globalPermissionGrants.allow = Array.from(set);
+      await atomicJson(configPath, config);
+    }
+  } catch {
+  }
+  return paths;
 }
 async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
   const settingsPath = join17(home, ".codebuddy", "settings.json");
@@ -6713,7 +7036,10 @@ async function installProject({
   let createdMapsLayout = false;
   const touched = /* @__PURE__ */ new Set([configPath, ...runtime ? [runtime] : []]);
   for (const id of /* @__PURE__ */ new Set([...Object.keys(old.installed || {}), ...Object.keys(installed)])) for (const path of adapterConfigPaths(home, id)) touched.add(path);
-  for (const id of Object.keys(installed)) touched.add(skillTargetPaths(home, id));
+  for (const id of Object.keys(installed)) {
+    const target = skillTargetPaths(home, id);
+    if (target) touched.add(target);
+  }
   const existingBackup = await readJson2(backupPath, null);
   const backupFiles = new Map(Array.isArray(existingBackup?.files) ? existingBackup.files.map((entry) => [entry.path, entry]) : []);
   for (const path of touched) if (!backupFiles.has(path)) backupFiles.set(path, await captureFile(path));
@@ -6736,7 +7062,8 @@ async function installProject({
     }
     for (const id of Object.keys(installed)) {
       const target = skillTargetPaths(home, id);
-      await mkdir8(dirname8(target), { recursive: true });
+      if (!target) continue;
+      await mkdir8(dirname9(target), { recursive: true });
       await copyFile3(canonicalSkill, target);
     }
     if (!oldMap.exists && !mapsLayoutExists) {
@@ -6763,6 +7090,7 @@ async function installProject({
     if (installed.codex) await writeCodexConfig(home, nodeCommand, runtime);
     if (installed["claude-code"]) await writeClaudeConfig(home, nodeCommand, runtime);
     if (installed["kimi-code"]) await writeKimiConfig(home, nodeCommand, runtime);
+    if (installed.antigravity) await writeAntigravityConfig(home, nodeCommand, runtime);
     if (installed.codebuddy) await writeCodeBuddyConfig(home, nodeCommand, runtime);
     const config = {
       ...old,
@@ -6849,6 +7177,12 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
     }
   }
   const launcherPaths = [join17(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), join17(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
+  const homeRoot = config.homeRoot ? resolve14(config.homeRoot) : null;
+  if (homeRoot && config.installed?.antigravity) {
+    for (const name of ["antigravity", "antigravity-ide", "antigravity-cli"]) {
+      await rm5(join17(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
+    }
+  }
   if (platform === "win32") {
     const desktop = windowsDesktopDirectory({ platform, env, exec });
     launcherPaths.push(join17(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), join17(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
@@ -6878,6 +7212,7 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
   if (installed.codex) expected.push(["codex-hooks", join17(home, ".codex", "hooks.json")], ["codex-mcp", join17(home, ".codex", "config.toml")]);
   if (installed["claude-code"]) expected.push(["claude-hooks", join17(home, ".claude", "settings.json")]);
   if (installed["kimi-code"]) expected.push(["kimi-mcp", join17(home, ".kimi-code", "mcp.json")], ["kimi-plugin", join17(kimiPluginRoot(home), "kimi.plugin.json")]);
+  if (installed.antigravity) expected.push(["antigravity-mcp", join17(home, ".gemini", "config", "mcp_config.json")]);
   if (installed.codebuddy) expected.push(["codebuddy-hooks", join17(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
@@ -6910,7 +7245,7 @@ async function recordRecentProject(root) {
   } catch {
   }
   recent = [root, ...recent.filter((item) => item !== root)].slice(0, 15);
-  await mkdir9(dirname9(RECENT_PROJECTS_FILE()), { recursive: true });
+  await mkdir9(dirname10(RECENT_PROJECTS_FILE()), { recursive: true });
   await writeFile3(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
 `, "utf8");
 }
@@ -7147,15 +7482,15 @@ async function refreshAgentRuntime({ runtimeSource, homeRoot } = {}) {
   if (source.toLowerCase() === target.toLowerCase()) return false;
   const [sourceHash, targetHash] = await Promise.all([sha256File(source), sha256File(target)]);
   if (!sourceHash || sourceHash === targetHash) return false;
-  const temp = join18(dirname9(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
-  await mkdir9(dirname9(target), { recursive: true });
+  const temp = join18(dirname10(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
+  await mkdir9(dirname10(target), { recursive: true });
   await writeFile3(temp, await readFile11(source));
   await rename6(temp, target);
   return true;
 }
 function runtimeSources({ sourceRoot, runtimeSource } = {}) {
   const entry = process.argv[1] ? resolve15(process.argv[1]) : "";
-  const entryRoot = entry ? dirname9(entry) : "";
+  const entryRoot = entry ? dirname10(entry) : "";
   const roots = [
     sourceRoot,
     process.env.LIVEDOT_AGENT_KIT_SOURCE,
@@ -7330,10 +7665,11 @@ function sendJson(response, status, value) {
 }
 function sendError(response, error3) {
   const bridgeError3 = asBridgeError(error3);
+  const userFacing = String(bridgeError3.code || "").startsWith("UPDATE_");
   const body = {
     error: {
       code: bridgeError3.code,
-      message: bridgeError3.status >= 500 ? "Local bridge request failed" : bridgeError3.message
+      message: userFacing || bridgeError3.status < 500 ? bridgeError3.message : "Local bridge request failed"
     }
   };
   if (bridgeError3.details !== void 0 && bridgeError3.status < 500) body.error.details = bridgeError3.details;
@@ -7373,7 +7709,10 @@ async function createBridgeServer({
   agentSetup = ensureProjectAgentConfig,
   logger = noopLogger,
   updateBase = null,
-  installRoot = process.cwd(),
+  // 安装版：桥 exe 位于 <安装目录>/current/payload/，payload-manifest.json 就在旁边。
+  // 用 exe 自身目录而不是 process.cwd()：启动器「正常启动」与更新器「重启」的 cwd 不一致，
+  // 以 cwd 为准会导致正常启动时读不到本地安装信息（current:null），更新判定失效。
+  installRoot = process.execPath ? dirname10(resolve15(process.execPath)) : process.cwd(),
   spawnUpdater = null,
   restartOnUpdate = true,
   shutdownHandler = null
@@ -7649,8 +7988,13 @@ async function createBridgeServer({
     return Boolean(local.payloadHash && typeof manifest.payloadHash === "string" && local.payloadHash !== manifest.payloadHash);
   }
   async function fetchUpdateManifest() {
-    const response = await fetch(`${UPDATE_BASE}/update-manifest.json`, { signal: AbortSignal.timeout(8e3) });
-    if (!response.ok) throw new BridgeError("UPDATE_MANIFEST_UNAVAILABLE", `Update manifest unavailable (HTTP ${response.status})`, { status: 502 });
+    let response;
+    try {
+      response = await fetch(`${UPDATE_BASE}/update-manifest.json`, { signal: AbortSignal.timeout(8e3) });
+    } catch {
+      throw new BridgeError("UPDATE_MANIFEST_UNAVAILABLE", "\u66F4\u65B0\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u65E0\u6CD5\u8FDE\u63A5\u66F4\u65B0\u670D\u52A1\u5668\uFF09\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5", { status: 502 });
+    }
+    if (!response.ok) throw new BridgeError("UPDATE_MANIFEST_UNAVAILABLE", `\u66F4\u65B0\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528\uFF08HTTP ${response.status}\uFF09\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5`, { status: 502 });
     const manifest = await response.json();
     if (!manifest || typeof manifest !== "object" || typeof manifest.version !== "string" || !manifest.files || typeof manifest.files !== "object") {
       throw new BridgeError("UPDATE_MANIFEST_INVALID", "Update manifest is invalid", { status: 502 });
@@ -7667,19 +8011,45 @@ async function createBridgeServer({
       return { ok: false, current: local.version, latest: null, available: false, error: error3 instanceof Error ? error3.message : String(error3) };
     }
   }
+  const UPDATE_EXTERNAL_HOST_SUFFIXES = [".tcloudbaseapp.com", ".tcb.qcloud.la"];
+  function assertAllowedExternalUrl(url, label) {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new BridgeError("UPDATE_MANIFEST_INVALID", `\u66F4\u65B0\u5305\u6E05\u5355\u5F02\u5E38\uFF08${label} \u5916\u90E8\u5730\u5740\u683C\u5F0F\u975E\u6CD5\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62`, { status: 502 });
+    }
+    if (parsed.protocol !== "https:") throw new BridgeError("UPDATE_MANIFEST_INVALID", `\u66F4\u65B0\u5305\u6E05\u5355\u5F02\u5E38\uFF08${label} \u5916\u90E8\u5730\u5740\u5FC5\u987B\u4E3A https\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62`, { status: 502 });
+    const host2 = parsed.hostname.toLowerCase();
+    if (!UPDATE_EXTERNAL_HOST_SUFFIXES.some((suffix) => host2 === suffix.slice(1) || host2.endsWith(suffix))) {
+      throw new BridgeError("UPDATE_MANIFEST_INVALID", `\u66F4\u65B0\u5305\u6E05\u5355\u5F02\u5E38\uFF08${label} \u5916\u90E8\u5730\u5740\u57DF\u540D\u4E0D\u5728\u767D\u540D\u5355\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62\uFF0C\u73B0\u6709\u7248\u672C\u4E0D\u53D7\u5F71\u54CD`, { status: 502 });
+    }
+  }
   async function downloadUpdateFile(meta, target, label) {
     if (!meta || typeof meta !== "object" || typeof meta.sha256 !== "string" || typeof meta.url !== "string") {
       throw new BridgeError("UPDATE_MANIFEST_INVALID", `Invalid file entry: ${label}`, { status: 502 });
     }
-    if (meta.url.includes("..") || meta.url.startsWith("/") || /^[a-zA-Z]:/.test(meta.url) || /^https?:/i.test(meta.url)) {
-      throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file url: ${label}`, { status: 502 });
+    let sourceUrl;
+    if (meta.external === true) {
+      assertAllowedExternalUrl(meta.url, label);
+      sourceUrl = meta.url;
+    } else {
+      if (meta.url.includes("..") || meta.url.startsWith("/") || /^[a-zA-Z]:/.test(meta.url) || /^https?:/i.test(meta.url)) {
+        throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file url: ${label}`, { status: 502 });
+      }
+      sourceUrl = `${UPDATE_BASE}/${meta.url}`;
     }
-    const response = await fetch(`${UPDATE_BASE}/${meta.url}`, { signal: AbortSignal.timeout(6e5) });
+    let response;
+    try {
+      response = await fetch(sourceUrl, { signal: AbortSignal.timeout(6e5) });
+    } catch {
+      throw new BridgeError("UPDATE_DOWNLOAD_FAILED", `\u66F4\u65B0\u5305\u4E0B\u8F7D\u5931\u8D25\uFF08${label}\uFF0C\u65E0\u6CD5\u8FDE\u63A5\u66F4\u65B0\u670D\u52A1\u5668\uFF09\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5`, { status: 502 });
+    }
     if (!response.ok) throw new BridgeError("UPDATE_DOWNLOAD_FAILED", `\u66F4\u65B0\u5305\u4E0B\u8F7D\u5931\u8D25\uFF08${label}\uFF0CHTTP ${response.status}\uFF09\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5`, { status: 502 });
     const buffer = Buffer.from(await response.arrayBuffer());
     const actual = createHash8("sha256").update(buffer).digest("hex");
     if (actual !== meta.sha256.toLowerCase()) throw new BridgeError("UPDATE_CHECKSUM_MISMATCH", `\u66F4\u65B0\u5305\u6821\u9A8C\u5931\u8D25\uFF08${label} \u4E0E\u6E05\u5355\u4E0D\u4E00\u81F4\uFF0C\u6587\u4EF6\u53EF\u80FD\u635F\u574F\u6216\u88AB\u7BE1\u6539\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62\uFF0C\u73B0\u6709\u7248\u672C\u4E0D\u53D7\u5F71\u54CD`, { status: 502 });
-    await mkdir9(dirname9(target), { recursive: true });
+    await mkdir9(dirname10(target), { recursive: true });
     await writeFile3(target, buffer);
   }
   async function applyUpdate() {
@@ -7954,11 +8324,12 @@ async function createBridgeServer({
         if (sessionStore && existingId && ticket[1].projectHandle && ticket[1].projectRoot) {
           const authorized = sessionStore.authorize(existingId, ticket[1].projectHandle);
           if (authorized) {
-            await sessionStore.persistIfDue();
+            await sessionStore.flush();
             response.setHeader("Set-Cookie", `${SESSION_COOKIE}=${existingId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(sessionStore.ttlMs / 1e3)}`);
             sendJson(response, 200, {
               csrfToken: authorized.csrfToken,
               expiresAt: authorized.expiresAt,
+              projectRoot: ticket[1].projectRoot,
               projectHandle: ticket[1].projectHandle,
               reconnectTicket: authorized.reconnectTicket,
               resumed: true
@@ -7974,6 +8345,7 @@ async function createBridgeServer({
           sendJson(response, 200, {
             csrfToken: existing.csrfToken,
             expiresAt: new Date(existing.expiresAt).toISOString(),
+            projectRoot: ticket[1].projectRoot,
             projectHandle: ticket[1].projectHandle,
             resumed: true
           });
@@ -7992,7 +8364,7 @@ async function createBridgeServer({
         sendJson(response, 201, {
           csrfToken,
           expiresAt: new Date(expiresAt).toISOString(),
-          projectRoot: ticket[1].projectHandle ? void 0 : ticket[1].projectRoot,
+          projectRoot: ticket[1].projectRoot,
           projectHandle: ticket[1].projectHandle,
           reconnectTicket: createdSession?.reconnectTicket,
           resumed: false
@@ -8240,9 +8612,10 @@ async function createBridgeServer({
         requireMethod(request, "POST");
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
+        const relativePath = await mapMarkdownPath(session, String(body.relativePath || ""));
         sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).open({
           editorId: String(body.editorId || ""),
-          relativePath: String(body.relativePath || ""),
+          relativePath,
           targetKind: body.targetKind === "directory" ? "directory" : "file"
         }));
         return;
@@ -8264,7 +8637,8 @@ async function createBridgeServer({
         requireMethod(request, "POST");
         validateCsrf(request, session);
         const body = await readJsonBody(request, bodyLimit);
-        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath: String(body.relativePath || "") }));
+        const relativePath = await mapMarkdownPath(session, String(body.relativePath || ""));
+        sendJson(response, 200, await (await editorServiceFor(session.projectRoot)).saveAs({ relativePath }));
         return;
       }
       if (pathname === "/markdown") {
@@ -8605,13 +8979,13 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
 // src/bridge/project-registry.mjs
 import { randomBytes as randomBytes5, randomUUID as randomUUID10 } from "node:crypto";
 import { chmod as chmod2, mkdir as mkdir11, readFile as readFile13, rename as rename8, writeFile as writeFile5 } from "node:fs/promises";
-import { dirname as dirname11 } from "node:path";
+import { dirname as dirname12 } from "node:path";
 
 // src/bridge/runtime-state.mjs
 import { randomBytes as randomBytes4, randomUUID as randomUUID9 } from "node:crypto";
 import { execFile as execFile2 } from "node:child_process";
 import { chmod, mkdir as mkdir10, open as open3, readFile as readFile12, rename as rename7, rm as rm7, writeFile as writeFile4 } from "node:fs/promises";
-import { dirname as dirname10, join as join19, resolve as resolve16 } from "node:path";
+import { dirname as dirname11, join as join19, resolve as resolve16 } from "node:path";
 import { homedir as homedir7 } from "node:os";
 import { promisify } from "node:util";
 var execFileAsync = promisify(execFile2);
@@ -8626,7 +9000,7 @@ async function privateDirectory(path) {
   await chmod(path, 448).catch(() => void 0);
 }
 async function atomicPrivateWrite(path, value) {
-  await privateDirectory(dirname10(path));
+  await privateDirectory(dirname11(path));
   const temporary = `${path}.${process.pid}.${randomUUID9()}.tmp`;
   await writeFile4(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod(temporary, 384).catch(() => void 0);
@@ -8680,7 +9054,7 @@ async function readOrCreateControlToken(runtimeStateDir) {
   }
   const token = randomBytes4(32).toString("base64url");
   try {
-    await privateDirectory(dirname10(path));
+    await privateDirectory(dirname11(path));
     await writeFile4(path, `${token}
 `, { encoding: "utf8", mode: 384, flag: "wx" });
     await chmod(path, 384).catch(() => void 0);
@@ -8694,7 +9068,7 @@ async function readOrCreateControlToken(runtimeStateDir) {
 }
 async function acquireSingletonLock(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).lock;
-  await privateDirectory(dirname10(path));
+  await privateDirectory(dirname11(path));
   let handle;
   try {
     handle = await open3(path, "wx", 384);
@@ -8788,7 +9162,7 @@ function handleValue() {
   return `ph_${randomBytes5(24).toString("base64url")}`;
 }
 async function atomicWrite(path, data) {
-  await mkdir11(dirname11(path), { recursive: true, mode: 448 });
+  await mkdir11(dirname12(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${randomUUID10()}.tmp`;
   await writeFile5(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod2(temporary, 384).catch(() => void 0);
@@ -8880,13 +9254,13 @@ var ProjectRegistry = class _ProjectRegistry {
 // src/bridge/session-store.mjs
 import { createHash as createHash9, randomBytes as randomBytes6, randomUUID as randomUUID11 } from "node:crypto";
 import { chmod as chmod3, mkdir as mkdir12, readFile as readFile14, rename as rename9, writeFile as writeFile6 } from "node:fs/promises";
-import { dirname as dirname12 } from "node:path";
+import { dirname as dirname13 } from "node:path";
 var SCHEMA_VERSION3 = 1;
 var DAY = 24 * 60 * 60 * 1e3;
 var secret = () => randomBytes6(32).toString("base64url");
 var digest5 = (value) => createHash9("sha256").update(String(value)).digest("base64url");
 async function atomicWrite2(path, content) {
-  await mkdir12(dirname12(path), { recursive: true, mode: 448 });
+  await mkdir12(dirname13(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${randomUUID11()}.tmp`;
   await writeFile6(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod3(temporary, 384).catch(() => void 0);
@@ -9120,7 +9494,7 @@ async function recordAgentHealth2(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: value?.code ?? "HOOK_FAILED", message: String(value?.message ?? value ?? "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await mkdir13(dirname13(path), { recursive: true });
+  await mkdir13(dirname14(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${randomUUID12()}.tmp`;
   try {
     await writeFile7(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
@@ -9136,23 +9510,23 @@ async function inspectProjectQualification(projectRoot) {
     return { ok: false, code: "PROJECT_NOT_FOUND", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u6709\u6548\u9879\u76EE\u76EE\u5F55\u3002" };
   }
   const dataDirectory = join20(root, ".live-dot-map");
-  const dataMetadata = await lstat9(dataDirectory).catch(() => null);
+  const dataMetadata = await stat9(dataDirectory).catch(() => null);
   if (!dataMetadata) return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u8FD8\u6CA1\u6709\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
-  if (!dataMetadata.isDirectory() || dataMetadata.isSymbolicLink()) {
+  if (!dataMetadata.isDirectory()) {
     return { ok: false, code: "PROJECT_LAYOUT_INVALID", message: "\u6D3B\u70B9\u5730\u56FE\u6570\u636E\u76EE\u5F55\u4E0D\u662F\u53EF\u5B89\u5168\u8BFB\u53D6\u7684\u76EE\u5F55\u3002" };
   }
   const marker = async (path) => {
-    const metadata = await lstat9(path).catch(() => null);
-    return Boolean(metadata && (metadata.isFile() || metadata.isSymbolicLink()));
+    const metadata = await stat9(path).catch(() => null);
+    return Boolean(metadata && metadata.isFile());
   };
   const legacy = await marker(join20(dataDirectory, "map.json"));
   const mapsPath = join20(dataDirectory, "maps");
-  const mapsMetadata = await lstat9(mapsPath).catch(() => null);
+  const mapsMetadata = await stat9(mapsPath).catch(() => null);
   let packageMap = false;
-  if (mapsMetadata?.isDirectory() && !mapsMetadata.isSymbolicLink()) {
+  if (mapsMetadata?.isDirectory()) {
     const entries = await readdir7(mapsPath, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      if (!entry.isDirectory()) continue;
       if (await marker(join20(mapsPath, entry.name, "map.json"))) {
         packageMap = true;
         break;
@@ -9222,8 +9596,8 @@ async function probeBridgeControl(handle) {
 async function resolveAppHtmlPath(explicit) {
   const candidates = [];
   if (explicit) candidates.push(explicit);
-  if (process.argv[1]) candidates.push(join20(dirname13(resolve17(process.argv[1])), "app.html"));
-  candidates.push(join20(dirname13(process.execPath), "app.html"));
+  if (process.argv[1]) candidates.push(join20(dirname14(resolve17(process.argv[1])), "app.html"));
+  candidates.push(join20(dirname14(process.execPath), "app.html"));
   candidates.push(join20(homedir8(), ".live-dot-map", "app.html"));
   candidates.push(join20(process.cwd(), "app.html"));
   for (const candidate of [...new Set(candidates)]) {
@@ -9287,11 +9661,15 @@ async function forwardToolCall(handle, targetRoot, actor, name, args) {
 }
 async function runMcpProxy(projectRoot, actor, options) {
   const root = resolve17(projectRoot);
-  const qualification = await inspectProjectQualification(root);
+  let currentRoot = await resolveProjectRootToUse(null, root);
+  let qualification = await inspectProjectQualification(currentRoot);
+  if (!qualification.ok && currentRoot !== root) {
+    currentRoot = root;
+    qualification = await inspectProjectQualification(root);
+  }
   const logger = qualification.ok ? createLogger({ source: "agent" }) : noopLogger;
-  let currentRoot = root;
   let bridge = null;
-  if (qualification.ok) await logger.info("agent.mcp.start", { project: root, actor, pid: process.pid, mode: "proxy" });
+  if (qualification.ok) await logger.info("agent.mcp.start", { project: currentRoot, actor, pid: process.pid, mode: "proxy" });
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   for await (const line of lines) {
     let request;
@@ -9307,14 +9685,21 @@ async function runMcpProxy(projectRoot, actor, options) {
       if (request.method === "initialize") result2 = { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "live-dot-map", version: "2.0.0" } };
       else if (request.method === "tools/list") result2 = { tools: toolDefinitions };
       else if (request.method === "tools/call") {
-        if (!qualification.ok) {
-          result2 = unavailableToolResult(qualification);
+        const params = request.params;
+        const name = String(params.name);
+        const callArgs = params.arguments ?? {};
+        const explicitProject = typeof callArgs.projectRoot === "string" && callArgs.projectRoot.trim() ? String(callArgs.projectRoot).trim() : typeof callArgs.project === "string" && callArgs.project.trim() ? String(callArgs.project).trim() : null;
+        let targetRoot = await resolveProjectRootToUse(explicitProject, root);
+        let activeQual = await inspectProjectQualification(targetRoot);
+        if (!activeQual.ok && targetRoot !== root) {
+          targetRoot = root;
+          activeQual = await inspectProjectQualification(root);
+        }
+        if (!activeQual.ok) {
+          result2 = unavailableToolResult(activeQual);
         } else {
-          const params = request.params;
-          const name = String(params.name);
-          const callArgs = params.arguments ?? {};
-          const targetRoot = await resolveProjectRootToUse(null, currentRoot);
           currentRoot = targetRoot;
+          qualification = activeQual;
           let value;
           let lastError = null;
           for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -9326,6 +9711,14 @@ async function runMcpProxy(projectRoot, actor, options) {
             } catch (error3) {
               lastError = error3;
               const status = error3?.httpStatus;
+              const code = error3?.code;
+              if ((status === 404 || code === "PROJECT_NOT_FOUND") && targetRoot !== root) {
+                targetRoot = root;
+                currentRoot = root;
+                qualification = await inspectProjectQualification(root);
+                bridge = null;
+                continue;
+              }
               if (typeof status === "number" && status !== 401) throw error3;
               bridge = null;
             }
@@ -9453,7 +9846,7 @@ async function runHook(kind, args) {
       deliveredIds = newAnns.map((ann) => String(ann.id));
     }
     if (changes.length || deliveredIds.length) {
-      await mkdir13(dirname13(watermarkPath), { recursive: true });
+      await mkdir13(dirname14(watermarkPath), { recursive: true });
       await writeFile7(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
 `, "utf8");
       const newCount = changes.filter((item) => item.label === "\u6807\u6CE8" && item.attention === "new").length;
@@ -9528,7 +9921,9 @@ async function main() {
   const { command: command2, args } = parseArgs(process.argv.slice(2));
   if (command2 === "serve") {
     const logger = createLogger({ source: "bridge" });
-    const projectRoot = resolve17(required(args, "project"));
+    const requestedRoot = resolve17(required(args, "project"));
+    const worktreeMain = resolveGitWorktreeMain(requestedRoot);
+    const projectRoot = await canonicalDirectory(worktreeMain ?? requestedRoot).catch(() => requestedRoot);
     const runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? resolve17(args["runtime-state-dir"]) : void 0;
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });
@@ -9602,7 +9997,7 @@ async function main() {
     }
     const appPath = resolve17(typeof args.app === "string" ? args.app : join20(process.cwd(), "app.html"));
     const appHtml = await readFile15(appPath, "utf8");
-    const assetRoot = dirname13(appPath);
+    const assetRoot = dirname14(appPath);
     const staticAssets = {};
     for (const [urlPath, file, type] of [
       ["/sw.js", "sw.js", "text/javascript; charset=utf-8"],
@@ -9666,7 +10061,7 @@ async function main() {
   if (command2 === "install") {
     const root = resolve17(typeof args.project === "string" ? args.project : process.cwd());
     const runtimeSource = process.env.LIVEDOT_RUNTIME_SOURCE || process.argv[1] || process.cwd();
-    const appPath = resolve17(typeof args.app === "string" ? args.app : join20(dirname13(runtimeSource), "app.html"));
+    const appPath = resolve17(typeof args.app === "string" ? args.app : join20(dirname14(runtimeSource), "app.html"));
     const install = installProject;
     const result2 = await install({ projectRoot: root, runtimeSource, appPath, createDesktopShortcut: args["no-shortcut"] !== true, register: false });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
@@ -9689,7 +10084,7 @@ async function main() {
     if (!result2.ok && result2.reason !== "not-installed") process.exitCode = 1;
     return;
   }
-  process.stdout.write("\u6D3B\u70B9\u5730\u56FE v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n");
+  process.stdout.write("\u6D3B\u70B9\u5730\u56FE v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n");
 }
 void main().catch(async (error3) => {
   const parsed = parseArgs(process.argv.slice(2));

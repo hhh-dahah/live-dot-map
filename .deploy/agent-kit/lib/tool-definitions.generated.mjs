@@ -26,6 +26,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
           "type": "integer",
           "minimum": 1,
           "maximum": 12
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "additionalProperties": true
@@ -36,7 +40,12 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "列出人类尚未确认的标注。",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -54,6 +63,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "summary": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -68,7 +81,12 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
     "description": "列出项目内地图与当前 active-map。",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
+        }
+      },
       "additionalProperties": true
     }
   },
@@ -80,6 +98,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "additionalProperties": true
@@ -93,6 +115,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "mapKey": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -112,6 +138,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "name": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -147,6 +177,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeHistory": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "additionalProperties": true
@@ -178,6 +212,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
           "items": {
             "type": "object"
           }
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -194,6 +232,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "document": {
           "type": "object"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "additionalProperties": true
@@ -207,6 +249,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
       "properties": {
         "reason": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "additionalProperties": true
@@ -225,6 +271,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "now": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "additionalProperties": true
@@ -251,6 +301,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "path": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "additionalProperties": true
@@ -286,6 +340,13 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "allowContentRemoval": {
           "type": "boolean"
+        },
+        "wrapAuthor": {
+          "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -322,6 +383,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "commandId": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -349,6 +414,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -382,6 +451,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "content": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -413,6 +486,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "to": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -442,6 +519,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -470,6 +551,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -498,6 +583,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeArchived": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -531,6 +620,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "mimeType": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -559,6 +652,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -587,6 +684,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "fileName": {
           "type": "string"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
@@ -618,6 +719,10 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "includeContent": {
           "type": "boolean"
+        },
+        "projectRoot": {
+          "type": "string",
+          "description": "（可选）目标活点地图项目的物理绝对路径。默认自动跟随当前画布或当前工作区；如需跨项目查阅或修改其他独立项目的记忆，可显式传入该项目的绝对路径。"
         }
       },
       "required": [
