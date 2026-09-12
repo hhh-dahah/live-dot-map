@@ -81,7 +81,8 @@ export async function resolveProjectRootToUse(pointerRoot, fallbackRoot, options
       // 1. 绝不能属于系统临时目录（tmpdir），彻底掐灭测试临时目录污染
       const tempPrefix = resolve(tmpdir()).toLowerCase();
       const isTemp = resolved.toLowerCase().startsWith(tempPrefix);
-      if (!isTemp || options.allowTemp) {
+      const allowTemp = Boolean(options.allowTemp || process.env.LIVEDOT_TEST_ALLOW_TEMP || process.env.LIVEDOT_TEST_ROOT);
+      if (!isTemp || allowTemp) {
         // 2. 目录下必须物理包含 .live-dot-map 目录
         const hasLiveDotMap = await stat(join(resolved, '.live-dot-map'))
           .then((s) => s.isDirectory())
