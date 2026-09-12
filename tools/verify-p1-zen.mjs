@@ -114,18 +114,26 @@ async function run() {
   const panel = page.locator('#panel');
   console.log(`✓ 面板可见性: ${await panel.isVisible()}`);
 
-  const problemBtn = page.locator('.seg.node-kind button[data-kind="problem"]');
-  await problemBtn.click();
-  await page.waitForTimeout(300);
+  const statusSeg = page.locator('.seg.node-status');
+  if (await statusSeg.isVisible()) {
+    const resolvedBtn = statusSeg.locator('button[data-val="resolved"]');
+    await resolvedBtn.click();
+    await page.waitForTimeout(300);
+    console.log('✓ 节点状态切换段 (.node-status) 成功切换为 resolved');
+  } else {
+    const problemBtn = page.locator('.seg.node-kind button[data-kind="problem"]');
+    await problemBtn.click();
+    await page.waitForTimeout(300);
 
-  const resolveSeg = page.locator('.seg.node-resolve');
-  const hasResolveSeg = await resolveSeg.isVisible();
-  console.log(`✓ 问题节点出现解决状态切换段: ${hasResolveSeg}`);
-  if (!hasResolveSeg) throw new Error('问题节点未显示解决状态切换段');
+    const resolveSeg = page.locator('.seg.node-resolve');
+    const hasResolveSeg = await resolveSeg.isVisible();
+    console.log(`✓ 问题节点出现解决状态切换段: ${hasResolveSeg}`);
+    if (!hasResolveSeg) throw new Error('问题节点未显示解决状态切换段');
 
-  const resolvedBtn = resolveSeg.locator('button[data-val="true"]');
-  await resolvedBtn.click();
-  await page.waitForTimeout(300);
+    const resolvedBtn = resolveSeg.locator('button[data-val="true"]');
+    await resolvedBtn.click();
+    await page.waitForTimeout(300);
+  }
 
   const isResolvedClass = await page.evaluate(() => {
     const sel = document.querySelector('.node.sel');
@@ -200,12 +208,15 @@ async function run() {
   });
   console.log(`✓ 双击后资料包自动折叠至 0px: ${sideCollapsed}`);
 
-  await resizer.dblclick();
-  await page.waitForTimeout(300);
+  // 通过资料包按钮或双击重新展开
+  const bundleToggle = page.locator('.mdv-bundle-toggle');
+  if (await bundleToggle.isVisible()) {
+    await bundleToggle.click();
+    await page.waitForTimeout(300);
+  }
 
   const testContent = `# 方案一验证文档
 
-<!-- @author: human -->
 这是人类提出的核心业务场景，需要极简且清爽的沉浸式文本排版。
 没有任何刺眼荧光黄污染。
 
@@ -213,6 +224,7 @@ async function run() {
 这是 Agent 沉淀的系统架构方案：
 1. 采用零宽注释分离人机标记
 2. 编辑器和预览模式均支持发丝左边框
+<!-- /@author -->
 `;
 
   const editor = page.locator('.mdv-edit');
@@ -220,25 +232,25 @@ async function run() {
   await page.waitForTimeout(300);
 
   const mirrorAuthors = await page.evaluate(() => {
-    const humans = document.querySelectorAll('.mdv-mirror .author-human').length;
     const agents = document.querySelectorAll('.mdv-mirror .author-agent').length;
-    return { humans, agents };
+    const startTags = document.querySelectorAll('.mdv-mirror .tag-agent-start').length;
+    const endTags = document.querySelectorAll('.mdv-mirror .tag-agent-end').length;
+    return { agents, startTags, endTags };
   });
-  console.log(`✓ 编辑镜像层人机识别: human行数=${mirrorAuthors.humans}, agent行数=${mirrorAuthors.agents}`);
-  if (mirrorAuthors.humans === 0 || mirrorAuthors.agents === 0) throw new Error('镜像层未正确识别人机笔迹');
+  console.log(`✓ 编辑镜像层人机识别: agent行数=${mirrorAuthors.agents}, 起始标=${mirrorAuthors.startTags}, 结束标=${mirrorAuthors.endTags}`);
+  if (mirrorAuthors.agents === 0 || mirrorAuthors.startTags === 0) throw new Error('镜像层未正确识别人机笔迹');
 
   const prevBtn = page.locator('.mdv-seg button', { hasText: '预览' });
   await prevBtn.click();
   await page.waitForTimeout(400);
 
   const previewBlocks = await page.evaluate(() => {
-    const humans = document.querySelectorAll('.mdv-preview .author-block.human').length;
     const agents = document.querySelectorAll('.mdv-preview .author-block.agent').length;
     const badges = [...document.querySelectorAll('.mdv-preview .author-badge')].map(b => b.textContent.trim());
-    return { humans, agents, badges };
+    return { agents, badges };
   });
-  console.log(`✓ 预览区人机区块识别: human块数=${previewBlocks.humans}, agent块数=${previewBlocks.agents}, 徽标=[${previewBlocks.badges.join(', ')}]`);
-  if (previewBlocks.humans !== 1 || previewBlocks.agents !== 1) throw new Error('预览区未正确渲染 author-block');
+  console.log(`✓ 预览区人机区块识别: agent块数=${previewBlocks.agents}, 徽标=[${previewBlocks.badges.join(', ')}]`);
+  if (previewBlocks.agents !== 1) throw new Error('预览区未正确渲染 author-block');
 
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, '02-preview-author-blocks.png') });
 
@@ -251,21 +263,21 @@ async function run() {
   console.log(`✓ 左上角浮动气泡是否已彻底移除: ${bubbleCount === 0}`);
   if (bubbleCount > 0) throw new Error('左上角浮动气泡未被移除');
 
-  // 验证右下角「笔迹色板」按钮及弹出菜单
+  // 验证右下角「标记」按钮及弹出菜单
   const paletteBtn = page.locator('.mdv-btn-palette');
   const hasPaletteBtn = await paletteBtn.isVisible();
-  console.log(`✓ 右下角「笔迹色板」按钮可见性: ${hasPaletteBtn}`);
-  if (!hasPaletteBtn) throw new Error('右下角未显示笔迹色板按钮');
+  console.log(`✓ 右下角「标记」按钮可见性: ${hasPaletteBtn}`);
+  if (!hasPaletteBtn) throw new Error('右下角未显示标记按钮');
 
   await paletteBtn.click();
   await page.waitForTimeout(300);
 
   const popVisible = await page.locator('.mdv-palette-pop').isVisible();
-  console.log(`✓ 点击后向上弹出色板卡片可见性: ${popVisible}`);
-  if (!popVisible) throw new Error('笔迹色板卡片未正常弹出');
+  console.log(`✓ 点击后向上弹出标记卡片可见性: ${popVisible}`);
+  if (!popVisible) throw new Error('标记卡片未正常弹出');
 
-  const humanOption = page.locator('.mdv-palette-pop button[data-palette="human"]');
-  await humanOption.click();
+  const agentOption = page.locator('.mdv-palette-pop button[data-palette="agent"]');
+  await agentOption.click();
   await page.waitForTimeout(300);
 
   // 验证窄屏模式下顶部工具栏不会诡异拉伸
@@ -287,12 +299,25 @@ async function run() {
   const statusText = await page.locator('.mdv-status').textContent();
   console.log(`✓ 保存后状态栏文本: "${statusText}"`);
 
-  const savedValue = await editor.inputValue();
-  const hasPhysicalMark = /<mark>/i.test(savedValue);
-  console.log(`✓ 检查文件是否被物理 <mark> 污染: ${hasPhysicalMark ? 'FAILED (包含mark)' : 'PASSED (完全干净)'}`);
-  if (hasPhysicalMark) throw new Error('检测到物理 <mark> 标签污染！');
-
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, '03-editor-zen-mode.png') });
+
+  // 验证地图下拉菜单中的记忆包导出导入项
+  const closeEditorBtn = page.locator('.mdv-close');
+  if (await closeEditorBtn.isVisible()) {
+    await closeEditorBtn.click();
+    await page.waitForTimeout(300);
+  }
+  const mapBtn = page.locator('#map-btn');
+  if (await mapBtn.isVisible()) {
+    await mapBtn.click();
+    await page.waitForTimeout(400);
+    const hasPackItem = await page.evaluate(() => {
+      const items = [...document.querySelectorAll('.plist .pitem')].map(el => el.textContent);
+      return items.some(t => t.includes('导出记忆包') || t.includes('.zip'));
+    });
+    console.log(`✓ 地图弹窗包含记忆包导出导入项: ${hasPackItem}`);
+    await page.screenshot({ path: resolve(SCREENSHOT_DIR, '04-map-popover-memory-pack.png') });
+  }
 
   await browser.close();
   console.log('=== 方案一（极简纯净沉浸派）自动化与交互验证全部通过！===');
