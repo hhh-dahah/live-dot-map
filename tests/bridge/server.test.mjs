@@ -15,9 +15,9 @@ const TEST_ROOT_DIR = process.env.LIVEDOT_TEST_ROOT || await mkdtemp(join(tmpdir
 process.env.LIVEDOT_TEST_ROOT = TEST_ROOT_DIR;
 after(() => OWNS_TEST_ROOT ? rm(TEST_ROOT_DIR, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) : undefined);
 
-// 隔离最近项目记录：server.mjs 的 RECENT_PROJECTS_FILE 每次读取该 env，
-// 测试进程独立于用户环境，避免把临时项目写进真实 ~/.live-dot-map。
+// 隔离最近项目记录与全局指针：测试进程独立于用户环境，避免把临时项目写进真实 ~/.live-dot-map。
 process.env.LIVEDOT_RECENT_PROJECTS_FILE = join(TEST_ROOT_DIR, 'recent-projects-server-test.json');
+process.env.LIVEDOT_CURRENT_PROJECT_FILE = join(TEST_ROOT_DIR, 'current-project-server-test.json');
 
 const APP_ORIGIN = 'https://app.example.test';
 

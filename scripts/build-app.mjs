@@ -65,7 +65,7 @@ function removeExistingCsp(source) {
   return source
     .replace(/\s*<meta\b[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi, '')
     .replace(/\s*<!-- v2 状态：Agent 自动读取和并发保护未启用时降级；本地草稿可恢复 -->/g, '')
-    .replace(/\s*<script\b[^>]*data-dotmap-(?:fallback|bridge|runtime)=["']v2["'][^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/\s*<script\b[^>]*data-dotmap-(?:fallback|pack|bridge|runtime)=["']v2["'][^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/\s*\/\* live-dot-map-v2:integration:start \*\/[\s\S]*?\/\* live-dot-map-v2:integration:end \*\//g, '');
 }
 
@@ -185,8 +185,9 @@ export async function buildApp(options = {}) {
     ? html.replace(headMarker, (match) => `${match}\n${cspMeta}\n${modeMarker}`)
     : html.replace(/<head[^>]*>/i, (match) => `${match}\n${cspMeta}`);
   const fallback = (await bundle('src/web/fallback-document.mjs')).replace(/<\/script/gi, '<\\/script');
-  const fallbackScript = `<script nonce="${nonce}" data-dotmap-fallback="v2">${fallback}</script>`;
-  html = html.replace(/<script\b/i, `${fallbackScript}\n<script`);
+  const pack = (await bundle('src/web/memory-pack.mjs')).replace(/<\/script/gi, '<\\/script');
+  const headScripts = `<script nonce="${nonce}" data-dotmap-fallback="v2">${fallback}</script>\n<script nonce="${nonce}" data-dotmap-pack="v2">${pack}</script>`;
+  html = html.replace(/<script\b/i, `${headScripts}\n<script`);
   const bridge = (await bundle('src/web/bridge-client.ts')).replace(/<\/script/gi, '<\\/script');
   const runtime = (await bundle('src/web/runtime.mjs')).replace(/<\/script/gi, '<\\/script');
   const scripts = `<script nonce="${nonce}" data-dotmap-bridge="v2">${bridge}</script>\n<script nonce="${nonce}" data-dotmap-runtime="v2">${runtime}</script>`;

@@ -174,6 +174,10 @@ export class BridgeClient {
   private pending: JsonMap | null = null;
   private timer = 0;
   private retry = 0;
+  /** 同一批修改允许的最大连续自动重试次数；到顶后停止自调度，防止永久失败的命令把画布拖成「断线」。 */
+  private static readonly MAX_SAVE_RETRY = 10;
+  /** 最近一次保存失败的服务端原因，供 flushPending 抛出可读错误。 */
+  private lastSaveError = '';
   private inFlight = false;
   private inFlightWaiters = new Set<() => void>();
   private mapTransition = false;
@@ -1154,6 +1158,7 @@ export class BridgeClient {
         window.LiveDotApp?.setStatus('draft', '本地草稿');
       }
       this.retry = 0;
+      this.lastSaveError = '';
       this.log('save.flush', { commands: commands.length, revision: this.revision });
     } catch (error) {
       const status = Number((error as { status?: number }).status);
@@ -1165,10 +1170,16 @@ export class BridgeClient {
         window.LiveDotApp?.setStatus('offline', '本地桥会话已结束，草稿已保留');
       } else {
         this.retry += 1;
+        this.lastSaveError = error instanceof Error ? error.message : String(error);
         this.logError('save.failed', error, { retry: this.retry });
-        window.LiveDotApp?.setStatus(navigator.onLine ? 'error' : 'offline', error instanceof Error ? error.message : '保存失败');
-        clearTimeout(this.timer);
-        this.timer = window.setTimeout(() => void this.flush(), Math.min(30_000, 500 * 2 ** this.retry));
+        if (this.retry >= BridgeClient.MAX_SAVE_RETRY) {
+          // 到顶后停止自调度：草稿保留在 IndexedDB，用户继续编辑时 scheduleSave 会再次触发 flush。
+          window.LiveDotApp?.setStatus('error', `保存连续失败 ${this.retry} 次，已停止自动重试：${this.lastSaveError}（草稿已保留在本机）`);
+        } else {
+          window.LiveDotApp?.setStatus(navigator.onLine ? 'error' : 'offline', error instanceof Error ? error.message : '保存失败');
+          clearTimeout(this.timer);
+          this.timer = window.setTimeout(() => void this.flush(), Math.min(30_000, 500 * 2 ** this.retry));
+        }
       }
     } finally {
       this.notifyInFlightDone();
@@ -1187,7 +1198,7 @@ export class BridgeClient {
       if (!this.pending) return;
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
-    if (this.pending) throw new Error('尚有修改未能保存');
+    if (this.pending) throw new Error(`尚有修改未能保存${this.lastSaveError ? `：${this.lastSaveError}` : ''}`);
   }
 
   private startEvents(): void {

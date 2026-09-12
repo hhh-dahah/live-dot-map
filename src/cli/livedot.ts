@@ -21,7 +21,8 @@ import {
   writeBridgeState,
 } from '../bridge/runtime-state.mjs';
 import { loadSharedAdapter } from '../bridge/shared-adapter.mjs';
-import { readCurrentProject, resolveProjectRootToUse } from '../bridge/current-project.mjs';
+import { readCurrentProject, resolveGitWorktreeMain, resolveProjectRootToUse } from '../bridge/current-project.mjs';
+import { canonicalDirectory } from '../bridge/fs-utils.mjs';
 import { doctorProject, installProject, uninstallProject } from '../../agent-kit/lib/installer.mjs';
 
 if (isSea()) process.env.LIVEDOT_SEA = '1';
@@ -337,6 +338,10 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
   const root = resolve(projectRoot);
   let currentRoot = await resolveProjectRootToUse(null, root);
   let qualification = await inspectProjectQualification(currentRoot);
+  if (!qualification.ok && currentRoot !== root) {
+    currentRoot = root;
+    qualification = await inspectProjectQualification(root);
+  }
   // fail-open 进程不能创建日志目录、health 文件或地图目录。transport
   // 仍然保持可用，只有 tools/call 返回结构化 isError。
   const logger = qualification.ok ? createLogger({ source: 'agent' }) : noopLogger;
@@ -353,16 +358,23 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
       if (request.method === 'initialize') result = { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'live-dot-map', version: '2.0.0' } };
       else if (request.method === 'tools/list') result = { tools: toolDefinitions };
       else if (request.method === 'tools/call') {
-        const targetRoot = await resolveProjectRootToUse(null, currentRoot);
-        const activeQual = await inspectProjectQualification(targetRoot);
+        const params = request.params as Json;
+        const name = String(params.name);
+        const callArgs = (params.arguments as Json) ?? {};
+        const explicitProject = typeof callArgs.projectRoot === 'string' && callArgs.projectRoot.trim()
+          ? String(callArgs.projectRoot).trim()
+          : (typeof callArgs.project === 'string' && callArgs.project.trim() ? String(callArgs.project).trim() : null);
+        let targetRoot = await resolveProjectRootToUse(explicitProject, root);
+        let activeQual = await inspectProjectQualification(targetRoot);
+        if (!activeQual.ok && targetRoot !== root) {
+          targetRoot = root;
+          activeQual = await inspectProjectQualification(root);
+        }
         if (!activeQual.ok) {
           result = unavailableToolResult(activeQual);
         } else {
           currentRoot = targetRoot;
           qualification = activeQual;
-          const params = request.params as Json;
-          const name = String(params.name);
-          const callArgs = (params.arguments as Json) ?? {};
           // 桥句柄按进程缓存；桥死亡/换届（A4 替换）时清空缓存重探一次（含自动点火）。
           let value: unknown;
           let lastError: unknown = null;
@@ -374,7 +386,17 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
               break;
             } catch (error) {
               lastError = error;
-              const status = (error as { httpStatus?: number })?.httpStatus;
+              const status = (error as { httpStatus?: number; code?: string })?.httpStatus;
+              const code = (error as { code?: string })?.code;
+              // 容灾自愈（Self-Healing）：若桥端报 404 或 PROJECT_NOT_FOUND，说明当前指针目标已被删除或不存在。
+              // 若当前 targetRoot 不等于 root (Agent 本身启动目录)，立即降级回退到 root 并自动重试
+              if ((status === 404 || code === 'PROJECT_NOT_FOUND') && targetRoot !== root) {
+                targetRoot = root;
+                currentRoot = root;
+                qualification = await inspectProjectQualification(root);
+                bridge = null;
+                continue;
+              }
               // fetch 网络错误（桥中途死亡）或 401（旧桥不认识控制通道）可重试一次；
               // 其余 4xx/5xx 是工具本身的真实错误，直接上报，绝不重试点火。
               if (typeof status === 'number' && status !== 401) throw error;
@@ -590,7 +612,12 @@ async function main(): Promise<void> {
   const { command, args } = parseArgs(process.argv.slice(2));
   if (command === 'serve') {
     const logger = createLogger({ source: 'bridge' });
-    const projectRoot = resolve(required(args, 'project'));
+    // Git linked worktree（如 live-dot-map-adapter 工位）直接注册主仓库根：
+    // 各工位的 .live-dot-map 是指向主工作区的 junction，注册工位路径会被 PATH_ESCAPE 拒绝；
+    // 与 MCP 的 resolveProjectRootToUse「worktree 回溯主仓库」行为一致。canonicalDirectory 兼做 realpath 归一。
+    const requestedRoot = resolve(required(args, 'project'));
+    const worktreeMain = resolveGitWorktreeMain(requestedRoot);
+    const projectRoot = await canonicalDirectory(worktreeMain ?? requestedRoot).catch(() => requestedRoot);
     const runtimeStateDir = typeof args['runtime-state-dir'] === 'string' ? resolve(args['runtime-state-dir']) : undefined;
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });

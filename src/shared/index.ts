@@ -345,6 +345,12 @@ function assertName(value: unknown): void {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > MAX_NAME) throw mapError('INVALID_NAME', 422, '名称不能为空且不能超过 80 字');
 }
 
+// 节点/连线/路线的名称与 validateMapDocument 对齐：允许空字符串（画布上存在
+// 未命名连线），但必须是字符串且不超过 80 字。地图名仍走 assertName 保持非空。
+function assertItemName(value: unknown): void {
+  if (typeof value !== 'string' || value.length > MAX_NAME) throw mapError('INVALID_NAME', 422, '名称必须是字符串且不能超过 80 字');
+}
+
 function isAgent(actor: Actor): boolean {
   return typeof actor === 'string' && actor.startsWith('agent:');
 }
@@ -410,7 +416,7 @@ function applyOne(document: MapDocument, command: MapCommand, actor: Actor, revi
     const value = cleanRecord(command.value, 'value');
     if (typeof value.id !== 'string' || !ID.test(value.id)) throw mapError('INVALID_ID', 422, '新对象 ID 无效');
     if (getList(document, command.collection).some((v) => v.id === value.id)) throw mapError('DUPLICATE_ID', 409, `对象 ${value.id} 已存在`);
-    if (command.collection !== 'anns') assertName(value.name);
+    if (command.collection !== 'anns') assertItemName(value.name);
     if (command.collection === 'nodes') {
       if (value.kind !== undefined && !['goal', 'problem', 'result'].includes(String(value.kind))) throw mapError('INVALID_NODE_KIND', 422, '节点 kind 必须是 goal、problem 或 result');
       // result 只为旧数据兼容；任何新 create 都规范化到 goal/problem。
@@ -443,7 +449,7 @@ function applyOne(document: MapDocument, command: MapCommand, actor: Actor, revi
     const item = findItem(document, command.collection, command.id);
     const patch = cleanRecord(command.patch, 'patch');
     for (const key of ['id', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'updatedRevision']) delete patch[key];
-    if ('name' in patch) assertName(patch.name);
+    if ('name' in patch) assertItemName(patch.name);
     if (command.collection === 'nodes' && 'kind' in patch) {
       if (!['goal', 'problem', 'result'].includes(String(patch.kind))) throw mapError('INVALID_NODE_KIND', 422, '节点 kind 必须是 goal、problem 或 result');
       patch.kind = patch.kind === 'problem' ? 'problem' : 'goal';
