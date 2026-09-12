@@ -312,7 +312,7 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_write_markdown",
-    "description": "用 baseEtag 原子替换资料包 Markdown。默认追加式：若替换会删除已有内容的行将被拒绝（REWRITE_REMOVES_CONTENT），请优先用 map_append_markdown；确属用户明确要求改写时才传 allowContentRemoval: true。",
+    "description": "用 baseEtag 原子替换资料包 Markdown。全域人类原声保护：严禁删除或覆盖人类原始文字（违规将被拒绝 HUMAN_CONTENT_PROTECTED）；默认追加式：若替换会删除已有内容的行将被拒绝（REWRITE_REMOVES_CONTENT），请优先用 map_append_markdown；确属用户明确要求改写时才传 allowContentRemoval: true。",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -341,6 +341,12 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         "allowContentRemoval": {
           "type": "boolean"
         },
+        "allowHumanContentOverride": {
+          "type": "boolean"
+        },
+        "allowIndexModification": {
+          "type": "boolean"
+        },
         "wrapAuthor": {
           "type": "boolean"
         },
@@ -358,7 +364,7 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_append_markdown",
-    "description": "按路径锁幂等追加 Markdown。",
+    "description": "按路径锁幂等追加 Markdown。可在任意文件（含 index.md）末尾安全追加 Agent 结论、回复或补充要点，自动包裹成对 @author 闭合标签，绝不破坏上方已有的人类原话。",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -429,7 +435,7 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_create_markdown",
-    "description": "在对象资料包中新建补充 Markdown。",
+    "description": "在对象资料包中新建补充 Markdown（如 01-方案.md）。创建后系统将在 index.md 自动同步登记资料包索引。",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -598,7 +604,7 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_import_asset",
-    "description": "从 sourcePath（支持项目内相对路径或本机任意绝对路径）流式导入附件（支持 zip、数据包、代码、图片、文档等各类文件）。",
+    "description": "从 sourcePath（支持项目内相对路径或本机任意绝对路径）流式导入附件（支持 zip、数据包、代码、图片、文档等各类文件）。导入后系统将在 index.md 自动同步登记资料包索引。",
     "inputSchema": {
       "type": "object",
       "properties": {

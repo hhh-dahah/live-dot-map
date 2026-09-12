@@ -4326,6 +4326,87 @@ function ensureAgentAuthorEnvelope(content, actor = "agent") {
 ${content.endsWith("\n") ? content : content + "\n"}<!-- /@author -->
 `;
 }
+function extractHumanLines(markdown) {
+  if (typeof markdown !== "string") return [];
+  const lines = markdown.split(/\r?\n/);
+  const humanLines = [];
+  let inAgent = false;
+  for (const rawLine of lines) {
+    let line = rawLine.trim();
+    if (!line) continue;
+    if (inAgent) {
+      if (/<!--\s*\/@author\s*-->/i.test(line)) {
+        inAgent = false;
+        const afterClose = line.replace(/^[\s\S]*?<!--\s*\/@author\s*-->/i, "").trim();
+        if (afterClose) {
+          humanLines.push(afterClose);
+        }
+      }
+      continue;
+    }
+    while (/<!--\s*@author:\s*(agent|system)[^\s>]*\s*-->[\s\S]*?<!--\s*\/@author\s*-->/i.test(line)) {
+      line = line.replace(/<!--\s*@author:\s*(agent|system)[^\s>]*\s*-->[\s\S]*?<!--\s*\/@author\s*-->/i, "").trim();
+    }
+    if (!line) continue;
+    if (/<!--\s*@author:\s*(agent|system)[^\s>]*\s*-->/i.test(line)) {
+      inAgent = true;
+      const beforeStart = line.replace(/<!--\s*@author:\s*(agent|system)[^\s>]*\s*-->[\s\S]*$/i, "").trim();
+      if (beforeStart) {
+        humanLines.push(beforeStart);
+      }
+      continue;
+    }
+    if (/^<!--\s*@author:\s*(human|none|clear)\s*-->$/i.test(line)) {
+      continue;
+    }
+    humanLines.push(line);
+  }
+  return humanLines;
+}
+async function syncBundleIndexToMainMarkdown(bundleStore, ownerKind, ownerId) {
+  if (!bundleStore || !ownerKind || !ownerId) return;
+  try {
+    const list = await bundleStore.list({ ownerKind, ownerId, includeArchived: false });
+    const otherFiles = (list || []).filter((f) => f.fileName !== "index.md" && f.name !== "index.md");
+    const indexEntry = await bundleStore.readMarkdown({ ownerKind, ownerId, fileName: "index.md" }).catch(() => null);
+    if (!indexEntry || typeof indexEntry.content !== "string") return;
+    const currentContent = indexEntry.content;
+    let indexSection = "";
+    if (otherFiles.length > 0) {
+      const items = otherFiles.map((f) => {
+        const icon = f.kind === "markdown" ? "\u{1F4C4}" : f.kind === "png" || f.kind === "jpg" || f.kind === "jpeg" || f.kind === "svg" || f.kind === "gif" ? "\u{1F5BC}\uFE0F" : "\u{1F4CE}";
+        const sizeKb = f.size ? ` (${(f.size / 1024).toFixed(1)} KB)` : "";
+        return `- ${icon} [${f.fileName}](${f.fileName})${sizeKb}`;
+      }).join("\n");
+      indexSection = `<!-- @author: system:bundle-index -->
+## \u{1F4C1} \u8282\u70B9\u8D44\u6599\u5305\u7D22\u5F15
+${items}
+<!-- /@author -->
+`;
+    }
+    const bundleIndexRegex = /<!--\s*@author:\s*system:bundle-index\s*-->[\s\S]*?<!--\s*\/@author\s*-->\r?\n?/i;
+    let nextContent = "";
+    if (bundleIndexRegex.test(currentContent)) {
+      nextContent = currentContent.replace(bundleIndexRegex, indexSection ? `${indexSection}` : "").trimEnd() + "\n";
+    } else if (indexSection) {
+      const sep5 = currentContent.endsWith("\n\n") ? "" : currentContent.endsWith("\n") ? "\n" : "\n\n";
+      nextContent = `${currentContent}${sep5}${indexSection}`;
+    } else {
+      return;
+    }
+    if (nextContent.trim() !== currentContent.trim()) {
+      await bundleStore.replaceMarkdown({
+        ownerKind,
+        ownerId,
+        fileName: "index.md",
+        content: nextContent,
+        baseEtag: indexEntry.etag
+      }).catch(() => {
+      });
+    }
+  } catch {
+  }
+}
 var TOOL_DEFINITIONS = Object.freeze([
   schema("map_get_context", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u7684\u7ED3\u6784\u3001\u63A8\u8FDB\u6458\u8981\u4E0E\u660E\u786E\u5173\u8054 Markdown\u3002", { query: { type: "string" }, currentNodeId: { anyOf: [{ type: "string" }, { type: "null" }] }, includeHistory: { type: "boolean" }, limit: { type: "integer", minimum: 1, maximum: 12 } }),
   schema("map_list_human_updates", "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002"),
@@ -4340,15 +4421,15 @@ var TOOL_DEFINITIONS = Object.freeze([
   schema("map_checkpoint", "\u521B\u5EFA\u53EF\u6062\u590D\u68C0\u67E5\u70B9\u3002", { reason: { type: "string" } }),
   schema("map_plan_consolidation", "\u53EA\u8BFB\u751F\u6210\u53EF\u5BA1\u6838\u7684\u6574\u7406\u5EFA\u8BAE\u3002", { maxSuggestions: { type: "integer", minimum: 1, maximum: 20 }, now: { type: "string" } }),
   schema("map_read_markdown", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u8D44\u6599\u5305 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" } }),
-  schema("map_write_markdown", "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, baseEtag: { type: "string" }, allowContentRemoval: { type: "boolean" }, wrapAuthor: { type: "boolean" } }, ["content", "baseEtag"]),
-  schema("map_append_markdown", "\u6309\u8DEF\u5F84\u9501\u5E42\u7B49\u8FFD\u52A0 Markdown\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, commandId: { type: "string" } }, ["content", "commandId"]),
+  schema("map_write_markdown", "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u5168\u57DF\u4EBA\u7C7B\u539F\u58F0\u4FDD\u62A4\uFF1A\u4E25\u7981\u5220\u9664\u6216\u8986\u76D6\u4EBA\u7C7B\u539F\u59CB\u6587\u5B57\uFF08\u8FDD\u89C4\u5C06\u88AB\u62D2\u7EDD HUMAN_CONTENT_PROTECTED\uFF09\uFF1B\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, baseEtag: { type: "string" }, allowContentRemoval: { type: "boolean" }, allowHumanContentOverride: { type: "boolean" }, allowIndexModification: { type: "boolean" }, wrapAuthor: { type: "boolean" } }, ["content", "baseEtag"]),
+  schema("map_append_markdown", "\u6309\u8DEF\u5F84\u9501\u5E42\u7B49\u8FFD\u52A0 Markdown\u3002\u53EF\u5728\u4EFB\u610F\u6587\u4EF6\uFF08\u542B index.md\uFF09\u672B\u5C3E\u5B89\u5168\u8FFD\u52A0 Agent \u7ED3\u8BBA\u3001\u56DE\u590D\u6216\u8865\u5145\u8981\u70B9\uFF0C\u81EA\u52A8\u5305\u88F9\u6210\u5BF9 @author \u95ED\u5408\u6807\u7B7E\uFF0C\u7EDD\u4E0D\u7834\u574F\u4E0A\u65B9\u5DF2\u6709\u7684\u4EBA\u7C7B\u539F\u8BDD\u3002", { ...owner, fileName: { type: "string" }, path: { type: "string" }, content: { type: "string" }, commandId: { type: "string" } }, ["content", "commandId"]),
   schema("map_list_bundle_files", "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u6587\u4EF6\u3002", { ...owner, includeArchived: { type: "boolean" } }, ["ownerKind", "ownerId"]),
-  schema("map_create_markdown", "\u5728\u5BF9\u8C61\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u8865\u5145 Markdown\u3002", { ...owner, fileName: { type: "string" }, title: { type: "string" }, content: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
+  schema("map_create_markdown", "\u5728\u5BF9\u8C61\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u8865\u5145 Markdown\uFF08\u5982 01-\u65B9\u6848.md\uFF09\u3002\u521B\u5EFA\u540E\u7CFB\u7EDF\u5C06\u5728 index.md \u81EA\u52A8\u540C\u6B65\u767B\u8BB0\u8D44\u6599\u5305\u7D22\u5F15\u3002", { ...owner, fileName: { type: "string" }, title: { type: "string" }, content: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
   schema("map_rename_bundle_file", "\u6539\u540D\u8865\u5145 Markdown \u6216\u9644\u4EF6\u3002", { ...owner, from: { type: "string" }, to: { type: "string" } }, ["ownerKind", "ownerId", "from", "to"]),
   schema("map_archive_bundle_file", "\u5F52\u6863\u8865\u5145 Markdown\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
   schema("map_restore_bundle_file", "\u6062\u590D\u8865\u5145 Markdown\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
   schema("map_list_assets", "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u9644\u4EF6\u5143\u6570\u636E\u3002", { ...owner, includeArchived: { type: "boolean" } }, ["ownerKind", "ownerId"]),
-  schema("map_import_asset", "\u4ECE sourcePath\uFF08\u652F\u6301\u9879\u76EE\u5185\u76F8\u5BF9\u8DEF\u5F84\u6216\u672C\u673A\u4EFB\u610F\u7EDD\u5BF9\u8DEF\u5F84\uFF09\u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\uFF08\u652F\u6301 zip\u3001\u6570\u636E\u5305\u3001\u4EE3\u7801\u3001\u56FE\u7247\u3001\u6587\u6863\u7B49\u5404\u7C7B\u6587\u4EF6\uFF09\u3002", { ...owner, sourcePath: { type: "string" }, fileName: { type: "string" }, mimeType: { type: "string" }, allowExternalPath: { type: "boolean" } }, ["ownerKind", "ownerId", "sourcePath"]),
+  schema("map_import_asset", "\u4ECE sourcePath\uFF08\u652F\u6301\u9879\u76EE\u5185\u76F8\u5BF9\u8DEF\u5F84\u6216\u672C\u673A\u4EFB\u610F\u7EDD\u5BF9\u8DEF\u5F84\uFF09\u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\uFF08\u652F\u6301 zip\u3001\u6570\u636E\u5305\u3001\u4EE3\u7801\u3001\u56FE\u7247\u3001\u6587\u6863\u7B49\u5404\u7C7B\u6587\u4EF6\uFF09\u3002\u5BFC\u5165\u540E\u7CFB\u7EDF\u5C06\u5728 index.md \u81EA\u52A8\u540C\u6B65\u767B\u8BB0\u8D44\u6599\u5305\u7D22\u5F15\u3002", { ...owner, sourcePath: { type: "string" }, fileName: { type: "string" }, mimeType: { type: "string" }, allowExternalPath: { type: "boolean" } }, ["ownerKind", "ownerId", "sourcePath"]),
   schema("map_archive_asset", "\u5F52\u6863\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
   schema("map_restore_asset", "\u6062\u590D\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
   schema("map_read_asset", "\u8FD4\u56DE\u5BF9\u8C61\u9644\u4EF6\u8DEF\u5F84\u4E0E\u5143\u6570\u636E\uFF08\u4E0D\u642C\u8FD0\u4E8C\u8FDB\u5236\uFF09\u3002\u6587\u672C\u7C7B\u9644 content\uFF0C\u4E8C\u8FDB\u5236\u53EF\u4F20 includeContent \u53D6 base64\u3002", { ...owner, fileName: { type: "string" }, includeContent: { type: "boolean" } }, ["ownerKind", "ownerId", "fileName"])
@@ -4607,15 +4688,21 @@ var ToolService = class {
     const isAgent2 = typeof this.actor === "string" && this.actor.startsWith("agent");
     if (name === "map_read_markdown") return cleanResult(await bundleStore.readMarkdown(file));
     if (name === "map_write_markdown") {
-      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
-        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u9ED8\u8BA4\u7981\u6B62 Agent \u4FEE\u6539\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002\u4EC5\u5F53\u4EBA\u7C7B\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6307\u4EE4\u8981\u6C42\u4FEE\u6539 index.md \u65F6\uFF0C\u65B9\u53EF\u663E\u5F0F\u4F20\u5165 allowIndexModification: true\u3002", { status: 403 });
-      }
       const rawContent = args.content;
       const content = args.wrapAuthor !== false && rawContent !== void 0 && isAgent2 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
+      const current = await bundleStore.readMarkdown(file).catch(() => null);
+      const existing = String(current?.content ?? "");
+      const next = String(content ?? "");
+      if (isAgent2 && args.allowHumanContentOverride !== true && args.allowIndexModification !== true) {
+        const existingHumanLines = extractHumanLines(existing);
+        if (existingHumanLines.length) {
+          const missing = existingHumanLines.filter((line) => !next.includes(line));
+          if (missing.length > 0) {
+            throw new BridgeError("HUMAN_CONTENT_PROTECTED", `\u6574\u6587\u66FF\u6362\u7F3A\u5931\u4E86\u4EBA\u7C7B\u539F\u59CB\u6587\u672C\uFF08\u5171 ${missing.length} \u884C\uFF0C\u5982\uFF1A\u201C${missing[0].slice(0, 30)}\u201D\uFF09\u3002\u4EBA\u7C7B\u4E66\u5199\u5185\u5BB9\u5728\u4EFB\u4F55\u6587\u4EF6\u4E0B\u5747\u53D7\u5230\u7EDD\u5BF9\u4FDD\u62A4\uFF0C\u7981\u6B62 Agent \u64C5\u81EA\u8986\u76D6\u6216\u5220\u51CF\u3002\u8BF7\u6539\u7528 map_append_markdown \u8FDB\u884C\u8FFD\u52A0\uFF0C\u6216\u786E\u4FDD\u5728\u66FF\u6362\u5185\u5BB9\u4E2D\u5B8C\u6574\u4FDD\u7559\u4EBA\u7C7B\u539F\u8BDD\u3002`, { status: 403 });
+          }
+        }
+      }
       if (args.allowContentRemoval !== true) {
-        const current = await bundleStore.readMarkdown(file).catch(() => null);
-        const existing = String(current?.content ?? "");
-        const next = String(content ?? "");
         if (existing.trim()) {
           const removed = existing.split(/\r?\n/).filter((line) => line.trim() && !next.includes(line.trim()));
           if (removed.length) {
@@ -4628,9 +4715,6 @@ var ToolService = class {
       return { ...result2, content: String(content) };
     }
     if (name === "map_append_markdown") {
-      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
-        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u9ED8\u8BA4\u7981\u6B62 Agent \u4FEE\u6539\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002\u4EC5\u5F53\u4EBA\u7C7B\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6307\u4EE4\u8981\u6C42\u4FEE\u6539 index.md \u65F6\uFF0C\u65B9\u53EF\u663E\u5F0F\u4F20\u5165 allowIndexModification: true\u3002", { status: 403 });
-      }
       const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
       const result2 = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
@@ -4638,27 +4722,31 @@ var ToolService = class {
     }
     if (name === "map_list_bundle_files") return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === "map_create_markdown") {
-      if (isAgent2 && isIndexFile && args.allowIndexModification !== true) {
-        throw new BridgeError("INDEX_PROTECTED", "index.md \u5C5E\u4E8E\u4EBA\u7C7B\u9700\u6C42\u4E0E\u95EE\u9898\u539F\u58F0\uFF0C\u7981\u6B62 Agent \u8986\u76D6\u521B\u5EFA\u3002\u8BF7\u4F7F\u7528 map_create_markdown \u5728\u8282\u70B9\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u72EC\u7ACB .md \u65B9\u6848\u6587\u4EF6\u3002", { status: 403 });
+      if (isIndexFile) {
+        throw new BridgeError("BUNDLE_INDEX_CREATE_USE_ENSURE", "index.md \u662F\u8282\u70B9\u4E3B\u6587\u6863\uFF0C\u5DF2\u5728\u8282\u70B9\u521B\u5EFA\u65F6\u81EA\u52A8\u521D\u59CB\u5316\u3002\u5982\u9700\u8FFD\u52A0\u5185\u5BB9\u8BF7\u4F7F\u7528 map_append_markdown\uFF0C\u5982\u9700\u8865\u5145\u65B9\u6848\u6587\u6863\u8BF7\u4F20\u5165\u72EC\u7ACB\u6587\u4EF6\u540D\uFF08\u5982 01-proposal.md\uFF09\u3002", { status: 409 });
       }
       const rawContent = args.content;
       const content = args.wrapAuthor !== false && rawContent !== void 0 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
       const result2 = await bundleStore.createMarkdown({ ...file, content, title: args.title });
+      await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
     if (name === "map_rename_bundle_file") {
       const result2 = await bundleStore.rename({ ownerKind: file.ownerKind, ownerId: file.ownerId, from: args.from, to: args.to });
+      await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
     if (name === "map_archive_bundle_file" || name === "map_archive_asset") {
       const result2 = await bundleStore.archive(file);
+      await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
     if (name === "map_restore_bundle_file" || name === "map_restore_asset") {
       const result2 = await bundleStore.restore(file);
+      await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
@@ -4676,6 +4764,7 @@ var ToolService = class {
         mimeType: args.mimeType,
         allowExternalPath: isExt || args.allowExternalPath === true
       });
+      await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
@@ -6166,7 +6255,7 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_write_markdown",
-    "description": "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002",
+    "description": "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u5168\u57DF\u4EBA\u7C7B\u539F\u58F0\u4FDD\u62A4\uFF1A\u4E25\u7981\u5220\u9664\u6216\u8986\u76D6\u4EBA\u7C7B\u539F\u59CB\u6587\u5B57\uFF08\u8FDD\u89C4\u5C06\u88AB\u62D2\u7EDD HUMAN_CONTENT_PROTECTED\uFF09\uFF1B\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6195,6 +6284,12 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         "allowContentRemoval": {
           "type": "boolean"
         },
+        "allowHumanContentOverride": {
+          "type": "boolean"
+        },
+        "allowIndexModification": {
+          "type": "boolean"
+        },
         "wrapAuthor": {
           "type": "boolean"
         },
@@ -6212,7 +6307,7 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_append_markdown",
-    "description": "\u6309\u8DEF\u5F84\u9501\u5E42\u7B49\u8FFD\u52A0 Markdown\u3002",
+    "description": "\u6309\u8DEF\u5F84\u9501\u5E42\u7B49\u8FFD\u52A0 Markdown\u3002\u53EF\u5728\u4EFB\u610F\u6587\u4EF6\uFF08\u542B index.md\uFF09\u672B\u5C3E\u5B89\u5168\u8FFD\u52A0 Agent \u7ED3\u8BBA\u3001\u56DE\u590D\u6216\u8865\u5145\u8981\u70B9\uFF0C\u81EA\u52A8\u5305\u88F9\u6210\u5BF9 @author \u95ED\u5408\u6807\u7B7E\uFF0C\u7EDD\u4E0D\u7834\u574F\u4E0A\u65B9\u5DF2\u6709\u7684\u4EBA\u7C7B\u539F\u8BDD\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6283,7 +6378,7 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_create_markdown",
-    "description": "\u5728\u5BF9\u8C61\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u8865\u5145 Markdown\u3002",
+    "description": "\u5728\u5BF9\u8C61\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u8865\u5145 Markdown\uFF08\u5982 01-\u65B9\u6848.md\uFF09\u3002\u521B\u5EFA\u540E\u7CFB\u7EDF\u5C06\u5728 index.md \u81EA\u52A8\u540C\u6B65\u767B\u8BB0\u8D44\u6599\u5305\u7D22\u5F15\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6452,7 +6547,7 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_import_asset",
-    "description": "\u4ECE sourcePath\uFF08\u652F\u6301\u9879\u76EE\u5185\u76F8\u5BF9\u8DEF\u5F84\u6216\u672C\u673A\u4EFB\u610F\u7EDD\u5BF9\u8DEF\u5F84\uFF09\u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\uFF08\u652F\u6301 zip\u3001\u6570\u636E\u5305\u3001\u4EE3\u7801\u3001\u56FE\u7247\u3001\u6587\u6863\u7B49\u5404\u7C7B\u6587\u4EF6\uFF09\u3002",
+    "description": "\u4ECE sourcePath\uFF08\u652F\u6301\u9879\u76EE\u5185\u76F8\u5BF9\u8DEF\u5F84\u6216\u672C\u673A\u4EFB\u610F\u7EDD\u5BF9\u8DEF\u5F84\uFF09\u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\uFF08\u652F\u6301 zip\u3001\u6570\u636E\u5305\u3001\u4EE3\u7801\u3001\u56FE\u7247\u3001\u6587\u6863\u7B49\u5404\u7C7B\u6587\u4EF6\uFF09\u3002\u5BFC\u5165\u540E\u7CFB\u7EDF\u5C06\u5728 index.md \u81EA\u52A8\u540C\u6B65\u767B\u8BB0\u8D44\u6599\u5305\u7D22\u5F15\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -9599,29 +9694,6 @@ function unavailableToolResult(qualification) {
 function envelope(projectId, revision, actor, sessionId, commands) {
   return { projectId, baseRevision: revision, commandId: `cmd-${(0, import_node_crypto17.randomUUID)()}`, actor, sessionId, commands };
 }
-function compactHookContext(value) {
-  const context = value && typeof value === "object" ? value : {};
-  const objects = Array.isArray(context.objects) ? context.objects : [];
-  const markdown = Array.isArray(context.markdown) ? context.markdown : [];
-  return {
-    revision: context.revision,
-    projection: context.projection,
-    objects: objects.slice(0, 6).map((item) => ({
-      kind: item.kind,
-      id: item.id,
-      score: item.score,
-      source: item.source,
-      reasons: Array.isArray(item.reasons) ? item.reasons.slice(0, 3) : [],
-      relationPath: Array.isArray(item.relationPath) ? item.relationPath.slice(0, 3) : []
-    })),
-    markdown: markdown.slice(0, 2).map((item) => ({
-      path: item.path,
-      score: item.score,
-      reasons: Array.isArray(item.reasons) ? item.reasons.slice(0, 2) : [],
-      snippet: typeof item.snippet === "string" ? item.snippet.slice(0, 360) : ""
-    }))
-  };
-}
 var toolDefinitions = TOOL_DEFINITIONS;
 var BRIDGE_IGNITE_TIMEOUT_MS = Number(process.env.LIVEDOT_MCP_IGNITE_TIMEOUT_MS) || 15e3;
 function bridgeUnavailableError(message) {
@@ -9915,20 +9987,53 @@ async function runHook(kind, args) {
     return;
   }
   if (kind === "user-prompt") {
-    let prompt = typeof args.prompt === "string" ? args.prompt : "";
-    if (!prompt && !process.stdin.isTTY) {
-      let raw = "";
-      for await (const chunk of process.stdin) raw += chunk;
-      try {
-        const input = JSON.parse(raw);
-        prompt = String(input.prompt ?? input.user_prompt ?? input.input ?? raw);
-      } catch {
-        prompt = raw;
+    const watermarkPath = (0, import_node_path24.join)(root, ".live-dot-map", "agent-read.json");
+    let watermark = 0;
+    try {
+      const parsed = JSON.parse(await (0, import_promises20.readFile)(watermarkPath, "utf8"));
+      if (typeof parsed?.updatedAt === "string") watermark = Date.parse(parsed.updatedAt);
+    } catch {
+    }
+    const since = watermark || Date.now();
+    const changes = [];
+    const collections = [["nodes", "\u8282\u70B9"], ["edges", "\u65B9\u6848"], ["anns", "\u6807\u6CE8"], ["routes", "\u8DEF\u7EBF"]];
+    for (const [collection, label] of collections) {
+      for (const item of Array.isArray(document[collection]) ? document[collection] : []) {
+        const updated = Date.parse(String(item.updatedAt));
+        if (Number.isFinite(updated) && updated > since) {
+          changes.push({
+            label,
+            id: String(item.id),
+            name: String(item.name ?? item.text ?? ""),
+            status: item.status ? String(item.status) : "",
+            attention: item.attention ? String(item.attention) : ""
+          });
+        }
       }
     }
-    const context = await tools.dispatch("map_get_context", { query: prompt });
-    process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: JSON.stringify(compactHookContext(context)) } })}
+    const newAnns = document.anns.filter((ann) => ann.source === "human" && ann.attention === "new");
+    let deliveredIds = [];
+    if (newAnns.length) {
+      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: "deliver_annotations", ids: newAnns.map((ann) => String(ann.id)), deliveryId: sessionId }]));
+      deliveredIds = newAnns.map((ann) => String(ann.id));
+    }
+    if (changes.length || deliveredIds.length) {
+      await (0, import_promises20.mkdir)((0, import_node_path24.dirname)(watermarkPath), { recursive: true });
+      await (0, import_promises20.writeFile)(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+`, "utf8");
+      const newCount = changes.filter((item) => item.label === "\u6807\u6CE8" && item.attention === "new").length;
+      const lines = changes.slice(0, 5).map((item) => `${item.label} ${item.id}${item.name ? `\u300C${item.name}\u300D` : ""}${item.status ? `(${item.status})` : ""}`);
+      const output = {
+        hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: [
+          `[\u6D3B\u70B9\u5730\u56FE] \u63D0\u793A\uFF1A\u81EA\u4E0A\u6B21\u4EE5\u6765\u753B\u5E03\u6709 ${changes.length} \u5904\u66F4\u65B0${newCount ? `\uFF08\u542B ${newCount} \u6761\u65B0\u6807\u6CE8\uFF09` : ""}\uFF1A`,
+          ...lines,
+          changes.length > 5 ? `\u2026\u5171 ${changes.length} \u5904` : "",
+          "\u5982\u9700\u8BE6\u60C5\u53EF\u968F\u65F6\u8C03\u7528 MCP \u5DE5\u5177\uFF08\u5982 map_list_human_updates / map_get_context\uFF09\u3002"
+        ].filter(Boolean).join("\n") }
+      };
+      process.stdout.write(`${JSON.stringify(output)}
 `);
+    }
     await recordAgentHealth2(root, actor, "hook:user-prompt", "ok");
     await manager.close();
     return;

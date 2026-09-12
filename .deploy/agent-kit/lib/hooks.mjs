@@ -200,15 +200,40 @@ async function readPrompt(input = process.stdin) {
   return value.trim();
 }
 
-export async function runUserPromptSubmit({ client, env = process.env, prompt, input = process.stdin, write = () => {} } = {}) {
+export async function runUserPromptSubmit({ client, env = process.env, prompt, input, write = () => {}, now = new Date(), projectRoot } = {}) {
   const bridge = client || createClientFromEnv(env);
   try {
-    const query = typeof prompt === 'string' ? prompt.trim() : await readPrompt(input);
+    if (input && !input.isTTY && typeof prompt !== 'string') {
+      await readPrompt(input);
+    }
     await bridge.health();
-    const context = await bridge.mapGetContext({ query, sessionId: bridge.sessionId });
-    const output = `[活点地图] 本轮检索上下文\n${typeof context === 'string' ? context : JSON.stringify(context ?? {}, null, 2)}`;
+    const root = resolveProjectRoot(projectRoot, bridge, env);
+    const { changes, next } = await collectIncrementalChanges(root, now);
+    let deliveredIds = [];
+    try {
+      const listed = await bridge.mapListHumanUpdates({ includeAcknowledged: false });
+      const pending = pendingUpdates(listed);
+      if (pending.length) {
+        const delivered = await deliver(bridge, pending.filter((item) => item.attention === 'new'));
+        deliveredIds = delivered.delivered;
+      }
+    } catch { /* 桥不可用时只报增量，不阻断 */ }
+    if (!changes.length && !deliveredIds.length) {
+      // 无事不打扰：无变化时完全静默，不占用任何上下文 Token（彻底杜绝多轮会话上下文爆炸）
+      write('');
+      return { ok: true, output: '', sessionId: bridge.sessionId, deliveredIds, at: now.toISOString(), changes: [] };
+    }
+    await writeWatermark(root, next);
+    const newCount = changes.filter((item) => item.label === '标注' && item.attention === 'new').length;
+    const lines = changes.slice(0, 5).map((item) => `${item.label} ${item.id}${item.name ? `「${item.name}」` : ''}${item.status ? `(${item.status})` : ''}`);
+    const output = [
+      `[活点地图] 提示：自上次以来画布有 ${changes.length} 处更新${newCount ? `（含 ${newCount} 条新标注）` : ''}：`,
+      ...lines,
+      changes.length > 5 ? `…共 ${changes.length} 处` : '',
+      '如需详情可随时调用 MCP 工具（如 map_list_human_updates / map_get_context）。',
+    ].filter(Boolean).join('\n');
     write(output);
-    return { ok: true, output, query };
+    return { ok: true, output, sessionId: bridge.sessionId, deliveredIds, at: now.toISOString(), changes };
   } catch (error) {
     const output = failureText('UserPromptSubmit', error);
     write(output);

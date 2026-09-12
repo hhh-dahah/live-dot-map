@@ -3,10 +3,10 @@
   "product": "live-dot-map",
   "version": "2.0.1",
   "channel": "internal-rc",
-  "payloadHash": "74ce2a6c9307f50fa212b5473b82397b81d7618cb855f3c374daa582cf1b7a81",
+  "payloadHash": "3d9bb809a37b83f53289409898a0d6ee005e1b0334aec5d1490b0e000bdee07d",
   "installer": {
-    "bytes": 196300279,
-    "sha256": "9504c2b4c21e294037667b9ca2121289c27a7dcdaa124c67279e5a62d806d919",
+    "bytes": 196304375,
+    "sha256": "7bba141bfbaec9ad5e687f6c20bc448c6f3473f9ae10dfc1e1cdb90ff6dad4c1",
     "url": "LiveDotMapSetup.exe"
   },
   "files": {
@@ -16,8 +16,8 @@
       "url": "payload/app.html"
     },
     "livedot-bridge-win-x64.exe": {
-      "bytes": 92339712,
-      "sha256": "7469297047a76dfe550573ebe9f85a49a22384c8f81e8ce45b0267fa63df8b83",
+      "bytes": 92346368,
+      "sha256": "c9adcbfd901ab1383bc130381dffa22f1b8d162a5cf96abcc4ff4b6d06bb19af",
       "url": "payload/livedot-bridge-win-x64.exe"
     },
     "manifest.webmanifest": {
@@ -51,8 +51,8 @@
       "url": "payload/assets/app-icon.ico"
     },
     "agent-kit/skills/live-dot-map/SKILL.md": {
-      "bytes": 7724,
-      "sha256": "e2ad05b9c6706b8b1324ff95d8e09c01bb31123a367c52be0cb16e4c5109285d",
+      "bytes": 8562,
+      "sha256": "c2007128586c9aaebb6900df135c7323546f06917ca71667d840682306488783",
       "url": "payload/agent-kit/skills/live-dot-map/SKILL.md"
     },
     "agent-kit/skills/live-dot-map/templates/attempt.md": {
@@ -62,7 +62,7 @@
     },
     "payload-manifest.json": {
       "bytes": 1782,
-      "sha256": "0576470b32eb63806b2bde3819d4bca5b51d8ecafc445e3970d7c1fdc6570c73",
+      "sha256": "08f7fd98333e6dead00af8d9cc1fdbbd4380902bb68a6cd04aeea7ff888c33b8",
       "url": "payload/payload-manifest.json"
     }
   }
