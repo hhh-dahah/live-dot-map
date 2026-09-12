@@ -598,7 +598,7 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_import_asset",
-    "description": "从项目内 sourcePath 流式导入附件。",
+    "description": "从 sourcePath（支持项目内相对路径或本机任意绝对路径）流式导入附件（支持 zip、数据包、代码、图片、文档等各类文件）。",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -620,6 +620,9 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "mimeType": {
           "type": "string"
+        },
+        "allowExternalPath": {
+          "type": "boolean"
         },
         "projectRoot": {
           "type": "string",

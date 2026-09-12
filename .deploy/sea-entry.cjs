@@ -461,10 +461,10 @@ function applyCommandEnvelope(document, envelope2, options = {}) {
   if (isAgent(envelope2.actor)) {
     const objectCommands = envelope2.commands.filter((command2) => ["create", "update", "archive", "restore", "delete"].includes(command2.op));
     const nodeCreates = envelope2.commands.filter((command2) => command2.op === "create" && command2.collection === "nodes");
-    if (objectCommands.length > MAX_AGENT_OBJECTS_PER_ENVELOPE) throw mapError("AGENT_BATCH_LIMIT", 422, "Agent \u5355\u6B21\u6700\u591A\u4FEE\u6539 10 \u4E2A\u5BF9\u8C61\uFF0C\u8BF7\u5148\u5408\u5E76\u6216\u8BA9\u4EBA\u9009\u62E9", { maxObjects: MAX_AGENT_OBJECTS_PER_ENVELOPE, suggestion: "\u538B\u7F29\u6267\u884C\u788E\u7247\uFF0C\u4FDD\u7559\u9879\u76EE/\u8DEF\u7EBF\u7EA7\u7ED3\u8BBA" });
-    if (nodeCreates.length > MAX_AGENT_NEW_NODES_PER_ENVELOPE) throw mapError("AGENT_NODE_LIMIT", 422, "Agent \u5355\u6B21\u6700\u591A\u65B0\u589E 5 \u4E2A\u6D3B\u8DC3\u8282\u70B9\uFF0C\u8BF7\u5148\u5408\u5E76\u6216\u5206\u9636\u6BB5\u63D0\u4EA4", { maxNodes: MAX_AGENT_NEW_NODES_PER_ENVELOPE, suggestion: "\u53EA\u4FDD\u7559\u76EE\u6807\u3001\u9636\u6BB5\u3001\u7ED3\u679C\u6216\u5BA1\u6838\u95E8" });
+    if (objectCommands.length > MAX_AGENT_OBJECTS_PER_ENVELOPE) throw mapError("AGENT_BATCH_LIMIT", 422, `Agent \u5355\u6B21\u6700\u591A\u4FEE\u6539 ${MAX_AGENT_OBJECTS_PER_ENVELOPE} \u4E2A\u5BF9\u8C61\uFF0C\u8BF7\u5148\u5408\u5E76\u6216\u8BA9\u4EBA\u9009\u62E9`, { maxObjects: MAX_AGENT_OBJECTS_PER_ENVELOPE, suggestion: "\u538B\u7F29\u6267\u884C\u788E\u7247\uFF0C\u4FDD\u7559\u9879\u76EE/\u8DEF\u7EBF\u7EA7\u7ED3\u8BBA" });
+    if (nodeCreates.length > MAX_AGENT_NEW_NODES_PER_ENVELOPE) throw mapError("AGENT_NODE_LIMIT", 422, `Agent \u5355\u6B21\u6700\u591A\u65B0\u589E ${MAX_AGENT_NEW_NODES_PER_ENVELOPE} \u4E2A\u6D3B\u8DC3\u8282\u70B9\uFF0C\u8BF7\u5148\u5408\u5E76\u6216\u5206\u9636\u6BB5\u63D0\u4EA4`, { maxNodes: MAX_AGENT_NEW_NODES_PER_ENVELOPE, suggestion: "\u53EA\u4FDD\u7559\u76EE\u6807\u3001\u9636\u6BB5\u3001\u7ED3\u679C\u6216\u5BA1\u6838\u95E8" });
     const activeNodes = document.nodes.filter((node) => visibleNode(document, node)).length;
-    if (agentInitialMap && activeNodes + nodeCreates.length > MAX_INITIAL_MAP_NODES) throw mapError("AGENT_INITIAL_MAP_LIMIT", 422, "\u9996\u6B21\u521D\u59CB\u5316\u5730\u56FE\u6700\u591A\u4FDD\u7559 15 \u4E2A\u6D3B\u8DC3\u8282\u70B9\uFF0C\u8BF7\u538B\u7F29\u4E3A\u76EE\u6807\u3001\u9636\u6BB5\u3001\u8DEF\u7EBF\u548C\u5F85\u5224\u65AD\u4E8B\u9879", { maxInitialNodes: MAX_INITIAL_MAP_NODES, suggestion: "\u4E0D\u8981\u6309\u6587\u4EF6\u3001\u76EE\u5F55\u3001\u51FD\u6570\u6216\u804A\u5929\u8F6E\u6B21\u5EFA\u8282\u70B9" });
+    if (agentInitialMap && activeNodes + nodeCreates.length > MAX_INITIAL_MAP_NODES) throw mapError("AGENT_INITIAL_MAP_LIMIT", 422, `\u9996\u6B21\u521D\u59CB\u5316\u5730\u56FE\u6700\u591A\u4FDD\u7559 ${MAX_INITIAL_MAP_NODES} \u4E2A\u6D3B\u8DC3\u8282\u70B9\uFF0C\u8BF7\u538B\u7F29\u4E3A\u76EE\u6807\u3001\u9636\u6BB5\u3001\u8DEF\u7EBF\u548C\u5F85\u5224\u65AD\u4E8B\u9879`, { maxInitialNodes: MAX_INITIAL_MAP_NODES, suggestion: "\u4E0D\u8981\u6309\u6587\u4EF6\u3001\u76EE\u5F55\u3001\u51FD\u6570\u6216\u804A\u5929\u8F6E\u6B21\u5EFA\u8282\u70B9" });
   }
   const revision = document.revision + 1;
   const now = utcNow(options.now);
@@ -1223,9 +1223,9 @@ var init_shared = __esm({
     DANGEROUS_KEYS = /* @__PURE__ */ new Set(["__proto__", "prototype", "constructor"]);
     MAX_NAME = 80;
     MAX_ANN = 4e3;
-    MAX_AGENT_OBJECTS_PER_ENVELOPE = 10;
-    MAX_AGENT_NEW_NODES_PER_ENVELOPE = 5;
-    MAX_INITIAL_MAP_NODES = 15;
+    MAX_AGENT_OBJECTS_PER_ENVELOPE = 50;
+    MAX_AGENT_NEW_NODES_PER_ENVELOPE = 30;
+    MAX_INITIAL_MAP_NODES = 50;
   }
 });
 
@@ -3139,9 +3139,9 @@ var import_node_fs2 = require("node:fs");
 var import_promises9 = require("node:fs/promises");
 var import_node_crypto5 = require("node:crypto");
 var import_node_path10 = require("node:path");
-var MAX_ASSET_BYTES = 20 * 1024 * 1024;
-var MAX_BUNDLE_FILES = 200;
-var MAX_MAP_ASSET_BYTES = 1024 * 1024 * 1024;
+var MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024;
+var MAX_BUNDLE_FILES = 1e3;
+var MAX_MAP_ASSET_BYTES = 50 * 1024 * 1024 * 1024;
 var MAX_NAME_BYTES = 255;
 var OWNER_KINDS = /* @__PURE__ */ new Map([
   ["node", "nodes"],
@@ -3149,15 +3149,80 @@ var OWNER_KINDS = /* @__PURE__ */ new Map([
   ["route", "routes"],
   ["routes", "routes"]
 ]);
+var DANGEROUS_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".exe",
+  ".bat",
+  ".cmd",
+  ".msi",
+  ".vbs",
+  ".vbe",
+  ".scr",
+  ".pif",
+  ".com",
+  ".cpl",
+  ".hta"
+]);
 var ASSET_TYPES = Object.freeze({
-  ".png": { mime: "image/png", kind: "png" },
-  ".jpg": { mime: "image/jpeg", kind: "jpeg" },
-  ".jpeg": { mime: "image/jpeg", kind: "jpeg" },
-  ".webp": { mime: "image/webp", kind: "webp" },
-  ".gif": { mime: "image/gif", kind: "gif" },
-  ".pdf": { mime: "application/pdf", kind: "pdf" },
-  ".docx": { mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", kind: "docx" },
-  ".svg": { mime: "image/svg+xml", kind: "svg", disposition: "attachment" }
+  // 图片与多媒体
+  ".png": { mime: "image/png", kind: "png", disposition: "inline" },
+  ".jpg": { mime: "image/jpeg", kind: "jpeg", disposition: "inline" },
+  ".jpeg": { mime: "image/jpeg", kind: "jpeg", disposition: "inline" },
+  ".webp": { mime: "image/webp", kind: "webp", disposition: "inline" },
+  ".gif": { mime: "image/gif", kind: "gif", disposition: "inline" },
+  ".svg": { mime: "image/svg+xml", kind: "svg", disposition: "attachment" },
+  ".bmp": { mime: "image/bmp", kind: "bmp", disposition: "inline" },
+  ".ico": { mime: "image/x-icon", kind: "ico", disposition: "inline" },
+  ".mp4": { mime: "video/mp4", kind: "mp4", disposition: "inline" },
+  ".mp3": { mime: "audio/mpeg", kind: "mp3", disposition: "inline" },
+  ".wav": { mime: "audio/wav", kind: "wav", disposition: "inline" },
+  // 文档与论文素材
+  ".pdf": { mime: "application/pdf", kind: "pdf", disposition: "inline" },
+  ".docx": { mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", kind: "docx", disposition: "attachment" },
+  ".doc": { mime: "application/msword", kind: "doc", disposition: "attachment" },
+  ".pptx": { mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation", kind: "pptx", disposition: "attachment" },
+  ".ppt": { mime: "application/vnd.ms-powerpoint", kind: "ppt", disposition: "attachment" },
+  ".md": { mime: "text/markdown; charset=utf-8", kind: "markdown", disposition: "inline" },
+  ".txt": { mime: "text/plain; charset=utf-8", kind: "txt", disposition: "inline" },
+  ".tex": { mime: "application/x-tex", kind: "tex", disposition: "attachment" },
+  // 压缩包与工程归档
+  ".zip": { mime: "application/zip", kind: "zip", disposition: "attachment" },
+  ".7z": { mime: "application/x-7z-compressed", kind: "7z", disposition: "attachment" },
+  ".rar": { mime: "application/vnd.rar", kind: "rar", disposition: "attachment" },
+  ".tar": { mime: "application/x-tar", kind: "tar", disposition: "attachment" },
+  ".gz": { mime: "application/gzip", kind: "gz", disposition: "attachment" },
+  ".bz2": { mime: "application/x-bzip2", kind: "bz2", disposition: "attachment" },
+  // 科学计算、数据与数据库
+  ".csv": { mime: "text/csv; charset=utf-8", kind: "csv", disposition: "attachment" },
+  ".tsv": { mime: "text/tab-separated-values; charset=utf-8", kind: "tsv", disposition: "attachment" },
+  ".xlsx": { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", kind: "xlsx", disposition: "attachment" },
+  ".xls": { mime: "application/vnd.ms-excel", kind: "xls", disposition: "attachment" },
+  ".parquet": { mime: "application/vnd.apache.parquet", kind: "parquet", disposition: "attachment" },
+  ".h5": { mime: "application/x-hdf5", kind: "h5", disposition: "attachment" },
+  ".hdf5": { mime: "application/x-hdf5", kind: "hdf5", disposition: "attachment" },
+  ".pkl": { mime: "application/octet-stream", kind: "pkl", disposition: "attachment" },
+  ".npy": { mime: "application/octet-stream", kind: "npy", disposition: "attachment" },
+  ".npz": { mime: "application/octet-stream", kind: "npz", disposition: "attachment" },
+  ".mat": { mime: "application/octet-stream", kind: "mat", disposition: "attachment" },
+  ".sqlite": { mime: "application/vnd.sqlite3", kind: "sqlite", disposition: "attachment" },
+  ".db": { mime: "application/vnd.sqlite3", kind: "db", disposition: "attachment" },
+  ".sql": { mime: "application/sql", kind: "sql", disposition: "attachment" },
+  // 代码与脚本
+  ".py": { mime: "text/x-python; charset=utf-8", kind: "py", disposition: "attachment" },
+  ".ipynb": { mime: "application/x-ipynb+json", kind: "ipynb", disposition: "attachment" },
+  ".m": { mime: "text/x-matlab; charset=utf-8", kind: "m", disposition: "attachment" },
+  ".r": { mime: "text/x-r; charset=utf-8", kind: "r", disposition: "attachment" },
+  ".c": { mime: "text/x-c; charset=utf-8", kind: "c", disposition: "attachment" },
+  ".cpp": { mime: "text/x-c++src; charset=utf-8", kind: "cpp", disposition: "attachment" },
+  ".h": { mime: "text/x-c; charset=utf-8", kind: "h", disposition: "attachment" },
+  ".rs": { mime: "text/rust; charset=utf-8", kind: "rs", disposition: "attachment" },
+  ".go": { mime: "text/x-go; charset=utf-8", kind: "go", disposition: "attachment" },
+  ".java": { mime: "text/x-java-source; charset=utf-8", kind: "java", disposition: "attachment" },
+  ".ts": { mime: "application/typescript; charset=utf-8", kind: "ts", disposition: "attachment" },
+  ".js": { mime: "application/javascript; charset=utf-8", kind: "js", disposition: "attachment" },
+  ".json": { mime: "application/json; charset=utf-8", kind: "json", disposition: "inline" },
+  ".yaml": { mime: "text/yaml; charset=utf-8", kind: "yaml", disposition: "inline" },
+  ".yml": { mime: "text/yaml; charset=utf-8", kind: "yml", disposition: "inline" },
+  ".toml": { mime: "text/x-toml; charset=utf-8", kind: "toml", disposition: "inline" }
 });
 var ASSET_EXTENSIONS = new Set(Object.keys(ASSET_TYPES));
 var RESERVED_DEVICE_NAMES = /^(con|prn|aux|nul|clock\$|com[1-9]|lpt[1-9])(?:\..*)?$/i;
@@ -3227,8 +3292,9 @@ function normalizeFileName(fileName, { asset = false } = {}) {
   if (value.startsWith(".")) throw bridgeError("BUNDLE_NAME_INVALID", "\u8D44\u6599\u5305\u6587\u4EF6\u540D\u4E0D\u80FD\u4EE5\u70B9\u5F00\u5934", 400);
   if (caseKey(value) === "index.md") return "index.md";
   if (!/\.md$/i.test(value) && !asset) throw bridgeError("BUNDLE_MARKDOWN_REQUIRED", "\u8865\u5145\u8D44\u6599\u5FC5\u987B\u662F .md \u6587\u4EF6", 415);
-  if (asset && !ASSET_EXTENSIONS.has((0, import_node_path10.extname)(value).toLowerCase())) {
-    throw bridgeError("BUNDLE_ASSET_TYPE_UNSUPPORTED", "\u9644\u4EF6\u7C7B\u578B\u4E0D\u5728\u5141\u8BB8\u6E05\u5355\u5185", 415);
+  const ext = (0, import_node_path10.extname)(value).toLowerCase();
+  if (DANGEROUS_EXTENSIONS.has(ext)) {
+    throw bridgeError("BUNDLE_ASSET_TYPE_FORBIDDEN", `\u7981\u6B62\u5BFC\u5165\u7CFB\u7EDF\u53EF\u6267\u884C\u6587\u4EF6\uFF1A${ext}`, 403);
   }
   return value;
 }
@@ -3239,22 +3305,34 @@ function titleMarkdown(name, title) {
 `;
 }
 function contentTypeFor(fileName) {
-  const type = ASSET_TYPES[(0, import_node_path10.extname)(fileName).toLowerCase()];
-  if (!type) throw bridgeError("BUNDLE_ASSET_TYPE_UNSUPPORTED", "\u9644\u4EF6\u7C7B\u578B\u4E0D\u5728\u5141\u8BB8\u6E05\u5355\u5185", 415);
+  const ext = (0, import_node_path10.extname)(fileName).toLowerCase();
+  if (DANGEROUS_EXTENSIONS.has(ext)) {
+    throw bridgeError("BUNDLE_ASSET_TYPE_FORBIDDEN", `\u7981\u6B62\u5BFC\u5165\u7CFB\u7EDF\u53EF\u6267\u884C\u6587\u4EF6\uFF1A${ext}`, 403);
+  }
+  const type = ASSET_TYPES[ext] ?? { mime: "application/octet-stream", kind: ext.slice(1) || "bin", disposition: "attachment" };
   return type;
 }
 function headerMatches(kind, header) {
+  if (header.length >= 2 && header[0] === 77 && header[1] === 90) {
+    return false;
+  }
   if (kind === "png") return header.length >= 8 && header.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   if (kind === "jpeg") return header.length >= 3 && header[0] === 255 && header[1] === 216 && header[2] === 255;
   if (kind === "webp") return header.length >= 12 && header.toString("ascii", 0, 4) === "RIFF" && header.toString("ascii", 8, 12) === "WEBP";
   if (kind === "gif") return header.length >= 6 && ["GIF87a", "GIF89a"].includes(header.toString("ascii", 0, 6));
   if (kind === "pdf") return header.subarray(0, 5).toString("ascii") === "%PDF-";
-  if (kind === "docx") return header.length >= 4 && header[0] === 80 && header[1] === 75 && header[2] === 3 && header[3] === 4;
+  if (kind === "docx" || kind === "pptx" || kind === "xlsx" || kind === "zip") {
+    return header.length >= 4 && header[0] === 80 && header[1] === 75 && (header[2] === 3 || header[2] === 5 || header[2] === 7);
+  }
+  if (kind === "7z") return header.length >= 6 && header[0] === 55 && header[1] === 122 && header[2] === 188 && header[3] === 175 && header[4] === 39 && header[5] === 28;
+  if (kind === "gz") return header.length >= 2 && header[0] === 31 && header[1] === 139;
+  if (kind === "rar") return header.length >= 4 && header.toString("ascii", 0, 4) === "Rar!";
+  if (kind === "sqlite" || kind === "db") return header.length >= 16 && header.toString("ascii", 0, 16).startsWith("SQLite format 3");
   if (kind === "svg") {
     const text = header.toString("utf8").replace(/^\uFEFF/, "").trimStart();
     return /^(?:<\?xml\b[^>]*>\s*)?<svg(?:\s|>)/i.test(text);
   }
-  return false;
+  return true;
 }
 function normalizeMime(mimeType) {
   if (mimeType === void 0 || mimeType === null || mimeType === "") return void 0;
@@ -3281,6 +3359,9 @@ var BundleStore = class _BundleStore {
     this.faultInjector = value.faultInjector ?? (() => void 0);
     this.lockRoot = (0, import_node_path10.join)(this.mapRoot, ".bridge", "bundle-locks");
     this.commandRoot = (0, import_node_path10.join)(this.mapRoot, ".bridge", "bundle-commands");
+    this.maxAssetBytes = value.maxAssetBytes ?? MAX_ASSET_BYTES;
+    this.maxBundleFiles = value.maxBundleFiles ?? MAX_BUNDLE_FILES;
+    this.maxMapAssetBytes = value.maxMapAssetBytes ?? MAX_MAP_ASSET_BYTES;
   }
   static async open(options) {
     const store = new _BundleStore(options);
@@ -3646,7 +3727,7 @@ ${right}`;
   }
   async #quota(info, incomingBytes = 0) {
     const entries = await this.#entries(info, { includeArchived: true });
-    if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
+    if (entries.length >= this.maxBundleFiles) throw bridgeError("BUNDLE_FILE_QUOTA", `\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 ${this.maxBundleFiles} \u4E2A\u6587\u4EF6`, 413);
     const mapEntries = [];
     for (const ownerKind of ["nodes", "routes"]) {
       const kindRoot = (0, import_node_path10.join)(this.mapRoot, ownerKind);
@@ -3663,7 +3744,7 @@ ${right}`;
     }
     let total = incomingBytes;
     for (const entry of mapEntries) total += (await (0, import_promises9.stat)(entry.path)).size;
-    if (total > MAX_MAP_ASSET_BYTES) throw bridgeError("BUNDLE_SIZE_QUOTA", "\u5355\u5730\u56FE\u9644\u4EF6\u603B\u91CF\u8D85\u8FC7 1 GiB", 413);
+    if (total > this.maxMapAssetBytes) throw bridgeError("BUNDLE_SIZE_QUOTA", `\u5355\u5730\u56FE\u9644\u4EF6\u603B\u91CF\u8D85\u8FC7 ${Math.round(this.maxMapAssetBytes / (1024 * 1024 * 1024))} GiB`, 413);
   }
   async #withMapLock(operation) {
     await this.#ensureMapRoot();
@@ -3687,7 +3768,7 @@ ${right}`;
       for await (const chunk of stream) {
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         size += buffer.length;
-        if (size > MAX_ASSET_BYTES) throw bridgeError("BUNDLE_ASSET_TOO_LARGE", "\u5355\u9644\u4EF6\u8D85\u8FC7 20 MiB", 413, { limit: MAX_ASSET_BYTES });
+        if (size > this.maxAssetBytes) throw bridgeError("BUNDLE_ASSET_TOO_LARGE", `\u5355\u9644\u4EF6\u8D85\u8FC7\u9650\u5236\uFF08\u6700\u5927 ${Math.round(this.maxAssetBytes / (1024 * 1024))} MiB\uFF09`, 413, { limit: this.maxAssetBytes });
         if (headerSize < 8192) {
           chunks.push(buffer.subarray(0, Math.min(buffer.length, 8192 - headerSize)));
           headerSize += Math.min(buffer.length, 8192 - headerSize);
@@ -3705,7 +3786,7 @@ ${right}`;
     if (!allowExternal) await this.#assertSafePath(this.projectRoot, candidate, { allowMissing: false });
     const before = await (0, import_promises9.stat)(candidate);
     if (!before.isFile()) throw bridgeError("BUNDLE_SOURCE_NOT_FILE", "\u9644\u4EF6\u6E90\u5FC5\u987B\u662F\u666E\u901A\u6587\u4EF6", 400);
-    if (before.size > MAX_ASSET_BYTES) throw bridgeError("BUNDLE_ASSET_TOO_LARGE", "\u5355\u9644\u4EF6\u8D85\u8FC7 20 MiB", 413, { limit: MAX_ASSET_BYTES });
+    if (before.size > this.maxAssetBytes) throw bridgeError("BUNDLE_ASSET_TOO_LARGE", `\u5355\u9644\u4EF6\u8D85\u8FC7\u9650\u5236\uFF08\u6700\u5927 ${Math.round(this.maxAssetBytes / (1024 * 1024))} MiB\uFF09`, 413, { limit: this.maxAssetBytes });
     let handle;
     try {
       const flags = import_node_fs2.constants.O_RDONLY | (import_node_fs2.constants.O_NOFOLLOW ?? 0);
@@ -3906,16 +3987,9 @@ var import_promises10 = require("node:fs/promises");
 var import_node_path12 = require("node:path");
 var MAX_MARKDOWN_BYTES3 = 2 * 1024 * 1024;
 var SAFE_OWNER_ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
-var ASSET_TYPES2 = Object.freeze({
-  ".png": { kind: "png", mimeType: "image/png" },
-  ".jpg": { kind: "jpeg", mimeType: "image/jpeg" },
-  ".jpeg": { kind: "jpeg", mimeType: "image/jpeg" },
-  ".webp": { kind: "webp", mimeType: "image/webp" },
-  ".gif": { kind: "gif", mimeType: "image/gif" },
-  ".pdf": { kind: "pdf", mimeType: "application/pdf" },
-  ".docx": { kind: "docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
-  ".svg": { kind: "svg", mimeType: "image/svg+xml" }
-});
+var ASSET_TYPES2 = Object.freeze(Object.fromEntries(
+  Object.entries(ASSET_TYPES).map(([ext, val]) => [ext, { kind: val.kind, mimeType: val.mime ?? val.mimeType }])
+));
 var RESERVED_DATA_DIRS = /* @__PURE__ */ new Set([".bridge", ".archive", "backups", "snapshots", "quarantine", "wal", "locks"]);
 function contextError(code, message, status = 403, details) {
   return new BridgeError(code, message, { status, details });
@@ -4274,7 +4348,7 @@ var TOOL_DEFINITIONS = Object.freeze([
   schema("map_archive_bundle_file", "\u5F52\u6863\u8865\u5145 Markdown\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
   schema("map_restore_bundle_file", "\u6062\u590D\u8865\u5145 Markdown\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
   schema("map_list_assets", "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u9644\u4EF6\u5143\u6570\u636E\u3002", { ...owner, includeArchived: { type: "boolean" } }, ["ownerKind", "ownerId"]),
-  schema("map_import_asset", "\u4ECE\u9879\u76EE\u5185 sourcePath \u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\u3002", { ...owner, sourcePath: { type: "string" }, fileName: { type: "string" }, mimeType: { type: "string" } }, ["ownerKind", "ownerId", "sourcePath"]),
+  schema("map_import_asset", "\u4ECE sourcePath\uFF08\u652F\u6301\u9879\u76EE\u5185\u76F8\u5BF9\u8DEF\u5F84\u6216\u672C\u673A\u4EFB\u610F\u7EDD\u5BF9\u8DEF\u5F84\uFF09\u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\uFF08\u652F\u6301 zip\u3001\u6570\u636E\u5305\u3001\u4EE3\u7801\u3001\u56FE\u7247\u3001\u6587\u6863\u7B49\u5404\u7C7B\u6587\u4EF6\uFF09\u3002", { ...owner, sourcePath: { type: "string" }, fileName: { type: "string" }, mimeType: { type: "string" }, allowExternalPath: { type: "boolean" } }, ["ownerKind", "ownerId", "sourcePath"]),
   schema("map_archive_asset", "\u5F52\u6863\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
   schema("map_restore_asset", "\u6062\u590D\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
   schema("map_read_asset", "\u8FD4\u56DE\u5BF9\u8C61\u9644\u4EF6\u8DEF\u5F84\u4E0E\u5143\u6570\u636E\uFF08\u4E0D\u642C\u8FD0\u4E8C\u8FDB\u5236\uFF09\u3002\u6587\u672C\u7C7B\u9644 content\uFF0C\u4E8C\u8FDB\u5236\u53EF\u4F20 includeContent \u53D6 base64\u3002", { ...owner, fileName: { type: "string" }, includeContent: { type: "boolean" } }, ["ownerKind", "ownerId", "fileName"])
@@ -4593,7 +4667,15 @@ var ToolService = class {
       return { mapKey, assets: files.filter((entry) => entry.kind !== "markdown") };
     }
     if (name === "map_import_asset") {
-      const result2 = await bundleStore.importAsset({ ...file, fileName: String(args.fileName || (0, import_node_path13.basename)(String(args.sourcePath || ""))), sourcePath: String(args.sourcePath || ""), mimeType: args.mimeType });
+      const sourcePath = String(args.sourcePath || "");
+      const isExt = (0, import_node_path13.isAbsolute)(sourcePath);
+      const result2 = await bundleStore.importAsset({
+        ...file,
+        fileName: String(args.fileName || (0, import_node_path13.basename)(sourcePath)),
+        sourcePath,
+        mimeType: args.mimeType,
+        allowExternalPath: isExt || args.allowExternalPath === true
+      });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result2;
     }
@@ -6370,7 +6452,7 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_import_asset",
-    "description": "\u4ECE\u9879\u76EE\u5185 sourcePath \u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\u3002",
+    "description": "\u4ECE sourcePath\uFF08\u652F\u6301\u9879\u76EE\u5185\u76F8\u5BF9\u8DEF\u5F84\u6216\u672C\u673A\u4EFB\u610F\u7EDD\u5BF9\u8DEF\u5F84\uFF09\u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\uFF08\u652F\u6301 zip\u3001\u6570\u636E\u5305\u3001\u4EE3\u7801\u3001\u56FE\u7247\u3001\u6587\u6863\u7B49\u5404\u7C7B\u6587\u4EF6\uFF09\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6392,6 +6474,9 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         },
         "mimeType": {
           "type": "string"
+        },
+        "allowExternalPath": {
+          "type": "boolean"
         },
         "projectRoot": {
           "type": "string",

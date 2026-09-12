@@ -427,10 +427,10 @@ test('新节点只写 goal/problem，旧 result/milestone 兼容保留但不再�
 
 test('Agent 扩张达到批量上限时返回压缩建议', () => {
   const map = createEmptyMap({ name: '上限测试', now: NOW, mapId: 'map-limit' });
-  const objects = Array.from({ length: 11 }, (_, index) => ({ op: 'create', collection: 'routes', value: { id: `r${index}`, name: `路线${index}` } }));
+  const objects = Array.from({ length: 51 }, (_, index) => ({ op: 'create', collection: 'routes', value: { id: `r${index}`, name: `路线${index}` } }));
   assert.throws(() => applyCommandEnvelope(map, {
     projectId: 'project-test', baseRevision: 0, commandId: 'cmd-limit-b', actor: 'agent:codex', sessionId: 'session-agent', commands: objects,
-  }, { now: NOW }), (error) => error.code === 'AGENT_BATCH_LIMIT' && error.details.maxObjects === 10);
+  }, { now: NOW }), (error) => error.code === 'AGENT_BATCH_LIMIT' && error.details.maxObjects === 50);
 });
 
 test('map_next_candidates 支持当前节点、limit 和历史开关', () => {
@@ -476,21 +476,21 @@ test('归档节点隐藏关联边与标注，恢复只恢复自身且保留未�
   assert.ok(!retrieveContext(map, '目标', { now: NOW }).objects.some((item) => item.id === 'e1'));
 });
 
-test('Agent 初始化地图在 15 个活跃节点后必须先压缩', () => {
+test('Agent 初始化地图在 50 个活跃节点后必须先压缩', () => {
   let map = createEmptyMap({ name: '初始化上限', now: NOW, mapId: 'map-initial-limit' });
   const makeNodes = (start, count) => Array.from({ length: count }, (_, index) => ({
     op: 'create', collection: 'nodes', value: { id: `n${start + index}`, name: `阶段${start + index}`, type: '阶段', x: index * 100, y: 0 },
   }));
-  for (const [number, commands] of [[1, makeNodes(1, 5)], [2, makeNodes(6, 5)], [3, makeNodes(11, 5)]]) {
+  for (const [number, commands] of [[1, makeNodes(1, 20)], [2, makeNodes(21, 20)], [3, makeNodes(41, 10)]]) {
     map = applyCommandEnvelope(map, {
       projectId: 'project-test', baseRevision: map.revision, commandId: `cmd-initial-${number}`, actor: 'agent:codex', sessionId: 'session-agent', commands,
     }, { now: NOW });
   }
-  assert.equal(map.nodes.length, 15);
+  assert.equal(map.nodes.length, 50);
   assert.equal(map.ui.initialization.status, 'in_progress');
   assert.throws(() => applyCommandEnvelope(map, {
-    projectId: 'project-test', baseRevision: map.revision, commandId: 'cmd-initial-over', actor: 'agent:codex', sessionId: 'session-agent', commands: makeNodes(16, 1),
-  }, { now: NOW }), (error) => error.code === 'AGENT_INITIAL_MAP_LIMIT' && error.details.maxInitialNodes === 15);
+    projectId: 'project-test', baseRevision: map.revision, commandId: 'cmd-initial-over', actor: 'agent:codex', sessionId: 'session-agent', commands: makeNodes(51, 1),
+  }, { now: NOW }), (error) => error.code === 'AGENT_INITIAL_MAP_LIMIT' && error.details.maxInitialNodes === 50);
 });
 
 test('按节点名片段检索时名称命中排最前（n9 复现：不误压过名字本身）', () => {

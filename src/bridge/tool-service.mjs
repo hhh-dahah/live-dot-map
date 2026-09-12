@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { basename, join } from 'node:path';
+import { basename, join, isAbsolute } from 'node:path';
 import { BridgeError } from './errors.mjs';
 import { ContextDocumentProvider } from './context-document-provider.mjs';
 import { HumanMdUpdateLog } from './human-md-updates.mjs';
@@ -62,7 +62,7 @@ export const TOOL_DEFINITIONS = Object.freeze([
   schema('map_archive_bundle_file', '归档补充 Markdown。', { ...owner, fileName: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
   schema('map_restore_bundle_file', '恢复补充 Markdown。', { ...owner, fileName: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
   schema('map_list_assets', '列出对象资料包附件元数据。', { ...owner, includeArchived: { type: 'boolean' } }, ['ownerKind', 'ownerId']),
-  schema('map_import_asset', '从项目内 sourcePath 流式导入附件。', { ...owner, sourcePath: { type: 'string' }, fileName: { type: 'string' }, mimeType: { type: 'string' } }, ['ownerKind', 'ownerId', 'sourcePath']),
+  schema('map_import_asset', '从 sourcePath（支持项目内相对路径或本机任意绝对路径）流式导入附件（支持 zip、数据包、代码、图片、文档等各类文件）。', { ...owner, sourcePath: { type: 'string' }, fileName: { type: 'string' }, mimeType: { type: 'string' }, allowExternalPath: { type: 'boolean' } }, ['ownerKind', 'ownerId', 'sourcePath']),
   schema('map_archive_asset', '归档对象附件。', { ...owner, fileName: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
   schema('map_restore_asset', '恢复对象附件。', { ...owner, fileName: { type: 'string' } }, ['ownerKind', 'ownerId', 'fileName']),
   schema('map_read_asset', '返回对象附件路径与元数据（不搬运二进制）。文本类附 content，二进制可传 includeContent 取 base64。', { ...owner, fileName: { type: 'string' }, includeContent: { type: 'boolean' } }, ['ownerKind', 'ownerId', 'fileName']),
@@ -407,7 +407,15 @@ export class ToolService {
       return { mapKey, assets: files.filter((entry) => entry.kind !== 'markdown') };
     }
     if (name === 'map_import_asset') {
-      const result = await bundleStore.importAsset({ ...file, fileName: String(args.fileName || basename(String(args.sourcePath || ''))), sourcePath: String(args.sourcePath || ''), mimeType: args.mimeType });
+      const sourcePath = String(args.sourcePath || '');
+      const isExt = isAbsolute(sourcePath);
+      const result = await bundleStore.importAsset({
+        ...file,
+        fileName: String(args.fileName || basename(sourcePath)),
+        sourcePath,
+        mimeType: args.mimeType,
+        allowExternalPath: isExt || args.allowExternalPath === true,
+      });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
       return result;
     }
