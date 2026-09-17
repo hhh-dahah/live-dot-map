@@ -7094,17 +7094,37 @@ function mcpServerKey(mcp, agent) {
 function tomlString(value) {
   return JSON.stringify(String(value));
 }
+function stripCodexMcpBlock(toml) {
+  let text = String(toml || "").replace(/# BEGIN LIVE-DOT-MAP[\s\S]*?# END LIVE-DOT-MAP\s*/gi, "");
+  text = text.replace(/(?:^|\r?\n)[ \t]*\[\s*mcp_servers\s*\.\s*(?:"livedot-map"|'livedot-map'|livedot-map)\s*\][\s\S]*?(?=(?:\r?\n[ \t]*\[)|$)/gi, "");
+  return text.trim();
+}
+function assertNoDuplicateTomlTables(text) {
+  const tableHeaders = [...String(text || "").matchAll(/^\s*\[([^\]]+)\]/gm)].map((m) => m[1].trim());
+  const seen = /* @__PURE__ */ new Set();
+  for (const h of tableHeaders) {
+    const normalized = h.replace(/["']/g, "");
+    if (seen.has(normalized)) {
+      throw new Error(`TOML \u914D\u7F6E\u5199\u5165\u524D\u6821\u9A8C\u5931\u8D25\uFF1A\u53D1\u73B0\u91CD\u590D Table \u8868\u5934 [${h}]\uFF0C\u5DF2\u4E2D\u6B62\u5199\u5165\u4EE5\u4FDD\u62A4\u7B2C\u4E09\u65B9\u5DE5\u5177\u914D\u7F6E`);
+    }
+    seen.add(normalized);
+  }
+}
 async function writeCodexConfig(home, nodeCommand, runtime) {
   const path = join17(home, ".codex", "config.toml");
   const begin = "# BEGIN LIVE-DOT-MAP";
   const end = "# END LIVE-DOT-MAP";
   const old = await readFile10(path, "utf8").catch(() => "");
-  const stripped = old.replace(new RegExp(`${begin}[\\s\\S]*?${end}\\s*`, "g"), "").trimEnd();
+  const stripped = stripCodexMcpBlock(old);
   const block = [begin, '[mcp_servers."livedot-map"]', `command = ${tomlString(nodeCommand)}`, `args = [${[...runtimeArgs(runtime), "mcp", "--agent", "codex"].map(tomlString).join(", ")}]`, "required = false", end].join("\n");
-  await atomicText(path, `${stripped ? `${stripped}
+  const newContent = `${stripped ? `${stripped}
 
 ` : ""}${block}
-`);
+`;
+  assertNoDuplicateTomlTables(newContent);
+  if (newContent.trim() !== old.trim()) {
+    await atomicText(path, newContent);
+  }
   const hooksPath = join17(home, ".codex", "hooks.json");
   await atomicJson(hooksPath, mergeHooks(await readJson2(hooksPath), hooksFor(nodeCommand, runtime, "codex")));
   return [path, hooksPath];

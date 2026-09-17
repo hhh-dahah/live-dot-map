@@ -256,3 +256,41 @@ test('qoder adapter: directory fingerprint probe discovers Qoder and writes mcp.
   await assert.rejects(access(mcpPath));
 });
 
+test('writeCodexConfig strips orphan/unmarked livedot-map block and never produces duplicate table keys', async () => {
+  const root = await mkdtemp(join(TEST_ROOT, 'livedot-codex-dup-'));
+  const home = await mkdtemp(join(TEST_ROOT, 'livedot-codex-dup-home-'));
+  const codexDir = join(home, '.codex');
+  await mkdir(codexDir, { recursive: true });
+  // 模拟之前导致 ChatGPT 崩溃的现场：文件中已经存在未带注释标记的裸 table
+  const initial = [
+    'model = "gpt-6-astra"',
+    '',
+    '[mcp_servers."livedot-map"]',
+    'command = "C:\\\\old\\\\node.exe"',
+    'args = ["C:\\\\old\\\\livedot.mjs", "mcp"]',
+    '',
+    '[projects.\'d:\\\\project\']',
+    'trust_level = "trusted"',
+  ].join('\n');
+  await writeFile(join(codexDir, 'config.toml'), initial, 'utf8');
+
+  // 执行安装
+  await installProject({
+    projectRoot: root,
+    homeRoot: home,
+    createDesktopShortcut: false,
+    register: false,
+    offline: true,
+    platform: 'win32',
+    detectedAgents: { codex: { id: 'codex', discovered: true } },
+  });
+
+  const written = await readFile(join(codexDir, 'config.toml'), 'utf8');
+  // 必须仅有一处 livedot-map
+  const matches = written.match(/\[\s*mcp_servers\s*\.\s*(?:"livedot-map"|'livedot-map'|livedot-map)\s*\]/g);
+  assert.equal(matches?.length, 1, '文件中绝不允许出现两个 [mcp_servers."livedot-map"] 重复键');
+  assert.match(written, /model = "gpt-6-astra"/);
+  assert.match(written, /trust_level = "trusted"/);
+});
+
+

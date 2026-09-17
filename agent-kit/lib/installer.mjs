@@ -317,15 +317,38 @@ function mcpServerKey(mcp, agent) {
 
 function tomlString(value) { return JSON.stringify(String(value)); }
 
+export function stripCodexMcpBlock(toml) {
+  let text = String(toml || '').replace(/# BEGIN LIVE-DOT-MAP[\s\S]*?# END LIVE-DOT-MAP\s*/gi, '');
+  text = text.replace(/(?:^|\r?\n)[ \t]*\[\s*mcp_servers\s*\.\s*(?:"livedot-map"|'livedot-map'|livedot-map)\s*\][\s\S]*?(?=(?:\r?\n[ \t]*\[)|$)/gi, '');
+  return text.trim();
+}
+
+export function assertNoDuplicateTomlTables(text) {
+  const tableHeaders = [...String(text || '').matchAll(/^\s*\[([^\]]+)\]/gm)].map((m) => m[1].trim());
+  const seen = new Set();
+  for (const h of tableHeaders) {
+    const normalized = h.replace(/["']/g, '');
+    if (seen.has(normalized)) {
+      throw new Error(`TOML 配置写入前校验失败：发现重复 Table 表头 [${h}]，已中止写入以保护第三方工具配置`);
+    }
+    seen.add(normalized);
+  }
+}
+
 async function writeCodexConfig(home, nodeCommand, runtime) {
   const path = join(home, '.codex', 'config.toml');
   const begin = '# BEGIN LIVE-DOT-MAP';
   const end = '# END LIVE-DOT-MAP';
   const old = await readFile(path, 'utf8').catch(() => '');
-  const stripped = old.replace(new RegExp(`${begin}[\\s\\S]*?${end}\\s*`, 'g'), '').trimEnd();
+  const stripped = stripCodexMcpBlock(old);
   // 全局 MCP 配置不带 --project：桥 mcp 命令使用 Agent 当前工作目录。
   const block = [begin, '[mcp_servers."livedot-map"]', `command = ${tomlString(nodeCommand)}`, `args = [${[...runtimeArgs(runtime), 'mcp', '--agent', 'codex'].map(tomlString).join(', ')}]`, 'required = false', end].join('\n');
-  await atomicText(path, `${stripped ? `${stripped}\n\n` : ''}${block}\n`);
+  const newContent = `${stripped ? `${stripped}\n\n` : ''}${block}\n`;
+  // 严格的 TOML 表头去重与完整性校验，杜绝导致 ChatGPT 报错 duplicate key
+  assertNoDuplicateTomlTables(newContent);
+  if (newContent.trim() !== old.trim()) {
+    await atomicText(path, newContent);
+  }
   const hooksPath = join(home, '.codex', 'hooks.json');
   await atomicJson(hooksPath, mergeHooks(await readJson(hooksPath), hooksFor(nodeCommand, runtime, 'codex')));
   return [path, hooksPath];
