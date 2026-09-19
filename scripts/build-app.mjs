@@ -172,16 +172,18 @@ const MAIN_TOKEN = '/*__LIVEDOT_MAIN__*/';
 
 // 源组装模式：未指定 --input 时，从 src/web/app/（模板 + styles/* + main/*）组装出 app.html 的手写源。
 // 分块文件按文件名序拼接，保持全局变量语义；app.html 从此是纯构建产物。
+// 各部分读取时统一归一为 LF：git autocrlf 可能把源文件检成 CRLF，归一保证任何工位的构建产物恒定。
 async function assembleAppSource() {
   const srcDir = resolve(ROOT, 'src', 'web', 'app');
+  const readLf = async (path) => (await readFile(path, 'utf8')).replace(/\r\n/g, '\n');
   const readJoined = async (sub, ext) => {
     const dir = resolve(srcDir, sub);
     const files = (await readdir(dir)).filter((file) => file.endsWith(ext)).sort();
     if (!files.length) throw new Error(`源目录为空: ${dir}`);
-    const parts = await Promise.all(files.map((file) => readFile(join(dir, file), 'utf8')));
+    const parts = await Promise.all(files.map((file) => readLf(join(dir, file))));
     return parts.join('\n');
   };
-  let html = await readFile(join(srcDir, 'app.template.html'), 'utf8');
+  let html = await readLf(join(srcDir, 'app.template.html'));
   html = html.replace(STYLE_TOKEN, await readJoined('styles', '.css'));
   html = html.replace(MAIN_TOKEN, await readJoined('main', '.js'));
   if (html.includes(STYLE_TOKEN) || html.includes(MAIN_TOKEN)) {
