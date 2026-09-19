@@ -654,7 +654,14 @@ async function main(): Promise<void> {
     const requestedRoot = resolve(required(args, 'project'));
     const worktreeMain = resolveGitWorktreeMain(requestedRoot);
     const projectRoot = await canonicalDirectory(worktreeMain ?? requestedRoot).catch(() => requestedRoot);
-    const runtimeStateDir = typeof args['runtime-state-dir'] === 'string' ? resolve(args['runtime-state-dir']) : undefined;
+    let runtimeStateDir = typeof args['runtime-state-dir'] === 'string' ? resolve(args['runtime-state-dir']) : undefined;
+    // 工位隔离：从 Git linked worktree（非主仓库根）启动 serve 时，自动切独立运行时状态目录，
+    // 跳过对主工位常驻桥的复用/顶替——工位测试必须跑自己分支的代码，否则是假测试。
+    // 显式传 --runtime-state-dir 时不干预；主工位与安装版行为不变。
+    if (!runtimeStateDir && worktreeMain) {
+      runtimeStateDir = join(requestedRoot, '.live-dot-map-dev');
+      await logger.info('bridge.worktree-isolated', { worktree: requestedRoot, runtimeStateDir });
+    }
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });
     const sessionStore = await SessionStore.open({ runtimeStateDir });

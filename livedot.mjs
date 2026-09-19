@@ -10261,7 +10261,11 @@ async function main() {
     const requestedRoot = resolve17(required(args, "project"));
     const worktreeMain = resolveGitWorktreeMain(requestedRoot);
     const projectRoot = await canonicalDirectory(worktreeMain ?? requestedRoot).catch(() => requestedRoot);
-    const runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? resolve17(args["runtime-state-dir"]) : void 0;
+    let runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? resolve17(args["runtime-state-dir"]) : void 0;
+    if (!runtimeStateDir && worktreeMain) {
+      runtimeStateDir = join20(requestedRoot, ".live-dot-map-dev");
+      await logger.info("bridge.worktree-isolated", { worktree: requestedRoot, runtimeStateDir });
+    }
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });
     const sessionStore = await SessionStore.open({ runtimeStateDir });

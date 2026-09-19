@@ -40,6 +40,12 @@ edgeone-login.png
 /.live-dot-map/
 .live-dot-map/
 
+# 工位隔离测试实例的运行时状态目录（npm run dev 自动生成）
+.live-dot-map-dev/
+
+# zcode 客户端在项目根写入的运行时目录（测试残留，不入库）
+.zcode/
+
 # 软件著作权申请材料与本地 LaTeX 编译环境（含营业执照等隐私信息）
 .tools/
 
