@@ -58,7 +58,7 @@ for (const [name, executablePath] of Object.entries(browsers)) {
     assert.equal(state.afterRedo, '重做测试');
     assert.equal(state.futureName, '未来只读');
     assert.equal(state.readOnly, true);
-    assert.equal(state.syncLabel, '降级模式');
+    assert.equal(state.syncLabel, '降级');
     const layouts = [];
     for (const width of [375, 700, 960, 1280, 1920]) {
       await page.setViewportSize({ width, height: 800 });
