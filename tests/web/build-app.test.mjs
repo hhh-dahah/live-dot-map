@@ -28,12 +28,12 @@ test('构建注入 CSP/nonce、运行时，并修复菜单外部文本与 Markdo
   await rm(dir, { recursive: true, force: true });
 });
 
-test('构建脚本不触碰冻结 canvas.html', async () => {
-  const canvas = await readFile(new URL('../../canvas.html', import.meta.url), 'utf8');
-  const before = createHash('sha256').update(canvas).digest('hex');
-  const dir = await mkdtemp(join(TEST_ROOT, 'dotmap-build-canvas-'));
-  await buildApp({ input: new URL('../../app.html', import.meta.url), output: join(dir, 'out.html'), nonce: 'canvas-test' });
-  const after = createHash('sha256').update(await readFile(new URL('../../canvas.html', import.meta.url), 'utf8')).digest('hex');
+test('构建脚本不修改输入源文件', async () => {
+  const inputPath = new URL('../../app.html', import.meta.url);
+  const before = createHash('sha256').update(await readFile(inputPath, 'utf8')).digest('hex');
+  const dir = await mkdtemp(join(TEST_ROOT, 'dotmap-build-immutability-'));
+  await buildApp({ input: inputPath, output: join(dir, 'out.html'), nonce: 'immutability-test' });
+  const after = createHash('sha256').update(await readFile(inputPath, 'utf8')).digest('hex');
   assert.equal(after, before);
   await rm(dir, { recursive: true, force: true });
 });

@@ -1438,7 +1438,7 @@ export async function createBridgeServer({
         const healthRecords = await readAgentHealth(root);
         // Optional adapters stay hidden until the user actually has them installed
         // or project configuration; the novice UI keeps the default list focused.
-        const agents = Object.values(detected).filter((item) => (item.id !== 'codebuddy' && item.id !== 'qoder') || item.discovered).map((item) => {
+        const agents = Object.values(detected).filter((item) => (item.id !== 'codebuddy' && item.id !== 'qoder' && item.id !== 'zcode') || item.discovered).map((item) => {
           const id = String(item.id);
           const health = healthRecords[id] || healthRecords[id.replace(/-code$/, '')] || (id === 'claude-code' ? healthRecords.claude : id === 'kimi-code' ? healthRecords.kimi : null);
           let state = 'not_installed';

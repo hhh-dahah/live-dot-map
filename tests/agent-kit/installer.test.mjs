@@ -26,7 +26,7 @@ test('install writes global agent plugins while keeping the project data-only', 
   assert.equal(dataEntries0.includes('active-map'), true);
   // 项目零配置：项目内不再出现 .codex/.claude/.kimi-code/.codebuddy/.mcp.json/hook.cmd。
   const projectEntries = await readdir(root);
-  for (const forbidden of ['.codex', '.claude', '.kimi-code', '.codebuddy', '.qoder', '.mcp.json']) {
+  for (const forbidden of ['.codex', '.claude', '.kimi-code', '.codebuddy', '.qoder', '.zcode', '.mcp.json']) {
     assert.equal(projectEntries.includes(forbidden), false, `project must not contain ${forbidden}`);
   }
   const dataEntries = await readdir(join(root, '.live-dot-map'));
@@ -254,6 +254,111 @@ test('qoder adapter: directory fingerprint probe discovers Qoder and writes mcp.
   assert.equal(uninstall.ok, true);
   assert.equal(uninstall.mapPreserved, true);
   await assert.rejects(access(mcpPath));
+});
+
+test('zcode adapter: directory fingerprint probe discovers ZCode and writes mcp.servers preserving existing servers and skills', async () => {
+  const root = await mkdtemp(join(TEST_ROOT, 'livedot-zcode-'));
+  const home = await mkdtemp(join(TEST_ROOT, 'livedot-zcode-home-'));
+  // 模拟宿主机 ZCode 环境：已配置 playwright, github 以及 skills
+  const cliDir = join(home, '.zcode', 'cli');
+  await mkdir(cliDir, { recursive: true });
+  const initialConfig = {
+    skills: {
+      'C:/Users/Thomas/.agents/skills/lark-mail/SKILL.md': { enable: false },
+    },
+    mcp: {
+      servers: {
+        playwright: { enabled: true, command: 'cmd', args: ['/c', 'npx', '@playwright/mcp'], type: 'stdio' },
+        github: { enabled: true, command: 'cmd', args: ['/c', 'github-mcp.cmd'], type: 'stdio' },
+      },
+    },
+  };
+  await writeFile(join(cliDir, 'config.json'), JSON.stringify(initialConfig, null, 2), 'utf8');
+
+  // 执行安装（验证指纹探测与深合并）
+  const result = await installProject({
+    projectRoot: root,
+    homeRoot: home,
+    createDesktopShortcut: false,
+    register: false,
+    offline: true,
+    platform: 'win32',
+    discoverAgents: true,
+  });
+
+  assert.equal(result.installed.zcode, true);
+  const cfgPath = join(cliDir, 'config.json');
+  const written = JSON.parse(await readFile(cfgPath, 'utf8'));
+
+  // 1. 验证 livedot-map 正确写入 mcp.servers
+  const server = written.mcp.servers['livedot-map'];
+  assert.ok(server, 'ZCode config.json 必须包含 livedot-map 服务器');
+  assert.equal(server.enabled, true);
+  assert.equal(server.type, 'stdio');
+  assert.equal(server.command, process.execPath);
+  assert.equal(server.args.includes('mcp'), true);
+  assert.equal(server.args.includes('--agent'), true);
+  assert.equal(server.args.at(-1), 'zcode');
+
+  // 2. 验证既有配置 100% 完整保留，未被覆盖或冲掉
+  assert.equal(written.mcp.servers.playwright.command, 'cmd');
+  assert.equal(written.mcp.servers.github.command, 'cmd');
+  assert.equal(written.skills['C:/Users/Thomas/.agents/skills/lark-mail/SKILL.md'].enable, false);
+
+  // 3. 验证 Skill 安装到 ~/.zcode/skills/live-dot-map/SKILL.md
+  const skillContent = await readFile(join(home, '.zcode', 'skills', 'live-dot-map', 'SKILL.md'), 'utf8');
+  assert.match(skillContent, /map_plan_consolidation/);
+
+  // 4. doctor 认可 zcode 安装项
+  const doctor = await doctorProject({ projectRoot: root, homeRoot: home, checkBridge: false });
+  assert.equal(doctor.ok, true);
+
+  // 5. 卸载：还原用户原始配置
+  const uninstall = await uninstallProject({ projectRoot: root, platform: 'win32' });
+  assert.equal(uninstall.ok, true);
+  assert.equal(uninstall.mapPreserved, true);
+  const restored = JSON.parse(await readFile(cfgPath, 'utf8'));
+  assert.equal(restored.mcp.servers['livedot-map'], undefined, '卸载后 livedot-map 必须被复原');
+  assert.equal(restored.mcp.servers.playwright.command, 'cmd');
+});
+
+test('targetAdapters isolation: specifying targetAdapters touches only specified adapter and never touches others', async () => {
+  const root = await mkdtemp(join(TEST_ROOT, 'livedot-iso-'));
+  const home = await mkdtemp(join(TEST_ROOT, 'livedot-iso-home-'));
+  // 模拟现有 Codex 与 Claude 正常环境
+  const codexDir = join(home, '.codex');
+  await mkdir(codexDir, { recursive: true });
+  const codexOriginal = 'model = "gpt-5"\n[projects]\ntrust_level = "trusted"\n';
+  await writeFile(join(codexDir, 'config.toml'), codexOriginal, 'utf8');
+
+  const claudeDir = join(home, '.claude');
+  await mkdir(claudeDir, { recursive: true });
+  const claudeOriginal = JSON.stringify({ theme: 'dark', permissions: {} }, null, 2);
+  await writeFile(join(claudeDir, 'settings.json'), claudeOriginal, 'utf8');
+
+  const zcodeDir = join(home, '.zcode', 'cli');
+  await mkdir(zcodeDir, { recursive: true });
+  await writeFile(join(zcodeDir, 'config.json'), JSON.stringify({ mcp: { servers: {} } }, null, 2), 'utf8');
+
+  // 显式指定 targetAdapters: ['zcode']
+  await installProject({
+    projectRoot: root,
+    homeRoot: home,
+    createDesktopShortcut: false,
+    register: false,
+    offline: true,
+    platform: 'win32',
+    discoverAgents: true,
+    targetAdapters: ['zcode'],
+  });
+
+  // 1. ZCode 成功写入
+  const zcodeWritten = JSON.parse(await readFile(join(zcodeDir, 'config.json'), 'utf8'));
+  assert.ok(zcodeWritten.mcp.servers['livedot-map'], 'ZCode 必须写入 livedot-map');
+
+  // 2. 隔离防线：Codex 和 Claude 配置文件未被任何形式触碰或篡改
+  assert.equal(await readFile(join(codexDir, 'config.toml'), 'utf8'), codexOriginal, 'Codex 配置必须分毫不差保留原样');
+  assert.equal(await readFile(join(claudeDir, 'settings.json'), 'utf8'), claudeOriginal, 'Claude 配置必须分毫不差保留原样');
 });
 
 test('writeCodexConfig strips orphan/unmarked livedot-map block and never produces duplicate table keys', async () => {
