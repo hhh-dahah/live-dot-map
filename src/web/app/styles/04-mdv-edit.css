@@ -1,0 +1,159 @@
+.mdv-edit{position:absolute;inset:0;width:100%;height:100%;resize:none;border:0;outline:0;padding:18px 24px;font-family:var(--font-mono);font-size:13.5px;line-height:1.75;background:transparent;color:transparent;caret-color:var(--fg);user-select:text;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;overflow-y:scroll;scrollbar-gutter:stable}
+.mdv-edit::selection{background:oklch(85% 0.06 286 / .6)}
+.mdv-preview{flex:1;min-width:0;overflow:auto;padding:20px 28px;font-size:14px;line-height:1.8;color:var(--fg);user-select:text;max-width:880px;margin:0 auto;width:100%}
+.mdv-preview mark{
+  background:oklch(86% 0.12 85 / .22);
+  border-bottom:2px dashed oklch(75% 0.16 80);
+  border-radius:3px;
+  padding:1px 3px;
+  color:inherit;
+  font-weight:500;
+}
+.mdv-preview .author-block{margin:12px 0;position:relative}
+.mdv-preview .author-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  font-family:var(--font-sans);
+  font-size:11px;
+  font-weight:600;
+  line-height:16px;
+  height:20px;
+  box-sizing:border-box;
+  padding:0 7px;
+  border-radius:4px;
+  background:oklch(50% 0.08 285 / .10);
+  color:oklch(46% 0.08 285);
+  border:1px solid oklch(50% 0.08 285 / .24);
+  letter-spacing:.3px;
+  margin-bottom:8px;
+  user-select:none;
+}
+.mdv-preview .author-badge + h1,
+.mdv-preview .author-badge + h2,
+.mdv-preview .author-badge + h3{margin-top:4px}
+.mdv-preview img{max-width:100%;border-radius:6px;display:block;margin:10px 0}
+.mdv-imgph{display:inline-block;padding:6px 10px;border:1px dashed var(--border);border-radius:6px;color:var(--muted);font-size:12px}
+.mdv-preview h1,.mdv-preview h2,.mdv-preview h3{line-height:1.35;margin:1.1em 0 .5em;font-weight:700}
+.mdv-preview h1{font-size:22px}
+.mdv-preview h2{font-size:17.5px}
+.mdv-preview h3{font-size:15px}
+.mdv-preview h1:first-child,.mdv-preview h2:first-child,.mdv-preview h3:first-child{margin-top:0}
+.mdv-preview p{margin:.6em 0}
+.mdv-preview ul{margin:.5em 0;padding-left:1.4em}
+.mdv-preview code{font-family:var(--font-mono);font-size:12.5px;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:1px 5px}
+.mdv-preview pre{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;overflow:auto;margin:.8em 0}
+.mdv-preview pre code{background:none;border:0;padding:0}
+.mdv-resizer{width:8px;margin:0 -4px;flex:none;cursor:col-resize;position:relative;z-index:5;user-select:none;background:transparent}
+.mdv-resizer::after{content:'';position:absolute;top:0;bottom:0;left:3px;width:2px;background:var(--border);transition:background .15s}
+.mdv-resizer:hover::after,.mdv-resizer.dragging::after{background:var(--accent)}
+.mdv-side{width:var(--side-w,230px);flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0;transition:width .15s ease}
+.mdv-side.collapsed{width:0 !important;overflow:hidden;border-left:none !important;padding:0 !important}
+.mdv-resizer.collapsed{display:none}
+.mdv-sidehead{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:11px 12px;font-size:12px;font-weight:600;border-bottom:1px solid var(--border)}
+.mdv-add{width:24px;height:24px;border:0;border-radius:6px;background:none;color:var(--muted);font-size:15px;line-height:1;cursor:pointer;flex:none}
+.mdv-add:hover{background:var(--surface-hover);color:var(--fg)}
+.mdv-files{flex:1;overflow:auto;padding:7px}
+.mdv-file{display:flex;align-items:center;gap:2px;margin:1px 0}
+.mdv-name{flex:1;min-width:0;display:flex;align-items:center;gap:7px;padding:6px 7px;border:0;border-radius:6px;background:none;color:var(--fg);font:inherit;font-size:12px;text-align:left;overflow:hidden;white-space:nowrap;cursor:pointer}
+.mdv-name svg{width:13px;height:13px;flex:none;color:var(--muted)}
+.mdv-name span{overflow:hidden;text-overflow:ellipsis}
+.mdv-name:hover{background:var(--surface-hover)}
+.mdv-name.on{background:var(--surface-hover);color:var(--fg);font-weight:600}
+.mdv-name.on svg{color:var(--fg);opacity:.9}
+.mdv-name.archived{opacity:.55}
+.mdv-act{flex:none;border:0;background:none;color:var(--muted);font:inherit;font-size:11px;padding:4px 5px;border-radius:5px;cursor:pointer}
+.mdv-act:hover{background:var(--surface-hover);color:var(--fg)}
+.mdv-empty{padding:10px 8px;font-size:11.5px;color:var(--muted);line-height:1.6}
+.mdv-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 18px;border-top:1px solid var(--border);background:var(--bg)}
+.mdv-status{font-size:12px;color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdv-foot-actions{display:flex;align-items:center;gap:10px;flex:none}
+.mdv-btn-save{padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--fg);transition:background .15s}
+.mdv-btn-save:hover{background:var(--surface-hover)}
+.mdv-btn-save:disabled{opacity:.5;cursor:not-allowed}
+.mdv-foot-hint{font-size:11.5px;color:var(--muted);opacity:.7;white-space:nowrap}
+/* 底部「标记」高级感微面板 */
+.mdv-palette-wrap{position:relative;display:inline-flex;align-items:center}
+.mdv-btn-palette{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;height:28px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--fg);font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s ease}
+.mdv-btn-palette:hover{background:var(--surface-hover);border-color:var(--fg)}
+.mdv-btn-palette.on{background:var(--surface-hover);border-color:var(--fg)}
+.mdv-btn-palette .mark-icon{color:oklch(50% 0.08 285);font-size:12px;display:inline-flex;align-items:center}
+.mdv-btn-palette .chev{color:var(--muted);width:10px;height:10px;transition:transform .15s}
+.mdv-btn-palette.on .chev{transform:rotate(180deg)}
+.mdv-palette-pop{position:absolute;bottom:calc(100% + 8px);right:0;width:210px;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.15),0 2px 6px rgba(0,0,0,.06);padding:6px;z-index:50;display:flex;flex-direction:column;gap:3px;backdrop-filter:blur(16px)}
+.mdv-palette-pop[hidden]{display:none}
+.mdv-palette-head{display:flex;align-items:center;gap:6px;padding:4px 7px 3px;font-size:11px;color:var(--muted);letter-spacing:.2px;user-select:none}
+.mdv-palette-head .scope-dot{width:5px;height:5px;border-radius:50%;background:oklch(50% 0.08 285);flex:none}
+.mdv-palette-pop button{display:flex;align-items:center;gap:8px;padding:6px 9px;border:0;border-radius:7px;background:none;color:var(--fg);font:inherit;font-size:12px;cursor:pointer;text-align:left;width:100%;transition:background .12s}
+.mdv-palette-pop button:hover{background:var(--surface-hover)}
+.mdv-palette-pop .pdot{width:14px;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none}
+.mdv-palette-pop .pdot.agent{color:oklch(50% 0.08 285)}
+.mdv-palette-pop .pdot.important{color:oklch(75% 0.16 80)}
+.mdv-palette-pop .pdot.clear{color:var(--muted);font-size:11px}
+.mdv-palette-pop .psep{height:1px;background:var(--border);margin:3px 2px}
+.mdv-close{width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center;border:0;border-radius:7px;background:none;color:var(--muted);cursor:pointer}
+.mdv-close:hover{background:var(--surface-hover);color:var(--fg)}
+.mdv-close svg{width:15px;height:15px}
+
+/* ============ 响应式 ============ */
+@media (max-width:1100px){
+  #topbar>#project-pill{flex:0 1 auto}
+  #topbar>#toolbar{flex:0 0 auto;width:fit-content;position:relative;left:auto;transform:none;margin:0 auto}
+  #project-pill .pilltxt{display:none}
+  #project-pill .pname{max-width:72px}
+}
+
+/* 窄面板下 Markdown 头部自适应与紧凑边距 */
+.narrow-dock .mdv-head,
+.tiny-dock .mdv-head{gap:4px;padding:6px 8px}
+.narrow-dock .mdv-btn span,
+.narrow-dock .mdv-btn .chev,
+.tiny-dock .mdv-btn span,
+.tiny-dock .mdv-btn .chev{display:none}
+.narrow-dock .mdv-seg button,
+.tiny-dock .mdv-seg button{padding:3px 6px;font-size:11px}
+.tiny-dock .mdv-title{display:none}
+.tiny-dock .mdv-back-btn span{display:none}
+.tiny-dock .mdv-bundle-toggle span{display:none}
+.narrow-dock .mdv-mirror,
+.tiny-dock .mdv-mirror,
+.narrow-dock .mdv-edit,
+.tiny-dock .mdv-edit{padding:12px 14px !important}
+
+/* 窄屏或右侧面板挤占地图可见区时：顶栏、工具栏与缩放条自适应防遮挡 */
+.narrow-dock #topbar{justify-content:space-between;gap:6px}
+.narrow-dock #topbar>#project-pill{padding:0;width:38px;height:38px;border-radius:8px;justify-content:center;overflow:hidden;flex:none}
+.narrow-dock #topbar>#project-pill>*:not(#proj-btn){display:none !important}
+.narrow-dock #topbar>#project-pill #proj-btn{padding:0;width:100%;height:100%;justify-content:center}
+.narrow-dock #topbar>#project-pill #proj-btn>*:not(svg){display:none !important}
+.narrow-dock #topbar>#toolbar{position:relative;left:auto;transform:none;margin:0;flex:none;padding:3px;gap:2px}
+.narrow-dock #topbar>#toolbar .icb{width:32px;height:32px}
+.narrow-dock #topbar>#toolbar .icb svg{width:16px;height:16px}
+.narrow-dock #topbar>#toolbar .icb kbd{display:none !important}
+.narrow-dock #zoombar .sep,.narrow-dock #zoombar #undo,.narrow-dock #zoombar #redo{display:none !important}
+
+@media (max-width:680px){
+  #topbar{justify-content:space-between;gap:6px}
+  #topbar>#project-pill{padding:0;width:38px;height:38px;border-radius:8px;justify-content:center;overflow:hidden;flex:none}
+  #topbar>#project-pill>*:not(#proj-btn){display:none !important}
+  #topbar>#project-pill #proj-btn{padding:0;width:100%;height:100%;justify-content:center}
+  #topbar>#project-pill #proj-btn>*:not(svg){display:none !important}
+  #topbar>#toolbar{position:relative;left:auto;transform:none;margin:0;flex:none;padding:3px;gap:2px}
+  #topbar>#toolbar .icb{width:32px;height:32px}
+  #topbar>#toolbar .icb svg{width:16px;height:16px}
+  #topbar>#toolbar .icb kbd{display:none !important}
+  #zoombar .sep,#zoombar #undo,#zoombar #redo{display:none !important}
+}
+
+.tiny-dock #topbar>#toolbar [data-tool="edge"],
+.tiny-dock #topbar>#toolbar [data-tool="ann"],
+.tiny-dock #topbar>#toolbar .sep{
+  display:none !important;
+}
+@media (max-width:480px){
+  #topbar>#toolbar [data-tool="edge"],
+  #topbar>#toolbar [data-tool="ann"],
+  #topbar>#toolbar .sep{
+    display:none !important;
+  }
+}

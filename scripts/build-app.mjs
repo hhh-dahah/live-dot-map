@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build as esbuild } from 'esbuild';
 
@@ -14,7 +14,7 @@ function asPath(value, fallback) {
 }
 
 function parseArgs(argv) {
-  const args = { input: resolve(ROOT, 'app.html'), output: resolve(ROOT, 'dist', 'app.v2.html'), bridgeOrigin: null, nonce: null };
+  const args = { input: null, output: resolve(ROOT, 'dist', 'app.v2.html'), bridgeOrigin: null, nonce: null };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--input') args.input = asPath(argv[++index], args.input);
@@ -22,7 +22,7 @@ function parseArgs(argv) {
     else if (arg === '--bridge-origin') args.bridgeOrigin = argv[++index];
     else if (arg === '--nonce') args.nonce = argv[++index];
     else if (arg === '--help' || arg === '-h') {
-      console.log('用法: node scripts/build-app.mjs [--input app.html] [--output dist/app.v2.html] [--bridge-origin http://127.0.0.1:8787] [--nonce value]');
+      console.log('用法: node scripts/build-app.mjs [--input app.html] [--output app.html] [--bridge-origin http://127.0.0.1:8787] [--nonce value]\n默认（不带 --input）从 src/web/app/ 源组装生成；app.html 是纯构建产物，手写改动请进 src/web/app/。');
       process.exit(0);
     } else throw new Error(`未知参数: ${arg}`);
   }
@@ -167,10 +167,34 @@ window.LiveDotApp = {
 `;
 }
 
+const STYLE_TOKEN = '/*__LIVEDOT_STYLES__*/';
+const MAIN_TOKEN = '/*__LIVEDOT_MAIN__*/';
+
+// 源组装模式：未指定 --input 时，从 src/web/app/（模板 + styles/* + main/*）组装出 app.html 的手写源。
+// 分块文件按文件名序拼接，保持全局变量语义；app.html 从此是纯构建产物。
+async function assembleAppSource() {
+  const srcDir = resolve(ROOT, 'src', 'web', 'app');
+  const readJoined = async (sub, ext) => {
+    const dir = resolve(srcDir, sub);
+    const files = (await readdir(dir)).filter((file) => file.endsWith(ext)).sort();
+    if (!files.length) throw new Error(`源目录为空: ${dir}`);
+    const parts = await Promise.all(files.map((file) => readFile(join(dir, file), 'utf8')));
+    return parts.join('\n');
+  };
+  let html = await readFile(join(srcDir, 'app.template.html'), 'utf8');
+  html = html.replace(STYLE_TOKEN, await readJoined('styles', '.css'));
+  html = html.replace(MAIN_TOKEN, await readJoined('main', '.js'));
+  if (html.includes(STYLE_TOKEN) || html.includes(MAIN_TOKEN)) {
+    throw new Error('app.template.html 中仍残留组装占位符');
+  }
+  return html;
+}
+
 export async function buildApp(options = {}) {
-  const input = asPath(options.input, resolve(ROOT, 'app.html'));
   const output = asPath(options.output, resolve(ROOT, 'app.html'));
-  const original = await readFile(input, 'utf8');
+  const original = options.input
+    ? await readFile(asPath(options.input, resolve(ROOT, 'app.html')), 'utf8')
+    : await assembleAppSource();
   let html = transformExternalDataSinks(transformLegacyPaths(removeExistingCsp(original)));
   html = html.replace(/(<script\b[^>]*?)\s+nonce\s*=\s*["'][^"']*["']/gi, '$1');
   const nonce = options.nonce ?? createHash('sha256').update(html).digest('base64url').slice(0, 24);
@@ -195,7 +219,7 @@ export async function buildApp(options = {}) {
   html = addNonceToInlineScripts(html, nonce);
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, html, 'utf8');
-  return { input, output, bytes: Buffer.byteLength(html), nonce, csp };
+  return { source: options.input ? 'file' : 'src/web/app', output, bytes: Buffer.byteLength(html), nonce, csp };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

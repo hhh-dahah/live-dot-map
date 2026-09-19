@@ -1,0 +1,149 @@
+
+/* ============ 设计令牌(见 brand-spec.md) ============ */
+:root{
+  --bg: oklch(100% 0 0);
+  --surface: oklch(98.6% 0.004 286);
+  --surface-hover: oklch(96% 0.008 286);
+  --fg: oklch(27% 0.015 285);
+  --muted: oklch(55% 0.02 285);
+  --border: oklch(91% 0.008 285);
+  --accent: oklch(54% 0.16 286);
+  --accent-soft: oklch(91% 0.035 288);
+  --ink: oklch(24% 0.01 285);
+  --success: oklch(58% 0.15 145);
+  --danger: oklch(56% 0.19 27);
+  /* 警示黄 — 仅用于同步状态灯「待保存/未同步」,不作他用 */
+  --warn: oklch(72% 0.14 75);
+  --pending: oklch(68% 0.012 285);
+  /* 便签黄 — 仅用于标注(人与 Agent 统一),不作他用 */
+  --note: oklch(96% 0.09 90);
+  --note-border: oklch(88% 0.1 85);
+  --note-shadow: 0 1px 3px rgba(27,27,31,.12);
+  /* 人写标记候选色(--note 便签黄/--accent-soft 淡紫之外的可选高亮),仅用于 <mark> 人写段显示层 */
+  --hl-blue: oklch(93% 0.05 250);
+  --font-body: 'Söhne','Avenir Next',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+  --font-mono: 'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  --shadow: 0 1px 5px rgba(27,27,31,.10), 0 0 0 1px var(--border);
+  --r: 8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font-body);font-size:13px;color:var(--fg);background:var(--bg);
+  -webkit-font-smoothing:antialiased;user-select:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit;color:inherit}
+
+/* ============ 画布与世界 ============ */
+#viewport{position:fixed;inset:0;overflow:hidden;background:var(--bg);cursor:default}
+#viewport.panning{cursor:grabbing}
+/* 工具模式隐藏系统光标,改用 #crosshair 自绘准星(本机系统 crosshair 细线几乎不可见) */
+#viewport.tool-place{cursor:none}
+/* 拖入 map.json 时的画布高亮 */
+#viewport.drop-hint{outline:3px dashed var(--accent);outline-offset:-8px}
+#world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+#overview-canvas{position:absolute;pointer-events:none;visibility:hidden}
+#world.lod-overview #edges,#world.lod-overview .node,#world.lod-overview .route-label,#world.lod-overview .ann{visibility:hidden}
+#world.lod-overview #overview-canvas{visibility:visible}
+#edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+#edges .hit{pointer-events:stroke;cursor:pointer}
+/* 方案线手柄:悬空端点 / 弯曲控制点 */
+#edges .handle{pointer-events:all;cursor:grab}
+/* 箭头/新建节点等工具下统一自绘准星:避免拖线时节点/线/手柄光标频繁切换造成"光标闪烁消失"观感 */
+#viewport.tool-place .node,
+#viewport.tool-place #edges .hit,
+#viewport.tool-place #edges .handle{cursor:none}
+/* 自绘十字准星:全屏横竖细线 + 中心圈,品牌淡紫;跟随指针,悬停 UI 时隐藏 */
+#crosshair{position:fixed;inset:0;pointer-events:none;z-index:35}
+#crosshair i{position:absolute;display:block}
+#crosshair .h{left:0;right:0;top:var(--cy,0);height:1px;background:var(--accent);opacity:.45}
+#crosshair .v{top:0;bottom:0;left:var(--cx,0);width:1px;background:var(--accent);opacity:.45}
+#crosshair .c{left:var(--cx,0);top:var(--cy,0);width:9px;height:9px;border:1.5px solid var(--accent);
+  border-radius:50%;transform:translate(-50%,-50%);opacity:.85}
+
+/* 节点:圆形,名称直接写在圆内(半径按文字自适应,见 nodeTextLayout) */
+.node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;
+  align-items:center;gap:6px;cursor:grab;pointer-events:auto}
+.node .dot{border-radius:50%;background:var(--bg);border:1.5px solid var(--fg);
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  font-size:12.5px;font-weight:500;line-height:16px;color:var(--fg);
+  transition:box-shadow .15s,border-color .15s}
+.node[data-type="问题"] .dot{border-style:dashed}
+/* 节点名行内编辑中:保留圆圈,仅隐藏圆内文字(透明输入框叠在圆心) */
+.node.editing .dot>span:first-child{visibility:hidden}
+.node[data-kind="problem"] .dot{border:2px solid var(--danger);background:oklch(96% .035 27);color:var(--danger);box-shadow:0 0 0 3px oklch(96% .08 27 / .35);position:relative}
+.node[data-kind="problem"] .dot::before{content:'问题';position:absolute;top:-10px;right:-10px;padding:1px 5px;border-radius:999px;background:var(--danger);color:#fff;font-size:10px;line-height:16px;font-weight:600}
+.node[data-kind="problem"]:hover .dot,.node[data-kind="problem"].sel .dot{border-color:var(--danger);box-shadow:0 0 0 4px oklch(92% .12 27 / .45)}
+.node[data-kind="problem"].resolved{opacity:.62;transition:opacity .15s ease}
+.node[data-kind="problem"].resolved:hover,.node[data-kind="problem"].resolved.sel{opacity:1}
+.node[data-kind="problem"].resolved .dot{border:1.5px solid oklch(82% .006 285);background:oklch(98.2% .003 285);color:oklch(60% .012 285);box-shadow:none}
+.node[data-kind="problem"].resolved .dot::before{content:none;display:none}
+.node[data-kind="problem"].resolved:hover .dot,.node[data-kind="problem"].resolved.sel .dot{border-color:oklch(68% .015 285);box-shadow:0 0 0 3px oklch(88% 0.01 285 / .35)}
+.node:hover .dot{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.node.sel .dot{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.node.snap .dot{border-color:var(--accent);box-shadow:0 0 0 6px var(--accent-soft)}
+.node.pulse .dot{animation:pulse 1.1s ease-out 3}
+@keyframes pulse{0%{box-shadow:0 0 0 0 var(--accent-soft)}60%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+
+/* 路线名称:低强调,双击可编辑 */
+.route-label{position:absolute;font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;
+  letter-spacing:.04em;transform:translate(-50%,0);cursor:text}
+
+/* 标注:黄色小便签(人与 Agent 统一),归属由细引导线表明 */
+.ann{position:absolute;font-size:12px;line-height:1.3;color:var(--fg);white-space:nowrap;
+  background:var(--note);border:1px solid var(--note-border);border-radius:6px;
+  padding:4px 9px;box-shadow:var(--note-shadow);pointer-events:auto;cursor:grab;
+  transition:box-shadow .15s,border-color .15s}
+.ann:hover{border-color:var(--accent)}
+.ann.sel{border-color:var(--accent);box-shadow:var(--note-shadow),0 0 0 3px var(--accent-soft)}
+.ann.editing{cursor:text;white-space:pre}
+.ann.editing:empty::before{content:'输入标注';color:var(--muted)}
+.ann:active{cursor:grabbing}
+
+/* 框选后的悬浮删除按钮 */
+#del-float{position:fixed;z-index:31;display:none;width:34px;height:34px;align-items:center;
+  justify-content:center;border-radius:var(--r);background:var(--bg);box-shadow:var(--shadow);
+  color:var(--danger)}
+#del-float.on{display:flex}
+#del-float:hover{background:oklch(96% 0.03 27)}
+#del-float svg{width:16px;height:16px}
+
+/* ============ 悬浮控件(Excalidraw 式) ============ */
+.chrome{position:fixed;z-index:20;background:var(--bg);border-radius:var(--r);
+  box-shadow:var(--shadow);display:flex;align-items:center}
+.chrome .icb{width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+  border-radius:6px;color:var(--fg);position:relative}
+.chrome .icb:hover{background:var(--surface-hover)}
+.chrome .icb.active{background:var(--accent-soft);color:var(--accent)}
+.chrome .icb svg{width:18px;height:18px}
+.chrome .sep{width:1px;height:20px;background:var(--border);margin:0 4px;flex:none}
+/* 更新红点:检测到新版本时显示在项目菜单按钮右上角(平时不可见,保持简洁) */
+#proj-menu-btn .upd-dot{position:absolute;top:5px;right:5px;width:8px;height:8px;border-radius:50%;
+  background:var(--danger);border:1.5px solid var(--bg);display:none;pointer-events:none}
+#proj-menu-btn.has-update .upd-dot{display:block}
+
+#project-pill{left:12px;top:12px;padding:0 4px 0 6px;height:44px;gap:6px}
+#project-pill .pname{font-weight:600;font-size:13px;max-width:180px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+#toolbar{left:50%;top:12px;transform:translateX(-50%);padding:4px;gap:2px}
+#toolbar .icb kbd{position:absolute;right:3px;bottom:2px;font-size:9px;color:var(--muted);
+  font-family:var(--font-mono);pointer-events:none}
+#topbar{position:fixed;z-index:20;left:12px;right:calc(12px + var(--dockspace,0px));top:12px;display:flex;align-items:flex-start;
+  gap:8px;pointer-events:none;min-width:0;transition:right .15s ease}
+#topbar>.chrome{position:relative;left:auto;top:auto;transform:none;pointer-events:auto}
+#topbar>#popover{pointer-events:auto}
+#topbar>#project-pill{flex:0 1 auto;min-width:0;overflow:hidden}
+/* 工具栏在地图可见区（topbar内）绝对居中；窄屏退回流式居中；编辑器打开时彻底隐藏以免遮挡 */
+#topbar>#toolbar{flex:none;position:absolute;left:50%;transform:translateX(-50%)}
+body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#panel.editing) #topbar>#toolbar{display:none !important}
+#sync-dot{appearance:none;border:0;padding:0;background:var(--danger);cursor:pointer}
+#sync-dot:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+#zoombar{left:12px;bottom:12px;padding:4px;gap:2px}
+#zoombar .zoomv{min-width:48px;text-align:center;font-variant-numeric:tabular-nums;
+  color:var(--muted);border-radius:6px;height:28px;line-height:28px;font-size:12px}
+#zoombar .zoomv:hover{background:var(--surface-hover);color:var(--fg)}
+
+/* 更新提示条：顶栏下方的非模态细条；可关掉,红点仍留在 ⋯ 菜单 */
+#update-bar{position:fixed;z-index:30;top:60px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;
+  background:var(--bg);border-radius:12px;box-shadow:var(--shadow);
+  font-size:12px;color:var(--fg);white-space:nowrap}

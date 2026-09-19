@@ -1,0 +1,150 @@
+#toast{position:fixed;top:64px;left:50%;transform:translate(-50%,-8px);z-index:50;
+  background:var(--ink);color:var(--bg);font-size:12px;padding:8px 14px;border-radius:8px;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* 行内输入(标注/名称) */
+.inline-edit{background:var(--bg);border:1px solid var(--accent);border-radius:6px;
+  padding:4px 8px;font:inherit;font-size:12px;outline:none;box-shadow:var(--shadow)}
+/* 节点名行内输入:透明无边框,文字样式对齐圆内,叠在圆圈上原地改字 */
+.inline-edit.node-edit{background:transparent;border:0;box-shadow:none;padding:0;
+  text-align:center;font-size:12.5px;font-weight:500;line-height:16px;color:var(--fg)}
+
+/* 面板底部内部编号:极小标注,可在设置中隐藏 */
+.pnum{font-size:10px;color:var(--muted);text-align:center;padding:10px 0 2px}
+
+/* 工具提示:底部居中,切换工具时短暂显示 */
+#tool-hint{position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:40;
+  background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 16px;
+  font-size:12px;color:var(--muted);box-shadow:var(--shadow);pointer-events:none;
+  opacity:0;transition:opacity .3s}
+#tool-hint.on{opacity:1}
+
+/* 首次无地图引导：只提供选择，不触发项目扫描 */
+#first-map-guide{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;background:rgba(27,27,31,.18)}
+#first-map-guide.on{display:flex}
+#first-map-guide .card{width:min(520px,92vw);padding:28px;border-radius:16px;background:var(--bg);box-shadow:var(--shadow)}
+#first-map-guide h2{font-size:20px;margin-bottom:8px}
+#first-map-guide p{color:var(--muted);line-height:1.7;margin-bottom:16px}
+#first-map-guide .choice{display:block;width:100%;padding:12px 14px;margin-top:9px;text-align:left;border:1px solid var(--border);border-radius:10px;background:var(--bg)}
+#first-map-guide .choice:hover{background:var(--surface-hover);border-color:var(--accent)}
+#first-map-guide .choice strong{display:block;font-size:14px}
+#first-map-guide .choice span{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+#first-map-guide .choice.back-choice{text-align:center;border-style:dashed;color:var(--muted)}
+#first-map-guide .choice.back-choice:hover{color:var(--fg)}
+
+/* ============ 状态弹窗(T9 两态:正常/断线) ============ */
+.ld-dialog-ov{position:fixed;inset:0;z-index:90;background:rgba(27,27,31,.36);display:flex;align-items:center;justify-content:center}
+.ld-dialog{background:var(--bg);border-radius:14px;box-shadow:var(--shadow);width:min(400px,92vw);padding:22px 24px;outline:none}
+.ld-dialog-title{font-size:15px;font-weight:700}
+.ld-dialog-body{margin-top:8px;font-size:13px;line-height:1.7;white-space:pre-line}
+.ld-dialog-primary{display:block;width:100%;margin-top:16px;padding:9px 14px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+/* 双按钮确认框(未保存守卫等) */
+.ld-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.ld-dialog-actions .ld-dialog-primary{display:inline-block;width:auto;margin-top:0;padding:7px 14px}
+.ld-dialog-actions .ld-dialog-primary.danger{background:var(--danger);border-color:var(--danger)}
+.ld-dialog-primary:hover{filter:brightness(1.06)}
+.ld-dialog-primary:active{transform:translateY(1px)}
+.ld-dialog-primary:disabled{opacity:.6;cursor:default}
+.ld-dialog-primary:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.ld-dialog-foot{margin-top:12px;font-size:12px;line-height:1.6;color:var(--muted)}
+
+/* ============ Markdown 查看器(.mdv,dock 扩宽模式) ============ */
+.mdv-root{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--bg);min-width:0;overflow:hidden}
+#panel .mdv-head,.mdv-head{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);min-width:0;position:relative;z-index:25;overflow:visible !important}
+.mdv-back-btn{display:inline-flex;align-items:center;gap:2px;padding:4px 6px;font-size:12px;color:var(--muted);border-radius:6px;background:transparent;border:0;cursor:pointer;transition:all .15s;flex:none}
+.mdv-back-btn:hover{background:var(--surface-hover);color:var(--fg)}
+.mdv-title{font-weight:600;font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mdv-bundle-toggle{display:inline-flex;align-items:center;gap:4px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--muted);cursor:pointer;flex:none;background:var(--bg);transition:all .15s}
+.mdv-bundle-toggle:hover{background:var(--surface-hover);color:var(--fg)}
+.mdv-bundle-toggle.on{background:var(--accent-soft);color:var(--fg);border-color:var(--accent);font-weight:500}
+.mdv-bundle-toggle svg{width:13px;height:13px;flex:none}
+.mdv-seg{display:flex;flex:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px}
+.mdv-seg button{padding:4px 11px;border:0;border-radius:6px;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s ease}
+.mdv-seg button:hover:not(.on){color:var(--fg)}
+.mdv-seg button.on{background:var(--bg);color:var(--fg);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.mdv-openwrap{position:relative;flex:none;z-index:30}
+.mdv-split-btn{display:inline-flex;align-items:stretch;border:1px solid var(--border);border-radius:7px;background:var(--bg);overflow:hidden;transition:border-color .15s}
+.mdv-split-btn:hover{border-color:var(--fg);background:var(--surface-hover)}
+.mdv-btn-action{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:0;background:transparent;color:var(--fg);font:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap}
+.mdv-btn-action:hover{background:var(--surface-hover)}
+.mdv-btn-action svg{width:14px;height:14px;flex:none}
+.mdv-btn-caret{display:inline-flex;align-items:center;justify-content:center;padding:5px 6px;border:0;border-left:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer}
+.mdv-btn-caret:hover{background:var(--surface-hover);color:var(--fg)}
+.mdv-btn-caret svg{width:10px;height:10px;flex:none;transition:transform .15s}
+.mdv-btn-caret.on svg{transform:rotate(180deg)}
+.mdv-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.mdv-btn:hover{background:var(--surface-hover)}
+.mdv-btn:active{transform:translateY(1px)}
+.mdv-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.mdv-btn svg{width:14px;height:14px;flex:none}
+.mdv-btn .chev{color:var(--muted)}
+.mdv-menu{position:absolute;top:calc(100% + 6px);right:0;min-width:220px;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.15),0 2px 6px rgba(0,0,0,.06);padding:5px;z-index:60}
+.mdv-menu[hidden]{display:none !important}
+.mdv-menu button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:0;border-radius:7px;background:none;color:var(--fg);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}
+.mdv-menu button:hover:not(:disabled){background:var(--surface-hover)}
+.mdv-menu button:disabled{opacity:.45;cursor:default}
+.mdv-menu button svg{width:16px;height:16px;flex:none;border-radius:3px;overflow:hidden}
+.mdv-menu button .tick{margin-left:auto;color:var(--accent)}
+.mdv-msep{height:1px;background:var(--border);margin:5px 4px}
+.mdv-remember{display:flex;align-items:center;gap:7px;padding:7px 10px 4px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+.mdv-body{display:flex;flex:1;min-height:0}
+/* 编辑区 = 行号槽 + 镜像层高亮 + 透明文字 textarea(文字全部由镜像层渲染,保证标签淡化与背景高亮逐字对齐) */
+.mdv-editwrap{flex:1;min-width:0;min-height:0;display:flex;background:var(--bg)}
+.mdv-editwrap[hidden]{display:none}
+.mdv-gutter{display:none !important}
+.mdv-editstack{position:relative;flex:1;min-width:0;min-height:0;max-width:880px;margin:0 auto;width:100%}
+.mdv-mirror{position:absolute;inset:0;overflow:hidden;pointer-events:none;padding:18px 24px;font-family:var(--font-mono);font-size:13.5px;line-height:1.75;white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;color:var(--fg);scrollbar-gutter:stable}
+.mdv-mirror .tag{color:var(--muted);opacity:.45}
+.mdv-mirror span.tag{font-size:11.5px}
+.mdv-mirror .tag.tag-agent{opacity:.75;color:oklch(50% 0.08 285)}
+.mdv-mirror .tag-agent-start,
+.mdv-mirror .tag-agent-end{
+  display:flex;
+  align-items:center;
+  height:23.625px;
+  min-height:23.625px;
+  box-sizing:border-box;
+}
+.mdv-mirror .agent-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
+  font-family:var(--font-sans);
+  font-size:10px;
+  font-weight:600;
+  line-height:16px;
+  height:18px;
+  box-sizing:border-box;
+  padding:0 6px;
+  border-radius:4px;
+  background:oklch(50% 0.08 285 / .10);
+  color:oklch(46% 0.08 285);
+  border:1px solid oklch(50% 0.08 285 / .24);
+  letter-spacing:.3px;
+  margin-right:8px;
+  user-select:none;
+  pointer-events:none;
+  flex-shrink:0;
+}
+.mdv-mirror .agent-badge.end{
+  background:oklch(50% 0.08 285 / .06);
+  color:oklch(48% 0.08 285 / .8);
+  border:1px solid oklch(50% 0.08 285 / .16);
+}
+.mdv-mirror .hl{background:transparent;border-bottom:1.5px dashed var(--accent);border-radius:0}
+.mdv-mirror .ml{position:relative}
+
+/* 高权重重点标记: 暖金发丝点虚线 + 柔和温润底光 */
+.mdv-mirror mark.mdv-mark{
+  background:oklch(86% 0.12 85 / .22);
+  border-bottom:2px dashed oklch(75% 0.16 80);
+  border-radius:3px;
+  color:inherit;
+}
+.mdv-mirror .mdv-mark-tag{
+  font-size:11px;
+  opacity:.42;
+  color:oklch(65% 0.15 80);
+  user-select:none;
+}
