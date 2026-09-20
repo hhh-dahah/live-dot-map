@@ -140,6 +140,12 @@ test('dirty git worktree bare serve isolates into .live-dot-map-dev and leaves d
   assert.equal(result.reused, false);
   assert.ok(existsSync(join(project.root, '.live-dot-map-dev', 'bridge.json')), '脏树应自动使用隔离状态目录');
   assert.equal(existsSync(join(fakeDefault, 'bridge.json')), false, '脏树不得写入默认（生产）状态目录');
+  // 测试实例标记：页面标题带【测试】前缀且右上角有角标
+  const token = new URL(result.url).searchParams.get('token');
+  const page = await fetch(`${result.origin}/app.html?token=${encodeURIComponent(token)}`);
+  const html = await page.text();
+  assert.match(html, /<title>【测试】活点地图<\/title>/, '隔离实例标题应带【测试】');
+  assert.ok(html.includes('data-livedot-dev'), '隔离实例应注入测试角标');
 });
 
 test('clean git worktree bare serve keeps default runtime state and ignores untracked files', async (test) => {
@@ -159,4 +165,10 @@ test('clean git worktree bare serve keeps default runtime state and ignores untr
   assert.equal(result.reused, false);
   assert.ok(existsSync(join(fakeDefault, 'bridge.json')), '净树应继续使用默认状态目录（保护点火/恢复路径）');
   assert.equal(existsSync(join(project.root, '.live-dot-map-dev')), false, '净树不应产生隔离目录');
+  // 生产路径永不打标
+  const token = new URL(result.url).searchParams.get('token');
+  const page = await fetch(`${result.origin}/app.html?token=${encodeURIComponent(token)}`);
+  const html = await page.text();
+  assert.doesNotMatch(html, /【测试】/, '默认（生产）实例标题不得带测试标记');
+  assert.equal(html.includes('data-livedot-dev'), false, '默认（生产）实例不得注入测试角标');
 });
