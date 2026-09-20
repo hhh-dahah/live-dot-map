@@ -10267,6 +10267,13 @@ function hasDirtyGitWorktree(root) {
     return false;
   }
 }
+function markDevCanvas(html) {
+  let out = html.replace("<title>\u6D3B\u70B9\u5730\u56FE</title>", "<title>\u3010\u6D4B\u8BD5\u3011\u6D3B\u70B9\u5730\u56FE</title>").replace("document.title = '\u6D3B\u70B9\u5730\u56FE \u2014 ' + S.name;", "document.title = '\u3010\u6D4B\u8BD5\u3011\u6D3B\u70B9\u5730\u56FE \u2014 ' + S.name;");
+  const badge = '<div data-livedot-dev="1" style="position:fixed;top:0;right:16px;z-index:2147483647;background:#e67e22;color:#fff;font:600 12px/1.8 system-ui,sans-serif;padding:1px 12px;border-radius:0 0 10px 10px;box-shadow:0 2px 10px rgba(0,0,0,.35);pointer-events:none;user-select:none">\u6D4B\u8BD5\u5B9E\u4F8B \xB7 \u4E0E\u5E38\u9A7B\u753B\u5E03\u9694\u79BB</div>';
+  if (!out.includes("data-livedot-dev")) out = out.replace(/<\/body>/i, `${badge}
+</body>`);
+  return out;
+}
 async function main() {
   const { command: command2, args } = parseArgs(process.argv.slice(2));
   if (command2 === "serve") {
@@ -10354,7 +10361,7 @@ async function main() {
       throw new Error("Bridge \u6B63\u5728\u542F\u52A8\uFF0C\u4F46\u5728 2 \u79D2\u5185\u6CA1\u6709\u8FDB\u5165\u53EF\u590D\u7528\u72B6\u6001");
     }
     const appPath = resolve17(typeof args.app === "string" ? args.app : join20(process.cwd(), "app.html"));
-    const appHtml = await readFile15(appPath, "utf8");
+    const appHtml = runtimeStateDir ? markDevCanvas(await readFile15(appPath, "utf8")) : await readFile15(appPath, "utf8");
     const assetRoot = dirname14(appPath);
     const staticAssets = {};
     for (const [urlPath, file, type] of [
@@ -10392,7 +10399,7 @@ async function main() {
     const bootstrapToken = bridge.issueBootstrapTicket(projectRoot, registered.projectHandle);
     const url = `${bridge.origin}/app.html?token=${encodeURIComponent(bootstrapToken)}`;
     await logger.info("bridge.start", { origin: bridge.origin, pid: process.pid });
-    process.stdout.write(`${JSON.stringify({ ok: true, reused: false, pid: process.pid, origin: bridge.origin, projectHandle: registered.projectHandle, url })}
+    process.stdout.write(`${JSON.stringify({ ok: true, reused: false, pid: process.pid, origin: bridge.origin, projectHandle: registered.projectHandle, url, dev: Boolean(runtimeStateDir) })}
 `);
     const shutdown = async () => {
       await logger.info("bridge.stop", { pid: process.pid });

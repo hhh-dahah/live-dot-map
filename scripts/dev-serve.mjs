@@ -27,7 +27,7 @@ rl.on('line', (line) => {
       announced = true;
       console.log(`\n✔ 测试实例已就绪（运行时状态目录: ${stateDir}）`);
       console.log(`  打开: ${info.url}`);
-      console.log('  本实例运行当前目录的代码，与常驻画布完全隔离；Ctrl+C 退出。\n');
+      console.log('  页面已带【测试】标记（标题前缀 + 右上角橙色角标），与常驻画布一眼可分；Ctrl+C 退出。\n');
       return;
     }
   } catch { /* 非 JSON 行原样透传 */ }

@@ -660,6 +660,17 @@ function hasDirtyGitWorktree(root: string): boolean {
   }
 }
 
+// 测试实例标记：标题（静态 + 画布动态改名两处）打【测试】前缀，右上角注入常驻橙色角标。
+// 纯 HTML + 内联样式，不新增 script（CSP nonce 未知，注入脚本会被拦）；生产实例（默认运行时）永不打标。
+function markDevCanvas(html: string): string {
+  let out = html
+    .replace('<title>活点地图</title>', '<title>【测试】活点地图</title>')
+    .replace("document.title = '活点地图 — ' + S.name;", "document.title = '【测试】活点地图 — ' + S.name;");
+  const badge = '<div data-livedot-dev="1" style="position:fixed;top:0;right:16px;z-index:2147483647;background:#e67e22;color:#fff;font:600 12px/1.8 system-ui,sans-serif;padding:1px 12px;border-radius:0 0 10px 10px;box-shadow:0 2px 10px rgba(0,0,0,.35);pointer-events:none;user-select:none">测试实例 · 与常驻画布隔离</div>';
+  if (!out.includes('data-livedot-dev')) out = out.replace(/<\/body>/i, `${badge}\n</body>`);
+  return out;
+}
+
 async function main(): Promise<void> {
   const { command, args } = parseArgs(process.argv.slice(2));
   if (command === 'serve') {
@@ -760,7 +771,8 @@ async function main(): Promise<void> {
       throw new Error('Bridge 正在启动，但在 2 秒内没有进入可复用状态');
     }
     const appPath = resolve(typeof args.app === 'string' ? args.app : join(process.cwd(), 'app.html'));
-    const appHtml = await readFile(appPath, 'utf8');
+    // 隔离运行时（工位/脏树检测或显式 --runtime-state-dir）= 测试实例：页面打显眼标记，防与生产画布混淆。
+    const appHtml = runtimeStateDir ? markDevCanvas(await readFile(appPath, 'utf8')) : await readFile(appPath, 'utf8');
     const assetRoot = dirname(appPath);
     const staticAssets: Json = {};
     for (const [urlPath, file, type] of [
@@ -795,7 +807,7 @@ async function main(): Promise<void> {
     const bootstrapToken = bridge.issueBootstrapTicket(projectRoot, registered.projectHandle);
     const url = `${bridge.origin}/app.html?token=${encodeURIComponent(bootstrapToken)}`;
     await logger.info('bridge.start', { origin: bridge.origin, pid: process.pid });
-    process.stdout.write(`${JSON.stringify({ ok: true, reused: false, pid: process.pid, origin: bridge.origin, projectHandle: registered.projectHandle, url })}\n`);
+      process.stdout.write(`${JSON.stringify({ ok: true, reused: false, pid: process.pid, origin: bridge.origin, projectHandle: registered.projectHandle, url, dev: Boolean(runtimeStateDir) })}\n`);
     const shutdown = async () => {
       await logger.info('bridge.stop', { pid: process.pid });
       await logger.flush();
