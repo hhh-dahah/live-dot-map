@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { access, lstat, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { constants, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { isSea } from 'node:sea';
 import { createBridgeServer, createLogger, MapManager, noopLogger, TOOL_DEFINITIONS, ToolService } from '../bridge/index.mjs';
@@ -644,6 +644,22 @@ async function runHook(kind: string, args: Args): Promise<void> {
   }
 }
 
+// 主仓库根裸 serve 时的脏树检测：有已跟踪文件的未提交改动 → 视为开发/测试上下文。
+// 任何异常（无 git、非仓库、超时）都按"不脏"返回，绝不因检测让 serve 失败。
+function hasDirtyGitWorktree(root: string): boolean {
+  try {
+    if (!existsSync(join(root, '.git'))) return false;
+    const status = execFileSync('git', ['-C', root, 'status', '--porcelain=v1', '--untracked-files=no'], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 5000,
+    });
+    return status.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function main(): Promise<void> {
   const { command, args } = parseArgs(process.argv.slice(2));
   if (command === 'serve') {
@@ -661,6 +677,14 @@ async function main(): Promise<void> {
     if (!runtimeStateDir && worktreeMain) {
       runtimeStateDir = join(requestedRoot, '.live-dot-map-dev');
       await logger.info('bridge.worktree-isolated', { worktree: requestedRoot, runtimeStateDir });
+    }
+    // 脏树隔离：主仓库根本身（非链接工位）在裸 serve 时，若工作区有已跟踪文件的未提交改动，
+    // 说明正在大改/测试——同样自动隔离，防止测试代码顶替常驻桥混入生产画布。
+    // 干净树（MCP 点火、故障恢复、桌面启动）、非 git 目录（用户项目、安装版）行为完全不变；
+    // untracked 文件不算脏；git 检测任何异常一律按"不脏"处理（fail-open，绝不因检测让 serve 失败）。
+    if (!runtimeStateDir && !worktreeMain && hasDirtyGitWorktree(requestedRoot)) {
+      runtimeStateDir = join(requestedRoot, '.live-dot-map-dev');
+      await logger.info('bridge.dev-isolated', { reason: 'dirty-tree', worktree: requestedRoot, runtimeStateDir });
     }
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });

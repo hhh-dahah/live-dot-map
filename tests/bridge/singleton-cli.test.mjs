@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { execFileSync, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -89,4 +90,73 @@ test('two serve launchers reuse one pid and one stable origin', async (test) => 
   const resumed = await fetch(`${restartedResult.origin}/api/v1/session`, { headers: { Cookie: cookie } });
   assert.equal(resumed.status, 200);
   assert.equal((await resumed.json()).csrfToken, session.csrfToken);
+});
+
+// —— 裸 serve 的脏树自动隔离（防测试代码顶替常驻桥）——
+
+function gitIn(projectRoot, args) {
+  execFileSync('git', ['-C', projectRoot, ...args], {
+    encoding: 'utf8',
+    windowsHide: true,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'livedot-test',
+      GIT_AUTHOR_EMAIL: 'livedot-test@example.invalid',
+      GIT_COMMITTER_NAME: 'livedot-test',
+      GIT_COMMITTER_EMAIL: 'livedot-test@example.invalid',
+    },
+  });
+}
+
+// 裸 serve：不带 --runtime-state-dir；用 LIVEDOT_RUNTIME_STATE_DIR 把"默认状态目录"指到临时目录，
+// 以便断言脏树时默认目录不被写入、隔离目录被使用；净树时相反。
+function bareServe(projectRoot, fakeDefaultDir) {
+  return spawn(process.execPath, [
+    join(process.cwd(), 'livedot.mjs'),
+    'serve', '--project', projectRoot,
+    '--app', join(process.cwd(), 'app.html'),
+  ], {
+    cwd: process.cwd(),
+    env: { ...process.env, LIVEDOT_RUNTIME_STATE_DIR: fakeDefaultDir, LIVEDOT_RECENT_PROJECTS_FILE: join(fakeDefaultDir, 'recent-test.json') },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+}
+
+test('dirty git worktree bare serve isolates into .live-dot-map-dev and leaves default state untouched', async (test) => {
+  const project = await temporaryProject(test);
+  const fakeDefault = await mkdtemp(join(tmpdir(), 'livedot-dirty-default-'));
+  gitIn(project.root, ['init']);
+  await writeFile(join(project.root, 'tracked.txt'), 'base', 'utf8');
+  gitIn(project.root, ['add', 'tracked.txt']);
+  gitIn(project.root, ['commit', '-m', 'init']);
+  await writeFile(join(project.root, 'tracked.txt'), 'modified', 'utf8');
+  const child = bareServe(project.root, fakeDefault);
+  test.after(async () => {
+    if (!child.killed) child.kill();
+    await rm(fakeDefault, { recursive: true, force: true });
+  });
+  const result = await firstJsonLine(child);
+  assert.equal(result.reused, false);
+  assert.ok(existsSync(join(project.root, '.live-dot-map-dev', 'bridge.json')), '脏树应自动使用隔离状态目录');
+  assert.equal(existsSync(join(fakeDefault, 'bridge.json')), false, '脏树不得写入默认（生产）状态目录');
+});
+
+test('clean git worktree bare serve keeps default runtime state and ignores untracked files', async (test) => {
+  const project = await temporaryProject(test);
+  const fakeDefault = await mkdtemp(join(tmpdir(), 'livedot-clean-default-'));
+  gitIn(project.root, ['init']);
+  await writeFile(join(project.root, 'tracked.txt'), 'base', 'utf8');
+  await writeFile(join(project.root, 'untracked.txt'), 'noise', 'utf8');
+  gitIn(project.root, ['add', 'tracked.txt']);
+  gitIn(project.root, ['commit', '-m', 'init']);
+  const child = bareServe(project.root, fakeDefault);
+  test.after(async () => {
+    if (!child.killed) child.kill();
+    await rm(fakeDefault, { recursive: true, force: true });
+  });
+  const result = await firstJsonLine(child);
+  assert.equal(result.reused, false);
+  assert.ok(existsSync(join(fakeDefault, 'bridge.json')), '净树应继续使用默认状态目录（保护点火/恢复路径）');
+  assert.equal(existsSync(join(project.root, '.live-dot-map-dev')), false, '净树不应产生隔离目录');
 });
