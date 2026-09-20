@@ -1232,10 +1232,10 @@ var init_shared = __esm({
 // src/cli/livedot.ts
 import { randomUUID as randomUUID12 } from "node:crypto";
 import { access as access5, lstat as lstat9, mkdir as mkdir13, readFile as readFile15, readdir as readdir7, rename as rename10, stat as stat9, writeFile as writeFile7 } from "node:fs/promises";
-import { constants as constants3 } from "node:fs";
+import { constants as constants3, existsSync as existsSync3 } from "node:fs";
 import { dirname as dirname14, join as join20, resolve as resolve17 } from "node:path";
 import { homedir as homedir8 } from "node:os";
-import { spawn as spawn4 } from "node:child_process";
+import { execFileSync as execFileSync2, spawn as spawn4 } from "node:child_process";
 import { createInterface } from "node:readline";
 import { isSea } from "node:sea";
 
@@ -10254,6 +10254,19 @@ async function runHook(kind, args) {
     await manager.close();
   }
 }
+function hasDirtyGitWorktree(root) {
+  try {
+    if (!existsSync3(join20(root, ".git"))) return false;
+    const status = execFileSync2("git", ["-C", root, "status", "--porcelain=v1", "--untracked-files=no"], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 5e3
+    });
+    return status.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
 async function main() {
   const { command: command2, args } = parseArgs(process.argv.slice(2));
   if (command2 === "serve") {
@@ -10265,6 +10278,10 @@ async function main() {
     if (!runtimeStateDir && worktreeMain) {
       runtimeStateDir = join20(requestedRoot, ".live-dot-map-dev");
       await logger.info("bridge.worktree-isolated", { worktree: requestedRoot, runtimeStateDir });
+    }
+    if (!runtimeStateDir && !worktreeMain && hasDirtyGitWorktree(requestedRoot)) {
+      runtimeStateDir = join20(requestedRoot, ".live-dot-map-dev");
+      await logger.info("bridge.dev-isolated", { reason: "dirty-tree", worktree: requestedRoot, runtimeStateDir });
     }
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });
