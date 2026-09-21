@@ -106,6 +106,7 @@ function tryFastPositionRender(structure){
 }
 function render(){
   document.body.classList.toggle('show-ntime', S.showNodeTime === true);
+  document.body.classList.toggle('show-nums-badge', S.showNums === true);
   rebuildObjectIndexes();
   const structure = renderStructureKey();
   if (tryFastPositionRender(structure)) return;
@@ -307,11 +308,16 @@ function render(){
     if (isResolved) el.dataset.resolved = 'true';
     el.setAttribute('role', 'button'); el.setAttribute('aria-label', `${el.dataset.kind === 'problem' ? (isResolved ? '已解决问题节点' : '问题节点') : '节点'}：${n.name}`);
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
-    // 可选时间角标：相对时间显示节点新旧（更多菜单开关，默认关）；pointer-events:none 不参与命中
-    const timeBadge = S.showNodeTime && n.updatedAt
-      ? `<span class="ntime" title="${esc(new Date(n.updatedAt).toLocaleString())}">${esc(relTime(n.updatedAt))}</span>`
-      : '';
-    el.innerHTML = `<div class="dot" style="width:${n.r*2}px;height:${n.r*2}px"><span>${L.lines.map(esc).join('<br>')}</span></div>${timeBadge}`;
+    // 徽标顺时针环绕：问题/已解决 右上(-45°)起步，编号右侧(0°)，时间右下(+45°)，各自锚定圆缘外侧，pointer-events:none 不挡交互
+    const showTime = S.showNodeTime && n.updatedAt;
+    const timeText = showTime ? fmtNodeTime(n.updatedAt, S.nodeTimeMode || 'auto') : '';
+    const timeFull = showTime ? fmtNodeTimeFull(n.updatedAt) : '';
+    const badges = [];
+    if (nodeKind === 'problem') badges.push(`<span class="nbadge ${isResolved ? 'ok' : 'prob'}">${isResolved ? '已解决' : '问题'}</span>`);
+    if (S.showNums && n.num) badges.push(`<span class="nbadge num">${esc(n.num)}</span>`);
+    if (showTime) badges.push(`<span class="nbadge time" title="${esc(timeFull)}">${esc(timeText)}</span>`);
+    const badgeRing = badges.length ? `<div class="bring">${badges.join('')}</div>` : '';
+    el.innerHTML = `<div class="dot" style="width:${n.r*2}px;height:${n.r*2}px"><span>${L.lines.map(esc).join('<br>')}</span></div>${badgeRing}`;
     world.appendChild(el);
   }
   for (const { a, ax, ay, rot } of annPos){

@@ -67,14 +67,27 @@ input{font:inherit;color:inherit}
   display:flex;align-items:center;justify-content:center;text-align:center;
   font-size:12.5px;font-weight:500;line-height:16px;color:var(--fg);
   transition:box-shadow .15s,border-color .15s}
-/* 可选时间角标：右上角相对时间，默认关（更多菜单「显示节点时间」），pointer-events:none 不挡拖拽 */
-.node .ntime{display:none}
-body.show-ntime .node .ntime{display:block;position:absolute;top:50%;right:calc(50% - 34px);transform:translateY(-140%);font-size:9px;line-height:1;color:var(--muted);pointer-events:none;user-select:none;white-space:nowrap;background:color-mix(in srgb,var(--bg) 82%,transparent);padding:2px 5px;border-radius:6px;backdrop-filter:blur(2px)}
+/* 节点徽标环：围绕圆缘顺时针分布——问题/已解决 右上、编号 右侧、时间 右下；pointer-events:none 不挡拖拽 */
+.node .bring{position:absolute;inset:0;pointer-events:none}
+.node .nbadge{position:absolute;left:50%;top:50%;padding:2px 8px;border-radius:999px;font-size:10px;line-height:15px;font-weight:600;white-space:nowrap;color:var(--muted);background:var(--bg);border:1px solid var(--line,rgba(0,0,0,.12));box-shadow:0 1px 4px rgba(0,0,0,.10);transform:translate(-50%,-50%)}
+.node .nbadge.prob{color:#fff;background:var(--danger);border-color:transparent}
+.node .nbadge.ok{color:var(--success,#2e7d32);background:var(--bg);border-color:currentColor}
+.node .nbadge.time{font-weight:500}
+body.show-ntime .node .nbadge.time{display:block}
+body:not(.show-ntime) .node .nbadge.time{display:none}
+body.show-nums-badge .node .nbadge.num{display:block}
+body:not(.show-nums-badge) .node .nbadge.num{display:none}
+body.show-ntime .node .nbadge.prob,body.show-nums-badge .node .nbadge.prob{transform:translate(-50%,-50%) translate(calc(-0.72 * (var(--bring-r,34px) + 16px)),calc(-0.72 * (var(--bring-r,34px) + 16px)))}
+body.show-ntime .node .nbadge.num,body.show-nums-badge .node .nbadge.num{transform:translate(-50%,-50%) translateX(calc(var(--bring-r,34px) + 16px))}
+body.show-ntime .node .nbadge.time{transform:translate(-50%,-50%) translate(calc(0.72 * (var(--bring-r,34px) + 16px)),calc(0.72 * (var(--bring-r,34px) + 16px)))}
+body.show-ntime.show-nums-badge .node .nbadge.prob{transform:translate(-50%,-50%) translate(calc(-1 * (var(--bring-r,34px) + 18px)),calc(-1 * (var(--bring-r,34px) + 18px)))}
+body.show-ntime.show-nums-badge .node .nbadge.time{transform:translate(-50%,-50%) translate(calc(var(--bring-r,34px) + 18px),calc(var(--bring-r,34px) + 18px))}
+body:not(.show-ntime):not(.show-nums-badge) .node .nbadge.prob{transform:translate(-50%,-50%) translateY(calc(-1 * (var(--bring-r,34px) + 12px)))}
 .node[data-type="问题"] .dot{border-style:dashed}
 /* 节点名行内编辑中:保留圆圈,仅隐藏圆内文字(透明输入框叠在圆心) */
 .node.editing .dot>span:first-child{visibility:hidden}
 .node[data-kind="problem"] .dot{border:2px solid var(--danger);background:oklch(96% .035 27);color:var(--danger);box-shadow:0 0 0 3px oklch(96% .08 27 / .35);position:relative}
-.node[data-kind="problem"] .dot::before{content:'问题';position:absolute;top:-10px;right:-10px;padding:1px 5px;border-radius:999px;background:var(--danger);color:#fff;font-size:10px;line-height:16px;font-weight:600}
+/* 问题徽章已改为 .bring 徽标环统一渲染（.nbadge.prob），不再用 ::before 静态角标 */
 .node[data-kind="problem"]:hover .dot,.node[data-kind="problem"].sel .dot{border-color:var(--danger);box-shadow:0 0 0 4px oklch(92% .12 27 / .45)}
 .node[data-kind="problem"].resolved{opacity:.62;transition:opacity .15s ease}
 .node[data-kind="problem"].resolved:hover,.node[data-kind="problem"].resolved.sel{opacity:1}

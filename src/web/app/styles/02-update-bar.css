@@ -24,10 +24,11 @@
 #dock-grip::before{content:'';position:absolute;left:4px;top:50%;transform:translateY(-50%);width:6px;height:32px;border-radius:3px;background:var(--border);opacity:0;transition:opacity .15s,background .15s;pointer-events:none}
 #dock-grip:hover::after,#panel.dragging #dock-grip::after{background:var(--accent)}
 #dock-grip:hover::before,#panel.dragging #dock-grip::before{opacity:1;background:var(--accent)}
-/* 收起为细边条:只留展开钮 */
-#panel.rail{width:36px}
+/* 收起为细边条:整条都是展开热区（26px 小钮在高 DPI 下难命中），悬停高亮提示可点 */
+#panel.rail{width:36px;cursor:pointer}
+#panel.rail:hover{background:var(--surface-hover)}
 #panel.rail>header,#panel.rail>.body,#panel.rail>footer,#panel.rail>.mdv-root,#panel.rail>#dock-grip{display:none}
-#dock-rail{display:none;width:36px;height:100%;flex-direction:column;align-items:center;padding-top:10px}
+#dock-rail{display:none;width:36px;height:100%;flex-direction:column;align-items:center;padding-top:10px;pointer-events:none}
 #panel.rail #dock-rail{display:flex}
 #dock-expand{width:26px;height:26px;border-radius:7px;color:var(--muted);display:flex;align-items:center;justify-content:center}
 #dock-expand:hover{background:var(--surface-hover);color:var(--fg)}

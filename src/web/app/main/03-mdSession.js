@@ -14,6 +14,9 @@ function select(kind, id, defer = false){
     mdSession.discard();
   }
   S.sel = kind ? {kind, id} : null;
+  // 侧栏自愈：面板若处于折叠细条态，选中对象即自动展开——
+  // 折叠态跨会话持久化，若不自愈用户会永远"点节点面板不出来"（且细条展开钮只有 26px 难命中）
+  if (kind && $('#panel').classList.contains('rail')) dockExpand();
   // defer: 延迟到下一帧渲染(画布点选用,保 DOM 稳定以不吞 click/dblclick)
   if (defer) requestAnimationFrame(() => { render(); renderPanel(); });
   else { render(); renderPanel(); }
