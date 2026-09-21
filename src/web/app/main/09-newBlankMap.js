@@ -2,7 +2,8 @@ async function newBlankMap(){
   if (IO.readOnly){ warnReadOnly(); return; }
   const bridge = window.LiveDotBridge;
   if (bridge?.active && typeof bridge.createMap === 'function'){
-    // 桥模式：服务端建图、写 active-map 指针并返回新图快照，attachProject 自动重载画布
+    // 桥模式：前端 createMap 是两步——服务端 /maps/create 只建图不写指针，随后前端调 /maps/switch 完成切换并重载画布。
+    // 注意：MCP 侧 map_create 同样不切指针，agent 建图后省略 mapKey 的调用仍写旧图。
     try{
       await bridge.createMap('未命名地图');
       toast('已新建地图（双击名称可改名）');

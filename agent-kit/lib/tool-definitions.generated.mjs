@@ -188,7 +188,7 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_apply_commands",
-    "description": "通过统一 reducer 原子提交地图命令。",
+    "description": "通过统一 reducer 原子提交地图命令。⚠ 写入目标默认取全局 active-map 指针——跨地图操作必须显式传 mapKey，否则会写进指针所指的旧图；禁止修改非你创建节点的 name（会被拒绝）；要记录任务清单/新内容时请新建节点，不要原地改名。",
     "inputSchema": {
       "type": "object",
       "properties": {

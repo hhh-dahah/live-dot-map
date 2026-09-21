@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readdir, stat } from 'node:fs/promises';
 import { basename, join, isAbsolute } from 'node:path';
 import { BridgeError } from './errors.mjs';
 import { ContextDocumentProvider } from './context-document-provider.mjs';
@@ -139,7 +140,7 @@ export const TOOL_DEFINITIONS = Object.freeze([
   schema('map_switch', '校验目标地图后切换 active-map。', { mapKey: { type: 'string' } }, ['mapKey']),
   schema('map_rename', '修改地图显示名，不改变 mapKey。', { mapKey: { type: 'string' }, name: { type: 'string' } }, ['mapKey', 'name']),
   schema('map_next_candidates', '返回带解释的推进候选。', { query: { type: 'string' }, currentNodeId: { anyOf: [{ type: 'string' }, { type: 'null' }] }, limit: { type: 'integer', minimum: 1, maximum: 12 }, includeHistory: { type: 'boolean' } }),
-  schema('map_apply_commands', '通过统一 reducer 原子提交地图命令。', { mapKey: { type: 'string' }, documentId: { type: 'string' }, baseRevision: { type: 'integer', minimum: 0 }, commandId: { type: 'string' }, commands: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object' } } }, ['commands']),
+  schema('map_apply_commands', '通过统一 reducer 原子提交地图命令。⚠ 写入目标默认取全局 active-map 指针——跨地图操作必须显式传 mapKey，否则会写进指针所指的旧图；禁止修改非你创建节点的 name（会被拒绝）；要记录任务清单/新内容时请新建节点，不要原地改名。', { mapKey: { type: 'string' }, documentId: { type: 'string' }, baseRevision: { type: 'integer', minimum: 0 }, commandId: { type: 'string' }, commands: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object' } } }, ['commands']),
   schema('map_validate', '校验当前地图与关联 Markdown 证据。', { document: { type: 'object' } }),
   schema('map_checkpoint', '创建可恢复检查点。', { reason: { type: 'string' } }),
   schema('map_plan_consolidation', '只读生成可审核的整理建议。', { maxSuggestions: { type: 'integer', minimum: 1, maximum: 20 }, now: { type: 'string' } }),
@@ -168,9 +169,16 @@ function cleanResult(value) {
 }
 
 function ownerArgs(args, mapKey) {
-  if (args.ownerKind && args.ownerId) return {
-    ownerKind: String(args.ownerKind), ownerId: String(args.ownerId), fileName: String(args.fileName || 'index.md'),
-  };
+  if (args.ownerKind && args.ownerId) {
+    // 修复：owner 与 path 同传时，path 末段（.md）作为 fileName——此前 path 被忽略、静默回落 index.md，
+    // 导致“读取/写入自认为的文件”实际落在 index.md 上。
+    let fileName = String(args.fileName || '');
+    if (!fileName && args.path) {
+      const lastSegment = String(args.path).replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+      if (/\.(md|markdown)$/i.test(lastSegment)) fileName = lastSegment;
+    }
+    return { ownerKind: String(args.ownerKind), ownerId: String(args.ownerId), fileName: fileName || 'index.md' };
+  }
   const raw = String(args.path || '').replace(/\\/g, '/').replace(/^\.\//, '');
   const prefix = `.live-dot-map/maps/${mapKey}/`;
   const relative = raw.startsWith(prefix) ? raw.slice(prefix.length) : raw.replace(/^\.live-dot-map\//, '');
@@ -399,15 +407,32 @@ export class ToolService {
       return store.execute(this.#envelope(context, args, [{ op: 'ack_annotations', ids: annIds, summary: String(args.summary || '') }], 'mcp-ack'));
     }
     if (name === 'map_apply_commands') {
-      const result = await store.execute(this.#envelope(context, args, Array.isArray(args.commands) ? args.commands : [], 'mcp-apply'));
+      const commands = Array.isArray(args.commands) ? args.commands : [];
+      const result = await store.execute(this.#envelope(context, args, commands, 'mcp-apply'));
       // 建节点原子补建资料包主文档：避免“有记录无 index.md”的半状态。
-      await ensureNodeIndexes(bundleStore, Array.isArray(args.commands) ? args.commands : []);
+      await ensureNodeIndexes(bundleStore, commands);
       // 新建节点同步建卡片，保证“有节点必有卡”。
-      if (Array.isArray(args.commands)) {
-        for (const command of args.commands) {
-          if (command?.op === 'create' && command?.collection === 'nodes' && typeof command?.value?.id === 'string') {
-            await this.#refreshCard('node', command.value.id, context);
-          }
+      for (const command of commands) {
+        if (command?.op === 'create' && command?.collection === 'nodes' && typeof command?.value?.id === 'string') {
+          await this.#refreshCard('node', command.value.id, context);
+        }
+      }
+      // 结构性改名进通知流：agent 对节点 name 的修改（含被放行的自建节点改名）必须对人类可见、可确认，
+      // 杜绝 09-10 式“改名静默 10 天无人知”。记录失败不阻断命令结果。
+      if (typeof this.actor === 'string' && this.actor.startsWith('agent:')) {
+        const renames = commands.filter((command) => command?.op === 'update' && command?.collection === 'nodes' && command?.patch && typeof command.patch.name === 'string');
+        if (renames.length) {
+          try {
+            const structLog = new HumanMdUpdateLog({ projectRoot: context.projectRoot, mapKey });
+            for (const command of renames) {
+              await structLog.record({
+                path: `struct:nodes/${command.id}/name`,
+                etag: '',
+                mtime: new Date().toISOString(),
+                snippet: `${this.actor} 将节点 ${command.id} 改名为「${command.patch.name}」`,
+              });
+            }
+          } catch { /* 通知失败不影响命令结果 */ }
         }
       }
       return result;
@@ -417,7 +442,18 @@ export class ToolService {
       const validation = await this.shared.validateDocument(target);
       if (target !== document || !validation.ok) return validation;
       const documents = await collected();
-      return { ...validation, attemptIssues: this.shared.checkAttemptEvidence(document, documents.markdown) };
+      // 孤儿资料包扫描：磁盘上存在、但地图文档中无对应对象的 nodes|routes 目录（误写/历史 bug 遗留）。
+      const knownIds = new Set([...(document.nodes || []), ...(document.routes || [])].map((item) => String(item.id)));
+      const orphanBundles = [];
+      for (const kind of ['nodes', 'routes']) {
+        const dir = join(context.projectRoot, '.live-dot-map', 'maps', mapKey, kind);
+        let entries = [];
+        try { entries = await readdir(dir, { withFileTypes: true }); } catch { continue; }
+        for (const entry of entries) {
+          if (entry.isDirectory() && !knownIds.has(entry.name)) orphanBundles.push(`${kind}/${entry.name}`);
+        }
+      }
+      return { ...validation, attemptIssues: this.shared.checkAttemptEvidence(document, documents.markdown), orphanBundles, mapKey };
     }
     if (name === 'map_checkpoint') return store.createSnapshot();
     if (name === 'map_plan_consolidation') {
@@ -426,10 +462,21 @@ export class ToolService {
     }
 
     const file = ownerArgs(args, mapKey);
+    // owner 存在性校验（防孤儿资料包）：仅当"地图文档无此对象 且 磁盘也无其资料包目录"才拒绝——
+    // 这是纯粹的孤儿创建形态（09-20 事故）。磁盘已有目录的 md-first 内容（画布先建文档、节点后补）合法放行。
+    const ownerCollection = file.ownerKind === 'route' ? 'routes' : 'nodes';
+    if (!(document[ownerCollection] || []).some((item) => String(item.id) === String(file.ownerId))) {
+      const bundleDir = join(context.projectRoot, '.live-dot-map', 'maps', mapKey, ownerCollection, String(file.ownerId));
+      let bundleDirExists = false;
+      try { bundleDirExists = (await stat(bundleDir)).isDirectory(); } catch { /* 目录不存在 */ }
+      if (!bundleDirExists) {
+        throw new BridgeError('OWNER_NOT_FOUND', `目标地图 ${mapKey} 不存在 ${file.ownerKind}=${file.ownerId}（文档与磁盘均无），已拒绝以防止形成画布不可见的孤儿资料包`, { status: 404, mapKey });
+      }
+    }
     const isIndexFile = (file.fileName === 'index.md' || file.name === 'index.md');
     const isAgent = typeof this.actor === 'string' && this.actor.startsWith('agent');
 
-    if (name === 'map_read_markdown') return cleanResult(await bundleStore.readMarkdown(file));
+    if (name === 'map_read_markdown') return cleanResult({ ...(await bundleStore.readMarkdown(file)), mapKey });
     if (name === 'map_write_markdown') {
       const rawContent = args.content;
       const content = (args.wrapAuthor !== false && rawContent !== undefined && isAgent)
@@ -462,13 +509,13 @@ export class ToolService {
       }
       const result = await bundleStore.replaceMarkdown({ ...file, content, baseEtag: args.baseEtag });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
-      return { ...result, content: String(content) };
+      return { ...result, content: String(content), mapKey };
     }
     if (name === 'map_append_markdown') {
       const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
       const result = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
-      return result;
+      return { ...result, mapKey };
     }
     if (name === 'map_list_bundle_files') return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === 'map_create_markdown') {
@@ -482,7 +529,7 @@ export class ToolService {
       const result = await bundleStore.createMarkdown({ ...file, content, title: args.title });
       await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
-      return result;
+      return { ...result, mapKey };
     }
     if (name === 'map_rename_bundle_file') {
       const result = await bundleStore.rename({ ownerKind: file.ownerKind, ownerId: file.ownerId, from: args.from, to: args.to });

@@ -506,3 +506,57 @@ test('按节点名片段检索时名称命中排最前（n9 复现：不误压�
   assert.equal(retrieveContext(map, '排序计划', { now: NOW }).objects[0]?.id, 'n15');
   assert.equal(retrieveContext(map, '并发', { now: NOW }).objects[0]?.id, 'n10');
 });
+
+// —— 人机信任护栏：agent 不得原地改写人类节点的 name（09-10 标题篡改事故）——
+
+function guardMap() {
+  const map = createEmptyMap({ name: '护栏', now: NOW, mapId: 'map-guard' });
+  return applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: 0, commandId: 'guard-1', actor: 'human', sessionId: 'session-1',
+    commands: [
+      { op: 'create', collection: 'nodes', value: { id: 'nH', name: '人类节点', type: '目标', x: 0, y: 0 } },
+    ],
+  }, { now: NOW });
+}
+
+function agentRename(map, id, name, commandId) {
+  return applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: map.revision, commandId, actor: 'agent:zcode', sessionId: 'session-a',
+    commands: [{ op: 'update', collection: 'nodes', id, patch: { name } }],
+  }, { now: NOW });
+}
+
+test('agent 改人类节点 name 被拒（HUMAN_APPROVAL_REQUIRED，引导新建节点）', () => {
+  const map = guardMap();
+  assert.throws(() => agentRename(map, 'nH', '1. 先把题读懂', 'guard-reject'), (error) => {
+    assert.equal(error.code, 'HUMAN_APPROVAL_REQUIRED');
+    assert.equal(error.status, 403);
+    assert.match(error.message, /新建节点/);
+    return true;
+  });
+});
+
+test('agent 改 agent 自建节点 name 通过，人类节点其他字段不受影响', () => {
+  let map = guardMap();
+  map = applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: map.revision, commandId: 'guard-2', actor: 'agent:zcode', sessionId: 'session-a',
+    commands: [{ op: 'create', collection: 'nodes', value: { id: 'nA', name: 'agent节点', type: '目标', x: 100, y: 0 } }],
+  }, { now: NOW });
+  const renamed = agentRename(map, 'nA', 'agent 改名合法', 'guard-3');
+  assert.equal(renamed.nodes.find((node) => node.id === 'nA').name, 'agent 改名合法');
+  // agent 仍可更新人类节点的非 name 字段（如坐标、kind）
+  const updated = applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: map.revision, commandId: 'guard-4', actor: 'agent:zcode', sessionId: 'session-a',
+    commands: [{ op: 'update', collection: 'nodes', id: 'nH', patch: { kind: 'problem' } }],
+  }, { now: NOW });
+  assert.equal(updated.nodes.find((node) => node.id === 'nH').kind, 'problem');
+});
+
+test('human 改任意节点 name 不受限', () => {
+  const map = guardMap();
+  const renamed = applyCommandEnvelope(map, {
+    projectId: 'project-test', baseRevision: map.revision, commandId: 'guard-5', actor: 'human', sessionId: 'session-1',
+    commands: [{ op: 'update', collection: 'nodes', id: 'nH', patch: { name: '人改的名' } }],
+  }, { now: NOW });
+  assert.equal(renamed.nodes[0].name, '人改的名');
+});

@@ -454,6 +454,16 @@ function applyOne(document: MapDocument, command: MapCommand, actor: Actor, revi
       patch.kind = patch.kind === 'problem' ? 'problem' : 'goal';
     }
     assertAgentCurationAllowed(patch, actor);
+    // 人机信任护栏：agent 不得原地改写人类节点的 name（09-10 事故根因——13 个节点标题被任务清单静默覆盖）。
+    // 非 agent 创建的节点改名必须由人操作；agent 记录内容请新建节点。
+    if (isAgent(actor) && command.collection === 'nodes' && 'name' in patch && !isAgent(item.createdBy)) {
+      throw mapError('HUMAN_APPROVAL_REQUIRED', 403, '禁止修改非 Agent 创建节点的名称；如需记录新内容请新建节点', {
+        id: command.id,
+        field: 'name',
+        createdBy: item.createdBy,
+        suggestion: '新建一个节点承载你的内容，保留人类原节点的语义',
+      });
+    }
     if (command.collection === 'nodes') {
       // 历史 milestone 原样保留；新命令中的同名字段被忽略，不能再更新或新增。
       delete patch.milestone;

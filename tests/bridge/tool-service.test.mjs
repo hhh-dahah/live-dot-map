@@ -508,3 +508,71 @@ test('全域人类原声保护与 index.md 节点索引中枢：Agent 追加放�
   assert.ok(overridden.etag);
 });
 
+
+test('agent 改节点名进入通知流，map_list_human_updates 可见（结构性改名可确认）', async (t) => {
+  const { service, manager, root } = await openService(t);
+  const mapKey = await createMap(manager, '改名通知');
+  await addNode(service, mapKey, 'n1');
+  let context = await service.mapManager.resolve({ mapKey });
+  // agent:test 改自建节点名（放行）→ 必须产生待确认通知
+  await service.dispatch('map_apply_commands', {
+    mapKey,
+    documentId: context.documentId,
+    baseRevision: context.snapshot.revision,
+    commandId: 'rename-1',
+    commands: [{ op: 'update', collection: 'nodes', id: 'n1', patch: { name: '被 agent 改过的名' } }],
+  });
+  context = await service.mapManager.resolve({ mapKey });
+  const updates = await service.dispatch('map_list_human_updates', { mapKey });
+  const entry = (updates.updates || updates).find?.((item) => String(item.id || item.path || '').includes('struct:nodes/n1/name'))
+    || (Array.isArray(updates) ? updates.find((item) => String(item.id || '').includes('struct:nodes/n1/name')) : null);
+  assert.ok(entry, `应存在 struct:nodes/n1/name 通知，实际: ${JSON.stringify(updates).slice(0, 300)}`);
+  assert.match(String(entry.snippet || entry.text || ''), /agent:test/);
+  // human 创建的节点（模拟：用另一个 human actor 的 service 不必要——reducer 单测已覆盖拒绝路径）
+  const { HumanMdUpdateLog } = await import('../../src/bridge/human-md-updates.mjs');
+  const log = new HumanMdUpdateLog({ projectRoot: root, mapKey });
+  const pending = await log.unacknowledged();
+  assert.ok(pending.some((item) => item.path === 'struct:nodes/n1/name'), '底层日志应含结构性改名记录');
+});
+
+test('owner+path 同传时 path 生效：读写的不再是 index.md（修复静默回落）', async (t) => {
+  const { service, manager } = await openService(t);
+  const mapKey = await createMap(manager, '路径修复');
+  await addNode(service, mapKey, 'n1');
+  // 用 owner + path 追加到一个具名文件
+  await service.dispatch('map_append_markdown', {
+    mapKey, ownerKind: 'node', ownerId: 'n1', path: `.live-dot-map/maps/${mapKey}/nodes/n1/09-测试文档.md`,
+    content: '路径修复验证内容', commandId: 'path-fix-1',
+  });
+  // 同样以 owner + path 读回，必须读到该文件而不是 index.md
+  const read = await service.dispatch('map_read_markdown', {
+    mapKey, ownerKind: 'node', ownerId: 'n1', path: `.live-dot-map/maps/${mapKey}/nodes/n1/09-测试文档.md`,
+  });
+  assert.equal(read.mapKey, mapKey, '响应应携带 mapKey');
+  assert.ok(String(read.content).includes('路径修复验证内容'), '应读到 path 指向的文件');
+});
+
+test('对不存在的 owner 读写作出 OWNER_NOT_FOUND，绝不落盘孤儿目录', async (t) => {
+  const { service, manager, root } = await openService(t);
+  const mapKey = await createMap(manager, '孤儿防护');
+  await assert.rejects(
+    service.dispatch('map_append_markdown', { mapKey, ownerKind: 'node', ownerId: 'nX', content: '不应落盘', commandId: 'orphan-1' }),
+    (error) => error.code === 'OWNER_NOT_FOUND' && error.status === 404,
+  );
+  const orphanDir = join(root, '.live-dot-map', 'maps', mapKey, 'nodes', 'nX');
+  const { existsSync } = await import('node:fs');
+  assert.equal(existsSync(orphanDir), false, '磁盘不得出现孤儿目录');
+});
+
+test('map_validate 扫出孤儿资料包目录', async (t) => {
+  const { service, manager, root } = await openService(t);
+  const mapKey = await createMap(manager, '孤儿扫描');
+  await addNode(service, mapKey, 'n1');
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const orphanDir = join(root, '.live-dot-map', 'maps', mapKey, 'nodes', 'nGhost');
+  await mkdir(orphanDir, { recursive: true });
+  await writeFile(join(orphanDir, 'index.md'), '# ghost', 'utf8');
+  const result = await service.dispatch('map_validate', { mapKey });
+  assert.ok(Array.isArray(result.orphanBundles), '应返回 orphanBundles 字段');
+  assert.ok(result.orphanBundles.includes('nodes/nGhost'), `应扫出 nodes/nGhost，实际: ${JSON.stringify(result.orphanBundles)}`);
+});
