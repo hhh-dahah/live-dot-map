@@ -308,12 +308,11 @@ function render(){
     if (isResolved) el.dataset.resolved = 'true';
     el.setAttribute('role', 'button'); el.setAttribute('aria-label', `${el.dataset.kind === 'problem' ? (isResolved ? '已解决问题节点' : '问题节点') : '节点'}：${n.name}`);
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
-    // 徽标顺时针环绕：问题/已解决 右上(-45°)起步，编号右侧(0°)，时间右下(+45°)，各自锚定圆缘外侧，pointer-events:none 不挡交互
+    // 编号/时间徽标顺时针环绕（问题徽章保持原版 ::before 右上，不经此处）：编号右侧、时间右下
     const showTime = S.showNodeTime && n.updatedAt;
     const timeText = showTime ? fmtNodeTime(n.updatedAt, S.nodeTimeMode || 'auto') : '';
     const timeFull = showTime ? fmtNodeTimeFull(n.updatedAt) : '';
     const badges = [];
-    if (nodeKind === 'problem') badges.push(`<span class="nbadge ${isResolved ? 'ok' : 'prob'}">${isResolved ? '已解决' : '问题'}</span>`);
     if (S.showNums && n.num) badges.push(`<span class="nbadge num">${esc(n.num)}</span>`);
     if (showTime) badges.push(`<span class="nbadge time" title="${esc(timeFull)}">${esc(timeText)}</span>`);
     const badgeRing = badges.length ? `<div class="bring">${badges.join('')}</div>` : '';
