@@ -125,6 +125,10 @@ window.addEventListener('resize', updateDockSpace);
   if (dockStore.get('dock-rail', '0') === '1') el.classList.add('rail');
   $('#panel-collapse')?.addEventListener('click', dockCollapse);
   $('#dock-expand').onclick = dockExpand;
+  // 细条全域热区：整条缝任意点击即展开（dock-rail 设 pointer-events:none，点击落在 #panel 本体）
+  $('#panel').addEventListener('click', (e) => {
+    if (el.classList.contains('rail') && !e.target.closest('#dock-expand')) dockExpand();
+  });
   $('#dock-grip').addEventListener('pointerdown', e => {
     e.preventDefault();
     el.classList.add('dragging');
@@ -245,19 +249,23 @@ document.querySelectorAll('#toolbar [data-tool]').forEach(b =>
   b.onclick = () => setTool(b.dataset.tool));
 $('#more-btn').onclick = ev => {
   ev.stopPropagation();
-  const isTiny = document.documentElement.classList.contains('tiny-dock');
   const rect = $('#more-btn').getBoundingClientRect();
+  const timeModeLabel = {auto:'自动分级', hm:'时:分', mdhm:'月-日 时:分', full:'年-月-日'}[S.nodeTimeMode] || '自动分级';
   openMenu([
-    ...(isTiny ? [
-      {id:'t-edge', icon:I.edge, label:'新建方案线 (L)', checked:S.tool==='edge', fn(){ setTool('edge'); }},
-      {id:'t-ann', icon:I.ann, label:'添加标注 (M)', checked:S.tool==='ann', fn(){ setTool('ann'); }},
-      {sep:true}
-    ] : []),
     {id:'anns', icon:I.eye, label:'显示标注', checked:S.showAnns, fn(){ S.showAnns = !S.showAnns; render(); }},
     {id:'routes', icon:I.route, label:'显示路线名称', checked:S.showRoutes, fn(){ S.showRoutes = !S.showRoutes; render(); }},
     {id:'failed', icon:I.eye, label:'显示失败方案', checked:S.showFailed, fn(){ S.showFailed = !S.showFailed; render(); }},
-    {id:'nums', icon:I.eye, label:'显示编号', checked:S.showNums, fn(){ S.showNums = !S.showNums; renderPanel(); }},
-    {id:'ntime', icon:I.eye, label:'显示节点时间', checked:S.showNodeTime, fn(){ S.showNodeTime = !S.showNodeTime; render(); }},
+    {id:'nums', icon:I.eye, label:'显示编号', checked:S.showNums, fn(){ S.showNums = !S.showNums; render(); }},
+    // 节点时间：开关 + 可展开挡位（自动分级 / 时:分 / 月-日 时:分 / 年-月-日）
+    ...(S.showNodeTime ? [
+      {id:'ntime', icon:I.eye, label:`显示节点时间（${timeModeLabel}）`, checked:true, fn(){ S.showNodeTime = false; render(); }},
+      {id:'tmode-auto', label:`　├ 挡位：自动分级`, checked:(S.nodeTimeMode||'auto')==='auto', fn(){ S.nodeTimeMode='auto'; render(); }},
+      {id:'tmode-hm', label:`　├ 挡位：时:分`, checked:S.nodeTimeMode==='hm', fn(){ S.nodeTimeMode='hm'; render(); }},
+      {id:'tmode-mdhm', label:`　├ 挡位：月-日 时:分`, checked:S.nodeTimeMode==='mdhm', fn(){ S.nodeTimeMode='mdhm'; render(); }},
+      {id:'tmode-full', label:`　└ 挡位：年-月-日`, checked:S.nodeTimeMode==='full', fn(){ S.nodeTimeMode='full'; render(); }},
+    ] : [
+      {id:'ntime', icon:I.eye, label:'显示节点时间', checked:false, fn(){ S.showNodeTime = true; render(); }},
+    ]),
     {sep:true},
      {id:'tidy', icon:I.tidy, label:'整理地图', fn(){ openCurationDialog(); }},
     {id:'fit', icon:I.fit, label:'适应视图', fn(){ fitView(); }}

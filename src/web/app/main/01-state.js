@@ -83,7 +83,7 @@ const seed = () => ({
     {id:'a2', target:{kind:'edge', id:'e6'}, text:'等 SD3 本地部署完成再试', hidden:false},
     {id:'a3', target:{kind:'edge', id:'e4'}, text:'先验证 24fps 是否够用', hidden:true}
   ],
-  showAnns:true, showRoutes:true, showNums:false, showFailed:true, showNodeTime:false,
+  showAnns:true, showRoutes:true, showNums:false, showFailed:true, showNodeTime:false, nodeTimeMode:'auto',
   sel:null, multi:[], selAnn:null, hoverEdge:null, snapTo:null,
   tool:'select',
   nextNum:8, nextEdge:10, nextAnn:4, nextNodeName:1, nextEdgeName:1, nextRouteName:1,
@@ -252,15 +252,24 @@ function avoidAngleDeg(baseDeg, e, minDeg = 30){
   return best;
 }
 /* 同 from→to 的已连接线重叠:按线在组内索引沿法线对称展开,46px 间隔(渲染时调用,自动排开) */
-/* 相对时间：节点时间角标用（刚刚/N分/N时/N天/N月/N年） */
-function relTime(iso){
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '';
-  const diff = Date.now() - t;
-  if (diff < 60e3) return '刚刚';
-  if (diff < 3600e3) return Math.floor(diff / 60e3) + '分';
-  if (diff < 86400e3) return Math.floor(diff / 3600e3) + '时';
-  if (diff < 30 * 86400e3) return Math.floor(diff / 86400e3) + '天';
-  if (diff < 365 * 86400e3) return Math.floor(diff / (30 * 86400e3)) + '月';
-  return Math.floor(diff / (365 * 86400e3)) + '年';
+/* 节点时间显示：绝对时间，挡位可设（auto=按新旧分级 / hm / mdhm / full），title 恒为完整时间 */
+const pad2 = (n) => String(n).padStart(2, '0');
+function fmtNodeTime(iso, mode = 'auto'){
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const hm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  const md = pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  const full = d.getFullYear() + '-' + md;
+  if (mode === 'hm') return hm;
+  if (mode === 'mdhm') return md + ' ' + hm;
+  if (mode === 'full') return full;
+  const diff = Date.now() - d.getTime();
+  if (diff < 86400e3) return hm;
+  if (diff < 7 * 86400e3) return md + ' ' + hm;
+  return full;
+}
+function fmtNodeTimeFull(iso){
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
 }
