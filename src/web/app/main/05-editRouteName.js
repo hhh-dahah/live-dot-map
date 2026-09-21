@@ -257,6 +257,7 @@ $('#more-btn').onclick = ev => {
     {id:'routes', icon:I.route, label:'显示路线名称', checked:S.showRoutes, fn(){ S.showRoutes = !S.showRoutes; render(); }},
     {id:'failed', icon:I.eye, label:'显示失败方案', checked:S.showFailed, fn(){ S.showFailed = !S.showFailed; render(); }},
     {id:'nums', icon:I.eye, label:'显示编号', checked:S.showNums, fn(){ S.showNums = !S.showNums; renderPanel(); }},
+    {id:'ntime', icon:I.eye, label:'显示节点时间', checked:S.showNodeTime, fn(){ S.showNodeTime = !S.showNodeTime; render(); }},
     {sep:true},
      {id:'tidy', icon:I.tidy, label:'整理地图', fn(){ openCurationDialog(); }},
     {id:'fit', icon:I.fit, label:'适应视图', fn(){ fitView(); }}
