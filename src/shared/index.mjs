@@ -329,6 +329,14 @@ function applyOne(document, command, actor, revision, now) {
       patch.kind = patch.kind === "problem" ? "problem" : "goal";
     }
     assertAgentCurationAllowed(patch, actor);
+    if (isAgent(actor) && command.collection === "nodes" && "name" in patch && !isAgent(item.createdBy)) {
+      throw mapError("HUMAN_APPROVAL_REQUIRED", 403, "\u7981\u6B62\u4FEE\u6539\u975E Agent \u521B\u5EFA\u8282\u70B9\u7684\u540D\u79F0\uFF1B\u5982\u9700\u8BB0\u5F55\u65B0\u5185\u5BB9\u8BF7\u65B0\u5EFA\u8282\u70B9", {
+        id: command.id,
+        field: "name",
+        createdBy: item.createdBy,
+        suggestion: "\u65B0\u5EFA\u4E00\u4E2A\u8282\u70B9\u627F\u8F7D\u4F60\u7684\u5185\u5BB9\uFF0C\u4FDD\u7559\u4EBA\u7C7B\u539F\u8282\u70B9\u7684\u8BED\u4E49"
+      });
+    }
     if (command.collection === "nodes") {
       delete patch.milestone;
       delete patch.milestoneSuggestion;
