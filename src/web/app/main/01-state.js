@@ -83,7 +83,7 @@ const seed = () => ({
     {id:'a2', target:{kind:'edge', id:'e6'}, text:'等 SD3 本地部署完成再试', hidden:false},
     {id:'a3', target:{kind:'edge', id:'e4'}, text:'先验证 24fps 是否够用', hidden:true}
   ],
-  showAnns:true, showRoutes:true, showNums:false, showFailed:true,
+  showAnns:true, showRoutes:true, showNums:false, showFailed:true, showNodeTime:false,
   sel:null, multi:[], selAnn:null, hoverEdge:null, snapTo:null,
   tool:'select',
   nextNum:8, nextEdge:10, nextAnn:4, nextNodeName:1, nextEdgeName:1, nextRouteName:1,
@@ -252,3 +252,15 @@ function avoidAngleDeg(baseDeg, e, minDeg = 30){
   return best;
 }
 /* 同 from→to 的已连接线重叠:按线在组内索引沿法线对称展开,46px 间隔(渲染时调用,自动排开) */
+/* 相对时间：节点时间角标用（刚刚/N分/N时/N天/N月/N年） */
+function relTime(iso){
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  const diff = Date.now() - t;
+  if (diff < 60e3) return '刚刚';
+  if (diff < 3600e3) return Math.floor(diff / 60e3) + '分';
+  if (diff < 86400e3) return Math.floor(diff / 3600e3) + '时';
+  if (diff < 30 * 86400e3) return Math.floor(diff / 86400e3) + '天';
+  if (diff < 365 * 86400e3) return Math.floor(diff / (30 * 86400e3)) + '月';
+  return Math.floor(diff / (365 * 86400e3)) + '年';
+}

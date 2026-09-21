@@ -57,7 +57,7 @@ function renderStructureKey(){
   return JSON.stringify({
     nodes:S.nodes.map(n => [n.id,n.name,n.kind,n.type,n.route,n.r,n.md,n.num,n.createdBy,n.updatedBy]),
     edges:S.edges, anns:S.anns, routes:S.routes,
-    flags:[S.showFailed,S.showRoutes,S.showAnns,S.showNums,S.hoverEdge,S.drawingEdge,inlineEdgeEdit,inlineNodeEdit,inlineRouteEdit],
+    flags:[S.showFailed,S.showRoutes,S.showAnns,S.showNums,S.showNodeTime,S.hoverEdge,S.drawingEdge,inlineEdgeEdit,inlineNodeEdit,inlineRouteEdit],
     sel:S.sel, multi:S.multi, snapTo:S.snapTo
   });
 }
@@ -105,6 +105,7 @@ function tryFastPositionRender(structure){
   return true;
 }
 function render(){
+  document.body.classList.toggle('show-ntime', S.showNodeTime === true);
   rebuildObjectIndexes();
   const structure = renderStructureKey();
   if (tryFastPositionRender(structure)) return;
@@ -306,7 +307,11 @@ function render(){
     if (isResolved) el.dataset.resolved = 'true';
     el.setAttribute('role', 'button'); el.setAttribute('aria-label', `${el.dataset.kind === 'problem' ? (isResolved ? '已解决问题节点' : '问题节点') : '节点'}：${n.name}`);
     el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
-    el.innerHTML = `<div class="dot" style="width:${n.r*2}px;height:${n.r*2}px"><span>${L.lines.map(esc).join('<br>')}</span></div>`;
+    // 可选时间角标：相对时间显示节点新旧（更多菜单开关，默认关）；pointer-events:none 不参与命中
+    const timeBadge = S.showNodeTime && n.updatedAt
+      ? `<span class="ntime" title="${esc(new Date(n.updatedAt).toLocaleString())}">${esc(relTime(n.updatedAt))}</span>`
+      : '';
+    el.innerHTML = `<div class="dot" style="width:${n.r*2}px;height:${n.r*2}px"><span>${L.lines.map(esc).join('<br>')}</span></div>${timeBadge}`;
     world.appendChild(el);
   }
   for (const { a, ax, ay, rot } of annPos){

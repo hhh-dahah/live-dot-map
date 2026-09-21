@@ -67,6 +67,9 @@ input{font:inherit;color:inherit}
   display:flex;align-items:center;justify-content:center;text-align:center;
   font-size:12.5px;font-weight:500;line-height:16px;color:var(--fg);
   transition:box-shadow .15s,border-color .15s}
+/* 可选时间角标：右上角相对时间，默认关（更多菜单「显示节点时间」），pointer-events:none 不挡拖拽 */
+.node .ntime{display:none}
+body.show-ntime .node .ntime{display:block;position:absolute;top:50%;right:calc(50% - 34px);transform:translateY(-140%);font-size:9px;line-height:1;color:var(--muted);pointer-events:none;user-select:none;white-space:nowrap;background:color-mix(in srgb,var(--bg) 82%,transparent);padding:2px 5px;border-radius:6px;backdrop-filter:blur(2px)}
 .node[data-type="问题"] .dot{border-style:dashed}
 /* 节点名行内编辑中:保留圆圈,仅隐藏圆内文字(透明输入框叠在圆心) */
 .node.editing .dot>span:first-child{visibility:hidden}
@@ -131,7 +134,7 @@ input{font:inherit;color:inherit}
   gap:8px;pointer-events:none;min-width:0;transition:right .15s ease}
 #topbar>.chrome{position:relative;left:auto;top:auto;transform:none;pointer-events:auto}
 #topbar>#popover{pointer-events:auto}
-#topbar>#project-pill{flex:0 1 auto;min-width:0;overflow:hidden}
+#topbar>#project-pill{flex:0 1 auto;min-width:0;overflow:hidden;max-width:calc(50% - 240px)}
 /* 工具栏在地图可见区（topbar内）绝对居中；窄屏退回流式居中；编辑器打开时彻底隐藏以免遮挡 */
 #topbar>#toolbar{flex:none;position:absolute;left:50%;transform:translateX(-50%)}
 body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#panel.editing) #topbar>#toolbar{display:none !important}
