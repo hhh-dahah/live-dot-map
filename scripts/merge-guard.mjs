@@ -13,6 +13,15 @@ function git(args, options = {}) {
   return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', ...options }).trim();
 }
 
+// 内容级干净检查：git status 会把行尾幻影（autocrlf）报成改动，git diff 只看内容。
+function contentChanges(dir = ROOT) {
+  try {
+    return git(['diff', '--name-only', 'HEAD'], { cwd: dir }).split('\n').filter(Boolean);
+  } catch {
+    return ['<git diff 不可用>'];
+  }
+}
+
 function fail(message) {
   console.error(`✖ ${message}`);
   process.exit(1);
@@ -29,8 +38,8 @@ if (!branch) {
 // ---- 前置检查：主工位必须在 master 且工作区干净 ----
 const current = git(['rev-parse', '--abbrev-ref', 'HEAD']);
 if (current !== 'master') fail(`闸门只能在主工位 master 上运行（当前分支: ${current}）`);
-const dirty = git(['status', '--porcelain=v1', '--untracked-files=no']);
-if (dirty) fail(`主工位存在未提交改动，先处理再过闸门：\n${dirty}`);
+const dirty = contentChanges();
+if (dirty.length) fail(`主工位存在未提交的内容改动，先处理再过闸门：\n${dirty.join('\n')}`);
 const branches = git(['branch', '--format=%(refname:short)']).split('\n').map((value) => value.trim());
 if (!branches.includes(branch)) fail(`分支不存在: ${branch}`);
 
@@ -45,8 +54,8 @@ for (const line of git(['worktree', 'list', '--porcelain']).split('\n')) {
 if (Object.keys(block).length) blocks.push(block);
 const worktreeEntry = blocks.find((entry) => entry.branch === `refs/heads/${branch}`);
 if (worktreeEntry) {
-  const worktreeDirty = execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=no'], { cwd: worktreeEntry.worktree, encoding: 'utf8' }).trim();
-  if (worktreeDirty) fail(`工位 ${worktreeEntry.worktree} 有未提交改动（上次任务未收尾）：\n${worktreeDirty}`);
+  const worktreeDirty = contentChanges(worktreeEntry.worktree);
+  if (worktreeDirty.length) fail(`工位 ${worktreeEntry.worktree} 有未提交的内容改动（上次任务未收尾）：\n${worktreeDirty.join('\n')}`);
 }
 
 // ---- 碰撞检测：本分支改动 ∩ master 自分叉以来改动 ----

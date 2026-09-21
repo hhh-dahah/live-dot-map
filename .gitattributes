@@ -1,0 +1,4 @@
+# 关键产物与源统一 LF：根治 autocrlf 在各工位间造成的行尾幻影与构建差异
+app.html text eol=lf
+src/web/app/** text eol=lf
+src/shared/index.mjs text eol=lf
