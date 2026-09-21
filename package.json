@@ -16,6 +16,7 @@
     "build:windows-installer": "node scripts/build-windows-installer.mjs",
     "release:update": "node scripts/release-update.mjs",
     "worktree:link": "node scripts/worktree-link.mjs",
+    "start-task": "node scripts/start-task.mjs",
     "dev": "node scripts/dev-serve.mjs",
     "build": "npm run build:core && npm run build:app && npm run build:bridge",
     "test": "npm run build:core && node --test tests/**/*.test.mjs",
