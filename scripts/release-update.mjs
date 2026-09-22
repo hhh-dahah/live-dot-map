@@ -219,11 +219,15 @@ await step('超限 payload 上传 COS + EdgeOne 重定向守卫', '确认 COS �
   }
   const { cos, bucket, region } = await readCosCredentials();
   const bucketHost = `${bucket}.cos.${region}.myqcloud.com`;
+  const payloadDir = join(updateDir, 'payload');
   for (const item of oversize) {
-    const key = `livedot-update/${item.entry}`;
+    // 清单 files 的键是 payload 内相对名（如 livedot-bridge-win-x64.exe），
+    // 通道相对地址与 COS key 则带 payload/ 前缀。
+    const name = relative(payloadDir, item.file).replaceAll('\\', '/');
+    const key = `livedot-update/payload/${name}`;
     const remoteUrl = `https://${bucketHost}/${key}`;
-    const meta = updateManifest.files[item.entry];
-    assert.ok(meta, `清单缺少超限文件条目：${item.entry}`);
+    const meta = updateManifest.files[name];
+    assert.ok(meta, `清单缺少超限文件条目：${name}`);
     await cosCall(cos, 'uploadFile', { Bucket: bucket, Region: region, Key: key, FilePath: item.file, EnableMD5: false });
     await cosCall(cos, 'putObjectAcl', { Bucket: bucket, Region: region, Key: key, ACL: 'public-read' });
     // 上传后立即回读校验：大小与 sha256 都必须和清单一致，防止把坏包挂上通道。
@@ -238,7 +242,8 @@ await step('超限 payload 上传 COS + EdgeOne 重定向守卫', '确认 COS �
   const edgeoneConfig = JSON.parse(await readFile(join(root, 'edgeone.json'), 'utf8'));
   const redirects = edgeoneConfig.redirects || [];
   for (const item of oversize) {
-    const source = `/windows-installer/${item.entry}`;
+    const name = relative(join(updateDir, 'payload'), item.file).replaceAll('\\', '/');
+    const source = `/windows-installer/payload/${name}`;
     const rule = redirects.find((candidate) => candidate.source === source);
     assert.ok(rule, `edgeone.json 缺少重定向规则：${source} —— 存量客户端只能从通道域名拉取该文件，没有重定向就是断更`);
     assert.ok(String(rule.destination).startsWith(`https://${bucketHost}/`), `edgeone.json 重定向目标与 COS 分发位不一致：${source} → ${rule.destination}`);
