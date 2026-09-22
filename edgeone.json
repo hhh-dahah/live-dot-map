@@ -1,5 +1,12 @@
 {
   "buildCommand": "node scripts/edgeone-build.mjs",
   "outputDirectory": ".edgeone-deploy",
-  "nodeVersion": "22.11.0"
+  "nodeVersion": "22.11.0",
+  "redirects": [
+    {
+      "source": "/windows-installer/payload/livedot-bridge-win-x64.exe",
+      "destination": "https://my-image-1410946079.cos.ap-chengdu.myqcloud.com/livedot-update/payload/livedot-bridge-win-x64.exe",
+      "statusCode": 302
+    }
+  ]
 }
