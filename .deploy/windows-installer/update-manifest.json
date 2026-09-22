@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "product": "live-dot-map",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "channel": "internal-rc",
-  "payloadHash": "05d0b855efac74754770d65c37a4f16eb58295773b56463bc59e1697397868cf",
+  "payloadHash": "780d7613361f76207d4b1ed329acb627d18351fe8d9f9937e05512cef873b8b1",
   "files": {
     "app.html": {
       "bytes": 402150,
@@ -46,8 +46,8 @@
       "url": "payload/assets/app-icon.ico"
     },
     "agent-kit/skills/live-dot-map/SKILL.md": {
-      "bytes": 8562,
-      "sha256": "c2007128586c9aaebb6900df135c7323546f06917ca71667d840682306488783",
+      "bytes": 8469,
+      "sha256": "d17f0bf68f95816710f40a69e798e949cadb46ca400dd4568595e0e8a90125f8",
       "url": "payload/agent-kit/skills/live-dot-map/SKILL.md"
     },
     "agent-kit/skills/live-dot-map/templates/attempt.md": {
@@ -57,7 +57,7 @@
     },
     "payload-manifest.json": {
       "bytes": 1782,
-      "sha256": "6bc02901ce392ff004732ffdc28ce3b39958c5932ccd2a036b79f46e0ef4d445",
+      "sha256": "fbf8500ac803d7918764f33b4dd006f5631fe2a8a51b834a818d062c097668c3",
       "url": "payload/payload-manifest.json"
     }
   }

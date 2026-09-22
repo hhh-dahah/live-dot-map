@@ -1,9 +1,9 @@
 {
   "product": "live-dot-map",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "channel": "rc",
   "schema": 2,
-  "generatedAt": "2026-09-22T04:01:46.717Z",
+  "generatedAt": "2026-09-22T09:53:31.117Z",
   "signed": false,
   "deployed": false,
   "runtime": "node20-bundle",

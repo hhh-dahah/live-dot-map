@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "product": "live-dot-map",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "channel": "internal-rc",
   "signed": false,
   "sourceReleaseManifest": {
     "bytes": 1176,
-    "sha256": "60aa8cfa67344c5ac7e1ea3c63bf92e263ba8d18a59140c115be397d0c689148"
+    "sha256": "678d46fadc0904951f09de33373dd0600a2aeae498b75d8dc602be51e805f050"
   },
-  "payloadHash": "05d0b855efac74754770d65c37a4f16eb58295773b56463bc59e1697397868cf",
+  "payloadHash": "780d7613361f76207d4b1ed329acb627d18351fe8d9f9937e05512cef873b8b1",
   "files": {
     "app.html": {
       "bytes": 402150,
@@ -43,8 +43,8 @@
       "sha256": "eab21d3e55f211882354435dde318e457079e98f7dc6d67cc111af15a01bc4bf"
     },
     "agent-kit/skills/live-dot-map/SKILL.md": {
-      "bytes": 8562,
-      "sha256": "c2007128586c9aaebb6900df135c7323546f06917ca71667d840682306488783"
+      "bytes": 8469,
+      "sha256": "d17f0bf68f95816710f40a69e798e949cadb46ca400dd4568595e0e8a90125f8"
     },
     "agent-kit/skills/live-dot-map/templates/attempt.md": {
       "bytes": 290,
