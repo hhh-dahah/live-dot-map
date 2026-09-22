@@ -181,16 +181,16 @@ await step('核对 .edgeone-deploy 通道内容', '不一致说明 edgeone-build
   const edgeoneDir = join(root, '.edgeone-deploy', 'windows-installer');
   const sourceFiles = (await enumerateFiles(updateDir)).map((file) => relative(updateDir, file).replaceAll('\\', '/'));
   for (const relativePath of sourceFiles) {
-    if (relativePath === 'LiveDotMapSetup.exe') {
+    if (relativePath === 'LiveDotMapSetup.exe' || relativePath === 'payload/livedot-bridge-win-x64.exe') {
       // exe 不进 EdgeOne 输出（25MiB 限制 + 不进 git，CI 侧 .deploy 里根本没有它）。
       await access(join(edgeoneDir, relativePath)).then(() => {
-        throw new Error('.edgeone-deploy 不应包含 LiveDotMapSetup.exe');
+        throw new Error('.edgeone-deploy 不应包含发布级大二进制（Setup/payload exe）');
       }, () => undefined);
       continue;
     }
     assert.equal(await fileDigest(join(edgeoneDir, relativePath)), await fileDigest(join(updateDir, relativePath)), `.edgeone-deploy 与 .deploy 不一致：${relativePath}`);
   }
-  console.log(`.edgeone-deploy/windows-installer 与 .deploy 一致（${sourceFiles.length - 1} 个文件；exe 按预期缺席）。`);
+  console.log(`.edgeone-deploy/windows-installer 与 .deploy 一致（${sourceFiles.length - 2} 个文件；两个发布级 exe 按预期缺席）。`);
 });
 
 // ---- 8. git 变更清单与可选推送 ----------------------------------------------

@@ -58,3 +58,11 @@ tools/cnipa-word-xml/
 _共享资产*/
 # 个人文件，严禁入库/上传（保护 git add -A 误扫）
 /q4_breakthrough_2026/
+
+# 专利材料含发明人信息，仅本地保留
+/docs/patent-tex/
+/docs/专利材料/
+# 本地测试实例状态，不入库
+/LiveDotMap-Test/
+# 第三方技能自带 git 元数据
+.agents/skills/patent-disclosure-skill/.git/
