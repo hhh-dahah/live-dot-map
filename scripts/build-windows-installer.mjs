@@ -112,7 +112,12 @@ for (const sourceRelative of payloadFiles) {
   const source = join(deploy, sourceRelative);
   const target = join(payload, sourceRelative);
   await mkdir(dirname(target), { recursive: true });
-  await cp(source, target, { force: true });
+  const bytes = await readFile(source);
+  // 文本文件统一 LF 再装箱：git blob 与 EdgeOne（从仓库构建）分发的都是归一化后的
+  // LF 字节，清单哈希必须基于同一字节序——否则 CRLF 环境构建的通道在线上必炸校验
+  //（2026-09-22 SKILL.md 事故）。二进制（含 NUL）原样拷贝。
+  const normalized = bytes.includes(0) ? bytes : Buffer.from(bytes.toString('utf8').replaceAll('\r\n', '\n'), 'utf8');
+  await writeFile(target, normalized);
 }
 const payloadHashes = Object.fromEntries(await Promise.all(payloadFiles.map(async (entry) => [entry, await sha256(join(payload, entry))])));
 // 整体指纹：所有文件「相对路径:sha256」排序拼接后再取 sha256。

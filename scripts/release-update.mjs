@@ -153,6 +153,11 @@ await step('校验更新通道三件套 hash 自洽', '三件套都由 build:win
     const bytes = await readFile(file);
     assert.equal(bytes.byteLength, meta.bytes, `${entry} 字节数与清单不一致`);
     assert.equal(sha256(bytes), meta.sha256, `${entry} sha256 与清单不一致`);
+    // 守卫：EdgeOne 从 git 仓库构建，线上服务的是行尾归一化后的 blob 字节。
+    // 模拟提交时的 CRLF→LF 归一化，blob 哈希也必须等于清单，否则线上更新必炸校验
+    //（2026-09-22 SKILL.md 事故：Windows CRLF 构建的清单 vs 线上 LF 文件）。
+    const blobLike = bytes.includes(0) ? bytes : Buffer.from(bytes.toString('utf8').replaceAll('\r\n', '\n'), 'utf8');
+    assert.equal(sha256(blobLike), meta.sha256, `${entry} 经 git 行尾归一化后将与清单不一致（文本文件必须为 LF），线上更新会校验失败——先修构建再发布`);
   }
   assert.ok(updateManifest.installer?.sha256, 'update-manifest 缺 installer 字段（构建脚本行为变了？）');
   assert.equal(await fileDigest(setupExePath), updateManifest.installer.sha256, 'LiveDotMapSetup.exe 与清单 installer.sha256 不一致');
