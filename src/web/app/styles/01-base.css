@@ -139,7 +139,7 @@ body:not(.show-nums-badge) .node .nbadge.num{display:none}
   gap:8px;pointer-events:none;min-width:0;transition:right .15s ease}
 #topbar>.chrome{position:relative;left:auto;top:auto;transform:none;pointer-events:auto}
 #topbar>#popover{pointer-events:auto}
-#topbar>#project-pill{flex:0 1 auto;min-width:0;overflow:hidden;max-width:calc(50% - 150px)}
+#topbar>#project-pill{flex:0 1 auto;min-width:0;overflow:hidden;max-width:max(calc(50% - 150px), 38px)}
 /* 工具栏在地图可见区（topbar内）绝对居中；窄屏退回流式居中；编辑器打开时彻底隐藏以免遮挡 */
 #topbar>#toolbar{flex:none;position:absolute;left:50%;transform:translateX(-50%)}
 body.is-editing #topbar>#toolbar,#panel.editing ~ #topbar>#toolbar,body:has(#panel.editing) #topbar>#toolbar{display:none !important}
