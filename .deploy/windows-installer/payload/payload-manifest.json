@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "product": "live-dot-map",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "channel": "internal-rc",
   "signed": false,
   "sourceReleaseManifest": {
     "bytes": 1176,
-    "sha256": "269f8fd3d36bc3ac4fd1259d320cb4974b53802a397d76c5b364f30cfacc1c0b"
+    "sha256": "60aa8cfa67344c5ac7e1ea3c63bf92e263ba8d18a59140c115be397d0c689148"
   },
-  "payloadHash": "c3a0b880f0e0a18149289537ef29090e3aa0f75d49db3be1606a8194c337b681",
+  "payloadHash": "05d0b855efac74754770d65c37a4f16eb58295773b56463bc59e1697397868cf",
   "files": {
     "app.html": {
       "bytes": 402150,
@@ -16,7 +16,7 @@
     },
     "livedot-bridge-win-x64.exe": {
       "bytes": 92359168,
-      "sha256": "5d6e37d65a9529474f31ffc4c0f5e3f5b373e147a739f73cfd98217f49be0f5a"
+      "sha256": "2462bc3e69071e9b2aaa694e3eceb4789b6edc7e7688ad522f3d94ed5b254200"
     },
     "manifest.webmanifest": {
       "bytes": 550,

@@ -8392,7 +8392,7 @@ async function createBridgeServer({
       return { ok: false, current: local.version, latest: null, available: false, error: error3 instanceof Error ? error3.message : String(error3) };
     }
   }
-  const UPDATE_EXTERNAL_HOST_SUFFIXES = [".tcloudbaseapp.com", ".tcb.qcloud.la"];
+  const UPDATE_EXTERNAL_HOST_SUFFIXES = [".tcloudbaseapp.com", ".tcb.qcloud.la", ".myqcloud.com"];
   function assertAllowedExternalUrl(url, label) {
     let parsed;
     try {

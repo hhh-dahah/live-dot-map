@@ -6,7 +6,7 @@
     "component": {
       "type": "application",
       "name": "live-dot-map-v2",
-      "version": "2.0.2"
+      "version": "2.0.3"
     }
   },
   "components": [
@@ -180,8 +180,140 @@
     },
     {
       "type": "library",
+      "name": "asn1",
+      "version": "0.2.6",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "assert-plus",
+      "version": "1.0.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "asynckit",
+      "version": "0.4.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "aws-sign2",
+      "version": "0.7.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "aws4",
+      "version": "1.13.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "bcrypt-pbkdf",
+      "version": "1.0.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "call-bind-apply-helpers",
+      "version": "1.0.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "call-bound",
+      "version": "1.0.4",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "caseless",
+      "version": "0.12.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "combined-stream",
+      "version": "1.0.8",
+      "scope": "build"
+    },
+    {
+      "type": "library",
       "name": "commander",
       "version": "9.5.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "core-util-is",
+      "version": "1.0.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "cos-fast-xml-parser",
+      "version": "1.0.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "cos-nodejs-sdk-v5",
+      "version": "3.0.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "cos-request",
+      "version": "1.3.3",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "dashdash",
+      "version": "1.14.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "delayed-stream",
+      "version": "1.0.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "dunder-proto",
+      "version": "1.0.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "ecc-jsbn",
+      "version": "0.1.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "es-define-property",
+      "version": "1.0.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "es-errors",
+      "version": "1.3.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "es-object-atoms",
+      "version": "1.1.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "es-set-tostringtag",
+      "version": "2.1.0",
       "scope": "build"
     },
     {
@@ -192,14 +324,164 @@
     },
     {
       "type": "library",
+      "name": "extend",
+      "version": "3.0.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "extsprintf",
+      "version": "1.3.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
       "name": "fflate",
       "version": "0.8.3",
       "scope": "build"
     },
     {
       "type": "library",
+      "name": "forever-agent",
+      "version": "0.6.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "form-data",
+      "version": "2.5.6",
+      "scope": "build"
+    },
+    {
+      "type": "library",
       "name": "fsevents",
       "version": "2.3.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "function-bind",
+      "version": "1.1.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "get-intrinsic",
+      "version": "1.3.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "get-proto",
+      "version": "1.0.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "getpass",
+      "version": "0.1.7",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "gopd",
+      "version": "1.2.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "has-symbols",
+      "version": "1.1.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "has-tostringtag",
+      "version": "1.0.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "hasown",
+      "version": "2.0.4",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "http-signature",
+      "version": "1.2.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "is-typedarray",
+      "version": "1.0.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "isstream",
+      "version": "0.1.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "jsbn",
+      "version": "0.1.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "json-schema",
+      "version": "0.4.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "json-stringify-safe",
+      "version": "5.0.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "jsprim",
+      "version": "1.4.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "math-intrinsics",
+      "version": "1.1.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "mime-db",
+      "version": "1.52.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "mime-types",
+      "version": "2.1.35",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "oauth-sign",
+      "version": "0.9.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "object-inspect",
+      "version": "1.13.4",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "performance-now",
+      "version": "2.1.0",
       "scope": "build"
     },
     {
@@ -222,6 +504,102 @@
     },
     {
       "type": "library",
+      "name": "psl",
+      "version": "1.15.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "punycode",
+      "version": "2.3.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "qs",
+      "version": "6.16.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "querystringify",
+      "version": "2.2.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "requires-port",
+      "version": "1.0.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "safe-buffer",
+      "version": "5.2.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "safer-buffer",
+      "version": "2.1.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "side-channel",
+      "version": "1.1.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "side-channel-list",
+      "version": "1.0.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "side-channel-map",
+      "version": "1.0.1",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "side-channel-weakmap",
+      "version": "1.0.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "sshpk",
+      "version": "1.18.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "strnum",
+      "version": "1.1.2",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "tough-cookie",
+      "version": "4.1.4",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "tunnel-agent",
+      "version": "0.6.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "tweetnacl",
+      "version": "0.14.5",
+      "scope": "build"
+    },
+    {
+      "type": "library",
       "name": "typescript",
       "version": "5.9.2",
       "scope": "build"
@@ -230,6 +608,24 @@
       "type": "library",
       "name": "undici-types",
       "version": "7.10.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "universalify",
+      "version": "0.2.0",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "url-parse",
+      "version": "1.5.10",
+      "scope": "build"
+    },
+    {
+      "type": "library",
+      "name": "verror",
+      "version": "1.10.0",
       "scope": "build"
     }
   ]
