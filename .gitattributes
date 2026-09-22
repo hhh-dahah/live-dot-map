@@ -2,3 +2,6 @@
 app.html text eol=lf
 src/web/app/** text eol=lf
 src/shared/index.mjs text eol=lf
+# 更新通道 payload 的文本文件：仓库 blob、Windows 构建哈希、EdgeOne 分发三方必须同字节序
+agent-kit/**/*.md text eol=lf
+.deploy/windows-installer/payload/**/*.md text eol=lf
