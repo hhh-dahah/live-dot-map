@@ -56,3 +56,5 @@ tmp/
 .codex-remote-attachments/
 tools/cnipa-word-xml/
 _共享资产*/
+# 个人文件，严禁入库/上传（保护 git add -A 误扫）
+/q4_breakthrough_2026/
