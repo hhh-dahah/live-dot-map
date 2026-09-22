@@ -351,6 +351,14 @@ function applyOne(document, command2, actor, revision, now) {
       patch.kind = patch.kind === "problem" ? "problem" : "goal";
     }
     assertAgentCurationAllowed(patch, actor);
+    if (isAgent(actor) && command2.collection === "nodes" && "name" in patch && !isAgent(item.createdBy)) {
+      throw mapError("HUMAN_APPROVAL_REQUIRED", 403, "\u7981\u6B62\u4FEE\u6539\u975E Agent \u521B\u5EFA\u8282\u70B9\u7684\u540D\u79F0\uFF1B\u5982\u9700\u8BB0\u5F55\u65B0\u5185\u5BB9\u8BF7\u65B0\u5EFA\u8282\u70B9", {
+        id: command2.id,
+        field: "name",
+        createdBy: item.createdBy,
+        suggestion: "\u65B0\u5EFA\u4E00\u4E2A\u8282\u70B9\u627F\u8F7D\u4F60\u7684\u5185\u5BB9\uFF0C\u4FDD\u7559\u4EBA\u7C7B\u539F\u8282\u70B9\u7684\u8BED\u4E49"
+      });
+    }
     if (command2.collection === "nodes") {
       delete patch.milestone;
       delete patch.milestoneSuggestion;
@@ -1231,7 +1239,7 @@ var init_shared = __esm({
 
 // src/cli/livedot.ts
 var import_node_crypto17 = require("node:crypto");
-var import_promises20 = require("node:fs/promises");
+var import_promises21 = require("node:fs/promises");
 var import_node_fs5 = require("node:fs");
 var import_node_path24 = require("node:path");
 var import_node_os8 = require("node:os");
@@ -2443,7 +2451,7 @@ var ProjectStore = class _ProjectStore {
 // src/bridge/server.mjs
 var import_node_crypto13 = require("node:crypto");
 var import_node_http = require("node:http");
-var import_promises16 = require("node:fs/promises");
+var import_promises17 = require("node:fs/promises");
 var import_node_path20 = require("node:path");
 var import_node_child_process6 = require("node:child_process");
 var import_node_os6 = require("node:os");
@@ -2457,8 +2465,8 @@ function resolveGitWorktreeMain(dir) {
   if (!dir || typeof dir !== "string") return null;
   try {
     const gitPath = (0, import_node_path5.join)(dir, ".git");
-    const stat10 = (0, import_node_fs.lstatSync)(gitPath);
-    if (stat10.isFile()) {
+    const stat11 = (0, import_node_fs.lstatSync)(gitPath);
+    if (stat11.isFile()) {
       const content = (0, import_node_fs.readFileSync)(gitPath, "utf8").trim();
       const match = content.match(/^gitdir:\s*(.+)$/m);
       if (match) {
@@ -2997,9 +3005,9 @@ var MdIndex = class {
   /** 取一张卡；指纹对不上/缺失则重读该文件刷新。mapRoot 用于拼绝对路径。 */
   async getOrRefreshCard({ mapRoot, relativePath }) {
     const absolute = (0, import_node_path9.join)(this.projectRoot, relativePath);
-    let stat10;
+    let stat11;
     try {
-      stat10 = await this.fs.stat(absolute);
+      stat11 = await this.fs.stat(absolute);
     } catch (error3) {
       if (error3?.code === "ENOENT") {
         this.#cards.delete(relativePath);
@@ -3009,20 +3017,20 @@ var MdIndex = class {
       throw error3;
     }
     const existing = this.#cards.get(relativePath);
-    const fresh = !existing || existing.mtimeMs !== stat10.mtimeMs || existing.bytes !== stat10.size;
+    const fresh = !existing || existing.mtimeMs !== stat11.mtimeMs || existing.bytes !== stat11.size;
     if (!fresh) return existing;
     const content = await this.fs.readFile(absolute, "utf8");
     const card = {
       path: relativePath,
       etag: digest2(content),
-      mtimeMs: stat10.mtimeMs,
-      bytes: stat10.size,
+      mtimeMs: stat11.mtimeMs,
+      bytes: stat11.size,
       title: firstHeading(content) || "",
       summary: visibleSummary(content),
       ownerKind: typeof existing?.ownerKind === "string" ? existing.ownerKind : inferOwnerKind(relativePath),
       ownerId: typeof existing?.ownerId === "string" ? existing.ownerId : inferOwnerId(relativePath),
       assets: existing?.assets ?? [],
-      updatedAt: stat10.mtime?.toISOString?.() ?? new Date(stat10.mtimeMs).toISOString()
+      updatedAt: stat11.mtime?.toISOString?.() ?? new Date(stat11.mtimeMs).toISOString()
     };
     this.#cards.set(relativePath, card);
     this.#dirty = true;
@@ -3045,19 +3053,19 @@ var MdIndex = class {
       const relativePath = `${ownerRelative}/${entry.name}`;
       try {
         const absolute = (0, import_node_path9.join)(directory, entry.name);
-        const stat10 = await this.fs.stat(absolute);
+        const stat11 = await this.fs.stat(absolute);
         const content = await this.fs.readFile(absolute, "utf8");
         this.#cards.set(relativePath, {
           path: relativePath,
           etag: digest2(content),
-          mtimeMs: stat10.mtimeMs,
-          bytes: stat10.size,
+          mtimeMs: stat11.mtimeMs,
+          bytes: stat11.size,
           title: firstHeading(content) || "",
           summary: visibleSummary(content),
           ownerKind: ownerKind === "nodes" ? "node" : "route",
           ownerId,
           assets,
-          updatedAt: stat10.mtime?.toISOString?.() ?? new Date(stat10.mtimeMs).toISOString()
+          updatedAt: stat11.mtime?.toISOString?.() ?? new Date(stat11.mtimeMs).toISOString()
         });
       } catch {
       }
@@ -3093,10 +3101,10 @@ var MdIndex = class {
     return this.#cards.size;
   }
   /** 校验某张卡是否仍新鲜（只 lstat，不读内容）。返回 null 表示已失效。 */
-  async isFresh(path, stat10) {
+  async isFresh(path, stat11) {
     const card = this.#cards.get(path);
     if (!card) return false;
-    return card.mtimeMs === stat10.mtimeMs && card.bytes === stat10.size;
+    return card.mtimeMs === stat11.mtimeMs && card.bytes === stat11.size;
   }
   async #withLock(operation) {
     await ensureDirectory((0, import_node_path9.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
@@ -3979,6 +3987,7 @@ var MapManager = class _MapManager {
 
 // src/bridge/tool-service.mjs
 var import_node_crypto8 = require("node:crypto");
+var import_promises11 = require("node:fs/promises");
 var import_node_path13 = require("node:path");
 
 // src/bridge/context-document-provider.mjs
@@ -4416,7 +4425,7 @@ var TOOL_DEFINITIONS = Object.freeze([
   schema("map_switch", "\u6821\u9A8C\u76EE\u6807\u5730\u56FE\u540E\u5207\u6362 active-map\u3002", { mapKey: { type: "string" } }, ["mapKey"]),
   schema("map_rename", "\u4FEE\u6539\u5730\u56FE\u663E\u793A\u540D\uFF0C\u4E0D\u6539\u53D8 mapKey\u3002", { mapKey: { type: "string" }, name: { type: "string" } }, ["mapKey", "name"]),
   schema("map_next_candidates", "\u8FD4\u56DE\u5E26\u89E3\u91CA\u7684\u63A8\u8FDB\u5019\u9009\u3002", { query: { type: "string" }, currentNodeId: { anyOf: [{ type: "string" }, { type: "null" }] }, limit: { type: "integer", minimum: 1, maximum: 12 }, includeHistory: { type: "boolean" } }),
-  schema("map_apply_commands", "\u901A\u8FC7\u7EDF\u4E00 reducer \u539F\u5B50\u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002", { mapKey: { type: "string" }, documentId: { type: "string" }, baseRevision: { type: "integer", minimum: 0 }, commandId: { type: "string" }, commands: { type: "array", minItems: 1, maxItems: 100, items: { type: "object" } } }, ["commands"]),
+  schema("map_apply_commands", "\u901A\u8FC7\u7EDF\u4E00 reducer \u539F\u5B50\u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002\u26A0 \u5199\u5165\u76EE\u6807\u9ED8\u8BA4\u53D6\u5168\u5C40 active-map \u6307\u9488\u2014\u2014\u8DE8\u5730\u56FE\u64CD\u4F5C\u5FC5\u987B\u663E\u5F0F\u4F20 mapKey\uFF0C\u5426\u5219\u4F1A\u5199\u8FDB\u6307\u9488\u6240\u6307\u7684\u65E7\u56FE\uFF1B\u7981\u6B62\u4FEE\u6539\u975E\u4F60\u521B\u5EFA\u8282\u70B9\u7684 name\uFF08\u4F1A\u88AB\u62D2\u7EDD\uFF09\uFF1B\u8981\u8BB0\u5F55\u4EFB\u52A1\u6E05\u5355/\u65B0\u5185\u5BB9\u65F6\u8BF7\u65B0\u5EFA\u8282\u70B9\uFF0C\u4E0D\u8981\u539F\u5730\u6539\u540D\u3002", { mapKey: { type: "string" }, documentId: { type: "string" }, baseRevision: { type: "integer", minimum: 0 }, commandId: { type: "string" }, commands: { type: "array", minItems: 1, maxItems: 100, items: { type: "object" } } }, ["commands"]),
   schema("map_validate", "\u6821\u9A8C\u5F53\u524D\u5730\u56FE\u4E0E\u5173\u8054 Markdown \u8BC1\u636E\u3002", { document: { type: "object" } }),
   schema("map_checkpoint", "\u521B\u5EFA\u53EF\u6062\u590D\u68C0\u67E5\u70B9\u3002", { reason: { type: "string" } }),
   schema("map_plan_consolidation", "\u53EA\u8BFB\u751F\u6210\u53EF\u5BA1\u6838\u7684\u6574\u7406\u5EFA\u8BAE\u3002", { maxSuggestions: { type: "integer", minimum: 1, maximum: 20 }, now: { type: "string" } }),
@@ -4442,11 +4451,14 @@ function cleanResult(value) {
   return rest;
 }
 function ownerArgs(args, mapKey) {
-  if (args.ownerKind && args.ownerId) return {
-    ownerKind: String(args.ownerKind),
-    ownerId: String(args.ownerId),
-    fileName: String(args.fileName || "index.md")
-  };
+  if (args.ownerKind && args.ownerId) {
+    let fileName = String(args.fileName || "");
+    if (!fileName && args.path) {
+      const lastSegment = String(args.path).replace(/\\/g, "/").split("/").filter(Boolean).pop() || "";
+      if (/\.(md|markdown)$/i.test(lastSegment)) fileName = lastSegment;
+    }
+    return { ownerKind: String(args.ownerKind), ownerId: String(args.ownerId), fileName: fileName || "index.md" };
+  }
   const raw = String(args.path || "").replace(/\\/g, "/").replace(/^\.\//, "");
   const prefix = `.live-dot-map/maps/${mapKey}/`;
   const relative6 = raw.startsWith(prefix) ? raw.slice(prefix.length) : raw.replace(/^\.live-dot-map\//, "");
@@ -4660,12 +4672,28 @@ var ToolService = class {
       return store.execute(this.#envelope(context, args, [{ op: "ack_annotations", ids: annIds, summary: String(args.summary || "") }], "mcp-ack"));
     }
     if (name === "map_apply_commands") {
-      const result2 = await store.execute(this.#envelope(context, args, Array.isArray(args.commands) ? args.commands : [], "mcp-apply"));
-      await ensureNodeIndexes(bundleStore, Array.isArray(args.commands) ? args.commands : []);
-      if (Array.isArray(args.commands)) {
-        for (const command2 of args.commands) {
-          if (command2?.op === "create" && command2?.collection === "nodes" && typeof command2?.value?.id === "string") {
-            await this.#refreshCard("node", command2.value.id, context);
+      const commands = Array.isArray(args.commands) ? args.commands : [];
+      const result2 = await store.execute(this.#envelope(context, args, commands, "mcp-apply"));
+      await ensureNodeIndexes(bundleStore, commands);
+      for (const command2 of commands) {
+        if (command2?.op === "create" && command2?.collection === "nodes" && typeof command2?.value?.id === "string") {
+          await this.#refreshCard("node", command2.value.id, context);
+        }
+      }
+      if (typeof this.actor === "string" && this.actor.startsWith("agent:")) {
+        const renames = commands.filter((command2) => command2?.op === "update" && command2?.collection === "nodes" && command2?.patch && typeof command2.patch.name === "string");
+        if (renames.length) {
+          try {
+            const structLog = new HumanMdUpdateLog({ projectRoot: context.projectRoot, mapKey });
+            for (const command2 of renames) {
+              await structLog.record({
+                path: `struct:nodes/${command2.id}/name`,
+                etag: "",
+                mtime: (/* @__PURE__ */ new Date()).toISOString(),
+                snippet: `${this.actor} \u5C06\u8282\u70B9 ${command2.id} \u6539\u540D\u4E3A\u300C${command2.patch.name}\u300D`
+              });
+            }
+          } catch {
           }
         }
       }
@@ -4676,7 +4704,21 @@ var ToolService = class {
       const validation = await this.shared.validateDocument(target);
       if (target !== document || !validation.ok) return validation;
       const documents = await collected();
-      return { ...validation, attemptIssues: this.shared.checkAttemptEvidence(document, documents.markdown) };
+      const knownIds = new Set([...document.nodes || [], ...document.routes || []].map((item) => String(item.id)));
+      const orphanBundles = [];
+      for (const kind of ["nodes", "routes"]) {
+        const dir = (0, import_node_path13.join)(context.projectRoot, ".live-dot-map", "maps", mapKey, kind);
+        let entries = [];
+        try {
+          entries = await (0, import_promises11.readdir)(dir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const entry of entries) {
+          if (entry.isDirectory() && !knownIds.has(entry.name)) orphanBundles.push(`${kind}/${entry.name}`);
+        }
+      }
+      return { ...validation, attemptIssues: this.shared.checkAttemptEvidence(document, documents.markdown), orphanBundles, mapKey };
     }
     if (name === "map_checkpoint") return store.createSnapshot();
     if (name === "map_plan_consolidation") {
@@ -4684,9 +4726,21 @@ var ToolService = class {
       return { mapKey, documentId: context.documentId, revision: snapshot.revision, ...this.shared.planConsolidation(document, { now: typeof args.now === "string" ? args.now : void 0, maxSuggestions: Number.isInteger(args.maxSuggestions) ? args.maxSuggestions : 12, markdown: documents.markdown }) };
     }
     const file = ownerArgs(args, mapKey);
+    const ownerCollection = file.ownerKind === "route" ? "routes" : "nodes";
+    if (!(document[ownerCollection] || []).some((item) => String(item.id) === String(file.ownerId))) {
+      const bundleDir = (0, import_node_path13.join)(context.projectRoot, ".live-dot-map", "maps", mapKey, ownerCollection, String(file.ownerId));
+      let bundleDirExists = false;
+      try {
+        bundleDirExists = (await (0, import_promises11.stat)(bundleDir)).isDirectory();
+      } catch {
+      }
+      if (!bundleDirExists) {
+        throw new BridgeError("OWNER_NOT_FOUND", `\u76EE\u6807\u5730\u56FE ${mapKey} \u4E0D\u5B58\u5728 ${file.ownerKind}=${file.ownerId}\uFF08\u6587\u6863\u4E0E\u78C1\u76D8\u5747\u65E0\uFF09\uFF0C\u5DF2\u62D2\u7EDD\u4EE5\u9632\u6B62\u5F62\u6210\u753B\u5E03\u4E0D\u53EF\u89C1\u7684\u5B64\u513F\u8D44\u6599\u5305`, { status: 404, mapKey });
+      }
+    }
     const isIndexFile = file.fileName === "index.md" || file.name === "index.md";
     const isAgent2 = typeof this.actor === "string" && this.actor.startsWith("agent");
-    if (name === "map_read_markdown") return cleanResult(await bundleStore.readMarkdown(file));
+    if (name === "map_read_markdown") return cleanResult({ ...await bundleStore.readMarkdown(file), mapKey });
     if (name === "map_write_markdown") {
       const rawContent = args.content;
       const content = args.wrapAuthor !== false && rawContent !== void 0 && isAgent2 ? ensureAgentAuthorEnvelope(rawContent, this.actor) : rawContent;
@@ -4712,13 +4766,13 @@ var ToolService = class {
       }
       const result2 = await bundleStore.replaceMarkdown({ ...file, content, baseEtag: args.baseEtag });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
-      return { ...result2, content: String(content) };
+      return { ...result2, content: String(content), mapKey };
     }
     if (name === "map_append_markdown") {
       const content = args.wrapAuthor !== false ? ensureAgentAuthorEnvelope(args.content, this.actor) : args.content;
       const result2 = await bundleStore.appendMarkdown({ ...file, content, commandId: args.commandId });
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
-      return result2;
+      return { ...result2, mapKey };
     }
     if (name === "map_list_bundle_files") return { mapKey, files: await bundleStore.list({ ...file, includeArchived: args.includeArchived === true }) };
     if (name === "map_create_markdown") {
@@ -4730,7 +4784,7 @@ var ToolService = class {
       const result2 = await bundleStore.createMarkdown({ ...file, content, title: args.title });
       await syncBundleIndexToMainMarkdown(bundleStore, file.ownerKind, file.ownerId);
       await this.#refreshCard(file.ownerKind, file.ownerId, context);
-      return result2;
+      return { ...result2, mapKey };
     }
     if (name === "map_rename_bundle_file") {
       const result2 = await bundleStore.rename({ ownerKind: file.ownerKind, ownerId: file.ownerId, from: args.from, to: args.to });
@@ -4794,7 +4848,7 @@ var ToolService = class {
 
 // src/bridge/archive-lifecycle.mjs
 var import_node_crypto9 = require("node:crypto");
-var import_promises11 = require("node:fs/promises");
+var import_promises12 = require("node:fs/promises");
 var import_node_path14 = require("node:path");
 var PURGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
 var PURGE_COLLECTIONS = /* @__PURE__ */ new Set(["nodes", "routes", "edges", "anns"]);
@@ -4896,7 +4950,7 @@ function purgePackageOwners(document, collection, id) {
   return owners;
 }
 async function assertPackagePath(path) {
-  const metadata = await (0, import_promises11.lstat)(path).catch((cause) => {
+  const metadata = await (0, import_promises12.lstat)(path).catch((cause) => {
     if (cause?.code === "ENOENT") return null;
     throw cause;
   });
@@ -4967,7 +5021,7 @@ var ArchiveLifecycle = class {
         await assertPackagePath(target);
         if (await exists(target)) throw error("PURGE_STAGING_CONFLICT", "\u6E05\u9664\u6682\u5B58\u76EE\u5F55\u5DF2\u6709\u540C\u540D\u8D44\u6599\u5305", 409, { collection, id });
         await ensureDirectory((0, import_node_path14.join)(txnRoot, collection));
-        await (0, import_promises11.rename)(source, target);
+        await (0, import_promises12.rename)(source, target);
         moved.push({ collection, id, source, target });
       }
       return moved;
@@ -4986,7 +5040,7 @@ var ArchiveLifecycle = class {
       }
       if (sourceExists) throw error("PURGE_PACKAGE_ROLLBACK_CONFLICT", "\u8D44\u6599\u5305\u6062\u590D\u76EE\u6807\u5DF2\u88AB\u5360\u7528\uFF0C\u62D2\u7EDD\u8986\u76D6", 409, item);
       await ensureDirectory((0, import_node_path14.join)(this.mapRoot, item.collection));
-      await (0, import_promises11.rename)(item.target, item.source);
+      await (0, import_promises12.rename)(item.target, item.source);
     }
   }
   async #rollback(snapshotName, moved, mapAttempted) {
@@ -5074,7 +5128,7 @@ var ArchiveLifecycle = class {
         await this.#rollback(snapshotName, moved, mapAttempted).catch((rollbackError) => {
           throw rollbackError;
         });
-        await (0, import_promises11.rm)(txnRoot, { recursive: true, force: true }).catch(() => void 0);
+        await (0, import_promises12.rm)(txnRoot, { recursive: true, force: true }).catch(() => void 0);
         if (cause instanceof BridgeError && cause.code.startsWith("PURGE_")) throw cause;
         if (cause?.code === "RECYCLE_BIN_FAILED") throw cause;
         throw new BridgeError("PURGE_FAILED", "\u6C38\u4E45\u6E05\u9664\u5931\u8D25\uFF0C\u5DF2\u6062\u590D\u5F52\u6863\u5BF9\u8C61\u548C\u8D44\u6599\u5305", { status: 500, cause });
@@ -5088,7 +5142,7 @@ var ArchiveLifecycle = class {
 
 // src/bridge/recycle-bin.mjs
 var import_node_child_process = require("node:child_process");
-var import_promises12 = require("node:fs/promises");
+var import_promises13 = require("node:fs/promises");
 var import_node_fs3 = require("node:fs");
 var import_node_path15 = require("node:path");
 var TRANSACTION_ID = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -5125,14 +5179,14 @@ async function assertPurgeStagingPath(value) {
   for (const part of parts.slice(1)) {
     if (!part) continue;
     current = (0, import_node_path15.join)(current, part);
-    const metadata = await (0, import_promises12.lstat)(current).catch((cause) => {
+    const metadata = await (0, import_promises13.lstat)(current).catch((cause) => {
       if (cause?.code === "ENOENT") return null;
       throw cause;
     });
     if (!metadata) throw failure("PURGE_STAGING_MISSING", "\u56DE\u6536\u7AD9\u6682\u5B58\u76EE\u5F55\u4E0D\u5B58\u5728", 404, { path: current });
     if (metadata.isSymbolicLink()) throw failure("PURGE_STAGING_REPARSE_FORBIDDEN", "\u56DE\u6536\u7AD9\u6682\u5B58\u8DEF\u5F84\u4E0D\u80FD\u7ECF\u8FC7\u7B26\u53F7\u94FE\u63A5\u6216\u8054\u63A5", 403, { path: current });
   }
-  const leaf = await (0, import_promises12.lstat)(target);
+  const leaf = await (0, import_promises13.lstat)(target);
   if (!leaf.isDirectory()) throw failure("PURGE_STAGING_NOT_DIRECTORY", "\u56DE\u6536\u7AD9\u6682\u5B58\u76EE\u6807\u4E0D\u662F\u76EE\u5F55", 400, { path: target });
   return target;
 }
@@ -5202,7 +5256,7 @@ var NativeRecycleBin = class {
       throw failure("RECYCLE_BIN_UNSUPPORTED", "\u7CFB\u7EDF\u56DE\u6536\u7AD9 helper \u4EC5\u5728 Windows \u5B89\u88C5\u7248\u53EF\u7528");
     }
     if (!this.helperPath) throw failure("RECYCLE_BIN_UNAVAILABLE", "\u672A\u627E\u5230\u7CFB\u7EDF\u56DE\u6536\u7AD9 helper");
-    await (0, import_promises12.access)(this.helperPath).catch(() => {
+    await (0, import_promises13.access)(this.helperPath).catch(() => {
       throw failure("RECYCLE_BIN_UNAVAILABLE", "\u672A\u627E\u5230\u7CFB\u7EDF\u56DE\u6536\u7AD9 helper");
     });
     const safePath = await assertPurgeStagingPath(stagingPath);
@@ -5214,7 +5268,7 @@ var NativeRecycleBin = class {
 var import_node_child_process2 = require("node:child_process");
 var import_node_crypto10 = require("node:crypto");
 var import_node_os3 = require("node:os");
-var import_promises13 = require("node:fs/promises");
+var import_promises14 = require("node:fs/promises");
 var import_node_path16 = require("node:path");
 var SETTINGS_VERSION = 1;
 var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "terminal", "gitbash", "system", "folder", "manual"]);
@@ -5286,7 +5340,7 @@ async function scanVersionedEditors(root, depth) {
   const found = [];
   let entries;
   try {
-    entries = await (0, import_promises13.readdir)(root, { withFileTypes: true });
+    entries = await (0, import_promises14.readdir)(root, { withFileTypes: true });
   } catch {
     return found;
   }
@@ -5408,7 +5462,7 @@ function safeSettings(value) {
 }
 async function readSettingsFile(path) {
   try {
-    return safeSettings(JSON.parse(await (0, import_promises13.readFile)(path, "utf8")));
+    return safeSettings(JSON.parse(await (0, import_promises14.readFile)(path, "utf8")));
   } catch (error3) {
     if (error3?.code === "ENOENT" || error3 instanceof SyntaxError) return safeSettings({});
     throw error3;
@@ -5449,24 +5503,24 @@ var EditorService = class _EditorService {
   async #assertProjectRoot() {
     let metadata;
     try {
-      metadata = await (0, import_promises13.lstat)(this.projectRoot);
+      metadata = await (0, import_promises14.lstat)(this.projectRoot);
     } catch (error3) {
       if (error3?.code === "ENOENT") throw bridgeError2("PROJECT_NOT_FOUND", "\u9879\u76EE\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
       throw error3;
     }
     if (isLink(metadata) || !isDirectory(metadata)) throw bridgeError2("PROJECT_ROOT_INVALID", "\u9879\u76EE\u76EE\u5F55\u4E0D\u662F\u5B89\u5168\u7684\u666E\u901A\u76EE\u5F55", 403);
-    const canonical = await (0, import_promises13.realpath)(this.projectRoot);
+    const canonical = await (0, import_promises14.realpath)(this.projectRoot);
     if (!isInside((0, import_node_path16.resolve)(this.projectRoot, ".."), canonical, { allowRoot: true })) {
       throw bridgeError2("PROJECT_ROOT_INVALID", "\u9879\u76EE\u76EE\u5F55\u65E0\u6CD5\u5B89\u5168\u89E3\u6790", 403);
     }
   }
   async #assertNoSymlinkEscape(candidate, { allowMissing = false, root = this.projectRoot } = {}) {
-    const canonicalRoot = await (0, import_promises13.realpath)(root);
+    const canonicalRoot = await (0, import_promises14.realpath)(root);
     let current = (0, import_node_path16.resolve)(candidate);
     let metadata = null;
     while (true) {
       try {
-        metadata = await (0, import_promises13.lstat)(current);
+        metadata = await (0, import_promises14.lstat)(current);
         break;
       } catch (error3) {
         if (!allowMissing || error3?.code !== "ENOENT") throw error3;
@@ -5476,7 +5530,7 @@ var EditorService = class _EditorService {
       }
     }
     if (isLink(metadata)) throw bridgeError2("SYMLINK_ESCAPE", "\u62D2\u7EDD\u901A\u8FC7\u7B26\u53F7\u94FE\u63A5\u6216\u91CD\u89E3\u6790\u70B9\u6253\u5F00\u6587\u4EF6", 403);
-    const canonicalCandidate = await (0, import_promises13.realpath)(current);
+    const canonicalCandidate = await (0, import_promises14.realpath)(current);
     if (!isInside(canonicalRoot, canonicalCandidate, { allowRoot: true })) {
       throw bridgeError2("SYMLINK_ESCAPE", "\u8DEF\u5F84\u89E3\u6790\u540E\u5DF2\u8D8A\u51FA\u9879\u76EE\u76EE\u5F55", 403);
     }
@@ -5494,7 +5548,7 @@ var EditorService = class _EditorService {
     await this.#assertNoSymlinkEscape(candidate, { allowMissing });
     let metadata;
     try {
-      metadata = await (0, import_promises13.lstat)(candidate);
+      metadata = await (0, import_promises14.lstat)(candidate);
     } catch (error3) {
       if (allowMissing && error3?.code === "ENOENT") return candidate;
       if (error3?.code === "ENOENT") throw bridgeError2("EDITOR_TARGET_NOT_FOUND", "\u7F16\u8F91\u5668\u76EE\u6807\u4E0D\u5B58\u5728", 404);
@@ -5511,13 +5565,13 @@ var EditorService = class _EditorService {
     }
     let metadata;
     try {
-      metadata = await (0, import_promises13.lstat)(path);
+      metadata = await (0, import_promises14.lstat)(path);
     } catch (error3) {
       if (error3?.code === "ENOENT") throw bridgeError2("EDITOR_NOT_FOUND", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u4E0D\u5B58\u5728", 404);
       throw error3;
     }
     if (isLink(metadata) || !isRegularFile(metadata)) throw bridgeError2("EDITOR_EXECUTABLE_INVALID", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u4E0D\u662F\u5B89\u5168\u7684\u666E\u901A\u6587\u4EF6", 403);
-    const canonical = await (0, import_promises13.realpath)(path);
+    const canonical = await (0, import_promises14.realpath)(path);
     if (!isInside((0, import_node_path16.resolve)(path, ".."), canonical, { allowRoot: true })) {
       throw bridgeError2("EDITOR_EXECUTABLE_INVALID", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u65E0\u6CD5\u5B89\u5168\u89E3\u6790", 403);
     }
@@ -5533,13 +5587,13 @@ var EditorService = class _EditorService {
     }
     let metadata;
     try {
-      metadata = await (0, import_promises13.lstat)(path);
+      metadata = await (0, import_promises14.lstat)(path);
     } catch (error3) {
       if (error3?.code === "ENOENT") throw bridgeError2("EDITOR_NOT_FOUND", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u4E0D\u5B58\u5728", 404);
       throw error3;
     }
     if (isLink(metadata) || !isRegularFile(metadata)) throw bridgeError2("MANUAL_EDITOR_INVALID", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u5FC5\u987B\u662F\u666E\u901A .exe \u6587\u4EF6", 403);
-    const canonical = await (0, import_promises13.realpath)(path);
+    const canonical = await (0, import_promises14.realpath)(path);
     if (normalizePathForCompare(canonical) !== normalizePathForCompare(path)) {
       throw bridgeError2("MANUAL_EDITOR_INVALID", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u4E0D\u80FD\u662F\u7B26\u53F7\u94FE\u63A5\u6216\u91CD\u89E3\u6790\u70B9", 403);
     }
@@ -5683,7 +5737,7 @@ var EditorService = class _EditorService {
     return { id: "manual", label: "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F", available: true };
   }
   async #writeSettings() {
-    await (0, import_promises13.mkdir)((0, import_node_path16.dirname)(this.settingsPath), { recursive: true });
+    await (0, import_promises14.mkdir)((0, import_node_path16.dirname)(this.settingsPath), { recursive: true });
     const output = {
       version: SETTINGS_VERSION,
       preferredEditorId: this.settings.preferredEditorId || null,
@@ -5716,7 +5770,7 @@ var EditorService = class _EditorService {
     }
     if (editorId === "folder") {
       const candidate = await this.#projectPath(relativePath, { kind: targetKind === "directory" ? "directory" : "file" });
-      const metadata = await (0, import_promises13.stat)(candidate);
+      const metadata = await (0, import_promises14.stat)(candidate);
       const folder = isDirectory(metadata) ? candidate : (0, import_node_path16.dirname)(candidate);
       await this.#assertNoSymlinkEscape(folder);
       const targetPath = isDirectory(metadata) ? folder : candidate;
@@ -5804,7 +5858,7 @@ var EditorService = class _EditorService {
 
 // src/bridge/native-helper.mjs
 var import_node_child_process3 = require("node:child_process");
-var import_promises14 = require("node:fs/promises");
+var import_promises15 = require("node:fs/promises");
 var import_node_path17 = require("node:path");
 function error2(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
@@ -5827,7 +5881,7 @@ var NativeWindowsHelper = class {
     const buildArgs = MODES[request.operation];
     if (!buildArgs) throw error2("NATIVE_HELPER_OPERATION_INVALID", "\u539F\u751F\u52A9\u624B\u64CD\u4F5C\u65E0\u6548", 400);
     if (!this.helperPath) throw error2("NATIVE_HELPER_UNAVAILABLE", "\u672A\u627E\u5230\u672C\u4EA7\u54C1\u539F\u751F\u52A9\u624B");
-    await (0, import_promises14.access)(this.helperPath).catch(() => {
+    await (0, import_promises15.access)(this.helperPath).catch(() => {
       throw error2("NATIVE_HELPER_UNAVAILABLE", "\u672A\u627E\u5230\u672C\u4EA7\u54C1\u539F\u751F\u52A9\u624B");
     });
     const args = buildArgs(request);
@@ -5932,7 +5986,7 @@ var sharedBridgeContract = Object.freeze({
 // agent-kit/lib/installer.mjs
 var import_node_crypto12 = require("node:crypto");
 var import_node_child_process5 = require("node:child_process");
-var import_promises15 = require("node:fs/promises");
+var import_promises16 = require("node:fs/promises");
 var import_node_fs4 = require("node:fs");
 var import_node_path19 = require("node:path");
 var import_node_os5 = require("node:os");
@@ -6131,7 +6185,7 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_apply_commands",
-    "description": "\u901A\u8FC7\u7EDF\u4E00 reducer \u539F\u5B50\u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002",
+    "description": "\u901A\u8FC7\u7EDF\u4E00 reducer \u539F\u5B50\u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002\u26A0 \u5199\u5165\u76EE\u6807\u9ED8\u8BA4\u53D6\u5168\u5C40 active-map \u6307\u9488\u2014\u2014\u8DE8\u5730\u56FE\u64CD\u4F5C\u5FC5\u987B\u663E\u5F0F\u4F20 mapKey\uFF0C\u5426\u5219\u4F1A\u5199\u8FDB\u6307\u9488\u6240\u6307\u7684\u65E7\u56FE\uFF1B\u7981\u6B62\u4FEE\u6539\u975E\u4F60\u521B\u5EFA\u8282\u70B9\u7684 name\uFF08\u4F1A\u88AB\u62D2\u7EDD\uFF09\uFF1B\u8981\u8BB0\u5F55\u4EFB\u52A1\u6E05\u5355/\u65B0\u5185\u5BB9\u65F6\u8BF7\u65B0\u5EFA\u8282\u70B9\uFF0C\u4E0D\u8981\u539F\u5730\u6539\u540D\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6820,9 +6874,9 @@ var map_template_default = {
 
 // agent-kit/lib/installer.mjs
 var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code", "antigravity"]);
-var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy"]);
+var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy", "qoder", "zcode"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
-var skillTargetPaths = (home, id) => id === "codex" ? (0, import_node_path19.join)(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? (0, import_node_path19.join)(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? (0, import_node_path19.join)(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : (0, import_node_path19.join)(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md");
+var skillTargetPaths = (home, id) => id === "codex" ? (0, import_node_path19.join)(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? (0, import_node_path19.join)(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? (0, import_node_path19.join)(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : id === "codebuddy" ? (0, import_node_path19.join)(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "zcode" ? (0, import_node_path19.join)(home, ".zcode", "skills", "live-dot-map", "SKILL.md") : (0, import_node_fs4.existsSync)((0, import_node_path19.join)(home, ".qoder")) && !(0, import_node_fs4.existsSync)((0, import_node_path19.join)(home, ".qoder-cn")) ? (0, import_node_path19.join)(home, ".qoder", "skills", "live-dot-map", "SKILL.md") : (0, import_node_path19.join)(home, ".qoder-cn", "skills", "live-dot-map", "SKILL.md");
 var kimiPluginRoot = (home) => (0, import_node_path19.join)(home, ".kimi-code", "plugins", "live-dot-map");
 var codebuddyPluginRoot = (home) => (0, import_node_path19.join)(home, ".codebuddy", "plugins", "live-dot-map");
 var ADAPTER_PROBES = Object.freeze({
@@ -6830,33 +6884,83 @@ var ADAPTER_PROBES = Object.freeze({
   "claude-code": ["claude", "claude-code"],
   "kimi-code": ["kimi", "kimi-code"],
   antigravity: ["antigravity", "agy"],
-  codebuddy: ["codebuddy", "codebuddy-code", "workbuddy"]
+  codebuddy: ["codebuddy", "codebuddy-code", "workbuddy"],
+  qoder: ["qoder", "qoderclicn", "qodercli"],
+  zcode: ["zcode", "zcodecli", "glm"]
 });
 function adapterFingerprints(id, { platform, home }) {
-  if (id !== "antigravity") return [];
-  const local = process.env.LOCALAPPDATA;
-  const programFiles = process.env.ProgramFiles;
-  const out = [];
-  if (platform === "win32") {
-    if (local) out.push((0, import_node_path19.join)(local, "Programs", "Antigravity", "Antigravity.exe"));
-    if (programFiles) out.push((0, import_node_path19.join)(programFiles, "Antigravity", "Antigravity.exe"));
+  if (id === "antigravity") {
+    const local = process.env.LOCALAPPDATA;
+    const programFiles = process.env.ProgramFiles;
+    const out = [];
+    if (platform === "win32") {
+      if (local) out.push((0, import_node_path19.join)(local, "Programs", "Antigravity", "Antigravity.exe"));
+      if (programFiles) out.push((0, import_node_path19.join)(programFiles, "Antigravity", "Antigravity.exe"));
+    }
+    out.push((0, import_node_path19.join)(home, ".gemini", "antigravity-ide"));
+    return out;
   }
-  out.push((0, import_node_path19.join)(home, ".gemini", "antigravity-ide"));
-  return out;
+  if (id === "qoder") {
+    const out = [
+      (0, import_node_path19.join)(home, ".qoder-cn"),
+      (0, import_node_path19.join)(home, ".qoder")
+    ];
+    const appData = process.env.APPDATA;
+    const local = process.env.LOCALAPPDATA;
+    const programFiles = process.env.ProgramFiles;
+    if (platform === "win32") {
+      if (appData) {
+        out.push((0, import_node_path19.join)(appData, "QoderCN"));
+        out.push((0, import_node_path19.join)(appData, "Qoder"));
+      }
+      if (local) {
+        out.push((0, import_node_path19.join)(local, "Programs", "QoderCN", "QoderCN.exe"));
+        out.push((0, import_node_path19.join)(local, "Programs", "Qoder", "Qoder.exe"));
+      }
+      if (programFiles) {
+        out.push((0, import_node_path19.join)(programFiles, "QoderCN", "QoderCN.exe"));
+        out.push((0, import_node_path19.join)(programFiles, "Qoder", "Qoder.exe"));
+      }
+    }
+    return out;
+  }
+  if (id === "zcode") {
+    const out = [
+      (0, import_node_path19.join)(home, ".zcode")
+    ];
+    const appData = process.env.APPDATA;
+    const local = process.env.LOCALAPPDATA;
+    const programFiles = process.env.ProgramFiles;
+    if (platform === "win32") {
+      if (appData) {
+        out.push((0, import_node_path19.join)(appData, "ZCode"));
+      }
+      if (local) {
+        out.push((0, import_node_path19.join)(local, "@zcodedesktop-updater"));
+        out.push((0, import_node_path19.join)(local, "Programs", "ZCode", "ZCode.exe"));
+      }
+      if (programFiles) {
+        out.push((0, import_node_path19.join)(programFiles, "ZCode", "ZCode.exe"));
+      }
+      out.push("D:\\zcode\\ZCode.exe");
+    }
+    return out;
+  }
+  return [];
 }
 async function exists2(path) {
   try {
-    await (0, import_promises15.access)(path, import_node_fs4.constants.F_OK);
+    await (0, import_promises16.access)(path, import_node_fs4.constants.F_OK);
     return true;
   } catch {
     return false;
   }
 }
 async function atomicText(path, text) {
-  await (0, import_promises15.mkdir)((0, import_node_path19.dirname)(path), { recursive: true });
+  await (0, import_promises16.mkdir)((0, import_node_path19.dirname)(path), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${(0, import_node_crypto12.randomUUID)()}`;
-  await (0, import_promises15.writeFile)(temp, text, { encoding: "utf8", flag: "wx" });
-  await (0, import_promises15.rename)(temp, path);
+  await (0, import_promises16.writeFile)(temp, text, { encoding: "utf8", flag: "wx" });
+  await (0, import_promises16.rename)(temp, path);
 }
 async function atomicJson(path, value) {
   await atomicText(path, `${JSON.stringify(value, null, 2)}
@@ -6864,7 +6968,7 @@ async function atomicJson(path, value) {
 }
 async function readJson2(path, fallback = {}) {
   try {
-    const value = JSON.parse(await (0, import_promises15.readFile)(path, "utf8"));
+    const value = JSON.parse(await (0, import_promises16.readFile)(path, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
   } catch {
     return fallback;
@@ -6875,9 +6979,9 @@ function sha256(bytes) {
 }
 async function captureFile(path) {
   try {
-    const metadata = await (0, import_promises15.stat)(path);
+    const metadata = await (0, import_promises16.stat)(path);
     if (metadata.isDirectory()) return { path, exists: true, kind: "directory", sha256: null, content: null };
-    const bytes = await (0, import_promises15.readFile)(path);
+    const bytes = await (0, import_promises16.readFile)(path);
     return { path, exists: true, kind: "file", sha256: sha256(bytes), content: bytes.toString("base64") };
   } catch {
     return { path, exists: false, kind: "missing", sha256: null, content: null };
@@ -6886,13 +6990,50 @@ async function captureFile(path) {
 async function restoreCapturedFile(entry) {
   if (entry?.kind === "directory") return;
   if (entry?.exists) {
-    await (0, import_promises15.mkdir)((0, import_node_path19.dirname)(entry.path), { recursive: true });
-    await (0, import_promises15.writeFile)(entry.path, Buffer.from(String(entry.content || ""), "base64"));
+    await (0, import_promises16.mkdir)((0, import_node_path19.dirname)(entry.path), { recursive: true });
+    await (0, import_promises16.writeFile)(entry.path, Buffer.from(String(entry.content || ""), "base64"));
   } else {
-    await (0, import_promises15.rm)(entry.path, { force: true }).catch(() => void 0);
+    await (0, import_promises16.rm)(entry.path, { force: true }).catch(() => void 0);
   }
 }
-var adapterConfigPaths = (home, id) => id === "codex" ? [(0, import_node_path19.join)(home, ".codex", "config.toml"), (0, import_node_path19.join)(home, ".codex", "hooks.json")] : id === "claude-code" ? [(0, import_node_path19.join)(home, ".claude", "settings.json")] : id === "kimi-code" ? [(0, import_node_path19.join)(home, ".kimi-code", "mcp.json"), (0, import_node_path19.join)(kimiPluginRoot(home), "kimi.plugin.json")] : id === "antigravity" ? [(0, import_node_path19.join)(home, ".gemini", "config", "mcp_config.json"), (0, import_node_path19.join)(home, ".gemini", "antigravity-ide", "mcp_config.json")] : [(0, import_node_path19.join)(home, ".codebuddy", "settings.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+function qoderConfigPaths(home) {
+  const paths = [
+    (0, import_node_path19.join)(home, ".qoder-cn", "mcp.json"),
+    (0, import_node_path19.join)(home, ".qoder", "mcp.json")
+  ];
+  if (process.env.APPDATA && (process.env.APPDATA.startsWith(home) || home === (0, import_node_os5.homedir)())) {
+    paths.push(
+      (0, import_node_path19.join)(process.env.APPDATA, "QoderCN", "SharedClientCache", "mcp.json"),
+      (0, import_node_path19.join)(process.env.APPDATA, "Qoder", "SharedClientCache", "mcp.json")
+    );
+  }
+  return paths;
+}
+function zcodeConfigPaths(home) {
+  return [
+    (0, import_node_path19.join)(home, ".zcode", "cli", "config.json")
+  ];
+}
+var adapterConfigPaths = (home, id) => {
+  switch (id) {
+    case "codex":
+      return [(0, import_node_path19.join)(home, ".codex", "config.toml"), (0, import_node_path19.join)(home, ".codex", "hooks.json")];
+    case "claude-code":
+      return [(0, import_node_path19.join)(home, ".claude", "settings.json")];
+    case "kimi-code":
+      return [(0, import_node_path19.join)(home, ".kimi-code", "mcp.json"), (0, import_node_path19.join)(kimiPluginRoot(home), "kimi.plugin.json")];
+    case "antigravity":
+      return [(0, import_node_path19.join)(home, ".gemini", "config", "mcp_config.json"), (0, import_node_path19.join)(home, ".gemini", "antigravity-ide", "mcp_config.json")];
+    case "codebuddy":
+      return [(0, import_node_path19.join)(home, ".codebuddy", "settings.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+    case "qoder":
+      return qoderConfigPaths(home);
+    case "zcode":
+      return zcodeConfigPaths(home);
+    default:
+      return [];
+  }
+};
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === "1";
 }
@@ -6948,7 +7089,7 @@ async function detectInstalledAdapters({ projectRoot = process.cwd(), platform =
   const checks = await Promise.all(ALL_ADAPTERS.map(async (id) => {
     const configPaths = adapterConfigPaths(home, id);
     const configured = (await Promise.all(configPaths.map(async (path) => {
-      const text = await (0, import_promises15.readFile)(path, "utf8").catch(() => "");
+      const text = await (0, import_promises16.readFile)(path, "utf8").catch(() => "");
       return text.includes("livedot-map");
     }))).some(Boolean);
     const probes = platform === "win32" || platform === "darwin" || platform === "linux" ? ADAPTER_PROBES[id] : [];
@@ -7018,17 +7159,37 @@ function mcpServerKey(mcp, agent) {
 function tomlString(value) {
   return JSON.stringify(String(value));
 }
+function stripCodexMcpBlock(toml) {
+  let text = String(toml || "").replace(/# BEGIN LIVE-DOT-MAP[\s\S]*?# END LIVE-DOT-MAP\s*/gi, "");
+  text = text.replace(/(?:^|\r?\n)[ \t]*\[\s*mcp_servers\s*\.\s*(?:"livedot-map"|'livedot-map'|livedot-map)\s*\][\s\S]*?(?=(?:\r?\n[ \t]*\[)|$)/gi, "");
+  return text.trim();
+}
+function assertNoDuplicateTomlTables(text) {
+  const tableHeaders = [...String(text || "").matchAll(/^\s*\[([^\]]+)\]/gm)].map((m) => m[1].trim());
+  const seen = /* @__PURE__ */ new Set();
+  for (const h of tableHeaders) {
+    const normalized = h.replace(/["']/g, "");
+    if (seen.has(normalized)) {
+      throw new Error(`TOML \u914D\u7F6E\u5199\u5165\u524D\u6821\u9A8C\u5931\u8D25\uFF1A\u53D1\u73B0\u91CD\u590D Table \u8868\u5934 [${h}]\uFF0C\u5DF2\u4E2D\u6B62\u5199\u5165\u4EE5\u4FDD\u62A4\u7B2C\u4E09\u65B9\u5DE5\u5177\u914D\u7F6E`);
+    }
+    seen.add(normalized);
+  }
+}
 async function writeCodexConfig(home, nodeCommand, runtime) {
   const path = (0, import_node_path19.join)(home, ".codex", "config.toml");
   const begin = "# BEGIN LIVE-DOT-MAP";
   const end = "# END LIVE-DOT-MAP";
-  const old = await (0, import_promises15.readFile)(path, "utf8").catch(() => "");
-  const stripped = old.replace(new RegExp(`${begin}[\\s\\S]*?${end}\\s*`, "g"), "").trimEnd();
+  const old = await (0, import_promises16.readFile)(path, "utf8").catch(() => "");
+  const stripped = stripCodexMcpBlock(old);
   const block = [begin, '[mcp_servers."livedot-map"]', `command = ${tomlString(nodeCommand)}`, `args = [${[...runtimeArgs(runtime), "mcp", "--agent", "codex"].map(tomlString).join(", ")}]`, "required = false", end].join("\n");
-  await atomicText(path, `${stripped ? `${stripped}
+  const newContent = `${stripped ? `${stripped}
 
 ` : ""}${block}
-`);
+`;
+  assertNoDuplicateTomlTables(newContent);
+  if (newContent.trim() !== old.trim()) {
+    await atomicText(path, newContent);
+  }
   const hooksPath = (0, import_node_path19.join)(home, ".codex", "hooks.json");
   await atomicJson(hooksPath, mergeHooks(await readJson2(hooksPath), hooksFor(nodeCommand, runtime, "codex")));
   return [path, hooksPath];
@@ -7055,8 +7216,8 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
   await atomicJson(mcpPath, mcp);
   const plugin = kimiPluginRoot(home);
   const pluginRuntime = (0, import_node_path19.join)(plugin, "runtime", "livedot.mjs");
-  await (0, import_promises15.mkdir)((0, import_node_path19.dirname)(pluginRuntime), { recursive: true });
-  if (!seaRuntime()) await (0, import_promises15.copyFile)(runtime, pluginRuntime);
+  await (0, import_promises16.mkdir)((0, import_node_path19.dirname)(pluginRuntime), { recursive: true });
+  if (!seaRuntime()) await (0, import_promises16.copyFile)(runtime, pluginRuntime);
   const manifest = {
     name: "livedot-map",
     version: "2.0.0",
@@ -7126,6 +7287,38 @@ async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
   await atomicJson((0, import_node_path19.join)(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
   return [settingsPath, (0, import_node_path19.join)(plugin, ".codebuddy-plugin", "plugin.json"), (0, import_node_path19.join)(plugin, ".workbuddy-plugin", "plugin.json"), (0, import_node_path19.join)(plugin, "hooks", "hooks.json")];
 }
+async function writeQoderConfig(home, nodeCommand, runtime) {
+  const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "qoder"] };
+  const paths = qoderConfigPaths(home);
+  for (const path of paths) {
+    const mcp = await readJson2(path);
+    const servers = mcp.mcpServers && typeof mcp.mcpServers === "object" ? mcp.mcpServers : {};
+    servers["livedot-map"] = entry;
+    mcp.mcpServers = servers;
+    await atomicJson(path, mcp);
+  }
+  return paths;
+}
+async function writeZCodeConfig(home, nodeCommand, runtime) {
+  const entry = {
+    enabled: true,
+    command: nodeCommand,
+    args: [...runtimeArgs(runtime), "mcp", "--agent", "zcode"],
+    type: "stdio"
+  };
+  const paths = zcodeConfigPaths(home);
+  for (const path of paths) {
+    const raw = await readJson2(path, {});
+    const config = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    const mcp = config.mcp && typeof config.mcp === "object" && !Array.isArray(config.mcp) ? config.mcp : {};
+    const servers = mcp.servers && typeof mcp.servers === "object" && !Array.isArray(mcp.servers) ? mcp.servers : {};
+    servers["livedot-map"] = entry;
+    mcp.servers = servers;
+    config.mcp = mcp;
+    await atomicJson(path, config);
+  }
+  return paths;
+}
 async function installProject({
   projectRoot = process.cwd(),
   sourceRoot,
@@ -7141,7 +7334,8 @@ async function installProject({
   exec,
   discoverAgents = true,
   detectedAgents = null,
-  homeRoot = (0, import_node_os5.homedir)()
+  homeRoot = (0, import_node_os5.homedir)(),
+  targetAdapters = null
 } = {}) {
   const root = (0, import_node_path19.resolve)(projectRoot);
   const home = (0, import_node_path19.resolve)(homeRoot);
@@ -7159,7 +7353,7 @@ async function installProject({
   const dataDir = (0, import_node_path19.join)(root, ".live-dot-map");
   const globalDataDir = (0, import_node_path19.join)(home, ".live-dot-map");
   const runtime = seaRuntime() ? null : (0, import_node_path19.join)(globalDataDir, "livedot.mjs");
-  await (0, import_promises15.mkdir)(dataDir, { recursive: true });
+  await (0, import_promises16.mkdir)(dataDir, { recursive: true });
   const projectId = projectIdForRoot(root);
   const mapPath = (0, import_node_path19.join)(dataDir, "map.json");
   const configPath = (0, import_node_path19.join)(dataDir, "agent-kit.json");
@@ -7168,8 +7362,11 @@ async function installProject({
   assertLoopbackUrl(url);
   const nodeCommand = process.execPath;
   const detected = detectedAgents && typeof detectedAgents === "object" ? detectedAgents : discoverAgents ? await detectInstalledAdapters({ projectRoot: root, platform, homeRoot: home }) : Object.fromEntries(ALL_ADAPTERS.map((id) => [id, { id, configured: false, executable: false, discovered: true }]));
-  const installed = {};
-  for (const id of ALL_ADAPTERS) if (detected[id]?.discovered) installed[id] = true;
+  const installed = targetAdapters ? { ...old.installed && typeof old.installed === "object" ? old.installed : {} } : {};
+  for (const id of ALL_ADAPTERS) {
+    if (targetAdapters && !targetAdapters.includes(id)) continue;
+    if (detected[id]?.discovered) installed[id] = true;
+  }
   const backupPath = (0, import_node_path19.join)(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
   const beforeBackup = await captureFile(backupPath);
   const oldRuntime = runtime ? await captureFile(runtime) : { exists: false, kind: "missing", path: null };
@@ -7189,24 +7386,25 @@ async function installProject({
   const rollback = async () => {
     for (const entry of backup.files) await restoreCapturedFile(entry);
     await restoreCapturedFile(beforeBackup);
-    if (!oldMap.exists) await (0, import_promises15.rm)(mapPath, { force: true }).catch(() => void 0);
+    if (!oldMap.exists) await (0, import_promises16.rm)(mapPath, { force: true }).catch(() => void 0);
     if (createdMapsLayout) {
-      await (0, import_promises15.rm)((0, import_node_path19.join)(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
-      await (0, import_promises15.rm)((0, import_node_path19.join)(dataDir, "active-map"), { force: true }).catch(() => void 0);
+      await (0, import_promises16.rm)((0, import_node_path19.join)(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
+      await (0, import_promises16.rm)((0, import_node_path19.join)(dataDir, "active-map"), { force: true }).catch(() => void 0);
     }
-    if (runtime && !oldRuntime.exists) await (0, import_promises15.rm)(runtime, { force: true }).catch(() => void 0);
+    if (runtime && !oldRuntime.exists) await (0, import_promises16.rm)(runtime, { force: true }).catch(() => void 0);
   };
   try {
     await atomicJson(backupPath, backup);
     if (runtime && (0, import_node_path19.resolve)(sourceRuntime) !== (0, import_node_path19.resolve)(runtime)) {
-      await (0, import_promises15.mkdir)(globalDataDir, { recursive: true });
-      await (0, import_promises15.copyFile)(sourceRuntime, runtime);
+      await (0, import_promises16.mkdir)(globalDataDir, { recursive: true });
+      await (0, import_promises16.copyFile)(sourceRuntime, runtime);
     }
     for (const id of Object.keys(installed)) {
+      if (targetAdapters && !targetAdapters.includes(id)) continue;
       const target = skillTargetPaths(home, id);
       if (!target) continue;
-      await (0, import_promises15.mkdir)((0, import_node_path19.dirname)(target), { recursive: true });
-      await (0, import_promises15.copyFile)(canonicalSkill, target);
+      await (0, import_promises16.mkdir)((0, import_node_path19.dirname)(target), { recursive: true });
+      await (0, import_promises16.copyFile)(canonicalSkill, target);
     }
     if (!oldMap.exists && !mapsLayoutExists) {
       const map = structuredClone(map_template_default);
@@ -7229,11 +7427,14 @@ async function installProject({
       await atomicText((0, import_node_path19.join)(dataDir, "active-map"), "default\n");
       createdMapsLayout = true;
     }
-    if (installed.codex) await writeCodexConfig(home, nodeCommand, runtime);
-    if (installed["claude-code"]) await writeClaudeConfig(home, nodeCommand, runtime);
-    if (installed["kimi-code"]) await writeKimiConfig(home, nodeCommand, runtime);
-    if (installed.antigravity) await writeAntigravityConfig(home, nodeCommand, runtime);
-    if (installed.codebuddy) await writeCodeBuddyConfig(home, nodeCommand, runtime);
+    const shouldWrite = (id) => Boolean(installed[id]) && (!targetAdapters || targetAdapters.includes(id));
+    if (shouldWrite("codex")) await writeCodexConfig(home, nodeCommand, runtime);
+    if (shouldWrite("claude-code")) await writeClaudeConfig(home, nodeCommand, runtime);
+    if (shouldWrite("kimi-code")) await writeKimiConfig(home, nodeCommand, runtime);
+    if (shouldWrite("antigravity")) await writeAntigravityConfig(home, nodeCommand, runtime);
+    if (shouldWrite("codebuddy")) await writeCodeBuddyConfig(home, nodeCommand, runtime);
+    if (shouldWrite("qoder")) await writeQoderConfig(home, nodeCommand, runtime);
+    if (shouldWrite("zcode")) await writeZCodeConfig(home, nodeCommand, runtime);
     const config = {
       ...old,
       version: 2,
@@ -7267,7 +7468,7 @@ async function installProject({
       detectedAgents: detected,
       bridge: { registered: true, mode: "project-config" },
       shortcut: null,
-      trustRequired: Object.fromEntries(Object.keys(installed).map((id) => [id, id === "codex" ? "\u5728 Codex \u5168\u5C40 hooks \u4E2D\u786E\u8BA4\u6D3B\u70B9\u5730\u56FE hook\uFF08\u4E00\u6B21\u6027\uFF09" : id === "claude-code" ? "\u5728 Claude Code \u8BBE\u7F6E\u4E2D\u786E\u8BA4 hooks \u4E0E MCP\uFF08\u4E00\u6B21\u6027\uFF09" : id === "kimi-code" ? `\u5728 Kimi \u6267\u884C /plugins install ${kimiPluginRoot(home)}` : "\u5728 WorkBuddy/CodeBuddy \u63D2\u4EF6\u9762\u677F\u5BA1\u6838\u5E76\u542F\u7528 hooks \u4E0E MCP"])),
+      trustRequired: Object.fromEntries(Object.keys(installed).map((id) => [id, id === "codex" ? "\u5728 Codex \u5168\u5C40 hooks \u4E2D\u786E\u8BA4\u6D3B\u70B9\u5730\u56FE hook\uFF08\u4E00\u6B21\u6027\uFF09" : id === "claude-code" ? "\u5728 Claude Code \u8BBE\u7F6E\u4E2D\u786E\u8BA4 hooks \u4E0E MCP\uFF08\u4E00\u6B21\u6027\uFF09" : id === "kimi-code" ? `\u5728 Kimi \u6267\u884C /plugins install ${kimiPluginRoot(home)}` : id === "qoder" ? "\u5728 Qoder \u8BBE\u7F6E\u6216\u547D\u4EE4\u9762\u677F\u4E2D\u786E\u8BA4\u542F\u7528 livedot-map MCP\uFF08\u6216\u91CD\u542F\u751F\u6548\uFF09" : id === "zcode" ? "\u5728 ZCode \u8BBE\u7F6E\u6216 MCP \u7BA1\u7406\u9762\u677F\u4E2D\u786E\u8BA4\u542F\u7528 livedot-map MCP\uFF08\u6216\u91CD\u542F\u751F\u6548\uFF09" : "\u5728 WorkBuddy/CodeBuddy \u63D2\u4EF6\u9762\u677F\u5BA1\u6838\u5E76\u542F\u7528 hooks \u4E0E MCP"])),
       runtimePlan: runtimePlan({ offline })
     };
     if (register && bridgeClient) {
@@ -7322,7 +7523,7 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
   const homeRoot = config.homeRoot ? (0, import_node_path19.resolve)(config.homeRoot) : null;
   if (homeRoot && config.installed?.antigravity) {
     for (const name of ["antigravity", "antigravity-ide", "antigravity-cli"]) {
-      await (0, import_promises15.rm)((0, import_node_path19.join)(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
+      await (0, import_promises16.rm)((0, import_node_path19.join)(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
     }
   }
   if (platform === "win32") {
@@ -7334,7 +7535,7 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
     if (!current.exists) continue;
     const looksOwned = path.includes(dataDir) || current.content?.includes(Buffer.from("livedot.mjs").toString("base64"));
     if (looksOwned) {
-      await (0, import_promises15.rm)(path, { force: true });
+      await (0, import_promises16.rm)(path, { force: true });
       restored.push(path);
     }
   }
@@ -7356,6 +7557,8 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
   if (installed["kimi-code"]) expected.push(["kimi-mcp", (0, import_node_path19.join)(home, ".kimi-code", "mcp.json")], ["kimi-plugin", (0, import_node_path19.join)(kimiPluginRoot(home), "kimi.plugin.json")]);
   if (installed.antigravity) expected.push(["antigravity-mcp", (0, import_node_path19.join)(home, ".gemini", "config", "mcp_config.json")]);
   if (installed.codebuddy) expected.push(["codebuddy-hooks", (0, import_node_path19.join)(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", (0, import_node_path19.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
+  if (installed.qoder) expected.push(["qoder-mcp", (0, import_node_fs4.existsSync)((0, import_node_path19.join)(home, ".qoder-cn", "mcp.json")) ? (0, import_node_path19.join)(home, ".qoder-cn", "mcp.json") : (0, import_node_path19.join)(home, ".qoder", "mcp.json")]);
+  if (installed.zcode) expected.push(["zcode-mcp", (0, import_node_path19.join)(home, ".zcode", "cli", "config.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
   checks.push({ name: "map", ok: await exists2((0, import_node_path19.join)(root, ".live-dot-map", "map.json")) || await exists2((0, import_node_path19.join)(root, ".live-dot-map", "maps")), detail: (0, import_node_path19.join)(root, ".live-dot-map") });
@@ -7382,18 +7585,18 @@ var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || (0,
 async function recordRecentProject(root) {
   let recent = [];
   try {
-    const parsed = JSON.parse(await (0, import_promises16.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
+    const parsed = JSON.parse(await (0, import_promises17.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
     if (Array.isArray(parsed)) recent = parsed.filter((item) => typeof item === "string");
   } catch {
   }
   recent = [root, ...recent.filter((item) => item !== root)].slice(0, 15);
-  await (0, import_promises16.mkdir)((0, import_node_path20.dirname)(RECENT_PROJECTS_FILE()), { recursive: true });
-  await (0, import_promises16.writeFile)(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
+  await (0, import_promises17.mkdir)((0, import_node_path20.dirname)(RECENT_PROJECTS_FILE()), { recursive: true });
+  await (0, import_promises17.writeFile)(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
 `, "utf8");
 }
 async function readRecentProjects() {
   try {
-    const parsed = JSON.parse(await (0, import_promises16.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
+    const parsed = JSON.parse(await (0, import_promises17.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
     const list = Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
     const valid = [];
     for (const item of list) {
@@ -7525,7 +7728,7 @@ if ($path) {
 }
 async function pickProjectFolder({ logger = noopLogger } = {}) {
   const tmpDir = (0, import_node_path20.join)((0, import_node_os6.homedir)(), ".live-dot-map", "tmp");
-  await (0, import_promises16.mkdir)(tmpDir, { recursive: true });
+  await (0, import_promises17.mkdir)(tmpDir, { recursive: true });
   const marker = (0, import_node_path20.join)(tmpDir, `pick-${(0, import_node_crypto13.randomUUID)()}.txt`);
   const script = buildPickFolderScript(marker);
   const run = await new Promise((resolveRun, rejectRun) => {
@@ -7555,12 +7758,12 @@ async function pickProjectFolder({ logger = noopLogger } = {}) {
   const diag = run.stdout.split(/\r?\n/).filter((line) => line.startsWith("PICK:DIAG")).join(" | ");
   if (run.code !== 0) {
     await logger.warn("project.pick", { outcome: "error", exitCode: run.code, stderr: run.stderr.slice(0, 400), diag });
-    await (0, import_promises16.rm)(marker, { force: true }).catch(() => void 0);
+    await (0, import_promises17.rm)(marker, { force: true }).catch(() => void 0);
     return { cancelled: true };
   }
   try {
-    const text = (await (0, import_promises16.readFile)(marker, "utf8")).trim();
-    await (0, import_promises16.rm)(marker, { force: true }).catch(() => void 0);
+    const text = (await (0, import_promises17.readFile)(marker, "utf8")).trim();
+    await (0, import_promises17.rm)(marker, { force: true }).catch(() => void 0);
     if (text) {
       await logger.info("project.pick", { outcome: "ok", mode, path: text, diag });
       return { cancelled: false, path: text };
@@ -7577,7 +7780,7 @@ function randomToken(bytes = 32) {
 }
 async function recordAgentHealth(root, actor, event, status, error3) {
   const path = (0, import_node_path20.join)(root, ".live-dot-map", ".bridge", "agent-health.json");
-  const prior = await (0, import_promises16.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
+  const prior = await (0, import_promises17.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   records[String(actor).replace(/^agent:/, "")] = {
     status,
@@ -7587,24 +7790,24 @@ async function recordAgentHealth(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: error3?.code || "BRIDGE_MCP_FAILED", message: String(error3?.message || error3 || "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await (0, import_promises16.mkdir)((0, import_node_path20.join)(root, ".live-dot-map", ".bridge"), { recursive: true });
+  await (0, import_promises17.mkdir)((0, import_node_path20.join)(root, ".live-dot-map", ".bridge"), { recursive: true });
   const temporary = `${path}.${process.pid}.${randomToken(8)}.tmp`;
   try {
-    await (0, import_promises16.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
+    await (0, import_promises17.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
 `, "utf8");
-    await (0, import_promises16.rename)(temporary, path);
+    await (0, import_promises17.rename)(temporary, path);
   } catch {
   }
 }
 async function readAgentHealth(root) {
-  return (0, import_promises16.readFile)((0, import_node_path20.join)(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
+  return (0, import_promises17.readFile)((0, import_node_path20.join)(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
     const value = JSON.parse(text);
     return value && typeof value.records === "object" && !Array.isArray(value.records) ? value.records : {};
   }).catch(() => ({}));
 }
 async function readObject(path) {
   try {
-    const value = JSON.parse(await (0, import_promises16.readFile)(path, "utf8"));
+    const value = JSON.parse(await (0, import_promises17.readFile)(path, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
   } catch {
     return null;
@@ -7612,7 +7815,7 @@ async function readObject(path) {
 }
 async function sha256File(path) {
   try {
-    return (0, import_node_crypto13.createHash)("sha256").update(await (0, import_promises16.readFile)(path)).digest("hex");
+    return (0, import_node_crypto13.createHash)("sha256").update(await (0, import_promises17.readFile)(path)).digest("hex");
   } catch {
     return null;
   }
@@ -7625,9 +7828,9 @@ async function refreshAgentRuntime({ runtimeSource, homeRoot } = {}) {
   const [sourceHash, targetHash] = await Promise.all([sha256File(source), sha256File(target)]);
   if (!sourceHash || sourceHash === targetHash) return false;
   const temp = (0, import_node_path20.join)((0, import_node_path20.dirname)(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
-  await (0, import_promises16.mkdir)((0, import_node_path20.dirname)(target), { recursive: true });
-  await (0, import_promises16.writeFile)(temp, await (0, import_promises16.readFile)(source));
-  await (0, import_promises16.rename)(temp, target);
+  await (0, import_promises17.mkdir)((0, import_node_path20.dirname)(target), { recursive: true });
+  await (0, import_promises17.writeFile)(temp, await (0, import_promises17.readFile)(source));
+  await (0, import_promises17.rename)(temp, target);
   return true;
 }
 function runtimeSources({ sourceRoot, runtimeSource } = {}) {
@@ -8103,7 +8306,7 @@ async function createBridgeServer({
   const UPDATE_BASE = (updateBase || process.env.LIVEDOT_UPDATE_BASE || "https://livedotmap.top/windows-installer").replace(/\/+$/, "");
   async function readLocalPayloadInfo() {
     try {
-      const parsed = JSON.parse(await (0, import_promises16.readFile)((0, import_node_path20.join)(installRoot, "payload-manifest.json"), "utf8"));
+      const parsed = JSON.parse(await (0, import_promises17.readFile)((0, import_node_path20.join)(installRoot, "payload-manifest.json"), "utf8"));
       return {
         version: typeof parsed.version === "string" ? parsed.version : null,
         payloadHash: typeof parsed.payloadHash === "string" ? parsed.payloadHash : null
@@ -8191,8 +8394,8 @@ async function createBridgeServer({
     const buffer = Buffer.from(await response.arrayBuffer());
     const actual = (0, import_node_crypto13.createHash)("sha256").update(buffer).digest("hex");
     if (actual !== meta.sha256.toLowerCase()) throw new BridgeError("UPDATE_CHECKSUM_MISMATCH", `\u66F4\u65B0\u5305\u6821\u9A8C\u5931\u8D25\uFF08${label} \u4E0E\u6E05\u5355\u4E0D\u4E00\u81F4\uFF0C\u6587\u4EF6\u53EF\u80FD\u635F\u574F\u6216\u88AB\u7BE1\u6539\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62\uFF0C\u73B0\u6709\u7248\u672C\u4E0D\u53D7\u5F71\u54CD`, { status: 502 });
-    await (0, import_promises16.mkdir)((0, import_node_path20.dirname)(target), { recursive: true });
-    await (0, import_promises16.writeFile)(target, buffer);
+    await (0, import_promises17.mkdir)((0, import_node_path20.dirname)(target), { recursive: true });
+    await (0, import_promises17.writeFile)(target, buffer);
   }
   async function applyUpdate() {
     const local = await readLocalPayloadInfo();
@@ -8202,7 +8405,7 @@ async function createBridgeServer({
     }
     const tempRoot = (0, import_node_path20.join)(process.env.TEMP || process.env.TMP || (0, import_node_os6.homedir)(), `livedot-update-${manifest.version}-${(0, import_node_crypto13.randomUUID)()}`);
     const payloadDir = (0, import_node_path20.join)(tempRoot, "payload");
-    await (0, import_promises16.mkdir)(payloadDir, { recursive: true });
+    await (0, import_promises17.mkdir)(payloadDir, { recursive: true });
     try {
       for (const [relative6, meta] of Object.entries(manifest.files)) {
         if (relative6.includes("..") || relative6.startsWith("/") || /^[a-zA-Z]:/.test(relative6)) {
@@ -8211,7 +8414,7 @@ async function createBridgeServer({
         await downloadUpdateFile(meta, (0, import_node_path20.join)(payloadDir, relative6), relative6);
       }
     } catch (error3) {
-      await (0, import_promises16.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
+      await (0, import_promises17.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
       throw error3;
     }
     let updater;
@@ -8220,15 +8423,15 @@ async function createBridgeServer({
       try {
         await downloadUpdateFile(manifest.installer, updater, "LiveDotMapSetup.exe");
       } catch (error3) {
-        await (0, import_promises16.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
+        await (0, import_promises17.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
         throw error3;
       }
     } else {
       updater = (0, import_node_path20.resolve)((0, import_node_path20.join)(installRoot, "..", "LiveDotMapSetup.exe"));
       try {
-        await (0, import_promises16.access)(updater);
+        await (0, import_promises17.access)(updater);
       } catch {
-        await (0, import_promises16.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
+        await (0, import_promises17.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
         throw new BridgeError("UPDATER_UNAVAILABLE", "Installer entry not found; updates are only available in installed mode", { status: 501 });
       }
     }
@@ -8651,13 +8854,13 @@ async function createBridgeServer({
         const detected = await detectInstalledAdapters({ projectRoot: root });
         let config = {};
         try {
-          const parsed = JSON.parse(await (0, import_promises16.readFile)((0, import_node_path20.join)(root, ".live-dot-map", "agent-kit.json"), "utf8"));
+          const parsed = JSON.parse(await (0, import_promises17.readFile)((0, import_node_path20.join)(root, ".live-dot-map", "agent-kit.json"), "utf8"));
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) config = parsed;
         } catch {
         }
         const trust = config.trust && typeof config.trust === "object" ? config.trust : {};
         const healthRecords = await readAgentHealth(root);
-        const agents = Object.values(detected).filter((item) => item.id !== "codebuddy" || item.discovered).map((item) => {
+        const agents = Object.values(detected).filter((item) => item.id !== "codebuddy" && item.id !== "qoder" && item.id !== "zcode" || item.discovered).map((item) => {
           const id = String(item.id);
           const health = healthRecords[id] || healthRecords[id.replace(/-code$/, "")] || (id === "claude-code" ? healthRecords.claude : id === "kimi-code" ? healthRecords.kimi : null);
           let state = "not_installed";
@@ -9120,13 +9323,13 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
 
 // src/bridge/project-registry.mjs
 var import_node_crypto15 = require("node:crypto");
-var import_promises18 = require("node:fs/promises");
+var import_promises19 = require("node:fs/promises");
 var import_node_path22 = require("node:path");
 
 // src/bridge/runtime-state.mjs
 var import_node_crypto14 = require("node:crypto");
 var import_node_child_process7 = require("node:child_process");
-var import_promises17 = require("node:fs/promises");
+var import_promises18 = require("node:fs/promises");
 var import_node_path21 = require("node:path");
 var import_node_os7 = require("node:os");
 var import_node_util = require("node:util");
@@ -9138,16 +9341,16 @@ function defaultRuntimeStateDir() {
   return (0, import_node_path21.join)(localAppData, "live-dot-map", "run");
 }
 async function privateDirectory(path) {
-  await (0, import_promises17.mkdir)(path, { recursive: true, mode: 448 });
-  await (0, import_promises17.chmod)(path, 448).catch(() => void 0);
+  await (0, import_promises18.mkdir)(path, { recursive: true, mode: 448 });
+  await (0, import_promises18.chmod)(path, 448).catch(() => void 0);
 }
 async function atomicPrivateWrite(path, value) {
   await privateDirectory((0, import_node_path21.dirname)(path));
   const temporary = `${path}.${process.pid}.${(0, import_node_crypto14.randomUUID)()}.tmp`;
-  await (0, import_promises17.writeFile)(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
-  await (0, import_promises17.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises17.rename)(temporary, path);
-  await (0, import_promises17.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises18.writeFile)(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
+  await (0, import_promises18.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises18.rename)(temporary, path);
+  await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
 }
 function runtimePaths(runtimeStateDir = defaultRuntimeStateDir()) {
   const root = (0, import_node_path21.resolve)(runtimeStateDir);
@@ -9164,7 +9367,7 @@ async function readBridgeState(runtimeStateDir) {
   const paths = runtimePaths(runtimeStateDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises17.readFile)(paths.bridge, "utf8"));
+    parsed = JSON.parse(await (0, import_promises18.readFile)(paths.bridge, "utf8"));
   } catch (error3) {
     if (error3?.code === "ENOENT") return null;
     throw new BridgeError("BRIDGE_STATE_CORRUPT", "Bridge runtime state is unreadable", { cause: error3 });
@@ -9186,7 +9389,7 @@ async function writeBridgeState(runtimeStateDir, { pid, port, startedAt = (/* @_
 async function readOrCreateControlToken(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).controlToken;
   try {
-    const value = (await (0, import_promises17.readFile)(path, "utf8")).trim();
+    const value = (await (0, import_promises18.readFile)(path, "utf8")).trim();
     if (!/^[A-Za-z0-9_-]{43,}$/.test(value)) throw new Error("invalid token");
     return value;
   } catch (error3) {
@@ -9197,13 +9400,13 @@ async function readOrCreateControlToken(runtimeStateDir) {
   const token = (0, import_node_crypto14.randomBytes)(32).toString("base64url");
   try {
     await privateDirectory((0, import_node_path21.dirname)(path));
-    await (0, import_promises17.writeFile)(path, `${token}
+    await (0, import_promises18.writeFile)(path, `${token}
 `, { encoding: "utf8", mode: 384, flag: "wx" });
-    await (0, import_promises17.chmod)(path, 384).catch(() => void 0);
+    await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
     return token;
   } catch (error3) {
     if (error3?.code !== "EEXIST") throw error3;
-    const existing = (await (0, import_promises17.readFile)(path, "utf8")).trim();
+    const existing = (await (0, import_promises18.readFile)(path, "utf8")).trim();
     if (!/^[A-Za-z0-9_-]{43,}$/.test(existing)) throw new BridgeError("CONTROL_TOKEN_CORRUPT", "Bridge control token is invalid");
     return existing;
   }
@@ -9213,7 +9416,7 @@ async function acquireSingletonLock(runtimeStateDir) {
   await privateDirectory((0, import_node_path21.dirname)(path));
   let handle;
   try {
-    handle = await (0, import_promises17.open)(path, "wx", 384);
+    handle = await (0, import_promises18.open)(path, "wx", 384);
     await handle.writeFile(`${JSON.stringify({ pid: process.pid, acquiredAt: (/* @__PURE__ */ new Date()).toISOString() })}
 `, "utf8");
   } catch (error3) {
@@ -9226,7 +9429,7 @@ async function acquireSingletonLock(runtimeStateDir) {
     if (released) return;
     released = true;
     await handle.close().catch(() => void 0);
-    await (0, import_promises17.rm)(path, { force: true }).catch(() => void 0);
+    await (0, import_promises18.rm)(path, { force: true }).catch(() => void 0);
   };
 }
 function isProcessAlive(pid) {
@@ -9266,20 +9469,20 @@ async function clearStaleSingletonLock(runtimeStateDir, expectedPid, options = {
   const path = runtimePaths(runtimeStateDir).lock;
   let lock;
   try {
-    lock = JSON.parse(await (0, import_promises17.readFile)(path, "utf8"));
+    lock = JSON.parse(await (0, import_promises18.readFile)(path, "utf8"));
   } catch (error3) {
     if (error3?.code === "ENOENT") return true;
     throw new BridgeError("BRIDGE_LOCK_CORRUPT", "Bridge singleton lock is unreadable", { cause: error3 });
   }
   if (lock?.pid !== expectedPid) return false;
-  await (0, import_promises17.rm)(path, { force: true });
+  await (0, import_promises18.rm)(path, { force: true });
   return true;
 }
 async function removeBridgeState(runtimeStateDir, expectedPid) {
   const paths = runtimePaths(runtimeStateDir);
   const current = await readBridgeState(runtimeStateDir).catch(() => null);
   if (current && expectedPid && current.pid !== expectedPid) return false;
-  await (0, import_promises17.rm)(paths.bridge, { force: true });
+  await (0, import_promises18.rm)(paths.bridge, { force: true });
   return true;
 }
 async function bridgeProcessImagePath(pid) {
@@ -9304,12 +9507,12 @@ function handleValue() {
   return `ph_${(0, import_node_crypto15.randomBytes)(24).toString("base64url")}`;
 }
 async function atomicWrite(path, data) {
-  await (0, import_promises18.mkdir)((0, import_node_path22.dirname)(path), { recursive: true, mode: 448 });
+  await (0, import_promises19.mkdir)((0, import_node_path22.dirname)(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${(0, import_node_crypto15.randomUUID)()}.tmp`;
-  await (0, import_promises18.writeFile)(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
-  await (0, import_promises18.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises18.rename)(temporary, path);
-  await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises19.writeFile)(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
+  await (0, import_promises19.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises19.rename)(temporary, path);
+  await (0, import_promises19.chmod)(path, 384).catch(() => void 0);
 }
 var ProjectRegistry = class _ProjectRegistry {
   constructor({ filePath, entries = [], canonicalize = canonicalDirectory } = {}) {
@@ -9322,7 +9525,7 @@ var ProjectRegistry = class _ProjectRegistry {
   static async open({ runtimeStateDir, filePath = runtimePaths(runtimeStateDir).projects, canonicalize } = {}) {
     let entries = [];
     try {
-      const parsed = JSON.parse(await (0, import_promises18.readFile)(filePath, "utf8"));
+      const parsed = JSON.parse(await (0, import_promises19.readFile)(filePath, "utf8"));
       if (parsed?.schemaVersion !== SCHEMA_VERSION2 || !Array.isArray(parsed.projects)) throw new Error("invalid shape");
       entries = parsed.projects;
       for (const entry of entries) {
@@ -9369,7 +9572,7 @@ var ProjectRegistry = class _ProjectRegistry {
   async refresh() {
     let parsed;
     try {
-      parsed = JSON.parse(await (0, import_promises18.readFile)(this.filePath, "utf8"));
+      parsed = JSON.parse(await (0, import_promises19.readFile)(this.filePath, "utf8"));
     } catch (error3) {
       if (error3?.code === "ENOENT") return;
       throw new BridgeError("PROJECT_REGISTRY_CORRUPT", "Project authorization registry is unreadable or invalid", { cause: error3 });
@@ -9395,19 +9598,19 @@ var ProjectRegistry = class _ProjectRegistry {
 
 // src/bridge/session-store.mjs
 var import_node_crypto16 = require("node:crypto");
-var import_promises19 = require("node:fs/promises");
+var import_promises20 = require("node:fs/promises");
 var import_node_path23 = require("node:path");
 var SCHEMA_VERSION3 = 1;
 var DAY = 24 * 60 * 60 * 1e3;
 var secret = () => (0, import_node_crypto16.randomBytes)(32).toString("base64url");
 var digest5 = (value) => (0, import_node_crypto16.createHash)("sha256").update(String(value)).digest("base64url");
 async function atomicWrite2(path, content) {
-  await (0, import_promises19.mkdir)((0, import_node_path23.dirname)(path), { recursive: true, mode: 448 });
+  await (0, import_promises20.mkdir)((0, import_node_path23.dirname)(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
-  await (0, import_promises19.writeFile)(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
-  await (0, import_promises19.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises19.rename)(temporary, path);
-  await (0, import_promises19.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises20.writeFile)(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
+  await (0, import_promises20.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises20.rename)(temporary, path);
+  await (0, import_promises20.chmod)(path, 384).catch(() => void 0);
 }
 var SessionStore = class _SessionStore {
   constructor({ filePath, sessions = [], clock = () => /* @__PURE__ */ new Date(), ttlMs = 7 * DAY, persistIntervalMs = 6e4, maxSessions = 64 } = {}) {
@@ -9427,7 +9630,7 @@ var SessionStore = class _SessionStore {
     const filePath = options.filePath || runtimePaths(options.runtimeStateDir).sessions;
     let sessions = [];
     try {
-      const parsed = JSON.parse(await (0, import_promises19.readFile)(filePath, "utf8"));
+      const parsed = JSON.parse(await (0, import_promises20.readFile)(filePath, "utf8"));
       if (parsed?.schemaVersion !== SCHEMA_VERSION3 || !Array.isArray(parsed.sessions)) throw new Error("invalid shape");
       sessions = parsed.sessions;
       for (const session of sessions) {
@@ -9625,7 +9828,7 @@ async function shutdownRunningBridge(state, controlToken) {
 }
 async function recordAgentHealth2(root, actor, event, status, error3) {
   const path = (0, import_node_path24.join)(root, ".live-dot-map", ".bridge", "agent-health.json");
-  const prior = await (0, import_promises20.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
+  const prior = await (0, import_promises21.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   const value = error3;
   records[actor.replace(/^agent:/, "")] = {
@@ -9636,37 +9839,37 @@ async function recordAgentHealth2(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: value?.code ?? "HOOK_FAILED", message: String(value?.message ?? value ?? "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await (0, import_promises20.mkdir)((0, import_node_path24.dirname)(path), { recursive: true });
+  await (0, import_promises21.mkdir)((0, import_node_path24.dirname)(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${(0, import_node_crypto17.randomUUID)()}.tmp`;
   try {
-    await (0, import_promises20.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
+    await (0, import_promises21.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
 `, "utf8");
-    await (0, import_promises20.rename)(temporary, path);
+    await (0, import_promises21.rename)(temporary, path);
   } catch {
   }
 }
 async function inspectProjectQualification(projectRoot) {
   const root = (0, import_node_path24.resolve)(projectRoot);
-  const rootMetadata = await (0, import_promises20.lstat)(root).catch(() => null);
+  const rootMetadata = await (0, import_promises21.lstat)(root).catch(() => null);
   if (!rootMetadata || !rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
     return { ok: false, code: "PROJECT_NOT_FOUND", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u6709\u6548\u9879\u76EE\u76EE\u5F55\u3002" };
   }
   const dataDirectory = (0, import_node_path24.join)(root, ".live-dot-map");
-  const dataMetadata = await (0, import_promises20.stat)(dataDirectory).catch(() => null);
+  const dataMetadata = await (0, import_promises21.stat)(dataDirectory).catch(() => null);
   if (!dataMetadata) return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u8FD8\u6CA1\u6709\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
   if (!dataMetadata.isDirectory()) {
     return { ok: false, code: "PROJECT_LAYOUT_INVALID", message: "\u6D3B\u70B9\u5730\u56FE\u6570\u636E\u76EE\u5F55\u4E0D\u662F\u53EF\u5B89\u5168\u8BFB\u53D6\u7684\u76EE\u5F55\u3002" };
   }
   const marker = async (path) => {
-    const metadata = await (0, import_promises20.stat)(path).catch(() => null);
+    const metadata = await (0, import_promises21.stat)(path).catch(() => null);
     return Boolean(metadata && metadata.isFile());
   };
   const legacy = await marker((0, import_node_path24.join)(dataDirectory, "map.json"));
   const mapsPath = (0, import_node_path24.join)(dataDirectory, "maps");
-  const mapsMetadata = await (0, import_promises20.stat)(mapsPath).catch(() => null);
+  const mapsMetadata = await (0, import_promises21.stat)(mapsPath).catch(() => null);
   let packageMap = false;
   if (mapsMetadata?.isDirectory()) {
-    const entries = await (0, import_promises20.readdir)(mapsPath, { withFileTypes: true }).catch(() => []);
+    const entries = await (0, import_promises21.readdir)(mapsPath, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (await marker((0, import_node_path24.join)(mapsPath, entry.name, "map.json"))) {
@@ -9678,7 +9881,7 @@ async function inspectProjectQualification(projectRoot) {
   if (!legacy && !packageMap) {
     return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u662F\u5DF2\u521D\u59CB\u5316\u7684\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
   }
-  const writableTarget = packageMap ? await (0, import_promises20.access)(mapsPath, import_node_fs5.constants.W_OK).then(() => true).catch(() => false) : await (0, import_promises20.access)(dataDirectory, import_node_fs5.constants.W_OK).then(() => true).catch(() => false);
+  const writableTarget = packageMap ? await (0, import_promises21.access)(mapsPath, import_node_fs5.constants.W_OK).then(() => true).catch(() => false) : await (0, import_promises21.access)(dataDirectory, import_node_fs5.constants.W_OK).then(() => true).catch(() => false);
   if (!writableTarget) return { ok: false, code: "PROJECT_READONLY", message: "\u5F53\u524D\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u76EE\u5F55\u4E0D\u53EF\u5199\u3002" };
   return { ok: true };
 }
@@ -9720,7 +9923,7 @@ async function resolveAppHtmlPath(explicit) {
   candidates.push((0, import_node_path24.join)((0, import_node_os8.homedir)(), ".live-dot-map", "app.html"));
   candidates.push((0, import_node_path24.join)(process.cwd(), "app.html"));
   for (const candidate of [...new Set(candidates)]) {
-    if (await (0, import_promises20.access)(candidate, import_node_fs5.constants.F_OK).then(() => true).catch(() => false)) return candidate;
+    if (await (0, import_promises21.access)(candidate, import_node_fs5.constants.F_OK).then(() => true).catch(() => false)) return candidate;
   }
   return null;
 }
@@ -9937,7 +10140,7 @@ async function runHook(kind, args) {
     const watermarkPath = (0, import_node_path24.join)(root, ".live-dot-map", "agent-read.json");
     let watermark = 0;
     try {
-      const parsed = JSON.parse(await (0, import_promises20.readFile)(watermarkPath, "utf8"));
+      const parsed = JSON.parse(await (0, import_promises21.readFile)(watermarkPath, "utf8"));
       if (typeof parsed?.updatedAt === "string") watermark = Date.parse(parsed.updatedAt);
     } catch {
     }
@@ -9965,8 +10168,8 @@ async function runHook(kind, args) {
       deliveredIds = newAnns.map((ann) => String(ann.id));
     }
     if (changes.length || deliveredIds.length) {
-      await (0, import_promises20.mkdir)((0, import_node_path24.dirname)(watermarkPath), { recursive: true });
-      await (0, import_promises20.writeFile)(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+      await (0, import_promises21.mkdir)((0, import_node_path24.dirname)(watermarkPath), { recursive: true });
+      await (0, import_promises21.writeFile)(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
 `, "utf8");
       const newCount = changes.filter((item) => item.label === "\u6807\u6CE8" && item.attention === "new").length;
       const lines = changes.slice(0, 20).map((item) => `${item.label} ${item.id}${item.name ? `\u300C${item.name}\u300D` : ""}${item.status ? `(${item.status})` : ""}`);
@@ -9990,7 +10193,7 @@ async function runHook(kind, args) {
     const watermarkPath = (0, import_node_path24.join)(root, ".live-dot-map", "agent-read.json");
     let watermark = 0;
     try {
-      const parsed = JSON.parse(await (0, import_promises20.readFile)(watermarkPath, "utf8"));
+      const parsed = JSON.parse(await (0, import_promises21.readFile)(watermarkPath, "utf8"));
       if (typeof parsed?.updatedAt === "string") watermark = Date.parse(parsed.updatedAt);
     } catch {
     }
@@ -10018,8 +10221,8 @@ async function runHook(kind, args) {
       deliveredIds = newAnns.map((ann) => String(ann.id));
     }
     if (changes.length || deliveredIds.length) {
-      await (0, import_promises20.mkdir)((0, import_node_path24.dirname)(watermarkPath), { recursive: true });
-      await (0, import_promises20.writeFile)(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+      await (0, import_promises21.mkdir)((0, import_node_path24.dirname)(watermarkPath), { recursive: true });
+      await (0, import_promises21.writeFile)(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
 `, "utf8");
       const newCount = changes.filter((item) => item.label === "\u6807\u6CE8" && item.attention === "new").length;
       const lines = changes.slice(0, 5).map((item) => `${item.label} ${item.id}${item.name ? `\u300C${item.name}\u300D` : ""}${item.status ? `(${item.status})` : ""}`);
@@ -10069,6 +10272,26 @@ async function runHook(kind, args) {
     await manager.close();
   }
 }
+function hasDirtyGitWorktree(root) {
+  try {
+    if (!(0, import_node_fs5.existsSync)((0, import_node_path24.join)(root, ".git"))) return false;
+    const status = (0, import_node_child_process8.execFileSync)("git", ["-C", root, "status", "--porcelain=v1", "--untracked-files=no"], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 5e3
+    });
+    return status.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+function markDevCanvas(html) {
+  let out = html.replace("<title>\u6D3B\u70B9\u5730\u56FE</title>", "<title>\u3010\u6D4B\u8BD5\u3011\u6D3B\u70B9\u5730\u56FE</title>").replace("document.title = '\u6D3B\u70B9\u5730\u56FE \u2014 ' + S.name;", "document.title = '\u3010\u6D4B\u8BD5\u3011\u6D3B\u70B9\u5730\u56FE \u2014 ' + S.name;");
+  const badge = '<div data-livedot-dev="1" style="position:fixed;top:0;right:16px;z-index:2147483647;background:#e67e22;color:#fff;font:600 12px/1.8 system-ui,sans-serif;padding:1px 12px;border-radius:0 0 10px 10px;box-shadow:0 2px 10px rgba(0,0,0,.35);pointer-events:none;user-select:none">\u6D4B\u8BD5\u5B9E\u4F8B \xB7 \u4E0E\u5E38\u9A7B\u753B\u5E03\u9694\u79BB</div>';
+  if (!out.includes("data-livedot-dev")) out = out.replace(/<\/body>/i, `${badge}
+</body>`);
+  return out;
+}
 async function main() {
   const { command: command2, args } = parseArgs(process.argv.slice(2));
   if (command2 === "serve") {
@@ -10076,7 +10299,15 @@ async function main() {
     const requestedRoot = (0, import_node_path24.resolve)(required(args, "project"));
     const worktreeMain = resolveGitWorktreeMain(requestedRoot);
     const projectRoot = await canonicalDirectory(worktreeMain ?? requestedRoot).catch(() => requestedRoot);
-    const runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? (0, import_node_path24.resolve)(args["runtime-state-dir"]) : void 0;
+    let runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? (0, import_node_path24.resolve)(args["runtime-state-dir"]) : void 0;
+    if (!runtimeStateDir && worktreeMain) {
+      runtimeStateDir = (0, import_node_path24.join)(requestedRoot, ".live-dot-map-dev");
+      await logger.info("bridge.worktree-isolated", { worktree: requestedRoot, runtimeStateDir });
+    }
+    if (!runtimeStateDir && !worktreeMain && hasDirtyGitWorktree(requestedRoot)) {
+      runtimeStateDir = (0, import_node_path24.join)(requestedRoot, ".live-dot-map-dev");
+      await logger.info("bridge.dev-isolated", { reason: "dirty-tree", worktree: requestedRoot, runtimeStateDir });
+    }
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
     const registry = await ProjectRegistry.open({ runtimeStateDir });
     const sessionStore = await SessionStore.open({ runtimeStateDir });
@@ -10148,7 +10379,7 @@ async function main() {
       throw new Error("Bridge \u6B63\u5728\u542F\u52A8\uFF0C\u4F46\u5728 2 \u79D2\u5185\u6CA1\u6709\u8FDB\u5165\u53EF\u590D\u7528\u72B6\u6001");
     }
     const appPath = (0, import_node_path24.resolve)(typeof args.app === "string" ? args.app : (0, import_node_path24.join)(process.cwd(), "app.html"));
-    const appHtml = await (0, import_promises20.readFile)(appPath, "utf8");
+    const appHtml = runtimeStateDir ? markDevCanvas(await (0, import_promises21.readFile)(appPath, "utf8")) : await (0, import_promises21.readFile)(appPath, "utf8");
     const assetRoot = (0, import_node_path24.dirname)(appPath);
     const staticAssets = {};
     for (const [urlPath, file, type] of [
@@ -10158,7 +10389,7 @@ async function main() {
       ["/icons/icon-512.png", (0, import_node_path24.join)("icons", "icon-512.png"), "image/png"]
     ]) {
       try {
-        staticAssets[urlPath] = { body: await (0, import_promises20.readFile)((0, import_node_path24.join)(assetRoot, file)), type };
+        staticAssets[urlPath] = { body: await (0, import_promises21.readFile)((0, import_node_path24.join)(assetRoot, file)), type };
       } catch {
       }
     }
@@ -10186,7 +10417,7 @@ async function main() {
     const bootstrapToken = bridge.issueBootstrapTicket(projectRoot, registered.projectHandle);
     const url = `${bridge.origin}/app.html?token=${encodeURIComponent(bootstrapToken)}`;
     await logger.info("bridge.start", { origin: bridge.origin, pid: process.pid });
-    process.stdout.write(`${JSON.stringify({ ok: true, reused: false, pid: process.pid, origin: bridge.origin, projectHandle: registered.projectHandle, url })}
+    process.stdout.write(`${JSON.stringify({ ok: true, reused: false, pid: process.pid, origin: bridge.origin, projectHandle: registered.projectHandle, url, dev: Boolean(runtimeStateDir) })}
 `);
     const shutdown = async () => {
       await logger.info("bridge.stop", { pid: process.pid });

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { access, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { constants, existsSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +12,7 @@ import MAP_TEMPLATE from '../map.template.json' with { type: 'json' };
 import { MCP_TOOL_DEFINITIONS } from './tool-definitions.generated.mjs';
 
 const ADAPTERS = Object.freeze(['codex', 'claude-code', 'kimi-code', 'antigravity']);
-const OPTIONAL_ADAPTERS = Object.freeze(['codebuddy']);
+const OPTIONAL_ADAPTERS = Object.freeze(['codebuddy', 'qoder', 'zcode']);
 const ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
 
 // 2026-08-15 全局化：插件（skill/MCP/hook）安装到用户 Agent 全局，项目里只放数据。
@@ -25,7 +25,13 @@ const skillTargetPaths = (home, id) => id === 'codex'
       ? join(home, '.kimi-code', 'plugins', 'live-dot-map', 'skills', 'live-dot-map', 'SKILL.md')
       : id === 'antigravity'
         ? null
-        : join(home, '.codebuddy', 'plugins', 'live-dot-map', 'skills', 'live-dot-map', 'SKILL.md');
+        : id === 'codebuddy'
+          ? join(home, '.codebuddy', 'plugins', 'live-dot-map', 'skills', 'live-dot-map', 'SKILL.md')
+          : id === 'zcode'
+            ? join(home, '.zcode', 'skills', 'live-dot-map', 'SKILL.md')
+            : (existsSync(join(home, '.qoder')) && !existsSync(join(home, '.qoder-cn'))
+                ? join(home, '.qoder', 'skills', 'live-dot-map', 'SKILL.md')
+                : join(home, '.qoder-cn', 'skills', 'live-dot-map', 'SKILL.md'));
 
 const kimiPluginRoot = (home) => join(home, '.kimi-code', 'plugins', 'live-dot-map');
 const codebuddyPluginRoot = (home) => join(home, '.codebuddy', 'plugins', 'live-dot-map');
@@ -36,22 +42,74 @@ const ADAPTER_PROBES = Object.freeze({
   'kimi-code': ['kimi', 'kimi-code'],
   antigravity: ['antigravity', 'agy'],
   codebuddy: ['codebuddy', 'codebuddy-code', 'workbuddy'],
+  qoder: ['qoder', 'qoderclicn', 'qodercli'],
+  zcode: ['zcode', 'zcodecli', 'glm'],
 });
 
 // 非 PATH 类指纹（GUI 应用常不注册命令）：路径存在即视为已安装。
 // Antigravity：%LOCALAPPDATA%\Programs\Antigravity\Antigravity.exe（官网默认安装位置）
 // 或 Program Files 直装；AGY IDE/CLI 的全局数据目录 ~/.gemini/antigravity-ide 也在列。
+// Qoder：~/.qoder-cn, ~/.qoder, %APPDATA%/QoderCN, %APPDATA%/Qoder 等。
+// ZCode：~/.zcode, %APPDATA%/ZCode, %LOCALAPPDATA%/@zcodedesktop-updater 等。
 function adapterFingerprints(id, { platform, home }) {
-  if (id !== 'antigravity') return [];
-  const local = process.env.LOCALAPPDATA;
-  const programFiles = process.env.ProgramFiles;
-  const out = [];
-  if (platform === 'win32') {
-    if (local) out.push(join(local, 'Programs', 'Antigravity', 'Antigravity.exe'));
-    if (programFiles) out.push(join(programFiles, 'Antigravity', 'Antigravity.exe'));
+  if (id === 'antigravity') {
+    const local = process.env.LOCALAPPDATA;
+    const programFiles = process.env.ProgramFiles;
+    const out = [];
+    if (platform === 'win32') {
+      if (local) out.push(join(local, 'Programs', 'Antigravity', 'Antigravity.exe'));
+      if (programFiles) out.push(join(programFiles, 'Antigravity', 'Antigravity.exe'));
+    }
+    out.push(join(home, '.gemini', 'antigravity-ide'));
+    return out;
   }
-  out.push(join(home, '.gemini', 'antigravity-ide'));
-  return out;
+  if (id === 'qoder') {
+    const out = [
+      join(home, '.qoder-cn'),
+      join(home, '.qoder'),
+    ];
+    const appData = process.env.APPDATA;
+    const local = process.env.LOCALAPPDATA;
+    const programFiles = process.env.ProgramFiles;
+    if (platform === 'win32') {
+      if (appData) {
+        out.push(join(appData, 'QoderCN'));
+        out.push(join(appData, 'Qoder'));
+      }
+      if (local) {
+        out.push(join(local, 'Programs', 'QoderCN', 'QoderCN.exe'));
+        out.push(join(local, 'Programs', 'Qoder', 'Qoder.exe'));
+      }
+      if (programFiles) {
+        out.push(join(programFiles, 'QoderCN', 'QoderCN.exe'));
+        out.push(join(programFiles, 'Qoder', 'Qoder.exe'));
+      }
+    }
+    return out;
+  }
+  if (id === 'zcode') {
+    const out = [
+      join(home, '.zcode'),
+    ];
+    const appData = process.env.APPDATA;
+    const local = process.env.LOCALAPPDATA;
+    const programFiles = process.env.ProgramFiles;
+    if (platform === 'win32') {
+      if (appData) {
+        out.push(join(appData, 'ZCode'));
+      }
+      if (local) {
+        out.push(join(local, '@zcodedesktop-updater'));
+        out.push(join(local, 'Programs', 'ZCode', 'ZCode.exe'));
+      }
+      if (programFiles) {
+        out.push(join(programFiles, 'ZCode', 'ZCode.exe'));
+      }
+      out.push('D:\\zcode\\ZCode.exe');
+    }
+    return out;
+  }
+  return [];
 }
 
 async function exists(path) {
@@ -101,15 +159,46 @@ async function restoreCapturedFile(entry) {
   }
 }
 
-const adapterConfigPaths = (home, id) => id === 'codex'
-  ? [join(home, '.codex', 'config.toml'), join(home, '.codex', 'hooks.json')]
-  : id === 'claude-code'
-    ? [join(home, '.claude', 'settings.json')]
-    : id === 'kimi-code'
-      ? [join(home, '.kimi-code', 'mcp.json'), join(kimiPluginRoot(home), 'kimi.plugin.json')]
-      : id === 'antigravity'
-        ? [join(home, '.gemini', 'config', 'mcp_config.json'), join(home, '.gemini', 'antigravity-ide', 'mcp_config.json')]
-        : [join(home, '.codebuddy', 'settings.json'), join(codebuddyPluginRoot(home), '.codebuddy-plugin', 'plugin.json'), join(codebuddyPluginRoot(home), '.workbuddy-plugin', 'plugin.json'), join(codebuddyPluginRoot(home), 'hooks', 'hooks.json')];
+function qoderConfigPaths(home) {
+  const paths = [
+    join(home, '.qoder-cn', 'mcp.json'),
+    join(home, '.qoder', 'mcp.json'),
+  ];
+  if (process.env.APPDATA && (process.env.APPDATA.startsWith(home) || home === homedir())) {
+    paths.push(
+      join(process.env.APPDATA, 'QoderCN', 'SharedClientCache', 'mcp.json'),
+      join(process.env.APPDATA, 'Qoder', 'SharedClientCache', 'mcp.json'),
+    );
+  }
+  return paths;
+}
+
+function zcodeConfigPaths(home) {
+  return [
+    join(home, '.zcode', 'cli', 'config.json'),
+  ];
+}
+
+const adapterConfigPaths = (home, id) => {
+  switch (id) {
+    case 'codex':
+      return [join(home, '.codex', 'config.toml'), join(home, '.codex', 'hooks.json')];
+    case 'claude-code':
+      return [join(home, '.claude', 'settings.json')];
+    case 'kimi-code':
+      return [join(home, '.kimi-code', 'mcp.json'), join(kimiPluginRoot(home), 'kimi.plugin.json')];
+    case 'antigravity':
+      return [join(home, '.gemini', 'config', 'mcp_config.json'), join(home, '.gemini', 'antigravity-ide', 'mcp_config.json')];
+    case 'codebuddy':
+      return [join(home, '.codebuddy', 'settings.json'), join(codebuddyPluginRoot(home), '.codebuddy-plugin', 'plugin.json'), join(codebuddyPluginRoot(home), '.workbuddy-plugin', 'plugin.json'), join(codebuddyPluginRoot(home), 'hooks', 'hooks.json')];
+    case 'qoder':
+      return qoderConfigPaths(home);
+    case 'zcode':
+      return zcodeConfigPaths(home);
+    default:
+      return [];
+  }
+};
 
 function seaRuntime() {
   return process.env.LIVEDOT_SEA === '1';
@@ -269,15 +358,38 @@ function mcpServerKey(mcp, agent) {
 
 function tomlString(value) { return JSON.stringify(String(value)); }
 
+export function stripCodexMcpBlock(toml) {
+  let text = String(toml || '').replace(/# BEGIN LIVE-DOT-MAP[\s\S]*?# END LIVE-DOT-MAP\s*/gi, '');
+  text = text.replace(/(?:^|\r?\n)[ \t]*\[\s*mcp_servers\s*\.\s*(?:"livedot-map"|'livedot-map'|livedot-map)\s*\][\s\S]*?(?=(?:\r?\n[ \t]*\[)|$)/gi, '');
+  return text.trim();
+}
+
+export function assertNoDuplicateTomlTables(text) {
+  const tableHeaders = [...String(text || '').matchAll(/^\s*\[([^\]]+)\]/gm)].map((m) => m[1].trim());
+  const seen = new Set();
+  for (const h of tableHeaders) {
+    const normalized = h.replace(/["']/g, '');
+    if (seen.has(normalized)) {
+      throw new Error(`TOML 配置写入前校验失败：发现重复 Table 表头 [${h}]，已中止写入以保护第三方工具配置`);
+    }
+    seen.add(normalized);
+  }
+}
+
 async function writeCodexConfig(home, nodeCommand, runtime) {
   const path = join(home, '.codex', 'config.toml');
   const begin = '# BEGIN LIVE-DOT-MAP';
   const end = '# END LIVE-DOT-MAP';
   const old = await readFile(path, 'utf8').catch(() => '');
-  const stripped = old.replace(new RegExp(`${begin}[\\s\\S]*?${end}\\s*`, 'g'), '').trimEnd();
+  const stripped = stripCodexMcpBlock(old);
   // 全局 MCP 配置不带 --project：桥 mcp 命令使用 Agent 当前工作目录。
   const block = [begin, '[mcp_servers."livedot-map"]', `command = ${tomlString(nodeCommand)}`, `args = [${[...runtimeArgs(runtime), 'mcp', '--agent', 'codex'].map(tomlString).join(', ')}]`, 'required = false', end].join('\n');
-  await atomicText(path, `${stripped ? `${stripped}\n\n` : ''}${block}\n`);
+  const newContent = `${stripped ? `${stripped}\n\n` : ''}${block}\n`;
+  // 严格的 TOML 表头去重与完整性校验，杜绝导致 ChatGPT 报错 duplicate key
+  assertNoDuplicateTomlTables(newContent);
+  if (newContent.trim() !== old.trim()) {
+    await atomicText(path, newContent);
+  }
   const hooksPath = join(home, '.codex', 'hooks.json');
   await atomicJson(hooksPath, mergeHooks(await readJson(hooksPath), hooksFor(nodeCommand, runtime, 'codex')));
   return [path, hooksPath];
@@ -386,6 +498,40 @@ async function writeCodeBuddyConfig(home, nodeCommand, runtime) {  const setting
   return [settingsPath, join(plugin, '.codebuddy-plugin', 'plugin.json'), join(plugin, '.workbuddy-plugin', 'plugin.json'), join(plugin, 'hooks', 'hooks.json')];
 }
 
+async function writeQoderConfig(home, nodeCommand, runtime) {
+  const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), 'mcp', '--agent', 'qoder'] };
+  const paths = qoderConfigPaths(home);
+  for (const path of paths) {
+    const mcp = await readJson(path);
+    const servers = mcp.mcpServers && typeof mcp.mcpServers === 'object' ? mcp.mcpServers : {};
+    servers['livedot-map'] = entry;
+    mcp.mcpServers = servers;
+    await atomicJson(path, mcp);
+  }
+  return paths;
+}
+
+async function writeZCodeConfig(home, nodeCommand, runtime) {
+  const entry = {
+    enabled: true,
+    command: nodeCommand,
+    args: [...runtimeArgs(runtime), 'mcp', '--agent', 'zcode'],
+    type: 'stdio',
+  };
+  const paths = zcodeConfigPaths(home);
+  for (const path of paths) {
+    const raw = await readJson(path, {});
+    const config = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    const mcp = (config.mcp && typeof config.mcp === 'object' && !Array.isArray(config.mcp)) ? config.mcp : {};
+    const servers = (mcp.servers && typeof mcp.servers === 'object' && !Array.isArray(mcp.servers)) ? mcp.servers : {};
+    servers['livedot-map'] = entry;
+    mcp.servers = servers;
+    config.mcp = mcp;
+    await atomicJson(path, config);
+  }
+  return paths;
+}
+
 export function adapterManifest({ sourceRoot = process.cwd() } = {}) {
   const root = resolve(sourceRoot instanceof URL ? fileURLToPath(sourceRoot) : sourceRoot);
   return Object.fromEntries(ALL_ADAPTERS.map((id) => [id, { id, optional: OPTIONAL_ADAPTERS.includes(id), source: join(root, 'adapters', id) }]));
@@ -394,7 +540,7 @@ export function adapterManifest({ sourceRoot = process.cwd() } = {}) {
 export async function installProject({
   projectRoot = process.cwd(), sourceRoot, runtimeSource, appPath, bridgeUrl = '', bridgeClient, register = true,
   createDesktopShortcut = true, offline = true, platform = process.platform, env = process.env, exec,
-  discoverAgents = true, detectedAgents = null, homeRoot = homedir(),
+  discoverAgents = true, detectedAgents = null, homeRoot = homedir(), targetAdapters = null,
 } = {}) {
   const root = resolve(projectRoot);
   const home = resolve(homeRoot);
@@ -423,8 +569,11 @@ export async function installProject({
     : discoverAgents
       ? await detectInstalledAdapters({ projectRoot: root, platform, homeRoot: home })
       : Object.fromEntries(ALL_ADAPTERS.map((id) => [id, { id, configured: false, executable: false, discovered: true }]));
-  const installed = {};
-  for (const id of ALL_ADAPTERS) if (detected[id]?.discovered) installed[id] = true;
+  const installed = targetAdapters ? { ...(old.installed && typeof old.installed === 'object' ? old.installed : {}) } : {};
+  for (const id of ALL_ADAPTERS) {
+    if (targetAdapters && !targetAdapters.includes(id)) continue;
+    if (detected[id]?.discovered) installed[id] = true;
+  }
   const backupPath = join(globalDataDir, 'backups', `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`);
   const beforeBackup = await captureFile(backupPath);
   const oldRuntime = runtime ? await captureFile(runtime) : { exists: false, kind: 'missing', path: null };
@@ -460,6 +609,7 @@ export async function installProject({
       await copyFile(sourceRuntime, runtime);
     }
     for (const id of Object.keys(installed)) {
+      if (targetAdapters && !targetAdapters.includes(id)) continue;
       const target = skillTargetPaths(home, id);
       if (!target) continue; // 适配器未确认 skills 布局（如 antigravity）时不复制
       await mkdir(dirname(target), { recursive: true });
@@ -488,11 +638,14 @@ export async function installProject({
       await atomicText(join(dataDir, 'active-map'), 'default\n');
       createdMapsLayout = true;
     }
-    if (installed.codex) await writeCodexConfig(home, nodeCommand, runtime);
-    if (installed['claude-code']) await writeClaudeConfig(home, nodeCommand, runtime);
-    if (installed['kimi-code']) await writeKimiConfig(home, nodeCommand, runtime);
-    if (installed.antigravity) await writeAntigravityConfig(home, nodeCommand, runtime);
-    if (installed.codebuddy) await writeCodeBuddyConfig(home, nodeCommand, runtime);
+    const shouldWrite = (id) => Boolean(installed[id]) && (!targetAdapters || targetAdapters.includes(id));
+    if (shouldWrite('codex')) await writeCodexConfig(home, nodeCommand, runtime);
+    if (shouldWrite('claude-code')) await writeClaudeConfig(home, nodeCommand, runtime);
+    if (shouldWrite('kimi-code')) await writeKimiConfig(home, nodeCommand, runtime);
+    if (shouldWrite('antigravity')) await writeAntigravityConfig(home, nodeCommand, runtime);
+    if (shouldWrite('codebuddy')) await writeCodeBuddyConfig(home, nodeCommand, runtime);
+    if (shouldWrite('qoder')) await writeQoderConfig(home, nodeCommand, runtime);
+    if (shouldWrite('zcode')) await writeZCodeConfig(home, nodeCommand, runtime);
     const config = {
       ...old, version: 2, projectId: old.projectId || projectId, projectRoot: root, runtime, runtimeMode: seaRuntime() ? 'sea' : 'node', nodeCommand, homeRoot: home, detectedAgents: detected,
       trust: { ...(old.trust && typeof old.trust === 'object' ? old.trust : {}), ...Object.fromEntries(Object.keys(installed).map((id) => [id, { acknowledged: old.trust?.[id]?.acknowledged === true, updatedAt: old.trust?.[id]?.updatedAt || null }])) },
@@ -506,7 +659,7 @@ export async function installProject({
     await atomicJson(configPath, config);
 
     const result = { ok: true, projectRoot: root, projectId: config.projectId, configPath, runtime, installed, detectedAgents: detected, bridge: { registered: true, mode: 'project-config' }, shortcut: null,
-      trustRequired: Object.fromEntries(Object.keys(installed).map((id) => [id, id === 'codex' ? '在 Codex 全局 hooks 中确认活点地图 hook（一次性）' : id === 'claude-code' ? '在 Claude Code 设置中确认 hooks 与 MCP（一次性）' : id === 'kimi-code' ? `在 Kimi 执行 /plugins install ${kimiPluginRoot(home)}` : '在 WorkBuddy/CodeBuddy 插件面板审核并启用 hooks 与 MCP'])), runtimePlan: runtimePlan({ offline }) };
+      trustRequired: Object.fromEntries(Object.keys(installed).map((id) => [id, id === 'codex' ? '在 Codex 全局 hooks 中确认活点地图 hook（一次性）' : id === 'claude-code' ? '在 Claude Code 设置中确认 hooks 与 MCP（一次性）' : id === 'kimi-code' ? `在 Kimi 执行 /plugins install ${kimiPluginRoot(home)}` : id === 'qoder' ? '在 Qoder 设置或命令面板中确认启用 livedot-map MCP（或重启生效）' : id === 'zcode' ? '在 ZCode 设置或 MCP 管理面板中确认启用 livedot-map MCP（或重启生效）' : '在 WorkBuddy/CodeBuddy 插件面板审核并启用 hooks 与 MCP'])), runtimePlan: runtimePlan({ offline }) };
     if (register && bridgeClient) { result.bridge.registration = await bridgeClient.openProject(root); result.bridge.mode = 'live-bridge'; }
     // The product installer owns the single user-facing “活点地图” entry.
     // Project configuration must not create a second shortcut that exposes a
@@ -592,6 +745,8 @@ export async function doctorProject({ projectRoot = process.cwd(), checkBridge =
   if (installed['kimi-code']) expected.push(['kimi-mcp', join(home, '.kimi-code', 'mcp.json')], ['kimi-plugin', join(kimiPluginRoot(home), 'kimi.plugin.json')]);
   if (installed.antigravity) expected.push(['antigravity-mcp', join(home, '.gemini', 'config', 'mcp_config.json')]);
   if (installed.codebuddy) expected.push(['codebuddy-hooks', join(home, '.codebuddy', 'settings.json')], ['codebuddy-plugin', join(codebuddyPluginRoot(home), '.codebuddy-plugin', 'plugin.json')]);
+  if (installed.qoder) expected.push(['qoder-mcp', existsSync(join(home, '.qoder-cn', 'mcp.json')) ? join(home, '.qoder-cn', 'mcp.json') : join(home, '.qoder', 'mcp.json')]);
+  if (installed.zcode) expected.push(['zcode-mcp', join(home, '.zcode', 'cli', 'config.json')]);
   const checks = [{ name: 'project-root', ok: await exists(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists(path), detail: path });
   // 地图存在性：多地图布局 maps/ 或单图老路径 map.json 任一即可
@@ -607,4 +762,4 @@ export async function doctorProject({ projectRoot = process.cwd(), checkBridge =
   return { ok: checks.every((check) => check.ok), projectRoot: root, configPath, checks, runtime: runtimePlan({ offline }) };
 }
 
-export { ADAPTERS };
+export { ADAPTERS, OPTIONAL_ADAPTERS, writeZCodeConfig };

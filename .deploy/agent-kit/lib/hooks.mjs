@@ -17,6 +17,9 @@ export function agentNameFromEnv(env = process.env, fallback = 'codex') {
   if (raw.includes('claude')) return 'claude';
   if (raw.includes('kimi')) return 'kimi';
   if (raw.includes('codebuddy') || raw.includes('workbuddy')) return 'codebuddy';
+  if (raw.includes('antigravity') || raw.includes('agy')) return 'antigravity';
+  if (raw.includes('qoder')) return 'qoder';
+  if (raw.includes('zcode') || raw.includes('glm')) return 'zcode';
   return 'codex';
 }
 

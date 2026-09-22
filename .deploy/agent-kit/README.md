@@ -1,6 +1,6 @@
 # agent-kit
 
-给 Codex、Claude Code、Kimi Code 和 WorkBuddy/CodeBuddy 的本地协作接入包。安装时自动检测当前可用 Agent，只写入检测到的平台配置；正式模式由一个 `livedot.mjs` 同时提供可靠存储、图检索、MCP 和 hooks。stdio MCP 进程是薄代理：`tools/call` 转发给常驻桥（地图唯一写者），桥未运行时会自动拉起；`LIVEDOT_MCP_LOCAL=1` 可临时回退旧的就地模式。
+给 Codex、Claude Code、Kimi Code、WorkBuddy/CodeBuddy 以及 Qoder 系列产品的本地协作接入包。安装时自动检测当前可用 Agent，只写入检测到的平台配置；正式模式由一个 `livedot.mjs` 同时提供可靠存储、图检索、MCP 和 hooks。stdio MCP 进程是薄代理：`tools/call` 转发给常驻桥（地图唯一写者），桥未运行时会自动拉起；`LIVEDOT_MCP_LOCAL=1` 可临时回退旧的就地模式。
 
 ## 一句接入
 
@@ -34,7 +34,7 @@ Agent 自动探索最多新增 5 个活跃节点、其中最多 2 个项目级�
 - `setup.md`：一键接入与无 Node 兜底。
 - `AGENTS.snippet.md`：通用协议摘要。
 - `map.template.json`：v2 空白地图。
-- `adapters/`：三家首发 Agent 的官方目录/schema，以及 CodeBuddy CLI / WorkBuddy 桌面适配层。
+- `adapters/`：主流 Agent 的官方目录/schema，以及 CodeBuddy、Qoder 系列桌面与 CLI 适配层。
 - `bin/`、`lib/`：源码 checkout 的安装与测试工具；发布时功能已打进根 `livedot.mjs`。
 
 ## 真实 Codex 验收（维护者）

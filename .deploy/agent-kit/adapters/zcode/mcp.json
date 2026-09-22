@@ -1,0 +1,17 @@
+{
+  "mcp": {
+    "servers": {
+      "livedot-map": {
+        "enabled": true,
+        "command": "node",
+        "args": [
+          ".live-dot-map/livedot.mjs",
+          "mcp",
+          "--agent",
+          "zcode"
+        ],
+        "type": "stdio"
+      }
+    }
+  }
+}
