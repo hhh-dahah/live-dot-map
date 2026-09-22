@@ -66,3 +66,7 @@ _共享资产*/
 /LiveDotMap-Test/
 # 第三方技能自带 git 元数据
 .agents/skills/patent-disclosure-skill/.git/
+
+
+# 工作文档仅本地保留，不进开源仓库
+/docs/

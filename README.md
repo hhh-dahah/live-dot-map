@@ -78,7 +78,6 @@ npm test        # 113 项单元与闭环测试
 - `agent-kit/` — 各 Agent CLI 的项目适配器与接入文档。
 - `landing/` — 落地页源码（Next.js 静态导出）。
 - `installer/` — Windows 安装器（WinForms）。
-- `docs/` — PRD、实测记录、执行计划与交接摘要。
 
 ## 当前状态
 
