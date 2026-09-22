@@ -871,9 +871,11 @@ export async function createBridgeServer({
   }
 
   // 外部条目白名单：只允许腾讯云平台托管域名（平台已完成备案，可用于大文件分发）。
-  // 桥 exe ~88MB 超 EdgeOne 静态站点 25MiB 单文件限制，改由 CloudBase 静态托管分发，
+  // 桥 exe ~88MB 超 EdgeOne 静态站点 25MiB 单文件限制，改由对象存储/CloudBase 分发，
   // manifest 里该条目标记 external:true。域名后缀白名单防止清单被篡改后读取任意地址。
-  const UPDATE_EXTERNAL_HOST_SUFFIXES = ['.tcloudbaseapp.com', '.tcb.qcloud.la'];
+  // .tcloudbaseapp.com = CloudBase 静态托管；.tcb.qcloud.la = CloudBase 云存储默认域名；
+  // .cos.<region>.myqcloud.com = COS 对象存储桶默认域名（发布脚本超限 payload 的分发位）。
+  const UPDATE_EXTERNAL_HOST_SUFFIXES = ['.tcloudbaseapp.com', '.tcb.qcloud.la', '.myqcloud.com'];
 
   function assertAllowedExternalUrl(url, label) {
     let parsed;

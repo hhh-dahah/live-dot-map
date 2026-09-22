@@ -4,7 +4,7 @@
 //   → 校验产物与更新通道三件套 hash 自洽 → 生成 .edgeone-deploy
 //   → 默认只打印变更清单与建议的 commit 命令；--push 才真正 git add/commit/push。
 //
-// 通道事实（2026-08 核实）：
+// 通道事实（2026-09-22 事故复盘后更新）：
 // - 发布通道 = master 分支 .deploy/ → EdgeOne Makers 自动部署到 livedotmap.top。
 // - 桥端 /api/v1/update/apply 只接受清单里的相对 url，从 https://livedotmap.top/windows-installer/ 下载；
 //   清单没有 installer 字段时回退用本地已安装的 exe 执行切换（src/bridge/server.mjs applyUpdate）。
@@ -12,10 +12,14 @@
 //   （.gitignore 已排除；安装器本体按仓库约定走 GitHub Release 附件分发）。
 //   因此发布时从通道 update-manifest.json 摘除 installer 字段，让桥走本地 exe 回退，
 //   避免线上 404 导致 UPDATE_DOWNLOAD_FAILED。
+// - payload 超 EdgeOne 25MiB 单文件限的文件（如桥 exe ~88MB）发布时强制上传 COS，
+//   并由 edgeone.json redirects 把通道相对地址重定向过去——存量桥（2.0.1/2.0.2）
+//   只认相对地址，没有重定向它们就永远 404；该步骤校验不过 = 发布中止。
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { access, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -173,6 +177,75 @@ await step('安装器本体通道决策', '若 exe 实际可走通道（如更�
   console.log(`  sha256：${await fileDigest(setupExePath)}`);
 });
 
+// ---- 5b. 超 EdgeOne 25MiB 的 payload：上传 COS + 校验 EdgeOne 重定向守卫 ----
+// 桥 exe 等超限文件无法进 EdgeOne 静态站点（25MiB 单文件硬限），部署到 COS 后由
+// edgeone.json 的 redirects 把通道相对地址重定向过去：存量客户端（相对地址）与
+// 外部条目（external:true + 白名单域名）都能拉到。守卫不通过 = 发布直接失败，
+// 杜绝再出现"清单引用了一个线上不存在的文件"这种 404 断更事故（2026-09-22 事故）。
+function cosCall(cos, method, params) {
+  return new Promise((ok, bad) => cos[method](params, (err, data) => (err ? bad(err) : ok(data))));
+}
+
+async function readCosCredentials() {
+  // 惰性加载：只在真有超限文件时才需要 COS SDK（devDependencies: cos-nodejs-sdk-v5）。
+  const { default: COS } = await import('cos-nodejs-sdk-v5');
+  const credPath = join(homedir(), '.livedot', 'cos.json');
+  let cred = {};
+  try { cred = JSON.parse(await readFile(credPath, 'utf8')); } catch { /* 缺文件时回退环境变量 */ }
+  const SecretId = process.env.TENCENT_SECRET_ID || cred.SecretId;
+  const SecretKey = process.env.TENCENT_SECRET_KEY || cred.SecretKey;
+  assert.ok(SecretId && SecretKey, `缺少 COS 密钥：请准备 ${credPath}（含 SecretId/SecretKey），或设置 TENCENT_SECRET_ID / TENCENT_SECRET_KEY`);
+  const cos = new COS({ SecretId, SecretKey });
+  const buckets = (await cosCall(cos, 'getService', {})).Buckets || [];
+  const wanted = process.env.COS_BUCKET || cred.bucket;
+  const target = wanted ? buckets.find((b) => b.Name === wanted) : buckets[0];
+  assert.ok(target, wanted
+    ? `COS_BUCKET=${wanted} 在该密钥下不存在（现有：${buckets.map((b) => b.Name).join(', ') || '无'}）`
+    : `该密钥下没有可见 COS 桶；请创建后写入 ${credPath} 的 bucket 字段`);
+  assert.ok(buckets.length === 1 || wanted, `该密钥下有 ${buckets.length} 个桶，请在 cos.json 写入 bucket 字段或设 COS_BUCKET 显式指定`);
+  return { cos, bucket: target.Name, region: target.Location };
+}
+
+await step('超限 payload 上传 COS + EdgeOne 重定向守卫', '确认 COS 密钥可用（~/.livedot/cos.json）且 edgeone.json 的 redirects 覆盖每个超限文件。', async () => {
+  const oversize = [];
+  for (const file of await enumerateFiles(join(updateDir, 'payload'))) {
+    if ((await stat(file)).size > EDGEONE_FILE_LIMIT) {
+      oversize.push({ file, entry: relative(updateDir, file).replaceAll('\\', '/') });
+    }
+  }
+  if (!oversize.length) {
+    console.log('所有 payload 均未超 EdgeOne 25MiB 限制，跳过 COS 分发。');
+    return;
+  }
+  const { cos, bucket, region } = await readCosCredentials();
+  const bucketHost = `${bucket}.cos.${region}.myqcloud.com`;
+  for (const item of oversize) {
+    const key = `livedot-update/${item.entry}`;
+    const remoteUrl = `https://${bucketHost}/${key}`;
+    const meta = updateManifest.files[item.entry];
+    assert.ok(meta, `清单缺少超限文件条目：${item.entry}`);
+    await cosCall(cos, 'uploadFile', { Bucket: bucket, Region: region, Key: key, FilePath: item.file, EnableMD5: false });
+    await cosCall(cos, 'putObjectAcl', { Bucket: bucket, Region: region, Key: key, ACL: 'public-read' });
+    // 上传后立即回读校验：大小与 sha256 都必须和清单一致，防止把坏包挂上通道。
+    const head = await fetch(remoteUrl, { method: 'HEAD' });
+    assert.equal(head.status, 200, `COS 回读失败（HTTP ${head.status}）：${remoteUrl}`);
+    assert.equal(Number(head.headers.get('content-length')), meta.bytes, `COS 文件大小与清单不一致：${remoteUrl}`);
+    const downloaded = Buffer.from(await (await fetch(remoteUrl)).arrayBuffer());
+    assert.equal(sha256(downloaded), meta.sha256, `COS 内容 sha256 与清单不一致：${remoteUrl}`);
+    console.log(`✓ ${item.entry}（${mb(meta.bytes)}）→ ${remoteUrl}`);
+  }
+  // 守卫：每个超限文件必须有 EdgeOne 重定向，把通道相对地址指到刚才的 COS 分发位。
+  const edgeoneConfig = JSON.parse(await readFile(join(root, 'edgeone.json'), 'utf8'));
+  const redirects = edgeoneConfig.redirects || [];
+  for (const item of oversize) {
+    const source = `/windows-installer/${item.entry}`;
+    const rule = redirects.find((candidate) => candidate.source === source);
+    assert.ok(rule, `edgeone.json 缺少重定向规则：${source} —— 存量客户端只能从通道域名拉取该文件，没有重定向就是断更`);
+    assert.ok(String(rule.destination).startsWith(`https://${bucketHost}/`), `edgeone.json 重定向目标与 COS 分发位不一致：${source} → ${rule.destination}`);
+  }
+  console.log(`重定向守卫通过：${oversize.length} 个超限文件均有 COS 分发与 EdgeOne 重定向兜底。`);
+});
+
 // ---- 6. EdgeOne 静态输出 ----------------------------------------------------
 await step('生成 .edgeone-deploy', '单独跑 npm run build:edgeone 复现；它只做 .deploy → .edgeone-deploy 的复制与剔除。', () => run(npm, ['run', 'build:edgeone'], { shell: true }));
 
@@ -203,16 +276,7 @@ await step('准备 git 变更清单', 'git 命令失败时手工执行打印出�
   console.log('  M .deploy/windows-installer/update-manifest.json');
   console.log('  ? .deploy/windows-installer/payload/**（首次进 git：旧布局顶层文件将删除，改为 payload/ 布局）');
   console.log('  M .deploy/release-manifest.json / .deploy/livedot.mjs / .deploy/app.html 等构建产物');
-  // 大文件体检：payload 里超 EdgeOne 25MiB 的文件会给部署带来风险，必须显眼提示。
-  const payloadFiles = await enumerateFiles(join(updateDir, 'payload'));
-  for (const file of payloadFiles) {
-    const size = (await stat(file)).size;
-    if (size > EDGEONE_FILE_LIMIT) {
-      console.log(`  ⚠ ${relative(updateDir, file)} = ${mb(size)}，超 EdgeOne 25MiB 单文件限制：`);
-      console.log('    它必须进 git 通道否则产品内更新拿不到新桥本体；但若 EdgeOne 部署因此失败，');
-      console.log('    需要为桥二进制另找托管（桥端只认通道相对 url，届时再改桥）。本次先按现状提交。');
-    }
-  }
+  // 超限 payload 的分发已在前面"上传 COS + 重定向守卫"步骤强制完成，这里不再放行未处理的风险。
   const other = lines.filter((line) => !line.includes('.deploy/') && !line.includes('package.json') && !line.includes('.gitignore'));
   if (other.length) {
     console.log(`  注意：还有 ${other.length} 项与发布无关的在制品变更会被 git add -A 一并提交，推送前请人工过目：`);

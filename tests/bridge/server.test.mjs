@@ -1076,6 +1076,80 @@ test('update apply reports already up to date when hashes match', async (test) =
   assert.equal(spawned.length, 0);
 });
 
+// 把通道清单里某个条目改写成 external 绝对地址（模拟超限大文件走对象存储分发）。
+async function externalizeChannelEntry(channel, name, url) {
+  const manifestPath = join(channel.root, 'update-manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const content = manifest.files[name];
+  assert.ok(content, `测试通道清单缺少条目 ${name}`);
+  manifest.files[name] = { bytes: content.bytes, sha256: content.sha256, url, external: true };
+  await writeFile(manifestPath, JSON.stringify(manifest));
+}
+
+test('update apply accepts external entries on COS default domains and reports download failures downstream', async (test) => {
+  const spawned = [];
+  const content = '<html>external-new</html>';
+  const channel = await makeChannel(test, { version: '2.0.1', payloadHash: 'remote-hash', files: { 'app.html': content } });
+  // .cos.<region>.myqcloud.com 是 COS 桶默认域名，在白名单内；白名单放行后才会进入
+  // 下载环节——该测试域名不存在，因此以 UPDATE_DOWNLOAD_FAILED（而非清单被拒）作为放行证据。
+  await externalizeChannelEntry(channel, 'app.html', 'https://livedot-update-bucket.cos.ap-chengdu.myqcloud.com/livedot-update/payload/app.html');
+  const installRoot = await makeInstallRoot(test, { version: '2.0.0', payloadHash: 'local-hash' });
+  const { server } = await startServer(test, {
+    updateBase: channel.url,
+    installRoot,
+    restartOnUpdate: false,
+    spawnUpdater: (exe, args) => spawned.push([exe, args]),
+  });
+  const session = await establishSession(server);
+
+  const applied = await fetch(`${server.origin}/update/apply`, { method: 'POST', headers: authHeaders(session) });
+  assert.equal(applied.status, 502);
+  assert.equal((await applied.json()).error.code, 'UPDATE_DOWNLOAD_FAILED');
+  assert.equal(spawned.length, 0);
+});
+
+test('update apply rejects external entries on hosts outside the whitelist', async (test) => {
+  const spawned = [];
+  const channel = await makeChannel(test, { version: '2.0.1', payloadHash: 'remote-hash', files: { 'app.html': '<html>x</html>' } });
+  await externalizeChannelEntry(channel, 'app.html', 'https://evil.example.com/payload/app.html');
+  const installRoot = await makeInstallRoot(test, { version: '2.0.0', payloadHash: 'local-hash' });
+  const { server } = await startServer(test, {
+    updateBase: channel.url,
+    installRoot,
+    restartOnUpdate: false,
+    spawnUpdater: (exe, args) => spawned.push([exe, args]),
+  });
+  const session = await establishSession(server);
+
+  const applied = await fetch(`${server.origin}/update/apply`, { method: 'POST', headers: authHeaders(session) });
+  assert.equal(applied.status, 502);
+  const body = await applied.json();
+  assert.equal(body.error.code, 'UPDATE_MANIFEST_INVALID');
+  assert.match(body.error.message, /域名不在白名单/);
+  assert.equal(spawned.length, 0);
+});
+
+test('update apply rejects external entries that are not https', async (test) => {
+  const spawned = [];
+  const channel = await makeChannel(test, { version: '2.0.1', payloadHash: 'remote-hash', files: { 'app.html': '<html>x</html>' } });
+  await externalizeChannelEntry(channel, 'app.html', 'http://livedot-update-bucket.cos.ap-chengdu.myqcloud.com/livedot-update/payload/app.html');
+  const installRoot = await makeInstallRoot(test, { version: '2.0.0', payloadHash: 'local-hash' });
+  const { server } = await startServer(test, {
+    updateBase: channel.url,
+    installRoot,
+    restartOnUpdate: false,
+    spawnUpdater: (exe, args) => spawned.push([exe, args]),
+  });
+  const session = await establishSession(server);
+
+  const applied = await fetch(`${server.origin}/update/apply`, { method: 'POST', headers: authHeaders(session) });
+  assert.equal(applied.status, 502);
+  const body = await applied.json();
+  assert.equal(body.error.code, 'UPDATE_MANIFEST_INVALID');
+  assert.match(body.error.message, /必须为 https/);
+  assert.equal(spawned.length, 0);
+});
+
 test('control shutdown requires the control token and triggers the injected shutdown handler', async (test) => {
   const controlToken = 'shutdown-token-for-test';
   let shutdownCalls = 0;
