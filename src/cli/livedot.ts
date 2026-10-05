@@ -32,6 +32,7 @@ import {
   readAgentWatermark,
   writeAgentWatermark,
 } from '../../agent-kit/lib/hook-notice.mjs';
+import { AGENT_COMMANDS, runAgentCli, type CliGlobals } from './agent-cli.ts';
 
 if (isSea()) process.env.LIVEDOT_SEA = '1';
 
@@ -245,6 +246,12 @@ function compactHookContext(value: unknown): Json {
 
 const toolDefinitions = TOOL_DEFINITIONS;
 
+// 一个 MCP 进程 = 一次 Agent 会话：map_read 据此对同一 etag 的正文只发一次。
+const MCP_SESSION_ID = `mcp-${randomUUID()}`;
+function withSession(name: string, args: Json): Json {
+  return name === 'map_read' && !args.sessionId ? { ...args, sessionId: MCP_SESSION_ID } : args;
+}
+
 // ---- B1：MCP 薄代理 ----
 // tools/call 一律转发给常驻桥（地图唯一写者），MCP 进程本身不再加载
 // MapManager/ToolService。initialize/tools/list 仍本地静态应答，保证会话启动快、
@@ -369,7 +376,7 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
       else if (request.method === 'tools/call') {
         const params = request.params as Json;
         const name = String(params.name);
-        const callArgs = (params.arguments as Json) ?? {};
+        const callArgs = withSession(name, (params.arguments as Json) ?? {});
         const explicitProject = typeof callArgs.projectRoot === 'string' && callArgs.projectRoot.trim()
           ? String(callArgs.projectRoot).trim()
           : (typeof callArgs.project === 'string' && callArgs.project.trim() ? String(callArgs.project).trim() : null);
@@ -472,7 +479,7 @@ async function runMcpLocal(projectRoot: string, actor: string): Promise<void> {
             entries.set(targetRoot, entry);
           }
           currentRoot = targetRoot;
-          const value = await entry.tools.dispatch(String(params.name), (params.arguments as Json) ?? {});
+          const value = await entry.tools.dispatch(String(params.name), withSession(String(params.name), (params.arguments as Json) ?? {}));
           result = toolTextResult(value);
         }
       } else throw Object.assign(new Error(`未知方法 ${String(request.method)}`), { code: -32601 });
@@ -488,6 +495,41 @@ async function runMcpLocal(projectRoot: string, actor: string): Promise<void> {
     }
   }
   for (const entry of entries.values()) await entry.manager.close().catch(() => undefined);
+}
+
+/** Agent CLI（livedot look/read/…）：与 MCP 薄代理同一条路径，桥起不来时才就地执行。 */
+async function callAgentTool(name: string, args: Json, globals: CliGlobals): Promise<unknown> {
+  const explicit = globals.project ? resolve(globals.project) : null;
+  const fallback = explicit ?? resolve(process.cwd());
+  let root = await resolveProjectRootToUse(explicit, fallback);
+  let qualification = await inspectProjectQualification(root);
+  if (!qualification.ok && root !== fallback) {
+    root = fallback;
+    qualification = await inspectProjectQualification(root);
+  }
+  if (!qualification.ok) {
+    throw Object.assign(new Error(`${qualification.message ?? '没有可用的活点地图项目'}（项目目录：${root}；用 --project 指定）`), { code: qualification.code ?? 'PROJECT_NOT_INITIALIZED' });
+  }
+  const actor = `agent:${globals.agent || 'cli'}`;
+  const options: McpOptions = {
+    runtimeStateDir: globals.runtimeStateDir ? resolve(globals.runtimeStateDir) : undefined,
+    appPath: globals.app ? resolve(globals.app) : undefined,
+  };
+  if (process.env.LIVEDOT_MCP_LOCAL !== '1') {
+    try {
+      const bridge = await ensureBridge(root, options);
+      return await forwardToolCall(bridge, root, actor, name, args);
+    } catch (error) {
+      if (!(error as { proxyFailure?: boolean })?.proxyFailure) throw error;
+    }
+  }
+  const shared = await loadSharedAdapter();
+  const manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
+  try {
+    return await new ToolService({ mapManager: manager, shared, actor, projectHandle: 'cli' }).dispatch(name, args);
+  } finally {
+    await manager.close().catch(() => undefined);
+  }
 }
 
 async function runMcp(projectRoot: string, actor: string, options: McpOptions = {}): Promise<void> {
@@ -592,7 +634,12 @@ function markDevCanvas(html: string): string {
 }
 
 async function main(): Promise<void> {
-  const { command, args } = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (AGENT_COMMANDS.has(argv[0] ?? '') || argv[0] === 'help' || argv[0] === '--help' || argv[0] === '-h') {
+    process.exitCode = await runAgentCli(argv, callAgentTool);
+    return;
+  }
+  const { command, args } = parseArgs(argv);
   if (command === 'serve') {
     const logger = createLogger({ source: 'bridge' });
     // Git linked worktree（如 live-dot-map-adapter 工位）直接注册主仓库根：
@@ -776,7 +823,7 @@ async function main(): Promise<void> {
     if (!result.ok && result.reason !== 'not-installed') process.exitCode = 1;
     return;
   }
-  process.stdout.write('活点地图 v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n');
+  process.stdout.write('活点地图 v2\n  Agent 命令：livedot.mjs look|read|write|note|analyze|manage …（详见 livedot.mjs --help）\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n');
 }
 
 void main().catch(async (error) => {

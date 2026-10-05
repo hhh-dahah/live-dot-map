@@ -145,11 +145,11 @@ test('livedot hook: per-agent watermarks, no self echo, one short line, Stop nev
 
 test('agent-kit MCP adapter returns a single compact text block', async () => {
   const server = new MapMcpServer({ client: { mcp: async () => ({ ok: true, nested: { list: [1, 2] } }) } });
-  const ok = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'map_validate', arguments: {} } });
+  const ok = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'map_look', arguments: {} } });
   assert.equal(ok.result.structuredContent, undefined);
   assert.equal(ok.result.content[0].text, '{"ok":true,"nested":{"list":[1,2]}}');
   const failing = new MapMcpServer({ client: { mcp: async () => { throw Object.assign(new Error('坏了'), { code: 'BOOM' }); } } });
-  const error = await failing.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'map_validate', arguments: {} } });
+  const error = await failing.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'map_look', arguments: {} } });
   assert.equal(error.result.isError, true);
   assert.equal(error.result.structuredContent, undefined);
   assert.equal(error.result.content[0].text, '{"ok":false,"code":"BOOM","message":"坏了"}');

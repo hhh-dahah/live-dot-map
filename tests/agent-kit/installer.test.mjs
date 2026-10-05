@@ -32,7 +32,7 @@ test('install writes global agent plugins while keeping the project data-only', 
   const dataEntries = await readdir(join(root, '.live-dot-map'));
   assert.equal(dataEntries.includes('hook.cmd'), false, 'project must not contain hook.cmd');
   // 全局插件：skill / MCP / hooks 在用户 home 下。
-  assert.match(await readFile(join(home, '.codex', 'skills', 'live-dot-map', 'SKILL.md'), 'utf8'), /map_plan_consolidation/);
+  assert.match(await readFile(join(home, '.codex', 'skills', 'live-dot-map', 'SKILL.md'), 'utf8'), /livedot look/);
   const map = JSON.parse(await readFile(join(root, '.live-dot-map', 'maps', 'default', 'map.json'), 'utf8'));
   assert.equal(map.version, 2);
   assert.equal(map.mapId, result.projectId);
@@ -245,7 +245,7 @@ test('qoder adapter: directory fingerprint probe discovers Qoder and writes mcp.
   assert.equal(server.args.includes('--project'), false, '全局 MCP 配置不带 --project');
   // 检查 Skill 安装到 ~/.qoder-cn/skills/live-dot-map/SKILL.md
   const skillContent = await readFile(join(home, '.qoder-cn', 'skills', 'live-dot-map', 'SKILL.md'), 'utf8');
-  assert.match(skillContent, /map_plan_consolidation/);
+  assert.match(skillContent, /livedot look/);
   // doctor 认可 qoder 安装项
   const doctor = await doctorProject({ projectRoot: root, homeRoot: home, checkBridge: false });
   assert.equal(doctor.ok, true);
@@ -307,7 +307,7 @@ test('zcode adapter: directory fingerprint probe discovers ZCode and writes mcp.
 
   // 3. 验证 Skill 安装到 ~/.zcode/skills/live-dot-map/SKILL.md
   const skillContent = await readFile(join(home, '.zcode', 'skills', 'live-dot-map', 'SKILL.md'), 'utf8');
-  assert.match(skillContent, /map_plan_consolidation/);
+  assert.match(skillContent, /livedot look/);
 
   // 4. doctor 认可 zcode 安装项
   const doctor = await doctorProject({ projectRoot: root, homeRoot: home, checkBridge: false });

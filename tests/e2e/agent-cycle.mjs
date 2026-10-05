@@ -45,7 +45,7 @@ async function mcp(project, agent, calls) {
   const listed = await request('tools/list');
   const toolNames = listed.result?.tools?.map((tool) => tool.name) || [];
   assert.equal(toolNames.some((name) => /purge/i.test(String(name))), false, `${agent}: purge must not be exposed as an Agent tool`);
-  assert.ok(toolNames.includes('map_archive_bundle_file') && toolNames.includes('map_restore_bundle_file'), `${agent}: bundle archive/restore tools are missing`);
+  assert.deepEqual(toolNames, ['map_look', 'map_read', 'map_write', 'analysis_run', 'map_manage'], `${agent}: tools/list 只发布 5 个 Agent 工具`);
   const results = [];
   for (const [name, args, expectedError] of calls) {
     const response = await request('tools/call', { name, arguments: args });
