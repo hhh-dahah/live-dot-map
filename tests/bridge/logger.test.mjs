@@ -8,6 +8,7 @@ import { temporaryProject } from './helpers.mjs';
 
 const TEST_ROOT_DIR = process.env.LIVEDOT_TEST_ROOT || 'D:\\LiveDotMap-Test';
 process.env.LIVEDOT_RECENT_PROJECTS_FILE = join(TEST_ROOT_DIR, 'recent-projects-logger-test.json');
+process.env.LIVEDOT_CURRENT_PROJECT_FILE = join(TEST_ROOT_DIR, 'current-project-logger-test.json');
 
 const APP_ORIGIN = 'https://app.example.test';
 

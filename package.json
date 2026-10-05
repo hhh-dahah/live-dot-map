@@ -19,7 +19,7 @@
     "start-task": "node scripts/start-task.mjs",
     "dev": "node scripts/dev-serve.mjs",
     "build": "npm run build:core && npm run build:app && npm run build:bridge",
-    "test": "npm run build:core && node --test tests/**/*.test.mjs",
+    "test": "npm run build:core && node scripts/test-isolated.mjs",
     "test:core": "npm run build:core && node --test tests/core/*.test.mjs",
     "verify:core": "npm run test:core",
     "verify:web": "npm run build:app && node --test tests/web/*.test.mjs tests/e2e/fallback-browser.mjs tests/e2e/performance.mjs",
