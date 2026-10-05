@@ -58,7 +58,8 @@ test('MCP fail-open keeps transport alive and never initializes an empty project
     assert.equal(responses[0].result.serverInfo.name, 'live-dot-map');
     assert.ok(responses[1].result.tools.length > 0);
     assert.equal(responses[2].result.isError, true);
-    assert.equal(responses[2].result.structuredContent.error.code, 'PROJECT_NOT_INITIALIZED');
+    assert.equal(responses[2].result.structuredContent, undefined);
+    assert.equal(JSON.parse(responses[2].result.content[0].text).error.code, 'PROJECT_NOT_INITIALIZED');
     assert.deepEqual(await readdir(root), before);
   } finally {
     await rm(root, { recursive: true, force: true });

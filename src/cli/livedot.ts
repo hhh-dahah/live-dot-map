@@ -203,11 +203,12 @@ async function inspectProjectQualification(projectRoot: string): Promise<Project
 function unavailableToolResult(qualification: ProjectQualification): Json {
   const code = qualification.code ?? 'PROJECT_NOT_INITIALIZED';
   const message = qualification.message ?? '当前目录没有可用的活点地图项目。';
-  return {
-    isError: true,
-    content: [{ type: 'text', text: `[活点地图] ${message}` }],
-    structuredContent: { ok: false, error: { code, message } },
-  };
+  return { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, error: { code, message } }) }] };
+}
+
+// 只发一份紧凑文本：content 与 structuredContent 同发会让 Agent 上下文里同一份数据出现两次。
+function toolTextResult(value: unknown): Json {
+  return { content: [{ type: 'text', text: JSON.stringify(value === undefined ? null : value) }] };
 }
 
 function envelope(projectId: string, revision: number, actor: string, sessionId: string, commands: Json[]): Json {
@@ -404,7 +405,7 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
             }
           }
           if (lastError) throw lastError;
-          result = { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value };
+          result = toolTextResult(value);
         }
       } else throw Object.assign(new Error(`未知方法 ${String(request.method)}`), { code: -32601 });
       process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, result })}\n`);
@@ -464,7 +465,7 @@ async function runMcpLocal(projectRoot: string, actor: string): Promise<void> {
           }
           currentRoot = targetRoot;
           const value = await entry.tools.dispatch(String(params.name), (params.arguments as Json) ?? {});
-          result = { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value };
+          result = toolTextResult(value);
         }
       } else throw Object.assign(new Error(`未知方法 ${String(request.method)}`), { code: -32601 });
       if (qualification.ok) await recordAgentHealth(root, actor, `mcp:${String(request.method === 'tools/call' ? (request.params as Json)?.name ?? 'call' : request.method)}`, 'ok');

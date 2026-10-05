@@ -41,6 +41,10 @@ function call(method, params = {}) {
   });
 }
 
+function toolValue(response) {
+  return response.result?.structuredContent ?? JSON.parse(response.result?.content?.[0]?.text || '{}');
+}
+
 function fail(message) {
   console.error('❌', message);
   child.kill();
@@ -69,11 +73,11 @@ try {
   if (read.error) fail(`read(owner) 失败: ${read.error.message}`);
   const write = await call('tools/call', { name: 'map_write_markdown', arguments: {
     ownerKind: 'node', ownerId: 'e2e-node', fileName: 'index.md',
-    content: '# E2E节点\n\nowner 参数写入成功', baseEtag: read.result.structuredContent.etag,
+    content: '# E2E节点\n\nowner 参数写入成功', baseEtag: toolValue(read).etag,
   } });
   if (write.error) fail(`write(owner) 失败: ${write.error.message}`);
   const readback = await call('tools/call', { name: 'map_read_markdown', arguments: { ownerKind: 'node', ownerId: 'e2e-node', fileName: 'index.md' } });
-  const content = readback.result.structuredContent.content;
+  const content = toolValue(readback).content;
   if (!content.includes('owner 参数写入成功')) fail('owner 参数写入未生效');
 
   // bug2b：append 用 path 参数
@@ -83,7 +87,7 @@ try {
   } });
   if (append.error) fail(`append(path) 失败: ${append.error.message}`);
   const readback2 = await call('tools/call', { name: 'map_read_markdown', arguments: { ownerKind: 'node', ownerId: 'e2e-node', fileName: 'index.md' } });
-  if (!readback2.result.structuredContent.content.includes('append path 追加成功')) fail('append 未生效');
+  if (!toolValue(readback2).content.includes('append path 追加成功')) fail('append 未生效');
   console.log('✔ bug2：owner 写 / path 追加 均成功');
 
   // bug2c：建节点即建文件 + 卡片（v8 链路的 real 证据）

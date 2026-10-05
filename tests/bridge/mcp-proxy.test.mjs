@@ -131,7 +131,10 @@ test('mcp proxy ignites the bridge on first tools/call and forwards to it', asyn
 
     const call = await client.request('tools/call', { name: 'map_get_context', arguments: {} });
     assert.equal(call.error, undefined, `tools/call 失败: ${JSON.stringify(call.error)}`);
-    assert.match(call.result.structuredContent.projectHandle, /^ph_/);
+    assert.equal(call.result.structuredContent, undefined, 'tools/call 只发一份 content');
+    const text = call.result.content[0].text;
+    assert.equal(text, JSON.stringify(JSON.parse(text)), 'content 文本应为紧凑 JSON');
+    assert.match(JSON.parse(text).projectHandle, /^ph_/);
     assert.equal(await exists(join(runtime, 'bridge.json')), true, '首次 tools/call 应已点火桥');
   } finally {
     await bag.cleanupAll();
@@ -149,7 +152,8 @@ test('mcp proxy fail-open on an uninitialized directory without igniting the bri
     const call = await client.request('tools/call', { name: 'map_get_context', arguments: {} });
     assert.equal(call.error, undefined);
     assert.equal(call.result.isError, true);
-    assert.equal(call.result.structuredContent.error.code, 'PROJECT_NOT_INITIALIZED');
+    assert.equal(call.result.structuredContent, undefined);
+    assert.equal(JSON.parse(call.result.content[0].text).error.code, 'PROJECT_NOT_INITIALIZED');
     assert.equal(await exists(join(runtime, 'bridge.json')), false, 'fail-open 不应点火');
     assert.equal(await exists(join(empty, '.live-dot-map')), false, 'fail-open 不应创建数据目录');
   } finally {
