@@ -36,9 +36,20 @@ test('参数错误走 stderr JSON、退出码 1，并给出正确用法', async 
   assert.equal(unknown.stdout, '');
   const error = JSON.parse(unknown.stderr).error;
   assert.equal(error.code, 'CLI_USAGE');
-  assert.match(error.message, /正确用法：livedot look/);
+  assert.match(error.message, /look 可用参数：--node --limit --all/);
   const missing = await cli(root, ['read']);
   assert.equal(JSON.parse(missing.stderr).error.code, 'CLI_USAGE');
+
+  const typo = JSON.parse((await cli(root, ['analyze', 'x.csv', 'group', '--bye', '音乐'])).stderr).error.message;
+  assert.match(typo, /是不是 --by？/);
+  assert.match(typo, /--by --metric --agg/);
+  const extra = JSON.parse((await cli(root, ['analyze', 'x.csv', 'group', '--by', '音乐', '封面'])).stderr).error.message;
+  assert.match(extra, /多余参数「封面」/);
+
+  const bridgeError = JSON.parse((await cli(root, ['note', 'n99', 'x'])).stderr).error;
+  assert.equal(bridgeError.code, 'OWNER_NOT_FOUND');
+  assert.doesNotMatch(bridgeError.message, /map_\w+|\(\{/);
+  assert.match(bridgeError.message, /livedot look/);
 });
 
 test('look → write --new → note → read → analyze 全链路走同一个 dispatcher', async (t) => {

@@ -119,6 +119,7 @@ function parseTarget(raw, document) {
     ownerKind = parts[0] === 'nodes' ? 'node' : 'route';
     ownerId = parts[1];
     rest = parts.slice(2).join('/');
+    if (!ownerOfId(document, ownerId)) throw new BridgeError('OWNER_NOT_FOUND', `当前地图没有对象「${ownerId}」，先用 map_look 找 id`, { status: 404 });
   } else {
     ownerId = parts[0];
     ownerKind = ownerOfId(document, ownerId);
@@ -254,6 +255,18 @@ async function read(service, args) {
   const scope = scopedArgs(args);
   const { context } = await service.agentView({ ...scope, skipDocuments: true });
   const document = context.snapshot.document;
+  // look 的 human 字段与 ann 行给的是标注 id；标注正文在 map.json 里，不在任何 md 里。
+  const annId = String(args.path ?? '').trim();
+  const ann = (document.anns || []).find((item) => String(item.id) === annId);
+  if (ann) {
+    const on = ann.target?.id ? `${ann.target.kind === 'node' ? 'nodes' : 'routes'}/${ann.target.id}/index.md` : 'canvas';
+    const pending = ann.source === 'human' && ['new', 'delivered'].includes(String(ann.attention));
+    return {
+      id: ann.id, kind: 'ann', text: String(ann.text ?? ''), on, by: ann.updatedBy ?? ann.source,
+      ...(ann.priority ? { priority: ann.priority } : {}),
+      ...(pending ? { pending: true, hint: '处理完用 ack 确认这条标注' } : {}),
+    };
+  }
   const target = parseTarget(args.path, document);
   const owner = { ...scope, ownerKind: target.ownerKind, ownerId: target.ownerId };
   if (target.listing) {

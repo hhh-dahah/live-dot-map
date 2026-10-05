@@ -23,6 +23,8 @@ livedot note <节点id> "<一句话>"           给节点追加一条带时间�
 livedot analyze <数据文件> describe|group|top [--by 字段] [--metric 指标]
 livedot manage <动作> [...]                低频管理，见 livedot manage --help
 
+look 结果有 human（待确认的人类标注 id）时：livedot read <标注id> 看全文 → 处理 → livedot write --ack <标注id>
+
 例：
   livedot look "抖音 爆款"
   livedot read nodes/n3/index.md
@@ -36,8 +38,8 @@ const COMMAND_HELP: Record<string, string> = {
   look: `livedot look [关键词] [--node <节点id>] [--limit 5] [--all]
 返回 {map,name,rev,goal?,human?,cols,items}。items 每行 [id,名称,类型,路径,理由]；human 是待确认的人类标注 id。
 --all 含已归档历史。例：livedot look "数据分析"`,
-  read: `livedot read <路径|节点id> [--force]
-路径如 nodes/n3/index.md、nodes/n3/方案.md；只写 n3 读主文档并列出资料包文件；以 / 结尾只列文件。
+  read: `livedot read <路径|节点id|标注id> [--force]
+路径如 nodes/n3/index.md、nodes/n3/方案.md；只写 n3 读主文档并列出资料包文件；以 / 结尾只列文件；a1 这类标注 id 返回标注全文。
 同一 --session 内文件没变时只回 {unchanged:true}，--force 强制重读。例：livedot read n3`,
   write: `livedot write <路径> "<内容>"            追加（默认，不会覆盖已有内容）
 livedot write <路径> - --etag <etag>     从 stdin 读内容整文替换，etag 取自 read 结果
@@ -101,6 +103,52 @@ function parse(argv: string[]): { positional: string[]; flags: Record<string, st
 function usageError(command: string, message: string): CliError {
   const usage = COMMAND_HELP[command]?.split('\n')[0] ?? 'livedot --help';
   return new CliError('CLI_USAGE', `${message}。正确用法：${usage}（详见 livedot ${command} --help）`);
+}
+
+function editDistance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    let previous = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const current = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+      previous = current;
+    }
+  }
+  return row[b.length];
+}
+
+function unknownFlagError(command: string, flag: string): CliError {
+  const own = COMMAND_FLAGS[command] ?? [];
+  const candidates = [...own, ...COMMON_FLAGS];
+  const guess = candidates.map((name) => [name, editDistance(flag, name)] as const).sort((a, b) => a[1] - b[1])[0];
+  const suggestion = guess && guess[1] <= 2 ? `，是不是 --${guess[0]}？` : '';
+  const legal = own.length ? `；${command} 可用参数：${own.map((name) => `--${name}`).join(' ')}` : '';
+  return new CliError('CLI_USAGE', `未知参数 --${flag}${suggestion}${legal}（详见 livedot ${command} --help）`);
+}
+
+// 桥端报错面向 MCP 工具写法；CLI 用户看到的应是对应命令。
+const CLI_REWRITES: Array<[RegExp, string]> = [
+  [/ 用法：.*$/s, ''],
+  [/map_write（不带 baseEtag 即追加）/g, 'livedot write（不带 --etag 即追加）'],
+  [/map_write\(\{ack:\[…\]\}\)/g, 'livedot write --ack <id>'],
+  [/map_manage\(\{action:"(\w+)"\}\)/g, 'livedot manage $1'],
+  [/map_write\(\{commands:\[…\]\}\)/g, 'MCP map_write 的 commands（CLI 不支持）'],
+  [/\bmap_look\b/g, 'livedot look'],
+  [/\bmap_read\b/g, 'livedot read'],
+  [/\bmap_write\b/g, 'livedot write'],
+  [/\banalysis_run\b/g, 'livedot analyze'],
+  [/\bmap_manage\b/g, 'livedot manage'],
+  [/\bbaseEtag\b/g, '--etag'],
+];
+
+function cliMessage(command: string, message: string, fromBridge: boolean): string {
+  if (!fromBridge) return message;
+  let text = message;
+  for (const [pattern, replacement] of CLI_REWRITES) text = text.replace(pattern, replacement);
+  const usage = COMMAND_HELP[command]?.split('\n')[0];
+  return usage && text !== message && / 用法：/.test(message) ? `${text} 正确用法：${usage}` : text;
 }
 
 function str(flags: Record<string, string | boolean>, key: string): string | undefined {
@@ -178,8 +226,10 @@ async function build(command: string, positional: string[], flags: Record<string
     return { tool: 'map_write', args: { ...scope, path: node.includes('/') ? node : `nodes/${node}/index.md`, content: `- ${stamp()} · ${text}` } };
   }
   if (command === 'analyze') {
-    const [path, op] = positional;
+    const [path, op, ...extra] = positional;
     if (!path || !op) throw usageError(command, '缺少 <数据文件> 或 <describe|group|top>');
+    // PowerShell 会把不加引号的 a,b 拆成两个参数；静默丢掉会让分组少一个字段。
+    if (extra.length) throw usageError(command, `多余参数「${extra.join(' ')}」；多个字段要写成 --by "音乐,封面"（加引号）`);
     const params: Json = {};
     const by = list(str(flags, 'by'));
     if (by) params.by = by.length === 1 ? by[0] : by;
@@ -245,7 +295,7 @@ export async function runAgentCli(argv: string[], callTool: CallTool): Promise<n
   try {
     const allowed = new Set([...COMMON_FLAGS, ...(COMMAND_FLAGS[command] ?? [])]);
     const unknown = Object.keys(flags).find((key) => !allowed.has(key));
-    if (unknown) throw usageError(command, `未知参数 --${unknown}`);
+    if (unknown) throw unknownFlagError(command, unknown);
     const globals: CliGlobals = {
       project: str(flags, 'project') ?? process.env.LIVEDOT_PROJECT_ROOT,
       agent: str(flags, 'agent') ?? detectAgent(process.env),
@@ -267,7 +317,8 @@ export async function runAgentCli(argv: string[], callTool: CallTool): Promise<n
   } catch (error) {
     const value = error as { code?: unknown; message?: unknown };
     const code = typeof value?.code === 'string' ? value.code : 'CLI_FAILED';
-    process.stderr.write(`${JSON.stringify({ error: { code, message: String(value?.message ?? error) } })}\n`);
+    const message = cliMessage(command, String(value?.message ?? error), !(error instanceof CliError));
+    process.stderr.write(`${JSON.stringify({ error: { code, message } })}\n`);
     return 1;
   }
 }
