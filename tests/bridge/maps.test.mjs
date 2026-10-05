@@ -18,6 +18,8 @@ import { temporaryProject } from './helpers.mjs';
 
 // 隔离最近项目记录，理由同 server.test.mjs。
 process.env.LIVEDOT_RECENT_PROJECTS_FILE = join(process.env.LIVEDOT_TEST_ROOT || 'D:\\LiveDotMap-Test', 'recent-projects-maps-test.json');
+// /open 会写全局画布指针；不隔离就会把用户真实的 ~/.live-dot-map/current-project.json 指向测试目录。
+process.env.LIVEDOT_CURRENT_PROJECT_FILE = join(process.env.LIVEDOT_TEST_ROOT || 'D:\\LiveDotMap-Test', 'current-project-maps-test.json');
 
 const APP_ORIGIN = 'https://app.example.test';
 
