@@ -5,6 +5,7 @@ import { BridgeError } from './errors.mjs';
 import { ContextDocumentProvider } from './context-document-provider.mjs';
 import { HumanMdUpdateLog } from './human-md-updates.mjs';
 import { MdIndex } from './md-index.mjs';
+import { AGENT_TOOL_DEFINITIONS, AGENT_TOOL_NAMES, runAgentTool } from './agent-tools.mjs';
 
 const schema = (name, description, properties = {}, required = []) => ({
   name,
@@ -130,8 +131,11 @@ export async function syncBundleIndexToMainMarkdown(bundleStore, ownerKind, owne
   }
 }
 
-/** REST、stdio 与 Agent Kit 共用的固定 24 项工具契约。 */
-export const TOOL_DEFINITIONS = Object.freeze([
+/**
+ * 旧的 25 项细粒度工具：不再出现在 tools/list，但画布 REST、hook 与旧客户端仍按名调用，
+ * 新的 5 个 Agent 工具也在内部复用它们的规则实现。
+ */
+export const LEGACY_TOOL_DEFINITIONS = Object.freeze([
   schema('map_get_context', '读取当前地图的结构、推进摘要与明确关联 Markdown。', { query: { type: 'string' }, currentNodeId: { anyOf: [{ type: 'string' }, { type: 'null' }] }, includeHistory: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 12 } }),
   schema('map_list_human_updates', '列出人类尚未确认的标注。'),
   schema('map_ack_human_updates', '摘要明确引用标注 ID 后确认读取。', { ids: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } }, ['ids', 'summary']),
@@ -159,8 +163,12 @@ export const TOOL_DEFINITIONS = Object.freeze([
   schema('map_read_asset', '返回对象附件路径与元数据（不搬运二进制）。文本类附 content，二进制可传 includeContent 取 base64。', { ...owner, fileName: { type: 'string' }, includeContent: { type: 'boolean' } }, ['ownerKind', 'ownerId', 'fileName']),
 ]);
 
-export const TOOL_NAMES = Object.freeze(TOOL_DEFINITIONS.map((tool) => tool.name));
-const TOOL_NAME_SET = new Set(TOOL_NAMES);
+/** tools/list 对外只发布 5 个 Agent 工具。 */
+export const TOOL_DEFINITIONS = AGENT_TOOL_DEFINITIONS;
+export const TOOL_NAMES = AGENT_TOOL_NAMES;
+export const LEGACY_TOOL_NAMES = Object.freeze(LEGACY_TOOL_DEFINITIONS.map((tool) => tool.name));
+const AGENT_TOOL_NAME_SET = new Set(AGENT_TOOL_NAMES);
+const TOOL_NAME_SET = new Set(LEGACY_TOOL_NAMES);
 
 function cleanResult(value) {
   if (!value || typeof value !== 'object') return value;
@@ -340,8 +348,30 @@ export class ToolService {
     };
   }
 
+  /** Agent 工具层用：解析目标地图，按需收集 Markdown/附件（skipDocuments 时跳过收集）。 */
+  async agentView(args = {}) {
+    const context = await this.#context(args);
+    if (args.skipDocuments === true) return { context, documents: { markdown: [], assets: [] } };
+    const mdIndex = await this.#mdIndexFor(context);
+    const documents = await this.contextProvider.collect({
+      projectRoot: context.projectRoot,
+      mapKey: context.mapKey,
+      document: context.snapshot.document,
+      includeHistory: args.includeHistory === true,
+      mdIndex,
+    });
+    return { context, documents };
+  }
+
   async dispatch(name, args = {}) {
-    if (!TOOL_NAME_SET.has(name)) throw new BridgeError('UNKNOWN_MCP_TOOL', `未知地图工具：${name}`, { status: 404 });
+    if (AGENT_TOOL_NAME_SET.has(name)) return runAgentTool(this, name, args);
+    return this.dispatchLegacy(name, args);
+  }
+
+  async dispatchLegacy(name, args = {}) {
+    if (!TOOL_NAME_SET.has(name)) {
+      throw new BridgeError('UNKNOWN_MCP_TOOL', `未知地图工具：${name}。可用：${AGENT_TOOL_NAMES.join('、')}`, { status: 404 });
+    }
     if (name === 'map_list') return this.mapManager.list();
     if (name === 'map_create') return this.mapManager.create(String(args.name || ''));
     if (name === 'map_switch') return this.mapManager.switch(String(args.mapKey || ''));

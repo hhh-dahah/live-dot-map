@@ -27,7 +27,7 @@ export { createLogger, logDirectory, noopLogger } from './logger.mjs';
 export { ProjectRegistry } from './project-registry.mjs';
 export { SessionStore } from './session-store.mjs';
 export { MapManager } from './map-manager.mjs';
-export { TOOL_DEFINITIONS, TOOL_NAMES, ToolService } from './tool-service.mjs';
+export { LEGACY_TOOL_DEFINITIONS, LEGACY_TOOL_NAMES, TOOL_DEFINITIONS, TOOL_NAMES, ToolService } from './tool-service.mjs';
 export { collect as collectContextDocuments, ContextDocumentProvider } from './context-document-provider.mjs';
 export {
   ArchiveLifecycle,
