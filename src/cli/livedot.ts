@@ -24,6 +24,14 @@ import { loadSharedAdapter } from '../bridge/shared-adapter.mjs';
 import { readCurrentProject, resolveGitWorktreeMain, resolveProjectRootToUse } from '../bridge/current-project.mjs';
 import { canonicalDirectory } from '../bridge/fs-utils.mjs';
 import { doctorProject, installProject, uninstallProject } from '../../agent-kit/lib/installer.mjs';
+import {
+  collectChanges,
+  formatChangeLine,
+  formatPendingLine,
+  mergeNotices,
+  readAgentWatermark,
+  writeAgentWatermark,
+} from '../../agent-kit/lib/hook-notice.mjs';
 
 if (isSea()) process.env.LIVEDOT_SEA = '1';
 
@@ -490,7 +498,8 @@ async function runMcp(projectRoot: string, actor: string, options: McpOptions = 
 
 async function runHook(kind: string, args: Args): Promise<void> {
   const root = resolve(required(args, 'project'));
-  const actor = `agent:${String(args.agent || 'generic')}`;
+  const agent = String(args.agent || 'generic');
+  const actor = `agent:${agent}`;
   const sessionId = String(args.session || `session-${randomUUID()}`);
   const qualification = await inspectProjectQualification(root);
   // Hook 在未初始化/错误/只读目录中必须完全静默成功：不能打开 store，
@@ -503,145 +512,55 @@ async function runHook(kind: string, args: Args): Promise<void> {
   const resolvedMap = await manager.resolve();
   const store = resolvedMap.store;
   const tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: 'hook' });
+  // 水位取快照之前的时刻：快照之后别人的写入一定晚于水位，下次不会漏报。
+  const scanAt = Date.now();
   const snapshot = await store.snapshot();
   const document = snapshot.document as Json;
-  if (kind === 'session-start') {
-    // 增量变更通知（2026-08-15 原则：无事不打扰，有事必回应）。
-    // 已读水位 .live-dot-map/agent-read.json：只报告水位之后的节点/方案/标注/路线变化。
-    const watermarkPath = join(root, '.live-dot-map', 'agent-read.json');
-    let watermark = 0;
-    try {
-      const parsed = JSON.parse(await readFile(watermarkPath, 'utf8')) as Json;
-      if (typeof parsed?.updatedAt === 'string') watermark = Date.parse(parsed.updatedAt);
-    } catch { /* 首次运行 */ }
-    const since = watermark || Date.now();
-    const changes: { label: string; id: string; name: string; status: string; attention: string }[] = [];
-    const collections: [string, string][] = [['nodes', '节点'], ['edges', '方案'], ['anns', '标注'], ['routes', '路线']];
-    for (const [collection, label] of collections) {
-      for (const item of Array.isArray((document as Json)[collection]) ? (document as Json)[collection] as Json[] : []) {
-        const updated = Date.parse(String(item.updatedAt));
-        if (Number.isFinite(updated) && updated > since) {
-          changes.push({
-            label,
-            id: String(item.id),
-            name: String(item.name ?? item.text ?? ''),
-            status: item.status ? String(item.status) : '',
-            attention: item.attention ? String(item.attention) : '',
-          });
-        }
-      }
-    }
-    const newAnns = (document.anns as Json[]).filter((ann) => (ann as Json).source === 'human' && (ann as Json).attention === 'new');
-    let deliveredIds: string[] = [];
-    if (newAnns.length) {
-      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: 'deliver_annotations', ids: newAnns.map((ann) => String((ann as Json).id)), deliveryId: sessionId }]) as never);
-      deliveredIds = newAnns.map((ann) => String((ann as Json).id));
-    }
-    // 有增量或交付了新标注都必须回应（无事不打扰，有事必回应）。
-    if (changes.length || deliveredIds.length) {
-      await mkdir(dirname(watermarkPath), { recursive: true });
-      await writeFile(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8');
-      const newCount = changes.filter((item) => item.label === '标注' && item.attention === 'new').length;
-      const lines = changes.slice(0, 20).map((item) => `${item.label} ${item.id}${item.name ? `「${item.name}」` : ''}${item.status ? `(${item.status})` : ''}`);
-      const output = {
-        hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: [
-          `[活点地图] 自上次以来有 ${changes.length} 处更新（${newCount} 条新标注优先）：`,
-          ...lines,
-          ...(deliveredIds.length ? [`人类标注已交付（摘要中请逐字引用）：${deliveredIds.join('、')}`] : []),
-          changes.length > 20 ? `…共 ${changes.length} 处` : '',
-          '详细请读 .live-dot-map/map.json。',
-        ].filter(Boolean).join('\n') },
-      };
-      process.stdout.write(`${JSON.stringify(output)}\n`);
-    }
-    // 无变更且无新交付：零输出（无事不打扰）。
-    await recordAgentHealth(root, actor, 'hook:session-start', 'ok');
-    await manager.close();
-    return;
-  }
-  if (kind === 'user-prompt') {
-    // 增量变更通知（无事不打扰）：只检查自上次水位以来的变动与新标注。
-    // 无变动时完全静默（0 Token 开销），彻底杜绝在多轮会话中重复注入全量地图上下文导致上下文爆炸。
-    const watermarkPath = join(root, '.live-dot-map', 'agent-read.json');
-    let watermark = 0;
-    try {
-      const parsed = JSON.parse(await readFile(watermarkPath, 'utf8')) as Json;
-      if (typeof parsed?.updatedAt === 'string') watermark = Date.parse(parsed.updatedAt);
-    } catch { /* 首次运行 */ }
-    const since = watermark || Date.now();
-    const changes: { label: string; id: string; name: string; status: string; attention: string }[] = [];
-    const collections: [string, string][] = [['nodes', '节点'], ['edges', '方案'], ['anns', '标注'], ['routes', '路线']];
-    for (const [collection, label] of collections) {
-      for (const item of Array.isArray((document as Json)[collection]) ? (document as Json)[collection] as Json[] : []) {
-        const updated = Date.parse(String(item.updatedAt));
-        if (Number.isFinite(updated) && updated > since) {
-          changes.push({
-            label,
-            id: String(item.id),
-            name: String(item.name ?? item.text ?? ''),
-            status: item.status ? String(item.status) : '',
-            attention: item.attention ? String(item.attention) : '',
-          });
-        }
-      }
-    }
-    const newAnns = (document.anns as Json[]).filter((ann) => (ann as Json).source === 'human' && (ann as Json).attention === 'new');
-    let deliveredIds: string[] = [];
-    if (newAnns.length) {
-      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: 'deliver_annotations', ids: newAnns.map((ann) => String((ann as Json).id)), deliveryId: sessionId }]) as never);
-      deliveredIds = newAnns.map((ann) => String((ann as Json).id));
-    }
-    if (changes.length || deliveredIds.length) {
-      await mkdir(dirname(watermarkPath), { recursive: true });
-      await writeFile(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8');
-      const newCount = changes.filter((item) => item.label === '标注' && item.attention === 'new').length;
-      const lines = changes.slice(0, 5).map((item) => `${item.label} ${item.id}${item.name ? `「${item.name}」` : ''}${item.status ? `(${item.status})` : ''}`);
-      const output = {
-        hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: [
-          `[活点地图] 提示：自上次以来画布有 ${changes.length} 处更新${newCount ? `（含 ${newCount} 条新标注）` : ''}：`,
-          ...lines,
-          changes.length > 5 ? `…共 ${changes.length} 处` : '',
-          '如需详情可随时调用 MCP 工具（如 map_list_human_updates / map_get_context）。',
-        ].filter(Boolean).join('\n') },
-      };
-      process.stdout.write(`${JSON.stringify(output)}\n`);
-    }
-    // 无变更且无新交付：零输出（无事不打扰，0 Token 消耗）。
-    await recordAgentHealth(root, actor, 'hook:user-prompt', 'ok');
+  if (kind === 'session-start' || kind === 'user-prompt') {
+    await notifyChanges(kind === 'session-start' ? 'SessionStart' : 'UserPromptSubmit');
+    await recordAgentHealth(root, actor, `hook:${kind}`, 'ok');
     await manager.close();
     return;
   }
   if (kind === 'stop') {
-    let hookInput: Json = {};
-    if (!process.stdin.isTTY) {
-      let raw = '';
-      for await (const chunk of process.stdin) raw += chunk;
-      try { hookInput = raw ? JSON.parse(raw) as Json : {}; } catch { hookInput = {}; }
-    }
+    // Stop 永不拦截；仍需排空 stdin，避免 Agent 端写管道时报 EPIPE。
+    if (!process.stdin.isTTY) for await (const _chunk of process.stdin) { /* drain */ }
     const updates = await tools.dispatch('map_list_human_updates', {}) as Json;
-    const validation = await tools.dispatch('map_validate', {}) as Json;
-    const attemptIssues = Array.isArray(validation.attemptIssues) ? validation.attemptIssues as Json[] : [];
-    const incomplete = (Array.isArray(updates.updates) && updates.updates.length > 0) || attemptIssues.length > 0 || validation.ok === false;
-    const attempt = Number(args.attempt || process.env.LIVEDOT_STOP_ATTEMPT || (hookInput.stop_hook_active ? 2 : 1)) || 1;
-    if (incomplete && attempt >= 2) {
-      const current = await store.snapshot();
-      await store.execute(envelope(String((current.document as Json).mapId), current.revision, actor, sessionId, [{
+    const pendingIds = (Array.isArray(updates.updates) ? updates.updates as Json[] : [])
+      .map((item) => String(item?.id ?? '')).filter(Boolean);
+    const desiredStatus = pendingIds.length ? 'incomplete' : 'closed';
+    const ui = (document.ui && typeof document.ui === 'object' ? document.ui : {}) as Json;
+    const collaboration = (ui.collaboration && typeof ui.collaboration === 'object' ? ui.collaboration : {}) as Json;
+    const currentStatus = typeof collaboration.status === 'string' ? collaboration.status : 'closed';
+    // 只在状态真的变化时写 set_ui：每次 Stop 都写会凭空制造一次地图修订。
+    if (currentStatus !== desiredStatus) {
+      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{
         op: 'set_ui',
-        patch: { collaboration: { status: 'incomplete', agent: actor, sessionId, at: new Date().toISOString(), reason: attemptIssues.length ? `大尝试证据未闭环：${attemptIssues.map((item) => `${item.edgeId}（${(item.missing as string[] || []).join('、')}）`).join('；')}` : '人类标注未完成摘要引用与确认' } },
+        patch: { collaboration: {
+          status: desiredStatus, agent: actor, sessionId, at: new Date().toISOString(),
+          ...(pendingIds.length ? { reason: `${pendingIds.length} 条人类标注未完成摘要引用与确认` } : {}),
+        } },
       }]) as never);
     }
-    const reason = incomplete
-      ? (attemptIssues.length ? (attempt < 2 ? '大尝试缺少证据/结果/下一步 Markdown；请先补齐方案记录。' : '第二次检查仍有大尝试证据缺口，允许结束但画布保持红色。') : (attempt < 2 ? '仍有人类标注未完成摘要引用与 ack；请先闭环地图。' : '第二次检查仍未闭环，允许结束但画布保持红色。'))
-      : '地图闭环完成。';
-    // Codex validates hook stdout against the event schema. Product-only
-    // fields (such as deliveredIds/uiStatus) stay in the library result and
-    // persisted map state, never in the wire response.
-    const output: Json = incomplete && attempt < 2
-      ? { decision: 'block', reason }
-      : { systemMessage: reason };
-    process.stdout.write(`${JSON.stringify(output)}\n`);
-    await recordAgentHealth(root, actor, 'hook:stop', incomplete ? 'error' : 'ok', incomplete ? new Error(reason) : undefined);
+    // Codex validates hook stdout against the event schema; only systemMessage goes on the wire.
+    if (pendingIds.length) process.stdout.write(`${JSON.stringify({ systemMessage: formatPendingLine(pendingIds) })}\n`);
+    await recordAgentHealth(root, actor, 'hook:stop', 'ok');
     await manager.close();
+  }
+
+  async function notifyChanges(hookEventName: 'SessionStart' | 'UserPromptSubmit'): Promise<void> {
+    const { since, initialized } = await readAgentWatermark(root, agent, scanAt);
+    const changes = collectChanges(document, since, actor);
+    const anns = Array.isArray(document.anns) ? document.anns as Json[] : [];
+    const deliveredIds = anns.filter((ann) => ann.source === 'human' && ann.attention === 'new').map((ann) => String(ann.id));
+    if (deliveredIds.length) {
+      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: 'deliver_annotations', ids: deliveredIds, deliveryId: sessionId }]) as never);
+    }
+    const notices = mergeNotices(deliveredIds, changes);
+    if (notices.length || !initialized) await writeAgentWatermark(root, agent, scanAt);
+    if (!notices.length) return;
+    const output = { hookSpecificOutput: { hookEventName, additionalContext: formatChangeLine(notices) } };
+    process.stdout.write(`${JSON.stringify(output)}\n`);
   }
 }
 
