@@ -167,7 +167,8 @@ try {
     await bridge.close();
   }
   const contextResponses = await runMcpCalls(project, agent, [{ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'map_get_context', arguments: { query: '' } } }]);
-  const contextResult = contextResponses.find((item) => item.id === 1)?.result?.structuredContent;
+  const contextText = contextResponses.find((item) => item.id === 1)?.result?.content?.[0]?.text;
+  const contextResult = contextText ? JSON.parse(contextText) : undefined;
   const recoveredEvidence = contextResult?.attemptEvidence?.find((item) => item.id === 'e-failed');
   assert.ok(recoveredEvidence?.path, `${agent} context did not expose failed evidence path`);
   assert.ok(recoveredEvidence?.failureReason, `${agent} context did not expose failed reason`);

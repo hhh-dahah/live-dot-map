@@ -5,8 +5,9 @@ export { MCP_TOOL_DEFINITIONS, MCP_TOOL_NAMES };
 
 const DEFINITION_BY_NAME = new Map(MCP_TOOL_DEFINITIONS.map((definition) => [definition.name, definition]));
 
+// 只发一份紧凑文本，不再附带 structuredContent，避免同一份数据在 Agent 上下文里出现两次。
 function jsonText(value) {
-  return JSON.stringify(value === undefined ? null : value, null, 2);
+  return JSON.stringify(value === undefined ? null : value);
 }
 
 function toolError(error) {
@@ -15,7 +16,6 @@ function toolError(error) {
   return {
     isError: true,
     content: [{ type: 'text', text: jsonText({ ok: false, code, message, details: error?.details }) }],
-    structuredContent: { ok: false, code, message, details: error?.details },
   };
 }
 
@@ -62,7 +62,6 @@ export class MapMcpServer {
           result: {
             isError: false,
             content: [{ type: 'text', text: jsonText(result) }],
-            structuredContent: result,
           },
         };
       } catch (error) {

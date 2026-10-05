@@ -68,8 +68,9 @@ test('map_read 支持节点 id 与路径；同会话同 etag 第二次只回 unc
   assert.equal(first.path, 'nodes/n1/index.md');
   assert.match(first.content, /第一条结论/);
   const again = await service.dispatch('map_read', { path: 'nodes/n1/index.md', sessionId: 's1' });
-  assert.deepEqual(again, { path: 'nodes/n1/index.md', etag: first.etag, unchanged: true });
-  assert.ok(bytes(again) <= 128);
+  assert.deepEqual({ ...again, hint: undefined }, { path: 'nodes/n1/index.md', etag: first.etag, unchanged: true, hint: undefined });
+  assert.match(again.hint, /force/);
+  assert.ok(bytes(again) <= 192);
   const forced = await service.dispatch('map_read', { path: 'n1', sessionId: 's1', force: true });
   assert.match(forced.content, /第一条结论/);
   const otherSession = await service.dispatch('map_read', { path: 'n1', sessionId: 's2' });

@@ -24,6 +24,15 @@ import { loadSharedAdapter } from '../bridge/shared-adapter.mjs';
 import { readCurrentProject, resolveGitWorktreeMain, resolveProjectRootToUse } from '../bridge/current-project.mjs';
 import { canonicalDirectory } from '../bridge/fs-utils.mjs';
 import { doctorProject, installProject, uninstallProject } from '../../agent-kit/lib/installer.mjs';
+import {
+  collectChanges,
+  formatChangeLine,
+  formatPendingLine,
+  mergeNotices,
+  readAgentWatermark,
+  writeAgentWatermark,
+} from '../../agent-kit/lib/hook-notice.mjs';
+import { AGENT_COMMANDS, runAgentCli, type CliGlobals } from './agent-cli.ts';
 
 if (isSea()) process.env.LIVEDOT_SEA = '1';
 
@@ -203,11 +212,12 @@ async function inspectProjectQualification(projectRoot: string): Promise<Project
 function unavailableToolResult(qualification: ProjectQualification): Json {
   const code = qualification.code ?? 'PROJECT_NOT_INITIALIZED';
   const message = qualification.message ?? '当前目录没有可用的活点地图项目。';
-  return {
-    isError: true,
-    content: [{ type: 'text', text: `[活点地图] ${message}` }],
-    structuredContent: { ok: false, error: { code, message } },
-  };
+  return { isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, error: { code, message } }) }] };
+}
+
+// 只发一份紧凑文本：content 与 structuredContent 同发会让 Agent 上下文里同一份数据出现两次。
+function toolTextResult(value: unknown): Json {
+  return { content: [{ type: 'text', text: JSON.stringify(value === undefined ? null : value) }] };
 }
 
 function envelope(projectId: string, revision: number, actor: string, sessionId: string, commands: Json[]): Json {
@@ -235,6 +245,12 @@ function compactHookContext(value: unknown): Json {
 }
 
 const toolDefinitions = TOOL_DEFINITIONS;
+
+// 一个 MCP 进程 = 一次 Agent 会话：map_read 据此对同一 etag 的正文只发一次。
+const MCP_SESSION_ID = `mcp-${randomUUID()}`;
+function withSession(name: string, args: Json): Json {
+  return name === 'map_read' && !args.sessionId ? { ...args, sessionId: MCP_SESSION_ID } : args;
+}
 
 // ---- B1：MCP 薄代理 ----
 // tools/call 一律转发给常驻桥（地图唯一写者），MCP 进程本身不再加载
@@ -360,7 +376,7 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
       else if (request.method === 'tools/call') {
         const params = request.params as Json;
         const name = String(params.name);
-        const callArgs = (params.arguments as Json) ?? {};
+        const callArgs = withSession(name, (params.arguments as Json) ?? {});
         const explicitProject = typeof callArgs.projectRoot === 'string' && callArgs.projectRoot.trim()
           ? String(callArgs.projectRoot).trim()
           : (typeof callArgs.project === 'string' && callArgs.project.trim() ? String(callArgs.project).trim() : null);
@@ -404,7 +420,7 @@ async function runMcpProxy(projectRoot: string, actor: string, options: McpOptio
             }
           }
           if (lastError) throw lastError;
-          result = { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value };
+          result = toolTextResult(value);
         }
       } else throw Object.assign(new Error(`未知方法 ${String(request.method)}`), { code: -32601 });
       process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, result })}\n`);
@@ -463,8 +479,8 @@ async function runMcpLocal(projectRoot: string, actor: string): Promise<void> {
             entries.set(targetRoot, entry);
           }
           currentRoot = targetRoot;
-          const value = await entry.tools.dispatch(String(params.name), (params.arguments as Json) ?? {});
-          result = { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], structuredContent: value };
+          const value = await entry.tools.dispatch(String(params.name), withSession(String(params.name), (params.arguments as Json) ?? {}));
+          result = toolTextResult(value);
         }
       } else throw Object.assign(new Error(`未知方法 ${String(request.method)}`), { code: -32601 });
       if (qualification.ok) await recordAgentHealth(root, actor, `mcp:${String(request.method === 'tools/call' ? (request.params as Json)?.name ?? 'call' : request.method)}`, 'ok');
@@ -481,6 +497,41 @@ async function runMcpLocal(projectRoot: string, actor: string): Promise<void> {
   for (const entry of entries.values()) await entry.manager.close().catch(() => undefined);
 }
 
+/** Agent CLI（livedot look/read/…）：与 MCP 薄代理同一条路径，桥起不来时才就地执行。 */
+async function callAgentTool(name: string, args: Json, globals: CliGlobals): Promise<unknown> {
+  const explicit = globals.project ? resolve(globals.project) : null;
+  const fallback = explicit ?? resolve(process.cwd());
+  let root = await resolveProjectRootToUse(explicit, fallback);
+  let qualification = await inspectProjectQualification(root);
+  if (!qualification.ok && root !== fallback) {
+    root = fallback;
+    qualification = await inspectProjectQualification(root);
+  }
+  if (!qualification.ok) {
+    throw Object.assign(new Error(`${qualification.message ?? '没有可用的活点地图项目'}（项目目录：${root}；用 --project 指定）`), { code: qualification.code ?? 'PROJECT_NOT_INITIALIZED' });
+  }
+  const actor = `agent:${globals.agent || 'cli'}`;
+  const options: McpOptions = {
+    runtimeStateDir: globals.runtimeStateDir ? resolve(globals.runtimeStateDir) : undefined,
+    appPath: globals.app ? resolve(globals.app) : undefined,
+  };
+  if (process.env.LIVEDOT_MCP_LOCAL !== '1') {
+    try {
+      const bridge = await ensureBridge(root, options);
+      return await forwardToolCall(bridge, root, actor, name, args);
+    } catch (error) {
+      if (!(error as { proxyFailure?: boolean })?.proxyFailure) throw error;
+    }
+  }
+  const shared = await loadSharedAdapter();
+  const manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
+  try {
+    return await new ToolService({ mapManager: manager, shared, actor, projectHandle: 'cli' }).dispatch(name, args);
+  } finally {
+    await manager.close().catch(() => undefined);
+  }
+}
+
 async function runMcp(projectRoot: string, actor: string, options: McpOptions = {}): Promise<void> {
   // 紧急逃生门：LIVEDOT_MCP_LOCAL=1 回退旧的本地直读写模式（旧逻辑保留在 runMcpLocal）。
   if (process.env.LIVEDOT_MCP_LOCAL === '1') return runMcpLocal(projectRoot, actor);
@@ -489,7 +540,8 @@ async function runMcp(projectRoot: string, actor: string, options: McpOptions = 
 
 async function runHook(kind: string, args: Args): Promise<void> {
   const root = resolve(required(args, 'project'));
-  const actor = `agent:${String(args.agent || 'generic')}`;
+  const agent = String(args.agent || 'generic');
+  const actor = `agent:${agent}`;
   const sessionId = String(args.session || `session-${randomUUID()}`);
   const qualification = await inspectProjectQualification(root);
   // Hook 在未初始化/错误/只读目录中必须完全静默成功：不能打开 store，
@@ -502,145 +554,55 @@ async function runHook(kind: string, args: Args): Promise<void> {
   const resolvedMap = await manager.resolve();
   const store = resolvedMap.store;
   const tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: 'hook' });
+  // 水位取快照之前的时刻：快照之后别人的写入一定晚于水位，下次不会漏报。
+  const scanAt = Date.now();
   const snapshot = await store.snapshot();
   const document = snapshot.document as Json;
-  if (kind === 'session-start') {
-    // 增量变更通知（2026-08-15 原则：无事不打扰，有事必回应）。
-    // 已读水位 .live-dot-map/agent-read.json：只报告水位之后的节点/方案/标注/路线变化。
-    const watermarkPath = join(root, '.live-dot-map', 'agent-read.json');
-    let watermark = 0;
-    try {
-      const parsed = JSON.parse(await readFile(watermarkPath, 'utf8')) as Json;
-      if (typeof parsed?.updatedAt === 'string') watermark = Date.parse(parsed.updatedAt);
-    } catch { /* 首次运行 */ }
-    const since = watermark || Date.now();
-    const changes: { label: string; id: string; name: string; status: string; attention: string }[] = [];
-    const collections: [string, string][] = [['nodes', '节点'], ['edges', '方案'], ['anns', '标注'], ['routes', '路线']];
-    for (const [collection, label] of collections) {
-      for (const item of Array.isArray((document as Json)[collection]) ? (document as Json)[collection] as Json[] : []) {
-        const updated = Date.parse(String(item.updatedAt));
-        if (Number.isFinite(updated) && updated > since) {
-          changes.push({
-            label,
-            id: String(item.id),
-            name: String(item.name ?? item.text ?? ''),
-            status: item.status ? String(item.status) : '',
-            attention: item.attention ? String(item.attention) : '',
-          });
-        }
-      }
-    }
-    const newAnns = (document.anns as Json[]).filter((ann) => (ann as Json).source === 'human' && (ann as Json).attention === 'new');
-    let deliveredIds: string[] = [];
-    if (newAnns.length) {
-      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: 'deliver_annotations', ids: newAnns.map((ann) => String((ann as Json).id)), deliveryId: sessionId }]) as never);
-      deliveredIds = newAnns.map((ann) => String((ann as Json).id));
-    }
-    // 有增量或交付了新标注都必须回应（无事不打扰，有事必回应）。
-    if (changes.length || deliveredIds.length) {
-      await mkdir(dirname(watermarkPath), { recursive: true });
-      await writeFile(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8');
-      const newCount = changes.filter((item) => item.label === '标注' && item.attention === 'new').length;
-      const lines = changes.slice(0, 20).map((item) => `${item.label} ${item.id}${item.name ? `「${item.name}」` : ''}${item.status ? `(${item.status})` : ''}`);
-      const output = {
-        hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: [
-          `[活点地图] 自上次以来有 ${changes.length} 处更新（${newCount} 条新标注优先）：`,
-          ...lines,
-          ...(deliveredIds.length ? [`人类标注已交付（摘要中请逐字引用）：${deliveredIds.join('、')}`] : []),
-          changes.length > 20 ? `…共 ${changes.length} 处` : '',
-          '详细请读 .live-dot-map/map.json。',
-        ].filter(Boolean).join('\n') },
-      };
-      process.stdout.write(`${JSON.stringify(output)}\n`);
-    }
-    // 无变更且无新交付：零输出（无事不打扰）。
-    await recordAgentHealth(root, actor, 'hook:session-start', 'ok');
-    await manager.close();
-    return;
-  }
-  if (kind === 'user-prompt') {
-    // 增量变更通知（无事不打扰）：只检查自上次水位以来的变动与新标注。
-    // 无变动时完全静默（0 Token 开销），彻底杜绝在多轮会话中重复注入全量地图上下文导致上下文爆炸。
-    const watermarkPath = join(root, '.live-dot-map', 'agent-read.json');
-    let watermark = 0;
-    try {
-      const parsed = JSON.parse(await readFile(watermarkPath, 'utf8')) as Json;
-      if (typeof parsed?.updatedAt === 'string') watermark = Date.parse(parsed.updatedAt);
-    } catch { /* 首次运行 */ }
-    const since = watermark || Date.now();
-    const changes: { label: string; id: string; name: string; status: string; attention: string }[] = [];
-    const collections: [string, string][] = [['nodes', '节点'], ['edges', '方案'], ['anns', '标注'], ['routes', '路线']];
-    for (const [collection, label] of collections) {
-      for (const item of Array.isArray((document as Json)[collection]) ? (document as Json)[collection] as Json[] : []) {
-        const updated = Date.parse(String(item.updatedAt));
-        if (Number.isFinite(updated) && updated > since) {
-          changes.push({
-            label,
-            id: String(item.id),
-            name: String(item.name ?? item.text ?? ''),
-            status: item.status ? String(item.status) : '',
-            attention: item.attention ? String(item.attention) : '',
-          });
-        }
-      }
-    }
-    const newAnns = (document.anns as Json[]).filter((ann) => (ann as Json).source === 'human' && (ann as Json).attention === 'new');
-    let deliveredIds: string[] = [];
-    if (newAnns.length) {
-      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: 'deliver_annotations', ids: newAnns.map((ann) => String((ann as Json).id)), deliveryId: sessionId }]) as never);
-      deliveredIds = newAnns.map((ann) => String((ann as Json).id));
-    }
-    if (changes.length || deliveredIds.length) {
-      await mkdir(dirname(watermarkPath), { recursive: true });
-      await writeFile(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: new Date().toISOString() }, null, 2)}\n`, 'utf8');
-      const newCount = changes.filter((item) => item.label === '标注' && item.attention === 'new').length;
-      const lines = changes.slice(0, 5).map((item) => `${item.label} ${item.id}${item.name ? `「${item.name}」` : ''}${item.status ? `(${item.status})` : ''}`);
-      const output = {
-        hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: [
-          `[活点地图] 提示：自上次以来画布有 ${changes.length} 处更新${newCount ? `（含 ${newCount} 条新标注）` : ''}：`,
-          ...lines,
-          changes.length > 5 ? `…共 ${changes.length} 处` : '',
-          '如需详情可随时调用 MCP 工具（如 map_list_human_updates / map_get_context）。',
-        ].filter(Boolean).join('\n') },
-      };
-      process.stdout.write(`${JSON.stringify(output)}\n`);
-    }
-    // 无变更且无新交付：零输出（无事不打扰，0 Token 消耗）。
-    await recordAgentHealth(root, actor, 'hook:user-prompt', 'ok');
+  if (kind === 'session-start' || kind === 'user-prompt') {
+    await notifyChanges(kind === 'session-start' ? 'SessionStart' : 'UserPromptSubmit');
+    await recordAgentHealth(root, actor, `hook:${kind}`, 'ok');
     await manager.close();
     return;
   }
   if (kind === 'stop') {
-    let hookInput: Json = {};
-    if (!process.stdin.isTTY) {
-      let raw = '';
-      for await (const chunk of process.stdin) raw += chunk;
-      try { hookInput = raw ? JSON.parse(raw) as Json : {}; } catch { hookInput = {}; }
-    }
+    // Stop 永不拦截；仍需排空 stdin，避免 Agent 端写管道时报 EPIPE。
+    if (!process.stdin.isTTY) for await (const _chunk of process.stdin) { /* drain */ }
     const updates = await tools.dispatch('map_list_human_updates', {}) as Json;
-    const validation = await tools.dispatch('map_validate', {}) as Json;
-    const attemptIssues = Array.isArray(validation.attemptIssues) ? validation.attemptIssues as Json[] : [];
-    const incomplete = (Array.isArray(updates.updates) && updates.updates.length > 0) || attemptIssues.length > 0 || validation.ok === false;
-    const attempt = Number(args.attempt || process.env.LIVEDOT_STOP_ATTEMPT || (hookInput.stop_hook_active ? 2 : 1)) || 1;
-    if (incomplete && attempt >= 2) {
-      const current = await store.snapshot();
-      await store.execute(envelope(String((current.document as Json).mapId), current.revision, actor, sessionId, [{
+    const pendingIds = (Array.isArray(updates.updates) ? updates.updates as Json[] : [])
+      .map((item) => String(item?.id ?? '')).filter(Boolean);
+    const desiredStatus = pendingIds.length ? 'incomplete' : 'closed';
+    const ui = (document.ui && typeof document.ui === 'object' ? document.ui : {}) as Json;
+    const collaboration = (ui.collaboration && typeof ui.collaboration === 'object' ? ui.collaboration : {}) as Json;
+    const currentStatus = typeof collaboration.status === 'string' ? collaboration.status : 'closed';
+    // 只在状态真的变化时写 set_ui：每次 Stop 都写会凭空制造一次地图修订。
+    if (currentStatus !== desiredStatus) {
+      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{
         op: 'set_ui',
-        patch: { collaboration: { status: 'incomplete', agent: actor, sessionId, at: new Date().toISOString(), reason: attemptIssues.length ? `大尝试证据未闭环：${attemptIssues.map((item) => `${item.edgeId}（${(item.missing as string[] || []).join('、')}）`).join('；')}` : '人类标注未完成摘要引用与确认' } },
+        patch: { collaboration: {
+          status: desiredStatus, agent: actor, sessionId, at: new Date().toISOString(),
+          ...(pendingIds.length ? { reason: `${pendingIds.length} 条人类标注未完成摘要引用与确认` } : {}),
+        } },
       }]) as never);
     }
-    const reason = incomplete
-      ? (attemptIssues.length ? (attempt < 2 ? '大尝试缺少证据/结果/下一步 Markdown；请先补齐方案记录。' : '第二次检查仍有大尝试证据缺口，允许结束但画布保持红色。') : (attempt < 2 ? '仍有人类标注未完成摘要引用与 ack；请先闭环地图。' : '第二次检查仍未闭环，允许结束但画布保持红色。'))
-      : '地图闭环完成。';
-    // Codex validates hook stdout against the event schema. Product-only
-    // fields (such as deliveredIds/uiStatus) stay in the library result and
-    // persisted map state, never in the wire response.
-    const output: Json = incomplete && attempt < 2
-      ? { decision: 'block', reason }
-      : { systemMessage: reason };
-    process.stdout.write(`${JSON.stringify(output)}\n`);
-    await recordAgentHealth(root, actor, 'hook:stop', incomplete ? 'error' : 'ok', incomplete ? new Error(reason) : undefined);
+    // Codex validates hook stdout against the event schema; only systemMessage goes on the wire.
+    if (pendingIds.length) process.stdout.write(`${JSON.stringify({ systemMessage: formatPendingLine(pendingIds) })}\n`);
+    await recordAgentHealth(root, actor, 'hook:stop', 'ok');
     await manager.close();
+  }
+
+  async function notifyChanges(hookEventName: 'SessionStart' | 'UserPromptSubmit'): Promise<void> {
+    const { since, initialized } = await readAgentWatermark(root, agent, scanAt);
+    const changes = collectChanges(document, since, actor);
+    const anns = Array.isArray(document.anns) ? document.anns as Json[] : [];
+    const deliveredIds = anns.filter((ann) => ann.source === 'human' && ann.attention === 'new').map((ann) => String(ann.id));
+    if (deliveredIds.length) {
+      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: 'deliver_annotations', ids: deliveredIds, deliveryId: sessionId }]) as never);
+    }
+    const notices = mergeNotices(deliveredIds, changes);
+    if (notices.length || !initialized) await writeAgentWatermark(root, agent, scanAt);
+    if (!notices.length) return;
+    const output = { hookSpecificOutput: { hookEventName, additionalContext: formatChangeLine(notices) } };
+    process.stdout.write(`${JSON.stringify(output)}\n`);
   }
 }
 
@@ -672,7 +634,12 @@ function markDevCanvas(html: string): string {
 }
 
 async function main(): Promise<void> {
-  const { command, args } = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (AGENT_COMMANDS.has(argv[0] ?? '') || argv[0] === 'help' || argv[0] === '--help' || argv[0] === '-h') {
+    process.exitCode = await runAgentCli(argv, callAgentTool);
+    return;
+  }
+  const { command, args } = parseArgs(argv);
   if (command === 'serve') {
     const logger = createLogger({ source: 'bridge' });
     // Git linked worktree（如 live-dot-map-adapter 工位）直接注册主仓库根：
@@ -856,7 +823,7 @@ async function main(): Promise<void> {
     if (!result.ok && result.reason !== 'not-installed') process.exitCode = 1;
     return;
   }
-  process.stdout.write('活点地图 v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n');
+  process.stdout.write('活点地图 v2\n  Agent 命令：livedot.mjs look|read|write|note|analyze|manage …（详见 livedot.mjs --help）\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n');
 }
 
 void main().catch(async (error) => {

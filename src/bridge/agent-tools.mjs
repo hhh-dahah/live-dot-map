@@ -276,7 +276,7 @@ async function read(service, args) {
   const file = await service.dispatchLegacy('map_read_markdown', { ...owner, fileName });
   const sent = sentFor(sessionKey(service, context.mapKey, args));
   if (sent && args.force !== true && sent.get(target.display) === file.etag) {
-    return { path: target.display, etag: file.etag, unchanged: true };
+    return { path: target.display, etag: file.etag, unchanged: true, hint: '已读过未变；要正文加 force' };
   }
   sent?.set(target.display, file.etag);
   const result = { path: target.display, etag: file.etag, content: String(file.content ?? '') };

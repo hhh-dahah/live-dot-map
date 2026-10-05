@@ -1,7 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { commandId, LocalBridgeClient, projectIdForRoot, BridgeClientError } from './bridge-client.mjs';
+import {
+  collectChanges,
+  formatChangeLine,
+  formatPendingLine,
+  mergeNotices,
+  readAgentWatermark,
+  truncateUtf8,
+  writeAgentWatermark,
+} from './hook-notice.mjs';
 
 export const HOOK_NAMES = Object.freeze(['session-start', 'user-prompt-submit', 'stop']);
 
@@ -51,38 +60,15 @@ function pendingUpdates(value) {
   return updatesFrom(value).filter((item) => (item?.source === undefined || item?.source === 'human') && ['new', 'delivered'].includes(item?.attention));
 }
 
-export function contextText(context, updates = []) {
-  const ids = updates.map((item) => String(item.id)).filter(Boolean);
-  const lines = ['[活点地图] SessionStart 上下文（来源：本地桥）'];
-  if (context === undefined || context === null) {
-    lines.push('当前地图上下文为空；不会自动扫描项目。若用户明确授权初始化，请发送：');
-    lines.push(INITIALIZATION_REQUEST);
-  } else if (typeof context === 'string') {
-    lines.push(context);
-  } else {
-    const summary = context.summary || context.progressSummary || context.globalSummary;
-    if (typeof summary === 'string' && summary.trim()) lines.push(summary.trim());
-    lines.push(JSON.stringify(context, null, 2));
-  }
-  if (ids.length) {
-    lines.push('');
-    lines.push(`人类标注待确认（必须在首次摘要中逐字引用 ID）：${ids.join('、')}`);
-    for (const item of updates) {
-      const target = item?.target?.id ? ` → ${item.target.id}` : '';
-      lines.push(`- ${item.id}${target}: ${String(item.text || '').trim()}`);
-    }
-    lines.push('摘要完成后调用 map_ack_human_updates；服务端会拒绝缺少任一 ID 的摘要。');
-  } else {
-    lines.push('当前没有待确认的人类新标注。');
-  }
-  return lines.join('\n');
+/** 单行提示（≤160 字节）：只列待确认人类标注 ID，不再全量注入地图上下文。 */
+export function contextText(_context, updates = []) {
+  return formatChangeLine(updates.map((item) => ({ id: String(item?.id ?? ''), by: 'human' })).filter((entry) => entry.id));
 }
 
-function failureText(stage, error, { allowStop = false } = {}) {
+function failureText(stage, error) {
   const code = error?.code || 'HOOK_FAILED';
-  const reason = error?.message || '未知错误';
-  const tail = allowStop ? '本次已允许结束，但画布应显示红色“本次协作未闭环”。' : '请先修复本地桥连接或冲突后重试。';
-  return `[活点地图] ${stage} 未完成（${code}）：${reason}\n补救：${tail}`;
+  const reason = String(error?.message || '未知错误').replace(/\s+/g, ' ');
+  return truncateUtf8(`[活点地图] ${stage} 未完成（${code}）：${reason}`);
 }
 
 async function deliver(client, updates) {
@@ -100,11 +86,7 @@ async function deliver(client, updates) {
   return { delivered: ids, result };
 }
 
-// ---- 增量变更通知（2026-08-15 原则：无事不打扰，有事必回应） ----
-// 已读水位 .live-dot-map/agent-read.json：只报告水位之后的地图变化；
-// 无变化时完全静默，不做全量状态汇报。
-
-async function collectIncrementalChanges(root, now) {
+async function readActiveMap(root) {
   // 多地图布局：事实源是 active-map 指针指向的 maps/<id>/map.json；老项目回退单图路径。
   let mapPath = join(root, '.live-dot-map', 'map.json');
   try {
@@ -115,77 +97,7 @@ async function collectIncrementalChanges(root, now) {
       mapPath = candidate;
     }
   } catch { /* 无指针或目标缺失：保持老路径 */ }
-  const readPath = join(root, '.live-dot-map', 'agent-read.json');
-  let watermark = 0;
-  try {
-    const parsed = JSON.parse(await readFile(readPath, 'utf8'));
-    if (typeof parsed?.updatedAt === 'string') watermark = Date.parse(parsed.updatedAt);
-  } catch { /* 首次运行 */ }
-  const since = watermark || now.getTime();
-  let map = {};
-  try { map = JSON.parse(await readFile(mapPath, 'utf8')); } catch { return { changes: [], watermark, next: now.getTime(), mapMissing: true }; }
-  const changes = [];
-  const collections = [['nodes', '节点'], ['edges', '方案'], ['anns', '标注'], ['routes', '路线']];
-  for (const [collection, label] of collections) {
-    for (const item of Array.isArray(map[collection]) ? map[collection] : []) {
-      const updated = Date.parse(String(item?.updatedAt));
-      if (Number.isFinite(updated) && updated > since) {
-        changes.push({
-          label,
-          id: String(item.id),
-          name: String(item.name ?? item.text ?? ''),
-          status: item.status ? String(item.status) : '',
-          attention: item.attention ? String(item.attention) : '',
-        });
-      }
-    }
-  }
-  return { changes, watermark, next: now.getTime(), mapMissing: false };
-}
-
-async function writeWatermark(root, timestamp) {
-  const readPath = join(root, '.live-dot-map', 'agent-read.json');
-  await mkdir(dirname(readPath), { recursive: true });
-  await writeFile(readPath, `${JSON.stringify({ version: 1, updatedAt: new Date(timestamp).toISOString() }, null, 2)}\n`, 'utf8');
-}
-
-export async function runSessionStart({ client, env = process.env, write = () => {}, now = new Date(), projectRoot } = {}) {
-  const bridge = client || createClientFromEnv(env);
-  try {
-    await bridge.health();
-    const root = resolveProjectRoot(projectRoot, bridge, env);
-    const { changes, next, mapMissing } = await collectIncrementalChanges(root, now);
-    // 保留标注交付协议（new → delivered）；"已读"语义由水位承担。
-    let deliveredIds = [];
-    try {
-      const listed = await bridge.mapListHumanUpdates({ includeAcknowledged: false });
-      const pending = pendingUpdates(listed);
-      if (pending.length) {
-        const delivered = await deliver(bridge, pending.filter((item) => item.attention === 'new'));
-        deliveredIds = delivered.delivered;
-      }
-    } catch { /* 桥不可用时只报增量，不阻断 */ }
-    if (!changes.length && !deliveredIds.length) {
-      // 无事不打扰：无变化时零输出。
-      write('');
-      return { ok: true, output: '', sessionId: bridge.sessionId, deliveredIds, at: now.toISOString(), changes: [], mapMissing };
-    }
-    await writeWatermark(root, next);
-    const newCount = changes.filter((item) => item.label === '标注' && item.attention === 'new').length;
-    const lines = changes.slice(0, 20).map((item) => `${item.label} ${item.id}${item.name ? `「${item.name}」` : ''}${item.status ? `(${item.status})` : ''}`);
-    const output = [
-      `[活点地图] 自上次以来有 ${changes.length} 处更新（${newCount} 条新标注优先）：`,
-      ...lines,
-      changes.length > 20 ? `…共 ${changes.length} 处` : '',
-      '详细请读 .live-dot-map/active-map 指向的当前地图 map.json。',
-    ].filter(Boolean).join('\n');
-    write(output);
-    return { ok: true, output, sessionId: bridge.sessionId, deliveredIds, at: now.toISOString(), changes };
-  } catch (error) {
-    const output = failureText('SessionStart', error);
-    write(output);
-    return { ok: false, output, sessionId: bridge.sessionId, error };
-  }
+  try { return JSON.parse(await readFile(mapPath, 'utf8')); } catch { return null; }
 }
 
 function resolveProjectRoot(projectRoot, bridge, env) {
@@ -203,40 +115,48 @@ async function readPrompt(input = process.stdin) {
   return value.trim();
 }
 
+/**
+ * SessionStart / UserPromptSubmit 共用：按 Agent 分开的已读水位，跳过自己的写入，
+ * 有变化或新交付人类标注时只输出一行，否则零输出。
+ */
+async function notifyChanges(bridge, { env, write, now, projectRoot }) {
+  await bridge.health();
+  const root = resolveProjectRoot(projectRoot, bridge, env);
+  const actor = bridge.actor;
+  const { since, initialized } = await readAgentWatermark(root, actor, now.getTime());
+  const map = await readActiveMap(root);
+  const changes = map ? collectChanges(map, since, actor) : [];
+  let deliveredIds = [];
+  try {
+    const pending = pendingUpdates(await bridge.mapListHumanUpdates({ includeAcknowledged: false }));
+    const fresh = pending.filter((item) => item.attention === 'new');
+    if (fresh.length) deliveredIds = (await deliver(bridge, fresh)).delivered;
+  } catch { /* 桥不可用时只报增量，不阻断 */ }
+  const notices = mergeNotices(deliveredIds, changes);
+  if (notices.length || !initialized) await writeAgentWatermark(root, actor, now.getTime());
+  const output = formatChangeLine(notices);
+  write(output);
+  return { ok: true, output, sessionId: bridge.sessionId, deliveredIds, at: now.toISOString(), changes: notices, mapMissing: !map };
+}
+
+export async function runSessionStart({ client, env = process.env, write = () => {}, now = new Date(), projectRoot } = {}) {
+  const bridge = client || createClientFromEnv(env);
+  try {
+    return await notifyChanges(bridge, { env, write, now, projectRoot });
+  } catch (error) {
+    const output = failureText('SessionStart', error);
+    write(output);
+    return { ok: false, output, sessionId: bridge.sessionId, error };
+  }
+}
+
 export async function runUserPromptSubmit({ client, env = process.env, prompt, input, write = () => {}, now = new Date(), projectRoot } = {}) {
   const bridge = client || createClientFromEnv(env);
   try {
     if (input && !input.isTTY && typeof prompt !== 'string') {
       await readPrompt(input);
     }
-    await bridge.health();
-    const root = resolveProjectRoot(projectRoot, bridge, env);
-    const { changes, next } = await collectIncrementalChanges(root, now);
-    let deliveredIds = [];
-    try {
-      const listed = await bridge.mapListHumanUpdates({ includeAcknowledged: false });
-      const pending = pendingUpdates(listed);
-      if (pending.length) {
-        const delivered = await deliver(bridge, pending.filter((item) => item.attention === 'new'));
-        deliveredIds = delivered.delivered;
-      }
-    } catch { /* 桥不可用时只报增量，不阻断 */ }
-    if (!changes.length && !deliveredIds.length) {
-      // 无事不打扰：无变化时完全静默，不占用任何上下文 Token（彻底杜绝多轮会话上下文爆炸）
-      write('');
-      return { ok: true, output: '', sessionId: bridge.sessionId, deliveredIds, at: now.toISOString(), changes: [] };
-    }
-    await writeWatermark(root, next);
-    const newCount = changes.filter((item) => item.label === '标注' && item.attention === 'new').length;
-    const lines = changes.slice(0, 5).map((item) => `${item.label} ${item.id}${item.name ? `「${item.name}」` : ''}${item.status ? `(${item.status})` : ''}`);
-    const output = [
-      `[活点地图] 提示：自上次以来画布有 ${changes.length} 处更新${newCount ? `（含 ${newCount} 条新标注）` : ''}：`,
-      ...lines,
-      changes.length > 5 ? `…共 ${changes.length} 处` : '',
-      '如需详情可随时调用 MCP 工具（如 map_list_human_updates / map_get_context）。',
-    ].filter(Boolean).join('\n');
-    write(output);
-    return { ok: true, output, sessionId: bridge.sessionId, deliveredIds, at: now.toISOString(), changes };
+    return await notifyChanges(bridge, { env, write, now, projectRoot });
   } catch (error) {
     const output = failureText('UserPromptSubmit', error);
     write(output);
@@ -244,61 +164,42 @@ export async function runUserPromptSubmit({ client, env = process.env, prompt, i
   }
 }
 
-export async function runStop({ client, env = process.env, write = () => {}, attempt = Number(env.LIVEDOT_STOP_ATTEMPT || 1) || 1 } = {}) {
+/**
+ * Stop 永不拦截（allowStop 恒为 true）。只有存在待确认人类标注时输出一行提示；
+ * 画布协作状态只在真正变化时写入，避免每次 Stop 都产生一次地图修订。
+ */
+export async function runStop({ client, env = process.env, write = () => {} } = {}) {
   const bridge = client || createClientFromEnv(env);
   try {
     await bridge.health();
+    const pending = pendingUpdates(await bridge.mapListHumanUpdates({ includeAcknowledged: false }));
+    const pendingIds = pending.map((item) => String(item.id)).filter(Boolean);
     let snapshot = {};
-    try { snapshot = await bridge.snapshot(); } catch { /* validation below remains the authoritative gate */ }
-    const listed = await bridge.mapListHumanUpdates({ includeAcknowledged: false });
-    const pending = pendingUpdates(listed);
-    let validation;
-    try {
-      validation = await bridge.mapValidate({});
-    } catch (error) {
-      // Validation is part of the stop gate; preserve the failure below.
-      validation = { ok: false, error: error?.code || error?.message };
-    }
-    const attemptIssues = Array.isArray(validation?.attemptIssues) ? validation.attemptIssues : [];
-    const validationFailed = validation && (validation.ok === false || validation.valid === false || validation.error);
-    const stateIssues = [];
-    for (const key of ['conflicts', 'uncommitted', 'dirty', 'pendingWrites']) {
-      const value = snapshot?.[key] ?? validation?.[key];
-      if (value === true || (Array.isArray(value) && value.length)) stateIssues.push(key);
-    }
-    if (attemptIssues.length) stateIssues.push('attemptEvidence');
-    if (!pending.length && !validationFailed && !stateIssues.length) {
-      const output = '[活点地图] Stop 闭环检查通过：没有未确认人类标注，地图校验通过。';
-      write(output);
-      return { ok: true, allowStop: true, output };
-    }
-    const issues = [];
-    if (pending.length) issues.push(`未确认人类标注：${pending.map((item) => item.id).join('、')}`);
-    if (validationFailed) issues.push('地图校验或本地桥状态未通过');
-    if (attemptIssues.length) issues.push(`大尝试证据未闭环：${attemptIssues.map((item) => `${item.edgeId}（${item.missing.join('、')}）`).join('；')}`);
-    if (stateIssues.length) issues.push(`存在未提交或冲突状态：${stateIssues.join('、')}`);
-    const allowStop = attempt >= 2;
-    const error = new BridgeClientError('COLLABORATION_NOT_CLOSED', issues.join('；'), { status: 409, details: { pendingIds: pending.map((item) => item.id), validation } });
-    const output = failureText('Stop', error, { allowStop });
-    if (allowStop && typeof bridge.mapApplyCommands === 'function') {
+    try { snapshot = await bridge.snapshot(); } catch { /* 读不到快照就不改画布状态 */ }
+    const desiredStatus = pendingIds.length ? 'incomplete' : 'closed';
+    const currentStatus = snapshot?.document?.ui?.collaboration?.status ?? 'closed';
+    if (currentStatus !== desiredStatus && Number.isInteger(snapshot?.revision) && typeof bridge.mapApplyCommands === 'function') {
       try {
         await bridge.mapApplyCommands({
-          commands: [{ op: 'set_ui', patch: { collaboration: { status: 'incomplete', reason: issues.join('；'), at: new Date().toISOString() } } }],
-          baseRevision: Number.isInteger(snapshot?.revision) ? snapshot.revision : 0,
+          commands: [{ op: 'set_ui', patch: { collaboration: {
+            status: desiredStatus, at: new Date().toISOString(),
+            ...(pendingIds.length ? { reason: `${pendingIds.length} 条人类标注未完成摘要引用与确认` } : {}),
+          } } }],
+          baseRevision: snapshot.revision,
           commandId: commandId('stop'),
           actor: bridge.actor,
           sessionId: bridge.sessionId,
           projectId: bridge.projectId,
         });
-      } catch { /* allowStop remains fail-open, while the message stays red */ }
+      } catch { /* 画布标记是尽力而为，不影响结束 */ }
     }
+    const output = formatPendingLine(pendingIds);
     write(output);
-    return { ok: false, allowStop, output, issues, pendingIds: pending.map((item) => String(item.id)), validation, stateIssues };
+    return { ok: true, allowStop: true, output, pendingIds };
   } catch (error) {
-    const allowStop = attempt >= 2;
-    const output = failureText('Stop', error, { allowStop });
+    const output = failureText('Stop', error);
     write(output);
-    return { ok: false, allowStop, output, error };
+    return { ok: false, allowStop: true, output, error };
   }
 }
 
