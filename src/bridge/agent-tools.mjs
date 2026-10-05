@@ -262,7 +262,8 @@ async function read(service, args) {
     const on = ann.target?.id ? `${ann.target.kind === 'node' ? 'nodes' : 'routes'}/${ann.target.id}/index.md` : 'canvas';
     const pending = ann.source === 'human' && ['new', 'delivered'].includes(String(ann.attention));
     return {
-      id: ann.id, kind: 'ann', text: String(ann.text ?? ''), on, by: ann.updatedBy ?? ann.source,
+      // updatedBy 会被 ack 改成确认的 Agent，署名要看来源。
+      id: ann.id, kind: 'ann', text: String(ann.text ?? ''), on, by: ann.source === 'human' ? 'human' : (ann.createdBy ?? ann.updatedBy ?? ann.source),
       ...(ann.priority ? { priority: ann.priority } : {}),
       ...(pending ? { pending: true, hint: '处理完用 ack 确认这条标注' } : {}),
     };

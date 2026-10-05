@@ -144,6 +144,9 @@ test('ack 确认人类标注；map_look 列出待确认的人类标注 id', asyn
   assert.equal(annotation.pending, true);
   const acked = await service.dispatch('map_write', { ack: ['a1'] });
   assert.deepEqual(acked.acked, ['a1']);
+  const afterAck = await service.dispatch('map_read', { path: 'a1' });
+  assert.equal(afterAck.by, 'human');
+  assert.equal(afterAck.pending, undefined);
   const after = await service.dispatch('map_look', {});
   assert.equal(after.human, undefined);
 });

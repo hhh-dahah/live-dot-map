@@ -4491,7 +4491,7 @@ function group(rows, params) {
   groups.sort((a, b) => Number(Boolean(a.flag)) - Number(Boolean(b.flag)) || (b.value ?? -Infinity) - (a.value ?? -Infinity));
   const best = groups.find((item) => !item.flag);
   const summary = best ? `\u6309 ${by.join("\xD7")} \u5206 ${groups.length} \u7EC4${metric ? `\uFF0C${metric} ${agg}` : ""}\u6700\u9AD8\uFF1A${best.key}\uFF08n=${best.n}${metric ? `\uFF0C${best.value}` : ""}\uFF09` : `\u6309 ${by.join("\xD7")} \u5206 ${groups.length} \u7EC4\uFF0C\u6BCF\u7EC4\u90FD\u5C11\u4E8E ${MIN_GROUP} \u6761\uFF0C\u6837\u672C\u4E0D\u8DB3`;
-  return { result: groups.slice(0, MAX_ROWS_OUT), summary, ...groups.length > MAX_ROWS_OUT ? { truncated: groups.length } : {} };
+  return { by, ...metric ? { metric } : {}, agg, result: groups.slice(0, MAX_ROWS_OUT), summary, ...groups.length > MAX_ROWS_OUT ? { truncated: groups.length } : {} };
 }
 function top(rows, params) {
   const metric = requireField(rows, params.metric, "metric");
@@ -4512,7 +4512,7 @@ function top(rows, params) {
       continue;
     }
     const values = new Set(rows.map((row) => String(row[field] ?? "").trim()).filter(Boolean));
-    if (values.size > 30) continue;
+    if (values.size > 30 || !wanted && values.size > rows.length / 2) continue;
     for (const value of values) {
       const headShare = head.filter((row) => String(row[field] ?? "").trim() === value).length / head.length;
       const restShare = rest.length ? rest.filter((row) => String(row[field] ?? "").trim() === value).length / rest.length : 0;
@@ -4651,6 +4651,7 @@ function parseTarget(raw, document) {
     ownerKind = parts[0] === "nodes" ? "node" : "route";
     ownerId = parts[1];
     rest = parts.slice(2).join("/");
+    if (!ownerOfId(document, ownerId)) throw new BridgeError("OWNER_NOT_FOUND", `\u5F53\u524D\u5730\u56FE\u6CA1\u6709\u5BF9\u8C61\u300C${ownerId}\u300D\uFF0C\u5148\u7528 map_look \u627E id`, { status: 404 });
   } else {
     ownerId = parts[0];
     ownerKind = ownerOfId(document, ownerId);
@@ -4757,6 +4758,22 @@ async function read(service, args) {
   const scope = scopedArgs(args);
   const { context } = await service.agentView({ ...scope, skipDocuments: true });
   const document = context.snapshot.document;
+  const annId = String(args.path ?? "").trim();
+  const ann = (document.anns || []).find((item) => String(item.id) === annId);
+  if (ann) {
+    const on = ann.target?.id ? `${ann.target.kind === "node" ? "nodes" : "routes"}/${ann.target.id}/index.md` : "canvas";
+    const pending = ann.source === "human" && ["new", "delivered"].includes(String(ann.attention));
+    return {
+      // updatedBy 会被 ack 改成确认的 Agent，署名要看来源。
+      id: ann.id,
+      kind: "ann",
+      text: String(ann.text ?? ""),
+      on,
+      by: ann.source === "human" ? "human" : ann.createdBy ?? ann.updatedBy ?? ann.source,
+      ...ann.priority ? { priority: ann.priority } : {},
+      ...pending ? { pending: true, hint: "\u5904\u7406\u5B8C\u7528 ack \u786E\u8BA4\u8FD9\u6761\u6807\u6CE8" } : {}
+    };
+  }
   const target = parseTarget(args.path, document);
   const owner2 = { ...scope, ownerKind: target.ownerKind, ownerId: target.ownerId };
   if (target.listing) {
@@ -10001,6 +10018,8 @@ livedot note <\u8282\u70B9id> "<\u4E00\u53E5\u8BDD>"           \u7ED9\u8282\u70B
 livedot analyze <\u6570\u636E\u6587\u4EF6> describe|group|top [--by \u5B57\u6BB5] [--metric \u6307\u6807]
 livedot manage <\u52A8\u4F5C> [...]                \u4F4E\u9891\u7BA1\u7406\uFF0C\u89C1 livedot manage --help
 
+look \u7ED3\u679C\u6709 human\uFF08\u5F85\u786E\u8BA4\u7684\u4EBA\u7C7B\u6807\u6CE8 id\uFF09\u65F6\uFF1Alivedot read <\u6807\u6CE8id> \u770B\u5168\u6587 \u2192 \u5904\u7406 \u2192 livedot write --ack <\u6807\u6CE8id>
+
 \u4F8B\uFF1A
   livedot look "\u6296\u97F3 \u7206\u6B3E"
   livedot read nodes/n3/index.md
@@ -10013,8 +10032,8 @@ var COMMAND_HELP = {
   look: `livedot look [\u5173\u952E\u8BCD] [--node <\u8282\u70B9id>] [--limit 5] [--all]
 \u8FD4\u56DE {map,name,rev,goal?,human?,cols,items}\u3002items \u6BCF\u884C [id,\u540D\u79F0,\u7C7B\u578B,\u8DEF\u5F84,\u7406\u7531]\uFF1Bhuman \u662F\u5F85\u786E\u8BA4\u7684\u4EBA\u7C7B\u6807\u6CE8 id\u3002
 --all \u542B\u5DF2\u5F52\u6863\u5386\u53F2\u3002\u4F8B\uFF1Alivedot look "\u6570\u636E\u5206\u6790"`,
-  read: `livedot read <\u8DEF\u5F84|\u8282\u70B9id> [--force]
-\u8DEF\u5F84\u5982 nodes/n3/index.md\u3001nodes/n3/\u65B9\u6848.md\uFF1B\u53EA\u5199 n3 \u8BFB\u4E3B\u6587\u6863\u5E76\u5217\u51FA\u8D44\u6599\u5305\u6587\u4EF6\uFF1B\u4EE5 / \u7ED3\u5C3E\u53EA\u5217\u6587\u4EF6\u3002
+  read: `livedot read <\u8DEF\u5F84|\u8282\u70B9id|\u6807\u6CE8id> [--force]
+\u8DEF\u5F84\u5982 nodes/n3/index.md\u3001nodes/n3/\u65B9\u6848.md\uFF1B\u53EA\u5199 n3 \u8BFB\u4E3B\u6587\u6863\u5E76\u5217\u51FA\u8D44\u6599\u5305\u6587\u4EF6\uFF1B\u4EE5 / \u7ED3\u5C3E\u53EA\u5217\u6587\u4EF6\uFF1Ba1 \u8FD9\u7C7B\u6807\u6CE8 id \u8FD4\u56DE\u6807\u6CE8\u5168\u6587\u3002
 \u540C\u4E00 --session \u5185\u6587\u4EF6\u6CA1\u53D8\u65F6\u53EA\u56DE {unchanged:true}\uFF0C--force \u5F3A\u5236\u91CD\u8BFB\u3002\u4F8B\uFF1Alivedot read n3`,
   write: `livedot write <\u8DEF\u5F84> "<\u5185\u5BB9>"            \u8FFD\u52A0\uFF08\u9ED8\u8BA4\uFF0C\u4E0D\u4F1A\u8986\u76D6\u5DF2\u6709\u5185\u5BB9\uFF09
 livedot write <\u8DEF\u5F84> - --etag <etag>     \u4ECE stdin \u8BFB\u5185\u5BB9\u6574\u6587\u66FF\u6362\uFF0Cetag \u53D6\u81EA read \u7ED3\u679C
@@ -10089,6 +10108,47 @@ function usageError(command2, message) {
   const usage = COMMAND_HELP[command2]?.split("\n")[0] ?? "livedot --help";
   return new CliError("CLI_USAGE", `${message}\u3002\u6B63\u786E\u7528\u6CD5\uFF1A${usage}\uFF08\u8BE6\u89C1 livedot ${command2} --help\uFF09`);
 }
+function editDistance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    let previous = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const current = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+      previous = current;
+    }
+  }
+  return row[b.length];
+}
+function unknownFlagError(command2, flag) {
+  const own = COMMAND_FLAGS[command2] ?? [];
+  const candidates = [...own, ...COMMON_FLAGS];
+  const guess = candidates.map((name) => [name, editDistance(flag, name)]).sort((a, b) => a[1] - b[1])[0];
+  const suggestion = guess && guess[1] <= 2 ? `\uFF0C\u662F\u4E0D\u662F --${guess[0]}\uFF1F` : "";
+  const legal = own.length ? `\uFF1B${command2} \u53EF\u7528\u53C2\u6570\uFF1A${own.map((name) => `--${name}`).join(" ")}` : "";
+  return new CliError("CLI_USAGE", `\u672A\u77E5\u53C2\u6570 --${flag}${suggestion}${legal}\uFF08\u8BE6\u89C1 livedot ${command2} --help\uFF09`);
+}
+var CLI_REWRITES = [
+  [/ 用法：.*$/s, ""],
+  [/map_write（不带 baseEtag 即追加）/g, "livedot write\uFF08\u4E0D\u5E26 --etag \u5373\u8FFD\u52A0\uFF09"],
+  [/map_write\(\{ack:\[…\]\}\)/g, "livedot write --ack <id>"],
+  [/map_manage\(\{action:"(\w+)"\}\)/g, "livedot manage $1"],
+  [/map_write\(\{commands:\[…\]\}\)/g, "MCP map_write \u7684 commands\uFF08CLI \u4E0D\u652F\u6301\uFF09"],
+  [/\bmap_look\b/g, "livedot look"],
+  [/\bmap_read\b/g, "livedot read"],
+  [/\bmap_write\b/g, "livedot write"],
+  [/\banalysis_run\b/g, "livedot analyze"],
+  [/\bmap_manage\b/g, "livedot manage"],
+  [/\bbaseEtag\b/g, "--etag"]
+];
+function cliMessage(command2, message, fromBridge) {
+  if (!fromBridge) return message;
+  let text = message;
+  for (const [pattern, replacement] of CLI_REWRITES) text = text.replace(pattern, replacement);
+  const usage = COMMAND_HELP[command2]?.split("\n")[0];
+  return usage && text !== message && / 用法：/.test(message) ? `${text} \u6B63\u786E\u7528\u6CD5\uFF1A${usage}` : text;
+}
 function str(flags, key) {
   const value = flags[key];
   return typeof value === "string" && value ? value : void 0;
@@ -10161,8 +10221,9 @@ async function build(command2, positional, flags) {
     return { tool: "map_write", args: { ...scope, path: node.includes("/") ? node : `nodes/${node}/index.md`, content: `- ${stamp()} \xB7 ${text}` } };
   }
   if (command2 === "analyze") {
-    const [path, op] = positional;
+    const [path, op, ...extra] = positional;
     if (!path || !op) throw usageError(command2, "\u7F3A\u5C11 <\u6570\u636E\u6587\u4EF6> \u6216 <describe|group|top>");
+    if (extra.length) throw usageError(command2, `\u591A\u4F59\u53C2\u6570\u300C${extra.join(" ")}\u300D\uFF1B\u591A\u4E2A\u5B57\u6BB5\u8981\u5199\u6210 --by "\u97F3\u4E50,\u5C01\u9762"\uFF08\u52A0\u5F15\u53F7\uFF09`);
     const params = {};
     const by = list(str(flags, "by"));
     if (by) params.by = by.length === 1 ? by[0] : by;
@@ -10220,7 +10281,7 @@ async function runAgentCli(argv, callTool) {
   try {
     const allowed = /* @__PURE__ */ new Set([...COMMON_FLAGS, ...COMMAND_FLAGS[command2] ?? []]);
     const unknown = Object.keys(flags).find((key) => !allowed.has(key));
-    if (unknown) throw usageError(command2, `\u672A\u77E5\u53C2\u6570 --${unknown}`);
+    if (unknown) throw unknownFlagError(command2, unknown);
     const globals = {
       project: str(flags, "project") ?? process.env.LIVEDOT_PROJECT_ROOT,
       agent: str(flags, "agent") ?? detectAgent(process.env),
@@ -10245,7 +10306,8 @@ async function runAgentCli(argv, callTool) {
   } catch (error3) {
     const value = error3;
     const code = typeof value?.code === "string" ? value.code : "CLI_FAILED";
-    process.stderr.write(`${JSON.stringify({ error: { code, message: String(value?.message ?? error3) } })}
+    const message = cliMessage(command2, String(value?.message ?? error3), !(error3 instanceof CliError));
+    process.stderr.write(`${JSON.stringify({ error: { code, message } })}
 `);
     return 1;
   }
