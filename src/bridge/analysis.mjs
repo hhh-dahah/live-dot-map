@@ -157,7 +157,7 @@ function group(rows, params) {
   const summary = best
     ? `按 ${by.join('×')} 分 ${groups.length} 组${metric ? `，${metric} ${agg}` : ''}最高：${best.key}（n=${best.n}${metric ? `，${best.value}` : ''}）`
     : `按 ${by.join('×')} 分 ${groups.length} 组，每组都少于 ${MIN_GROUP} 条，样本不足`;
-  return { result: groups.slice(0, MAX_ROWS_OUT), summary, ...(groups.length > MAX_ROWS_OUT ? { truncated: groups.length } : {}) };
+  return { by, ...(metric ? { metric } : {}), agg, result: groups.slice(0, MAX_ROWS_OUT), summary, ...(groups.length > MAX_ROWS_OUT ? { truncated: groups.length } : {}) };
 }
 
 function top(rows, params) {
@@ -179,7 +179,8 @@ function top(rows, params) {
       continue;
     }
     const values = new Set(rows.map((row) => String(row[field] ?? '').trim()).filter(Boolean));
-    if (values.size > 30) continue;
+    // 标题/ID 这类几乎每行一个值的字段没有对比意义，只会挤掉真正的差异。
+    if (values.size > 30 || (!wanted && values.size > rows.length / 2)) continue;
     for (const value of values) {
       const headShare = head.filter((row) => String(row[field] ?? '').trim() === value).length / head.length;
       const restShare = rest.length ? rest.filter((row) => String(row[field] ?? '').trim() === value).length / rest.length : 0;

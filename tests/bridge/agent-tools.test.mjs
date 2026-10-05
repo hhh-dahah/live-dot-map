@@ -138,6 +138,10 @@ test('ack 确认人类标注；map_look 列出待确认的人类标注 id', asyn
   });
   const looked = await service.dispatch('map_look', {});
   assert.deepEqual(looked.human, ['a1']);
+  const annotation = await service.dispatch('map_read', { path: 'a1' });
+  assert.equal(annotation.text, '请先看这里');
+  assert.equal(annotation.on, 'nodes/n1/index.md');
+  assert.equal(annotation.pending, true);
   const acked = await service.dispatch('map_write', { ack: ['a1'] });
   assert.deepEqual(acked.acked, ['a1']);
   const after = await service.dispatch('map_look', {});
@@ -180,12 +184,14 @@ test('analysis_run 对资料包 CSV 做 describe / group / top，小样本标记
 
   const grouped = await service.dispatch('analysis_run', { path: 'n1/douyin.csv', op: 'group', params: { by: '音乐', metric: '播放' } });
   assert.equal(grouped.result[0].key, '钢琴');
+  assert.equal(grouped.agg, 'median');
   assert.equal(grouped.result.find((item) => item.key === '民谣').flag, '样本不足');
   assert.match(grouped.summary, /钢琴/);
 
   const topped = await service.dispatch('analysis_run', { path: 'n1/douyin.csv', op: 'top', params: { metric: '播放', ratio: 0.2 } });
   assert.equal(topped.groups.top, 4);
   assert.equal(topped.result[0].field, '音乐');
+  assert.equal(topped.result.some((item) => item.field === 'id'), false, '每行一个值的 id 列不参与对比');
   assert.ok(bytes(topped) <= 2048, `${bytes(topped)}B`);
 
   await assert.rejects(
