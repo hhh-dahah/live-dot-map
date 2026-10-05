@@ -213,9 +213,9 @@ test('antigravity adapter: fingerprint probe discovers AGY and writes mcp_config
   // AGY IDE 兜底同名配置也写入。
   const ideConfig = JSON.parse(await readFile(join(home, '.gemini', 'antigravity-ide', 'mcp_config.json'), 'utf8'));
   assert.equal(ideConfig.mcpServers['livedot-map'].args.at(-1), 'antigravity');
-  // 全局权限白名单自动预授权 25 项工具与通配符，免除弹窗逐条审批
+  // 全局权限白名单自动预授权 5 个 Agent 工具与通配符，免除弹窗逐条审批
   const globalConfig = JSON.parse(await readFile(join(home, '.gemini', 'config', 'config.json'), 'utf8'));
-  assert.ok(globalConfig.userSettings.globalPermissionGrants.allow.includes('mcp(livedot-map/map_get_context)'));
+  assert.ok(globalConfig.userSettings.globalPermissionGrants.allow.includes('mcp(livedot-map/map_look)'));
   assert.ok(globalConfig.userSettings.globalPermissionGrants.allow.includes('mcp(livedot-map/*)'));
   assert.ok(globalConfig.userSettings.globalPermissionGrants.allow.includes('command(pnpm build)'), '保留既有权限');
   // doctor 认可 antigravity 安装项。

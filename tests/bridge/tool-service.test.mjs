@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { join } from 'node:path';
 import { MapManager } from '../../src/bridge/map-manager.mjs';
-import { ToolService, TOOL_NAMES } from '../../src/bridge/tool-service.mjs';
+import { LEGACY_TOOL_NAMES, ToolService, TOOL_NAMES } from '../../src/bridge/tool-service.mjs';
 import { temporaryProject } from './helpers.mjs';
 
 const PNG_1X1 = Buffer.from(
@@ -40,10 +40,11 @@ async function addNode(service, mapKey, id = 'n1') {
   });
 }
 
-test('ToolService 暴露固定 25 项工具，未知工具返回结构化 BridgeError', async (t) => {
+test('ToolService 对外发布 5 个 Agent 工具、内部保留 25 个旧名，未知工具返回结构化 BridgeError', async (t) => {
   const { service } = await openService(t);
-  assert.equal(TOOL_NAMES.length, 25);
-  assert.equal(new Set(TOOL_NAMES).size, 25);
+  assert.deepEqual([...TOOL_NAMES], ['map_look', 'map_read', 'map_write', 'analysis_run', 'map_manage']);
+  assert.equal(LEGACY_TOOL_NAMES.length, 25);
+  assert.equal(new Set(LEGACY_TOOL_NAMES).size, 25);
   await assert.rejects(
     service.dispatch('map_not_a_real_tool'),
     (error) => error?.code === 'UNKNOWN_MCP_TOOL' && error?.status === 404 && typeof error.message === 'string',

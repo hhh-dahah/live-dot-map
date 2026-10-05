@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { MCP_TOOL_NAMES } from './tool-definitions.generated.mjs';
+import { MCP_LEGACY_TOOL_NAMES, MCP_TOOL_NAMES } from './tool-definitions.generated.mjs';
 
 /**
  * The seven tools are intentionally kept in one place.  Adapters must not
@@ -229,7 +229,7 @@ export class LocalBridgeClient {
   }
 
   async mcp(name, args = {}, options = {}) {
-    if (!MCP_TOOL_NAMES.includes(name)) {
+    if (!MCP_TOOL_NAMES.includes(name) && !MCP_LEGACY_TOOL_NAMES.includes(name)) {
       throw new BridgeClientError('UNKNOWN_MCP_TOOL', `未知地图工具: ${name}`, { status: 400 });
     }
     try {

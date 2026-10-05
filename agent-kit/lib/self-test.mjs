@@ -37,16 +37,10 @@ function fakeFetchFactory() {
 export async function runSelfTest() {
   const checks = [];
   const check = (name, ok, detail = '') => checks.push({ name, ok: Boolean(ok), detail });
-  const expectedToolNames = [
-    'map_get_context', 'map_list_human_updates', 'map_ack_human_updates', 'map_list', 'map_create', 'map_switch', 'map_rename',
-    'map_next_candidates', 'map_apply_commands', 'map_validate', 'map_checkpoint', 'map_plan_consolidation',
-    'map_read_markdown', 'map_write_markdown', 'map_append_markdown', 'map_list_bundle_files', 'map_create_markdown',
-    'map_rename_bundle_file', 'map_archive_bundle_file', 'map_restore_bundle_file', 'map_list_assets', 'map_import_asset',
-    'map_archive_asset', 'map_restore_asset',
-  ];
+  const expectedToolNames = ['map_look', 'map_read', 'map_write', 'analysis_run', 'map_manage'];
   check('fixed-mcp-tool-list', JSON.stringify(MCP_TOOL_NAMES) === JSON.stringify(expectedToolNames));
   check('mcp-tool-schemas', mcpToolDefinitions().length === expectedToolNames.length && mcpToolDefinitions().every((tool) => MCP_TOOL_NAMES.includes(tool.name)));
-  check('archive-restore-tools', MCP_TOOL_NAMES.includes('map_archive_bundle_file') && MCP_TOOL_NAMES.includes('map_restore_bundle_file'));
+  check('manage-tool', MCP_TOOL_NAMES.includes('map_manage'));
   check('no-purge-tool', MCP_TOOL_NAMES.every((name) => !/purge/i.test(name)));
 
   const { fetchImpl, calls } = fakeFetchFactory();
@@ -62,8 +56,8 @@ export async function runSelfTest() {
 
   const server = new MapMcpServer({ client });
   const listed = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
-  check('stdio-tools-list', listed?.result?.tools?.length === 24);
-  const called = await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'map_get_context', arguments: { query: 'self-test' } } });
+  check('stdio-tools-list', listed?.result?.tools?.length === expectedToolNames.length);
+  const called = await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'map_look', arguments: { query: 'self-test' } } });
   check('stdio-tool-call', called?.result?.isError === false);
 
   const bytes = Buffer.from('portable-node-self-test');

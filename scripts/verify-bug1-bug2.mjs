@@ -51,7 +51,7 @@ try {
   const init = await call('initialize');
   if (!init.result?.serverInfo) fail('initialize 失败');
   const list1 = await call('tools/list');
-  if (!Array.isArray(list1.result?.tools) || list1.result.tools.length !== 25) fail('tools/list 应为 25 项');
+  if (!Array.isArray(list1.result?.tools) || list1.result.tools.length !== 5) fail('tools/list 应为 5 项');
 
   // bug1a：初始跟随 PROJECT_A（active map = 第四轮排查 map-mt421fju）
   const ctxA = await call('tools/call', { name: 'map_list', arguments: {} });
