@@ -13,17 +13,16 @@ const INVOKE = 'node "$HOME/.live-dot-map/livedot.mjs"';
 const HELP = `livedot：活点地图记忆空间的命令行，给 Agent 用，输出紧凑 JSON。
 调用：${INVOKE} <命令> …（下文简写 livedot）
 
-livedot look [关键词] [--node n3]         看目录：id/名称/类型/路径/理由，不含正文
-livedot read <路径|节点id> [--force]       读正文；路径取 look 结果的 path 列
+livedot look [关键词] [--node n3]         看目录，不含正文；不带关键词=整张目录+每项一句摘要
+livedot read <路径|节点id> [--force]       读正文（附该节点标注 anns）；路径取 look 结果的 path 列
 livedot write <路径> "<内容>"              追加到文件末尾（文件不存在就新建）
 livedot write <路径> - --etag <etag>       从 stdin 读内容整文替换（etag 取自 read）
 livedot write --new "<节点名>" [--kind problem] ["<内容>"]   新建节点
-livedot write --ack a1,a2                  确认人类标注（look 结果的 human 字段）
+livedot write n3 --summary "<一句话>"      写节点摘要（Agent元数据，只导航）
+livedot write n3 --file <文件名> "<说明>"  写资料包里某个文件的一句说明
 livedot note <节点id> "<一句话>"           给节点追加一条带时间的记录
 livedot analyze <数据文件> describe|group|top [--by 字段] [--metric 指标]
 livedot manage <动作> [...]                低频管理，见 livedot manage --help
-
-look 结果有 human（待确认的人类标注 id）时：livedot read <标注id> 看全文 → 处理 → livedot write --ack <标注id>
 
 例：
   livedot look "抖音 爆款"
@@ -36,15 +35,16 @@ look 结果有 human（待确认的人类标注 id）时：livedot read <标注i
 
 const COMMAND_HELP: Record<string, string> = {
   look: `livedot look [关键词] [--node <节点id>] [--limit 5] [--all]
-返回 {map,name,rev,goal?,human?,cols,items}。items 每行 [id,名称,类型,路径,理由]；human 是待确认的人类标注 id。
---all 含已归档历史。例：livedot look "数据分析"`,
+返回 {map,name,rev,goal?,cols,items}。不带关键词：items 每行 [id,名称,类型,路径,摘要,文件数]，按意思自己挑；
+带关键词：每行 [id,名称,类型,路径,理由]，没命中换个说法。--all 含已归档历史。例：livedot look "数据分析"`,
   read: `livedot read <路径|节点id|标注id> [--force]
-路径如 nodes/n3/index.md、nodes/n3/方案.md；只写 n3 读主文档并列出资料包文件；以 / 结尾只列文件；a1 这类标注 id 返回标注全文。
+路径如 nodes/n3/index.md、nodes/n3/方案.md；只写 n3 读主文档（附标注 anns、其他文件数 otherFiles）；以 / 结尾列文件；a1 这类标注 id 返回标注全文。
 同一 --session 内文件没变时只回 {unchanged:true}，--force 强制重读。例：livedot read n3`,
   write: `livedot write <路径> "<内容>"            追加（默认，不会覆盖已有内容）
 livedot write <路径> - --etag <etag>     从 stdin 读内容整文替换，etag 取自 read 结果
 livedot write --new "<节点名>" [--kind goal|problem] [--near n3] ["<内容>"]
-livedot write --ack a1,a2 [--summary "…"]
+livedot write n3 --summary "<一句话>"    写节点摘要到 Agent元数据.md（read 返回 meta:"缺摘要|摘要过期" 时）
+livedot write n3 --file <文件名> "<说明>" 写文件说明（read 返回 meta:"无说明" 时）；人改过/删过的不能写，用户明确要求时加 --user-asked
 例：livedot write nodes/n3/index.md "## 结论\\n钢琴配乐组中位播放 41 万"`,
   note: `livedot note <节点id> "<一句话>"
 在节点主文档末尾追加一行 "- 10-05 14:30 · 一句话"。例：livedot note n3 "改用暖色封面，待观察"`,
@@ -64,19 +64,19 @@ livedot write --ack a1,a2 [--summary "…"]
   archive --path n3/草稿.md                归档（可恢复）
   restore --path n3/草稿.md
   import --path n3 --source <本机文件路径>  导入附件/数据
-  validate | checkpoint | plan | human     校验 / 检查点 / 整理建议 / 待确认人类更新`,
+  validate | checkpoint | plan             校验 / 检查点 / 整理建议`,
 };
 
 const COMMON_FLAGS = new Set(['project', 'map', 'agent', 'session', 'out', 'runtime-state-dir', 'app', 'help']);
 const COMMAND_FLAGS: Record<string, string[]> = {
   look: ['node', 'limit', 'all'],
   read: ['force'],
-  write: ['etag', 'new', 'kind', 'near', 'ack', 'summary', 'replace-all'],
+  write: ['etag', 'new', 'kind', 'near', 'summary', 'file', 'user-asked', 'replace-all'],
   note: [],
   analyze: ['by', 'metric', 'agg', 'ratio', 'fields'],
   manage: ['path', 'name', 'to', 'source', 'include-archived'],
 };
-const BOOLEAN_FLAGS = new Set(['force', 'all', 'help', 'include-archived', 'replace-all']);
+const BOOLEAN_FLAGS = new Set(['force', 'all', 'help', 'include-archived', 'replace-all', 'user-asked']);
 
 class CliError extends Error {
   code: string;
@@ -132,7 +132,10 @@ function unknownFlagError(command: string, flag: string): CliError {
 const CLI_REWRITES: Array<[RegExp, string]> = [
   [/ 用法：.*$/s, ''],
   [/map_write（不带 baseEtag 即追加）/g, 'livedot write（不带 --etag 即追加）'],
-  [/map_write\(\{ack:\[…\]\}\)/g, 'livedot write --ack <id>'],
+  [/map_write\(\{path:"([^"]+)", meta:\{summary:"…"\}\}\)/g, 'livedot write $1 --summary "…"'],
+  [/map_write\(\{path:"([^"]+)", meta:\{files:\{"([^"]+)":"…"\}\}\}\)/g, 'livedot write $1 --file "$2" "…"'],
+  [/map_write\(\{path:"n3", meta:\{summary:"…", files:\{"文件名":"说明"\}\}\}\)/g, 'livedot write n3 --summary "…" 或 livedot write n3 --file <文件名> "说明"'],
+  [/带 meta\.userAsked:true/g, '加 --user-asked'],
   [/map_manage\(\{action:"(\w+)"\}\)/g, 'livedot manage $1'],
   [/map_write\(\{commands:\[…\]\}\)/g, 'MCP map_write 的 commands（CLI 不支持）'],
   [/\bmap_look\b/g, 'livedot look'],
@@ -199,13 +202,26 @@ async function build(command: string, positional: string[], flags: Record<string
   if (command === 'write') {
     const args: Json = { ...scope };
     const created = str(flags, 'new');
-    const ack = list(str(flags, 'ack'));
+    const summary = str(flags, 'summary');
+    const file = str(flags, 'file');
+    if (summary || file) {
+      const [owner, note] = positional;
+      if (!owner) throw usageError(command, '缺少 <节点id>');
+      if (file && note === undefined) throw usageError(command, '缺少文件说明 "<说明>"');
+      args.path = owner;
+      args.meta = {
+        ...(summary ? { summary: unescapeInline(summary) } : {}),
+        ...(file ? { files: { [file]: unescapeInline(note ?? '') } } : {}),
+        ...(flags['user-asked'] === true ? { userAsked: true } : {}),
+      };
+      return { tool: 'map_write', args };
+    }
     let path: string | undefined;
     let content: string | undefined;
     if (created) {
       args.node = { name: created, ...(str(flags, 'kind') ? { kind: str(flags, 'kind') } : {}), ...(str(flags, 'near') ? { near: str(flags, 'near') } : {}) };
       content = positional[0];
-    } else if (!ack) {
+    } else {
       [path, content] = positional;
       if (!path) throw usageError(command, '缺少 <路径>');
       if (content === undefined) throw usageError(command, '缺少 "<内容>"（用 - 表示从 stdin 读）');
@@ -216,7 +232,6 @@ async function build(command: string, positional: string[], flags: Record<string
     if (content !== undefined) args.content = content;
     if (str(flags, 'etag')) args.baseEtag = str(flags, 'etag');
     if (flags['replace-all'] === true) args.allowContentRemoval = true;
-    if (ack) { args.ack = ack; if (str(flags, 'summary')) args.summary = str(flags, 'summary'); }
     return { tool: 'map_write', args };
   }
   if (command === 'note') {
@@ -306,6 +321,9 @@ export async function runAgentCli(argv: string[], callTool: CallTool): Promise<n
     const { tool, args } = await build(command, positional, flags);
     if (globals.session) args.sessionId = globals.session;
     const value = await callTool(tool, args, globals);
+    if (value && typeof value === 'object' && typeof (value as Json).hint === 'string') {
+      (value as Json).hint = cliMessage(command, String((value as Json).hint), true);
+    }
     const out = str(flags, 'out');
     if (out) {
       await writeFile(out, `${JSON.stringify(value, null, 2)}\n`, 'utf8');

@@ -82,14 +82,10 @@ for (const agent of ['codex', 'claude', 'kimi', 'codebuddy']) {
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', updatedBy: 'human', updatedRevision: 0,
     });
     await writeFile(mapPath, `${JSON.stringify(map, null, 2)}\n`);
-    const started = await runHook(project, agent, 'session-start');
-    assert.equal(started.hookSpecificOutput?.hookEventName, 'SessionStart');
-    const startedLine = started.hookSpecificOutput.additionalContext;
-    assert.equal(startedLine.includes('\n'), false);
-    assert.ok(Buffer.byteLength(startedLine, 'utf8') <= 160, startedLine);
-    assert.match(startedLine, /a-human-1\(human\)/);
-    const deliveredMap = JSON.parse(await readFile(mapPath, 'utf8'));
-    assert.equal(deliveredMap.anns[0].attention, 'delivered');
+    // hook 不推送：会话开始零输出，也不把人类标注标成已送达。
+    assert.equal(await runHook(project, agent, 'session-start'), null, `${agent}: SessionStart must be silent`);
+    const untouched = JSON.parse(await readFile(mapPath, 'utf8'));
+    assert.equal(untouched.anns[0].attention, 'new');
     const [acked, applied, archived, restored, forgedActor] = await mcp(project, agent, [
       ['map_ack_human_updates', { ids: ['a-human-1'], summary: '已读取 a-human-1：先验证真实用户入口' }],
       ['map_apply_commands', { commands: [{ op: 'create', collection: 'nodes', value: { id: `n-${agent}`, num: '02', name: `${agent} 写回`, kind: 'goal', type: '目的', route: 'r1', x: 240, y: 0, md: `.live-dot-map/maps/default/nodes/n-${agent}/index.md` } }] }],
@@ -97,7 +93,7 @@ for (const agent of ['codex', 'claude', 'kimi', 'codebuddy']) {
       ['map_apply_commands', { commands: [{ op: 'restore', collection: 'nodes', id: `n-${agent}` }] }],
       ['map_apply_commands', { commands: [{ op: 'update', collection: 'nodes', id: `n-${agent}`, patch: { shelved: true } }] }, 'HUMAN_APPROVAL_REQUIRED'],
     ]);
-    assert.ok(acked.revision >= 2);
+    assert.ok(acked.revision >= 1);
     assert.ok(applied.revision > acked.revision);
     assert.equal(archived.document.nodes.find((node) => node.id === `n-${agent}`)?.archived, true);
     assert.equal(restored.document.nodes.find((node) => node.id === `n-${agent}`)?.archived, undefined);
@@ -105,11 +101,11 @@ for (const agent of ['codex', 'claude', 'kimi', 'codebuddy']) {
     const persisted = JSON.parse(await readFile(mapPath, 'utf8'));
     assert.equal(persisted.anns[0].attention, 'acknowledged');
     assert.equal(persisted.nodes.some((node) => node.id === `n-${agent}` && node.updatedBy === `agent:${agent}`), true);
-    // 自己的写入不回推给自己；标注已确认后 Stop 零输出。
+    // 写入之后各 hook 仍零输出。
     assert.equal(await runHook(project, agent, 'user-prompt'), null, `${agent}: own writes must not be echoed back`);
     const stopped = await runHook(project, agent, 'stop');
     assert.equal(stopped, null, `${agent}: closed Stop must be silent`);
-    results.push({ agent, delivered: true, acknowledged: true, wroteBack: true, stopClosed: true, revision: persisted.revision });
+    results.push({ agent, silentHooks: true, acknowledged: true, wroteBack: true, stopClosed: true, revision: persisted.revision });
   } finally { await rm(project, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }).catch(() => undefined); }
 }
 } finally {

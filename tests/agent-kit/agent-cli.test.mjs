@@ -87,6 +87,31 @@ test('look → write --new → note → read → analyze 全链路走同一个 d
   assert.ok(JSON.parse(await readFile(out, 'utf8')).items);
 });
 
+test('write --summary / --file 写 Agent元数据；报错改写成 CLI 写法', async (t) => {
+  const { root } = await temporaryProject(t);
+  const created = json(await cli(root, ['write', '--new', '数据节点', '正文']));
+  assert.match(created.hint, /livedot write n\d+ --summary/);
+  const nodeId = created.node;
+  const csv = join(root, 'data.csv');
+  await writeFile(csv, 'a,b\n1,2\n', 'utf8');
+  const imported = json(await cli(root, ['manage', 'import', '--path', nodeId, '--source', csv]));
+  assert.match(imported.hint, new RegExp(`livedot write ${nodeId} --file "data.csv"`));
+
+  const summary = await cli(root, ['write', nodeId, '--summary', '一句话摘要']);
+  assert.equal(summary.code, 0, summary.stderr);
+  assert.deepEqual(json(summary).meta.wrote, ['summary']);
+  const file = await cli(root, ['write', nodeId, '--file', 'data.csv', '样例数据']);
+  assert.equal(file.code, 0, file.stderr);
+  const listed = json(await cli(root, ['read', `nodes/${nodeId}/`]));
+  assert.equal(listed.files.find((row) => row[0] === 'data.csv')[3], '样例数据（推断）');
+
+  const missing = JSON.parse((await cli(root, ['write', nodeId, '--file', 'data.csv'])).stderr).error;
+  assert.equal(missing.code, 'CLI_USAGE');
+  const direct = JSON.parse((await cli(root, ['write', `nodes/${nodeId}/Agent元数据.md`, 'x'])).stderr).error;
+  assert.equal(direct.code, 'META_WRITE_VIA_META');
+  assert.doesNotMatch(direct.message, /map_\w+|\(\{/);
+});
+
 test('write - 从 stdin 读内容，带 etag 整文替换', async (t) => {
   const { root } = await temporaryProject(t);
   const nodeId = json(await cli(root, ['write', '--new', '草稿'])).node;

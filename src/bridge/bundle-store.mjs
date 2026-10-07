@@ -15,6 +15,7 @@ import { basename, dirname, extname, join, relative, resolve, sep } from 'node:p
 import { BridgeError } from './errors.mjs';
 import { atomicWriteFile, ensureDirectory, withFileLock, writeJsonAtomic, readJson } from './fs-utils.mjs';
 import { mapDirectory, isSafeMapId } from './maps.mjs';
+import { syncMetaRename } from './agent-meta.mjs';
 
 /** 资料包单文件硬上限（默认 2 GiB，满足本地科研仿真、工程大包与数据集）。浏览器端使用流式管道。 */
 export const MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
@@ -606,6 +607,11 @@ export class BundleStore {
       const target = join(info.directory, finalName);
       await this.#assertSafePath(this.projectRoot, source.path, { allowMissing: false });
       await rename(source.path, target);
+      // 元数据跟着改名是附带动作，失败不能让已经完成的改名报错。
+      await syncMetaRename({
+        mapRoot: this.mapRoot, ownerDirKind: info.ownerKind, ownerId: info.ownerId, directory: info.directory,
+        from: basename(source.path), to: finalName, writeText: (path, text) => atomicWriteFile(path, text),
+      }).catch(() => undefined);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
   }

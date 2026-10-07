@@ -11,21 +11,23 @@ description: 活点地图项目记忆。需要项目历史/决策/数据，或�
 
 | 想做 | 命令 |
 |---|---|
-| 找相关记忆（只回目录） | `livedot look "抖音 爆款"` |
+| 看整张目录（每项一句摘要） | `livedot look` |
+| 按关键词找（只回目录） | `livedot look "抖音 爆款"` |
 | 读正文 | `livedot read nodes/n3/index.md` 或 `livedot read n3` |
 | 记一句结论 | `livedot note n3 "封面换暖色后播放 +40%，依据 nodes/n3/data.csv"` |
 | 追加一段 | `livedot write nodes/n3/index.md "## 结论\n…"` |
 | 新建节点 | `livedot write --new "节点名" --kind problem "背景…"` |
+| 补摘要 / 文件说明 | `livedot write n3 --summary "一句话"`、`livedot write n3 --file data.csv "一句说明"` |
 | 分析数据 | `livedot analyze nodes/n3/data.csv group --by 音乐 --metric 播放` |
 | 导入数据/附件 | `livedot manage import --path n3 --source D:\data.csv` |
-| 确认人类标注 | `livedot write --ack a1,a2` |
 
 ## 规则
 
-1. 先 look 再 read：look 返回 `[id,名称,类型,路径,理由]`，只 read 需要的那几篇。
+1. 先 look 再 read：不带关键词看整张目录按意思挑；带关键词没命中就换个说法再查一次。只 read 需要的那几篇。
 2. 写入默认追加；整文替换要带 read 返回的 etag（`--etag`）。人类写的文字受保护，不改写、不删除。
-3. look 结果有 `human`（待确认的人类标注 id）时，先读并处理，再 `--ack`。
-4. 数据结论先 analyze，回答里写明样本数 n 和文件路径；标了"样本不足"的不下结论。
-5. 记方向变化、真实结果（含失败）、可复用证据、下一步；不记聊天过程和逐行改动。
-6. 人从画布复制的引用 `[活点地图] 节点「…」n3 → …/nodes/n3/index.md`，直接 `livedot read n3`。
-7. 出错看 stderr 的 message，按其中的正确用法改；同一错误别重试超过 2 次，说明情况交给人。
+3. read 返回的 `anns` 是人在画布上的标注（强调），按它理解正文重点。
+4. read 结果带 `meta:"缺摘要|摘要过期|无说明"` 时，读懂后补一句（写进 Agent元数据.md）。摘要和说明只用来导航，回答事实前读正文；人改过/删过的不要改。
+5. 数据结论先 analyze，回答里写明样本数 n 和文件路径；标了"样本不足"的不下结论。
+6. 记方向变化、真实结果（含失败）、可复用证据、下一步；不记聊天过程和逐行改动。
+7. 人从画布复制的引用 `[活点地图] 节点「…」n3 → …/nodes/n3/index.md`，直接 `livedot read n3`。
+8. 出错看 stderr 的 message，按其中的正确用法改；同一错误别重试超过 2 次，说明情况交给人。

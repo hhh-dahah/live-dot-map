@@ -293,6 +293,7 @@ export async function collect({ projectRoot, mapKey, document, includeHistory = 
       etag: String(card.etag ?? ''),
       updatedAt: String(card.updatedAt ?? ''),
       summaryOnly: true,
+      ...(typeof card.lead === 'string' ? { lead: card.lead } : {}),
       assets: Array.isArray(card.assets) ? card.assets : [],
       owners: [{ ownerKind: owner.ownerKind, ownerId: owner.ownerId }],
     };

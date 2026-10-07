@@ -461,14 +461,14 @@ function applyMapCommand(document, command2, options = {}) {
   if (command2.op === "delete") markLegacyTranslated(next);
   return next;
 }
-function applyCommandEnvelope(document, envelope2, options = {}) {
-  if (!envelope2 || !Array.isArray(envelope2.commands) || envelope2.commands.length === 0 || envelope2.commands.length > 100) throw mapError("INVALID_ENVELOPE", 400, "commands \u5FC5\u987B\u5305\u542B 1\u2013100 \u6761\u547D\u4EE4");
-  if (!ID2.test(envelope2.projectId) || !ID2.test(envelope2.commandId) || !ID2.test(envelope2.sessionId)) throw mapError("INVALID_ENVELOPE", 400, "projectId/commandId/sessionId \u65E0\u6548");
-  if (!Number.isInteger(envelope2.baseRevision) || envelope2.baseRevision < 0) throw mapError("INVALID_ENVELOPE", 400, "baseRevision \u65E0\u6548");
-  const agentInitialMap = isAgent(envelope2.actor) && (document.nodes.length === 0 || isObject(document.ui?.initialization) && document.ui.initialization.status === "in_progress");
-  if (isAgent(envelope2.actor)) {
-    const objectCommands = envelope2.commands.filter((command2) => ["create", "update", "archive", "restore", "delete"].includes(command2.op));
-    const nodeCreates = envelope2.commands.filter((command2) => command2.op === "create" && command2.collection === "nodes");
+function applyCommandEnvelope(document, envelope, options = {}) {
+  if (!envelope || !Array.isArray(envelope.commands) || envelope.commands.length === 0 || envelope.commands.length > 100) throw mapError("INVALID_ENVELOPE", 400, "commands \u5FC5\u987B\u5305\u542B 1\u2013100 \u6761\u547D\u4EE4");
+  if (!ID2.test(envelope.projectId) || !ID2.test(envelope.commandId) || !ID2.test(envelope.sessionId)) throw mapError("INVALID_ENVELOPE", 400, "projectId/commandId/sessionId \u65E0\u6548");
+  if (!Number.isInteger(envelope.baseRevision) || envelope.baseRevision < 0) throw mapError("INVALID_ENVELOPE", 400, "baseRevision \u65E0\u6548");
+  const agentInitialMap = isAgent(envelope.actor) && (document.nodes.length === 0 || isObject(document.ui?.initialization) && document.ui.initialization.status === "in_progress");
+  if (isAgent(envelope.actor)) {
+    const objectCommands = envelope.commands.filter((command2) => ["create", "update", "archive", "restore", "delete"].includes(command2.op));
+    const nodeCreates = envelope.commands.filter((command2) => command2.op === "create" && command2.collection === "nodes");
     if (objectCommands.length > MAX_AGENT_OBJECTS_PER_ENVELOPE) throw mapError("AGENT_BATCH_LIMIT", 422, `Agent \u5355\u6B21\u6700\u591A\u4FEE\u6539 ${MAX_AGENT_OBJECTS_PER_ENVELOPE} \u4E2A\u5BF9\u8C61\uFF0C\u8BF7\u5148\u5408\u5E76\u6216\u8BA9\u4EBA\u9009\u62E9`, { maxObjects: MAX_AGENT_OBJECTS_PER_ENVELOPE, suggestion: "\u538B\u7F29\u6267\u884C\u788E\u7247\uFF0C\u4FDD\u7559\u9879\u76EE/\u8DEF\u7EBF\u7EA7\u7ED3\u8BBA" });
     if (nodeCreates.length > MAX_AGENT_NEW_NODES_PER_ENVELOPE) throw mapError("AGENT_NODE_LIMIT", 422, `Agent \u5355\u6B21\u6700\u591A\u65B0\u589E ${MAX_AGENT_NEW_NODES_PER_ENVELOPE} \u4E2A\u6D3B\u8DC3\u8282\u70B9\uFF0C\u8BF7\u5148\u5408\u5E76\u6216\u5206\u9636\u6BB5\u63D0\u4EA4`, { maxNodes: MAX_AGENT_NEW_NODES_PER_ENVELOPE, suggestion: "\u53EA\u4FDD\u7559\u76EE\u6807\u3001\u9636\u6BB5\u3001\u7ED3\u679C\u6216\u5BA1\u6838\u95E8" });
     const activeNodes = document.nodes.filter((node) => visibleNode(document, node)).length;
@@ -477,14 +477,14 @@ function applyCommandEnvelope(document, envelope2, options = {}) {
   const revision = document.revision + 1;
   const now = utcNow(options.now);
   let next = clone2(document);
-  if (agentInitialMap && !isObject(next.ui.initialization)) next.ui.initialization = { status: "in_progress", startedBy: envelope2.actor, startedAt: now };
-  for (const command2 of envelope2.commands) applyOne(next, command2, envelope2.actor, revision, now);
+  if (agentInitialMap && !isObject(next.ui.initialization)) next.ui.initialization = { status: "in_progress", startedBy: envelope.actor, startedAt: now };
+  for (const command2 of envelope.commands) applyOne(next, command2, envelope.actor, revision, now);
   next.revision = revision;
   next.lastEventId += 1;
   next.updatedAt = now;
   const validation = validateMapDocument(next);
   if (!validation.ok) throw mapError("COMMAND_INVALID_RESULT", 422, "\u547D\u4EE4\u4F1A\u4EA7\u751F\u65E0\u6548\u5730\u56FE", validation.errors);
-  if (envelope2.commands.some((command2) => command2.op === "delete")) markLegacyTranslated(next);
+  if (envelope.commands.some((command2) => command2.op === "delete")) markLegacyTranslated(next);
   return next;
 }
 function commandTouches(command2) {
@@ -496,8 +496,8 @@ function commandTouches(command2) {
   if (command2.op === "suggest_milestone") return [`nodes/${command2.nodeId}/milestoneSuggestion`];
   return ["*"];
 }
-function envelopeTouches(envelope2) {
-  return [...new Set(envelope2.commands.flatMap(commandTouches))].sort();
+function envelopeTouches(envelope) {
+  return [...new Set(envelope.commands.flatMap(commandTouches))].sort();
 }
 function tokenize(text) {
   const normalized = text.toLowerCase().normalize("NFKC");
@@ -2346,7 +2346,7 @@ var ProjectStore = class _ProjectStore {
     });
   }
   async #writeSnapshot(reason) {
-    const envelope2 = {
+    const envelope = {
       revision: this.revision,
       checksum: this.checksum,
       createdAt: this.clock().toISOString(),
@@ -2354,7 +2354,7 @@ var ProjectStore = class _ProjectStore {
       document: this.document
     };
     const path = join3(this.snapshotDirectory, `rev-${String(this.revision).padStart(12, "0")}-${timestampName(this.clock())}.json`);
-    await writeJsonAtomic(path, envelope2);
+    await writeJsonAtomic(path, envelope);
     await this.#pruneJsonDirectory(this.snapshotDirectory, 20);
     return { path, revision: this.revision, checksum: this.checksum };
   }
@@ -2412,15 +2412,15 @@ var ProjectStore = class _ProjectStore {
           details: { source, name }
         });
       }
-      const envelope2 = await readJson(join3(directory, selected));
-      await this.#assertValid(envelope2.document, "INVALID_RECOVERY_IMAGE");
-      if (checksum(envelope2.document) !== envelope2.checksum) {
+      const envelope = await readJson(join3(directory, selected));
+      await this.#assertValid(envelope.document, "INVALID_RECOVERY_IMAGE");
+      if (checksum(envelope.document) !== envelope.checksum) {
         throw new BridgeError("RECOVERY_CHECKSUM_MISMATCH", "Recovery image checksum does not match", { status: 409 });
       }
       const quarantinePath = await quarantineCopy(this.mapPath, this.quarantineDirectory, "map.before-recovery.json");
       const revision = this.revision + 1;
       const commandId = `recover:${randomUUID()}`;
-      const recoveredDocument = cloneJson(envelope2.document);
+      const recoveredDocument = cloneJson(envelope.document);
       if (Number.isSafeInteger(recoveredDocument.revision)) recoveredDocument.revision = revision;
       if (typeof recoveredDocument.updatedAt === "string") recoveredDocument.updatedAt = this.clock().toISOString();
       await this.#assertValid(recoveredDocument, "INVALID_RECOVERY_IMAGE");
@@ -2429,7 +2429,7 @@ var ProjectStore = class _ProjectStore {
         type: "prepare",
         operation: "recover",
         commandId,
-        requestDigest: checksum({ source, selected, checksum: envelope2.checksum }),
+        requestDigest: checksum({ source, selected, checksum: envelope.checksum }),
         baseRevision: this.revision,
         revision,
         checksum: recoveredChecksum,
@@ -2459,10 +2459,10 @@ var ProjectStore = class _ProjectStore {
 };
 
 // src/bridge/server.mjs
-import { randomBytes as randomBytes3, randomUUID as randomUUID9, createHash as createHash8, timingSafeEqual } from "node:crypto";
+import { randomBytes as randomBytes3, randomUUID as randomUUID9, createHash as createHash9, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
-import { access as access4, mkdir as mkdir9, readFile as readFile11, rename as rename6, rm as rm6, writeFile as writeFile3 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname10, isAbsolute as isAbsolute5, join as join18, resolve as resolve15 } from "node:path";
+import { access as access4, mkdir as mkdir10, readFile as readFile12, rename as rename7, rm as rm6, writeFile as writeFile4 } from "node:fs/promises";
+import { basename as basename5, dirname as dirname11, isAbsolute as isAbsolute5, join as join19, resolve as resolve15 } from "node:path";
 import { spawn as spawn3 } from "node:child_process";
 import { homedir as homedir6 } from "node:os";
 
@@ -2936,12 +2936,211 @@ var HumanMdUpdateLog = class {
 };
 
 // src/bridge/md-index.mjs
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 import { readFile as nodeReadFile, stat as nodeStat, readdir as nodeReaddir } from "node:fs/promises";
-import { join as join8, resolve as resolve5 } from "node:path";
+import { join as join9, resolve as resolve5 } from "node:path";
+
+// src/bridge/agent-meta.mjs
+import { createHash as createHash3 } from "node:crypto";
+import { mkdir as mkdir5, readFile as readFile7, rename as rename3, writeFile as writeFile2 } from "node:fs/promises";
+import { dirname as dirname5, join as join8 } from "node:path";
+var META_FILE = "Agent\u5143\u6570\u636E.md";
+var META_LABELS = Object.freeze(["\u539F\u8BDD", "\u63A8\u65AD", "\u4EBA"]);
+var HEADER = ["# Agent\u5143\u6570\u636E", "> Agent \u7EF4\u62A4\uFF0C\u4EBA\u53EF\u4FEE\u6539\uFF1B\u4EBA\u6539\u8FC7\u7684\u884C\u6807\u300C\u4EBA\u300D\uFF0CAgent \u4E0D\u518D\u6539\u52A8\u3002"];
+var FILES_HEADING = "## \u6587\u4EF6";
+var VERSION_LENGTH = 6;
+var isMetaFile = (name) => String(name ?? "").split("/").pop() === META_FILE;
+var contentVersion = (value) => createHash3("sha256").update(value ?? "").digest("hex").slice(0, VERSION_LENGTH);
+var bodyVersion = (text) => contentVersion(withoutSystemBlocks(text).replace(/\r\n/g, "\n").trimEnd());
+function oneLine(text, max) {
+  const value = String(text ?? "").replace(/\s+/g, " ").replace(/[（）]/g, (char) => char === "\uFF08" ? "(" : ")").trim();
+  return value.length > max ? `${value.slice(0, max)}\u2026` : value;
+}
+function stripMarkdownLine(raw) {
+  return String(raw ?? "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/<[^>]+>/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^\s*(?:[-*+>]|\d+\.)\s+/, "").replace(/[*_`~]/g, "").trim();
+}
+function markdownLead(text, max = 40) {
+  for (const raw of withoutSystemBlocks(text).split(/\r?\n/)) {
+    if (/^\s*#{1,6}\s/.test(raw)) continue;
+    const line = stripMarkdownLine(raw);
+    if (!line || /^[-=|:\s]+$/.test(line)) continue;
+    return oneLine(line, max);
+  }
+  return "";
+}
+function withoutSystemBlocks(text) {
+  return String(text ?? "").replace(/<!--\s*@author:\s*system:[^>]*-->[\s\S]*?<!--\s*\/@author\s*-->/gi, "");
+}
+function parseTail(tail) {
+  if (tail === void 0) return { label: "\u4EBA" };
+  const parts = tail.split("\xB7").map((part) => part.trim()).filter(Boolean);
+  const label = META_LABELS.includes(parts[0]) ? parts[0] : null;
+  if (!label) return { label: "\u4EBA" };
+  const version = parts.map((part) => part.match(/@([0-9a-f]{4,})$/i)?.[1]).find(Boolean);
+  if (label === "\u4EBA") return { label, date: parts[1] && !parts[1].startsWith("@") ? parts[1] : "", ...version ? { ver: version.toLowerCase() } : {} };
+  return { label, by: parts[1] ?? "", date: parts[2] ?? "", ...version ? { ver: version.toLowerCase() } : {} };
+}
+var SUMMARY_LINE = /^摘要[：:]\s*(.*?)\s*(?:（([^（）]*)）)?\s*$/;
+var FILE_LINE = /^[-*]\s+(.+?)[：:]\s*(.*?)\s*(?:（([^（）]*)）)?\s*$/;
+function parseMeta(text) {
+  const result2 = { summary: null, files: /* @__PURE__ */ new Map(), extras: [], lines: /* @__PURE__ */ new Map() };
+  if (typeof text !== "string") return result2;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || HEADER.includes(line) || line === FILES_HEADING) continue;
+    const summary = line.match(SUMMARY_LINE);
+    if (summary && !result2.summary) {
+      result2.summary = { text: summary[1], ...parseTail(summary[2]) };
+      result2.lines.set("summary", line);
+      continue;
+    }
+    const file = line.match(FILE_LINE);
+    if (file && !result2.files.has(file[1].trim())) {
+      const name = file[1].trim();
+      result2.files.set(name, { name, text: file[2], ...parseTail(file[3]) });
+      result2.lines.set(`file:${name}`, line);
+      continue;
+    }
+    result2.extras.push(line);
+  }
+  return result2;
+}
+function tailOf(entry, versionPrefix) {
+  if (entry.label === "\u4EBA") return `\uFF08${["\u4EBA", entry.date, entry.ver ? `${versionPrefix}@${entry.ver}` : ""].filter(Boolean).join(" \xB7 ")}\uFF09`;
+  return `\uFF08${[entry.label, entry.by, entry.date, entry.ver ? `${versionPrefix}@${entry.ver}` : ""].filter(Boolean).join(" \xB7 ")}\uFF09`;
+}
+function renderMeta(model) {
+  const out = [...HEADER, ""];
+  if (model.summary) out.push(`\u6458\u8981\uFF1A${model.summary.text}${tailOf(model.summary, "index.md")}`, "");
+  if (model.files.size) {
+    out.push(FILES_HEADING);
+    for (const entry of model.files.values()) out.push(`- ${entry.name}\uFF1A${entry.text}${tailOf(entry, "")}`);
+    out.push("");
+  }
+  if (model.extras.length) out.push(...model.extras, "");
+  return `${out.join("\n").trimEnd()}
+`;
+}
+function metaStatePath(mapRoot, ownerDirKind, ownerId) {
+  return join8(mapRoot, ".bridge", "agent-meta", `${ownerDirKind}-${ownerId}.json`);
+}
+async function readMetaState(path) {
+  try {
+    const parsed = JSON.parse(await readFile7(path, "utf8"));
+    return {
+      written: typeof parsed.written === "string" ? parsed.written : null,
+      deleted: Array.isArray(parsed.deleted) ? parsed.deleted.map(String) : []
+    };
+  } catch {
+    return { written: null, deleted: [] };
+  }
+}
+async function writeMetaState(path, state) {
+  await mkdir5(dirname5(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile2(temporary, `${JSON.stringify({ version: 1, written: state.written, deleted: state.deleted })}
+`, "utf8");
+  await rename3(temporary, path);
+}
+function reconcile(currentText, state, now = /* @__PURE__ */ new Date()) {
+  const current = parseMeta(currentText);
+  const written = state.written === null ? null : parseMeta(state.written);
+  const deleted = new Set(state.deleted);
+  const ownLines = new Set(written ? written.lines.values() : []);
+  const markHuman = (entry, key) => {
+    if (entry.label !== "\u4EBA" && !ownLines.has(current.lines.get(key))) return { name: entry.name, text: entry.text, label: "\u4EBA", date: todayLabel(now), ...entry.ver ? { ver: entry.ver } : {} };
+    return entry;
+  };
+  if (current.summary) current.summary = markHuman(current.summary, "summary");
+  for (const [name, entry] of current.files) current.files.set(name, markHuman(entry, `file:${name}`));
+  if (written) {
+    if (written.summary && !current.summary) deleted.add("summary");
+    for (const name of written.files.keys()) if (!current.files.has(name)) deleted.add(`file:${name}`);
+  }
+  return { model: current, deleted };
+}
+function renameMetaText(text, from, to) {
+  if (typeof text !== "string") return text;
+  return text.split(/\r?\n/).map((raw) => {
+    const match = raw.trim().match(FILE_LINE);
+    if (!match || match[1].trim() !== from) return raw;
+    return raw.replace(`${from}\uFF1A`, `${to}\uFF1A`).replace(`${from}:`, `${to}:`);
+  }).join("\n");
+}
+async function syncMetaRename({ mapRoot, ownerDirKind, ownerId, directory, from, to, writeText }) {
+  if (from === to || isMetaFile(from)) return;
+  const metaPath = join8(directory, META_FILE);
+  const statePath = metaStatePath(mapRoot, ownerDirKind, ownerId);
+  const text = await readFile7(metaPath, "utf8").catch(() => null);
+  const state = await readMetaState(statePath);
+  if (text !== null) {
+    const next = renameMetaText(text, from, to);
+    if (next !== text) await writeText(metaPath, next);
+  }
+  if (state.written !== null || state.deleted.length) {
+    await writeMetaState(statePath, {
+      written: state.written === null ? null : renameMetaText(state.written, from, to),
+      deleted: state.deleted.map((key) => key === `file:${from}` ? `file:${to}` : key)
+    });
+  }
+}
+function referenceLines(markdownTexts, names) {
+  const found = /* @__PURE__ */ new Map();
+  const wanted = new Set(names);
+  for (const text of markdownTexts) {
+    const lines = withoutSystemBlocks(text).split(/\r?\n/);
+    lines.forEach((raw, index) => {
+      for (const name of wanted) {
+        if (found.has(name)) continue;
+        if (!raw.includes(name) && !raw.includes(encodeURI(name))) continue;
+        let line = stripMarkdownLine(raw.split(name).join(" "));
+        for (const offset of [-1, 1, -2, 2]) {
+          if (line) break;
+          const neighbour = lines[index + offset];
+          if (neighbour !== void 0 && !/^\s*#{1,6}\s/.test(neighbour) && !/!\[[^\]]*\]\(/.test(neighbour)) line = stripMarkdownLine(neighbour);
+        }
+        if (line) found.set(name, oneLine(line, 40));
+      }
+    });
+  }
+  return found;
+}
+function metaView(model, { files = [], indexVer = "" } = {}) {
+  const present = new Map(files.map((file) => [file.name, file]));
+  const summary = model.summary ? { ...model.summary, stale: model.summary.label !== "\u4EBA" && Boolean(model.summary.ver) && model.summary.ver !== indexVer } : null;
+  const byName = /* @__PURE__ */ new Map();
+  const orphans = [];
+  for (const entry of model.files.values()) {
+    if (present.has(entry.name)) byName.set(entry.name, entry);
+    else orphans.push(entry);
+  }
+  const unclaimed = files.filter((file) => !byName.has(file.name));
+  const missing = [];
+  for (const entry of orphans) {
+    const match = entry.ver ? unclaimed.find((file) => file.ver === entry.ver && !byName.has(file.name)) : null;
+    if (match) byName.set(match.name, { ...entry, name: match.name, renamedFrom: entry.name });
+    else missing.push({ ...entry, missing: true });
+  }
+  for (const [name, entry] of byName) {
+    const file = present.get(name);
+    byName.set(name, { ...entry, stale: entry.label !== "\u4EBA" && Boolean(entry.ver) && entry.ver !== file.ver });
+  }
+  return { summary, files: byName, missing };
+}
+function describeEntry(entry) {
+  if (!entry) return "";
+  const flags = [entry.label === "\u63A8\u65AD" ? "\u63A8\u65AD" : "", entry.stale ? "\u8FC7\u671F" : ""].filter(Boolean);
+  return `${entry.text}${flags.length ? `\uFF08${flags.join("\uFF0C")}\uFF09` : ""}`;
+}
+function todayLabel(now = /* @__PURE__ */ new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+// src/bridge/md-index.mjs
 var SUMMARIZED_WINDOW = 300;
 function digest2(content) {
-  return createHash3("sha256").update(content).digest("hex");
+  return createHash4("sha256").update(content).digest("hex");
 }
 function visibleSummary(text) {
   return String(text ?? "").replace(/\s+/g, " ").trim().slice(0, SUMMARIZED_WINDOW);
@@ -2960,7 +3159,7 @@ var MdIndex = class {
     this.projectRoot = resolve5(options.projectRoot);
     this.mapKey = String(options.mapKey ?? "default");
     this.fs = options.fs ?? { readFile: nodeReadFile, stat: nodeStat, readdir: nodeReaddir };
-    this.indexPath = join8(
+    this.indexPath = join9(
       this.projectRoot,
       ".live-dot-map",
       "maps",
@@ -3013,14 +3212,14 @@ var MdIndex = class {
     if (!this.#dirty) return this;
     const payload = `${JSON.stringify({ schema: 1, mapKey: this.mapKey, cards: Object.fromEntries(this.#cards) }, null, 0)}
 `;
-    await ensureDirectory(join8(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
+    await ensureDirectory(join9(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
     await atomicWriteFile(this.indexPath, payload);
     this.#dirty = false;
     return this;
   }
   /** 取一张卡；指纹对不上/缺失则重读该文件刷新。mapRoot 用于拼绝对路径。 */
   async getOrRefreshCard({ mapRoot, relativePath }) {
-    const absolute = join8(this.projectRoot, relativePath);
+    const absolute = join9(this.projectRoot, relativePath);
     let stat11;
     try {
       stat11 = await this.fs.stat(absolute);
@@ -3033,7 +3232,7 @@ var MdIndex = class {
       throw error3;
     }
     const existing = this.#cards.get(relativePath);
-    const fresh = !existing || existing.mtimeMs !== stat11.mtimeMs || existing.bytes !== stat11.size;
+    const fresh = !existing || existing.mtimeMs !== stat11.mtimeMs || existing.bytes !== stat11.size || typeof existing.lead !== "string";
     if (!fresh) return existing;
     const content = await this.fs.readFile(absolute, "utf8");
     const card = {
@@ -3043,6 +3242,7 @@ var MdIndex = class {
       bytes: stat11.size,
       title: firstHeading(content) || "",
       summary: visibleSummary(content),
+      lead: markdownLead(content),
       ownerKind: typeof existing?.ownerKind === "string" ? existing.ownerKind : inferOwnerKind(relativePath),
       ownerId: typeof existing?.ownerId === "string" ? existing.ownerId : inferOwnerId(relativePath),
       assets: existing?.assets ?? [],
@@ -3054,7 +3254,7 @@ var MdIndex = class {
   }
   /** 按 owner 目录重扫全部 md + 资产清单，刷新该对象所有卡片。 */
   async refreshOwner({ mapRoot, ownerKind, ownerId }) {
-    const directory = join8(mapRoot, ownerKind, ownerId);
+    const directory = join9(mapRoot, ownerKind, ownerId);
     let entries = [];
     try {
       entries = await this.fs.readdir(directory, { withFileTypes: true });
@@ -3064,11 +3264,11 @@ var MdIndex = class {
     }
     const assets = entries.filter((entry) => !entry.isDirectory() && !/\.md$/i.test(entry.name)).map((entry) => entry.name).sort();
     const mdFiles = entries.filter((entry) => !entry.isDirectory() && /\.md$/i.test(entry.name));
-    const ownerRelative = join8(".live-dot-map", "maps", this.mapKey, relativeOwner(ownerKind), ownerId).replace(/\\/g, "/");
+    const ownerRelative = join9(".live-dot-map", "maps", this.mapKey, relativeOwner(ownerKind), ownerId).replace(/\\/g, "/");
     for (const entry of mdFiles) {
       const relativePath = `${ownerRelative}/${entry.name}`;
       try {
-        const absolute = join8(directory, entry.name);
+        const absolute = join9(directory, entry.name);
         const stat11 = await this.fs.stat(absolute);
         const content = await this.fs.readFile(absolute, "utf8");
         this.#cards.set(relativePath, {
@@ -3078,6 +3278,7 @@ var MdIndex = class {
           bytes: stat11.size,
           title: firstHeading(content) || "",
           summary: visibleSummary(content),
+          lead: markdownLead(content),
           ownerKind: ownerKind === "nodes" ? "node" : "route",
           ownerId,
           assets,
@@ -3093,7 +3294,7 @@ var MdIndex = class {
     for (const [directoryKind, ownerKind] of [["nodes", "nodes"], ["routes", "routes"]]) {
       let owners = [];
       try {
-        owners = await this.fs.readdir(join8(mapRoot, directoryKind), { withFileTypes: true });
+        owners = await this.fs.readdir(join9(mapRoot, directoryKind), { withFileTypes: true });
       } catch (error3) {
         if (error3?.code === "ENOENT") continue;
         throw error3;
@@ -3123,7 +3324,7 @@ var MdIndex = class {
     return card.mtimeMs === stat11.mtimeMs && card.bytes === stat11.size;
   }
   async #withLock(operation) {
-    await ensureDirectory(join8(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
+    await ensureDirectory(join9(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
     return withFileLock(this.lockPath, operation, { timeoutMs: 5e3, staleMs: 3e4 });
   }
   /** 供写路径调用：刷完立刻落盘（保存/建节点等关键动作后）。 */
@@ -3138,7 +3339,7 @@ var MdIndex = class {
     const parts = String(relativePath).replace(/\\/g, "/").split("/").filter(Boolean);
     const kindIndex = parts.findIndex((part) => part === "nodes" || part === "routes");
     if (kindIndex < 0 || kindIndex + 1 >= parts.length) return;
-    const mapRoot = join8(this.projectRoot, ".live-dot-map", "maps", this.mapKey);
+    const mapRoot = join9(this.projectRoot, ".live-dot-map", "maps", this.mapKey);
     await this.refreshOwnerAndPersist({ mapRoot, ownerKind: parts[kindIndex], ownerId: parts[kindIndex + 1] });
   }
 };
@@ -3156,23 +3357,23 @@ function relativeOwner(ownerKind) {
 
 // src/bridge/map-manager.mjs
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { join as join10, resolve as resolve7 } from "node:path";
+import { join as join11, resolve as resolve7 } from "node:path";
 
 // src/bridge/bundle-store.mjs
 import { constants, createReadStream } from "node:fs";
 import {
   lstat as lstat4,
-  mkdir as mkdir5,
+  mkdir as mkdir6,
   open as open2,
   readdir as readdir4,
-  rename as rename3,
+  rename as rename4,
   rm as rm3,
-  readFile as readFile7,
+  readFile as readFile8,
   realpath as realpath4,
   stat as stat6
 } from "node:fs/promises";
-import { randomBytes as randomBytes2, createHash as createHash4 } from "node:crypto";
-import { basename as basename2, dirname as dirname5, extname, join as join9, relative as relative3, resolve as resolve6, sep as sep2 } from "node:path";
+import { randomBytes as randomBytes2, createHash as createHash5 } from "node:crypto";
+import { basename as basename2, dirname as dirname6, extname, join as join10, relative as relative3, resolve as resolve6, sep as sep2 } from "node:path";
 var MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024;
 var MAX_BUNDLE_FILES = 1e3;
 var MAX_MAP_ASSET_BYTES = 50 * 1024 * 1024 * 1024;
@@ -3269,7 +3470,7 @@ function asOptions(args, keys) {
   return Object.fromEntries(keys.map((key, index) => [key, args[index]]));
 }
 function digest3(value) {
-  return createHash4("sha256").update(value).digest("hex");
+  return createHash5("sha256").update(value).digest("hex");
 }
 function caseKey(value) {
   return String(value).normalize("NFKC").toLocaleLowerCase("en-US");
@@ -3391,8 +3592,8 @@ var BundleStore = class _BundleStore {
     this.mapRoot = resolve6(value.mapDirectory ?? mapDirectory(this.projectRoot, this.mapKey));
     this.clock = value.clock ?? (() => /* @__PURE__ */ new Date());
     this.faultInjector = value.faultInjector ?? (() => void 0);
-    this.lockRoot = join9(this.mapRoot, ".bridge", "bundle-locks");
-    this.commandRoot = join9(this.mapRoot, ".bridge", "bundle-commands");
+    this.lockRoot = join10(this.mapRoot, ".bridge", "bundle-locks");
+    this.commandRoot = join10(this.mapRoot, ".bridge", "bundle-commands");
     this.maxAssetBytes = value.maxAssetBytes ?? MAX_ASSET_BYTES;
     this.maxBundleFiles = value.maxBundleFiles ?? MAX_BUNDLE_FILES;
     this.maxMapAssetBytes = value.maxMapAssetBytes ?? MAX_MAP_ASSET_BYTES;
@@ -3428,7 +3629,7 @@ var BundleStore = class _BundleStore {
       } else if (!allowMissing) {
         throw bridgeError("BUNDLE_NOT_FOUND", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5B58\u5728", 404, { path: cursor });
       }
-      const parent = dirname5(cursor);
+      const parent = dirname6(cursor);
       if (parent === cursor || !within(rootReal, parent)) break;
       cursor = parent;
     }
@@ -3436,11 +3637,11 @@ var BundleStore = class _BundleStore {
   #ownerInfo(input) {
     const ownerKind = normalizeOwnerKind(input.ownerKind);
     const ownerId = validateOwnerId(input.ownerId);
-    const directory = join9(this.mapRoot, ownerKind, ownerId);
+    const directory = join10(this.mapRoot, ownerKind, ownerId);
     return { ownerKind, ownerId, directory };
   }
   #lockPath(ownerKind, ownerId) {
-    return join9(this.lockRoot, `${digest3(`${ownerKind}/${ownerId}`)}.lock`);
+    return join10(this.lockRoot, `${digest3(`${ownerKind}/${ownerId}`)}.lock`);
   }
   async #withOwnerLock(info, operation) {
     await this.#ensureMapRoot();
@@ -3456,7 +3657,7 @@ var BundleStore = class _BundleStore {
   }
   async #prepareOwner(info) {
     await this.#assertSafePath(this.projectRoot, info.directory, { allowMissing: true });
-    await mkdir5(info.directory, { recursive: true });
+    await mkdir6(info.directory, { recursive: true });
     await this.#assertSafePath(this.projectRoot, info.directory, { allowMissing: false });
   }
   async #entries(info, { includeArchived = false } = {}) {
@@ -3469,14 +3670,14 @@ var BundleStore = class _BundleStore {
     for (const entry of active) {
       if (entry.name === ".archive") continue;
       if (entry.name.startsWith(".")) continue;
-      const path = join9(info.directory, entry.name);
+      const path = join10(info.directory, entry.name);
       await this.#assertSafePath(this.projectRoot, path, { allowMissing: false });
       if (!entry.isFile()) continue;
       if (!/\.md$/i.test(entry.name) && !ASSET_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
       output.push({ name: entry.name, path, archived: false });
     }
     if (!includeArchived) return output;
-    const archivedRoot = join9(info.directory, ".archive");
+    const archivedRoot = join10(info.directory, ".archive");
     const archived = await readdir4(archivedRoot, { withFileTypes: true }).catch((error3) => {
       if (error3?.code === "ENOENT") return [];
       throw error3;
@@ -3484,7 +3685,7 @@ var BundleStore = class _BundleStore {
     await this.#assertSafePath(this.projectRoot, archivedRoot, { allowMissing: true });
     for (const entry of archived) {
       if (entry.name.startsWith(".") || entry.name.endsWith(".meta.json")) continue;
-      const path = join9(archivedRoot, entry.name);
+      const path = join10(archivedRoot, entry.name);
       await this.#assertSafePath(this.projectRoot, path, { allowMissing: false });
       if (entry.isFile() && (/\.md$/i.test(entry.name) || ASSET_EXTENSIONS.has(extname(entry.name).toLowerCase()))) {
         output.push({ name: entry.name, path, archived: true });
@@ -3497,7 +3698,7 @@ var BundleStore = class _BundleStore {
     const isIndex = entry.name === "index.md";
     const isMarkdown = isIndex || /\.md$/i.test(entry.name);
     const type = isMarkdown ? { mime: "text/markdown; charset=utf-8", kind: "markdown" } : contentTypeFor(entry.name);
-    const markdownContent = isMarkdown ? entry.content === void 0 ? await readFile7(entry.path) : Buffer.from(entry.content) : void 0;
+    const markdownContent = isMarkdown ? entry.content === void 0 ? await readFile8(entry.path) : Buffer.from(entry.content) : void 0;
     return {
       ownerKind: info.ownerKind === "nodes" ? "node" : "route",
       ownerId: info.ownerId,
@@ -3540,7 +3741,7 @@ var BundleStore = class _BundleStore {
       archived: Boolean(input.archived ?? options.archived),
       asset: Boolean(input.asset ?? options.asset)
     });
-    const data = await readFile7(entry.path);
+    const data = await readFile8(entry.path);
     const metadata = await this.#fileInfo(info, { ...entry, content: data });
     return { ...metadata, content: metadata.kind === "markdown" ? data.toString("utf8") : data, buffer: data };
   }
@@ -3569,7 +3770,7 @@ var BundleStore = class _BundleStore {
       if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
       const names = new Set(entries.map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = join9(info.directory, finalName);
+      const target = join10(info.directory, finalName);
       await atomicWriteFile(target, content);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
@@ -3579,7 +3780,7 @@ var BundleStore = class _BundleStore {
     const info = this.#ownerInfo(input);
     return this.#withOwnerLock(info, async () => {
       await this.#prepareOwner(info);
-      const target = join9(info.directory, "index.md");
+      const target = join10(info.directory, "index.md");
       const current = await safeLstat(target);
       if (current) {
         if (current.isSymbolicLink() || !current.isFile()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "index.md \u4E0D\u662F\u5B89\u5168\u666E\u901A\u6587\u4EF6", 403);
@@ -3607,7 +3808,7 @@ var BundleStore = class _BundleStore {
       await this.#prepareOwner(info);
       let current;
       try {
-        current = await readFile7(entry.path);
+        current = await readFile8(entry.path);
       } catch (error3) {
         if (error3?.code === "ENOENT") throw bridgeError("BUNDLE_NOT_FOUND", "\u8D44\u6599\u5305\u6587\u4EF6\u4E0D\u5B58\u5728", 404, { ownerKind: info.ownerKind, ownerId: info.ownerId, fileName: name });
         throw error3;
@@ -3641,19 +3842,19 @@ var BundleStore = class _BundleStore {
       const requestDigest = digest3(JSON.stringify({ name, content: input.content }));
       await this.#assertSafePath(this.projectRoot, this.commandRoot, { allowMissing: true });
       await ensureDirectory(this.commandRoot);
-      const receiptPath = join9(this.commandRoot, `${digest3(`${info.ownerKind}/${info.ownerId}/${name}/${commandId}`)}.json`);
+      const receiptPath = join10(this.commandRoot, `${digest3(`${info.ownerKind}/${info.ownerId}/${name}/${commandId}`)}.json`);
       const receipt = await readJson(receiptPath).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
         throw error3;
       })());
       if (receipt?.requestDigest !== void 0 && receipt.requestDigest !== requestDigest) {
         throw bridgeError("BUNDLE_COMMAND_REUSE", "commandId \u5DF2\u7528\u4E8E\u5176\u4ED6 Markdown \u8FFD\u52A0", 409);
       }
-      const target = join9(info.directory, name);
+      const target = join10(info.directory, name);
       const current = await safeLstat(target);
       let existing = "";
       if (current) {
         if (current.isSymbolicLink() || !current.isFile()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "Markdown \u76EE\u6807\u4E0D\u662F\u5B89\u5168\u666E\u901A\u6587\u4EF6", 403);
-        existing = await readFile7(target, "utf8");
+        existing = await readFile8(target, "utf8");
       } else {
         const entries = await this.#entries(info, { includeArchived: true });
         if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
@@ -3708,9 +3909,18 @@ ${right}`;
       }
       const names = new Set((await this.#entries(info, { includeArchived: true })).filter((entry) => caseKey(entry.name) !== caseKey(from)).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(to, names);
-      const target = join9(info.directory, finalName);
+      const target = join10(info.directory, finalName);
       await this.#assertSafePath(this.projectRoot, source.path, { allowMissing: false });
-      await rename3(source.path, target);
+      await rename4(source.path, target);
+      await syncMetaRename({
+        mapRoot: this.mapRoot,
+        ownerDirKind: info.ownerKind,
+        ownerId: info.ownerId,
+        directory: info.directory,
+        from: basename2(source.path),
+        to: finalName,
+        writeText: (path, text) => atomicWriteFile(path, text)
+      }).catch(() => void 0);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
   }
@@ -3721,14 +3931,14 @@ ${right}`;
     if (name === "index.md") throw bridgeError("BUNDLE_INDEX_IMMUTABLE", "index.md \u4E0D\u5141\u8BB8\u5F52\u6863", 409);
     return this.#withOwnerLock(info, async () => {
       const source = await this.#resolveEntry(info, name, { asset: !/\.md$/i.test(name) });
-      const archiveRoot = join9(info.directory, ".archive");
+      const archiveRoot = join10(info.directory, ".archive");
       await this.#assertSafePath(this.projectRoot, archiveRoot, { allowMissing: true });
       await ensureDirectory(archiveRoot);
       await this.#assertSafePath(this.projectRoot, archiveRoot, { allowMissing: false });
       const names = new Set((await this.#entries(info, { includeArchived: true })).filter((entry) => entry.archived).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = join9(archiveRoot, finalName);
-      await rename3(source.path, target);
+      const target = join10(archiveRoot, finalName);
+      await rename4(source.path, target);
       await writeJsonAtomic(`${target}.meta.json`, { archivedAt: this.clock().toISOString(), originalName: name });
       return this.#fileInfo(info, { name: finalName, path: target, archived: true });
     });
@@ -3743,8 +3953,8 @@ ${right}`;
       await this.#prepareOwner(info);
       const names = new Set((await this.#entries(info)).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = join9(info.directory, finalName);
-      await rename3(source.path, target);
+      const target = join10(info.directory, finalName);
+      await rename4(source.path, target);
       await rm3(`${source.path}.meta.json`, { force: true }).catch(() => void 0);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
@@ -3764,14 +3974,14 @@ ${right}`;
     if (entries.length >= this.maxBundleFiles) throw bridgeError("BUNDLE_FILE_QUOTA", `\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 ${this.maxBundleFiles} \u4E2A\u6587\u4EF6`, 413);
     const mapEntries = [];
     for (const ownerKind of ["nodes", "routes"]) {
-      const kindRoot = join9(this.mapRoot, ownerKind);
+      const kindRoot = join10(this.mapRoot, ownerKind);
       await this.#assertSafePath(this.projectRoot, kindRoot, { allowMissing: true });
       const owners = await readdir4(kindRoot, { withFileTypes: true }).catch((error3) => error3?.code === "ENOENT" ? [] : (() => {
         throw error3;
       })());
       for (const owner2 of owners) {
         if (!owner2.isDirectory() || owner2.name.startsWith(".")) continue;
-        const ownerInfo = { ownerKind, ownerId: owner2.name, directory: join9(kindRoot, owner2.name) };
+        const ownerInfo = { ownerKind, ownerId: owner2.name, directory: join10(kindRoot, owner2.name) };
         const ownerEntries = await this.#entries(ownerInfo, { includeArchived: true });
         mapEntries.push(...ownerEntries.filter((entry) => !/\.md$/i.test(entry.name)));
       }
@@ -3785,7 +3995,7 @@ ${right}`;
     await this.#assertSafePath(this.projectRoot, this.lockRoot, { allowMissing: true });
     await ensureDirectory(this.lockRoot);
     try {
-      return await withFileLock(join9(this.lockRoot, "map-assets.lock"), operation, { timeoutMs: 1e4, staleMs: 3e4 });
+      return await withFileLock(join10(this.lockRoot, "map-assets.lock"), operation, { timeoutMs: 1e4, staleMs: 3e4 });
     } catch (error3) {
       if (error3?.code === "LOCK_TIMEOUT") throw bridgeError("BUNDLE_BUSY", "\u5730\u56FE\u9644\u4EF6\u6B63\u5728\u88AB\u5176\u4ED6\u5199\u5165\u5360\u7528\uFF0C\u8BF7\u91CD\u8BD5", 409);
       throw error3;
@@ -3793,7 +4003,7 @@ ${right}`;
   }
   async #consumeStream(stream, temporary) {
     if (!stream || typeof stream[Symbol.asyncIterator] !== "function") throw bridgeError("BUNDLE_STREAM_REQUIRED", "\u9644\u4EF6\u5FC5\u987B\u901A\u8FC7\u53EF\u8BFB\u6D41\u5BFC\u5165", 400);
-    await ensureDirectory(dirname5(temporary));
+    await ensureDirectory(dirname6(temporary));
     const handle = await open2(temporary, "wx", 384);
     let size = 0;
     const chunks = [];
@@ -3847,7 +4057,7 @@ ${right}`;
     if (declaredMime && declaredMime !== type.mime) throw bridgeError("BUNDLE_MIME_MISMATCH", "\u58F0\u660E MIME \u4E0E\u6269\u5C55\u540D\u4E0D\u4E00\u81F4", 415, { expected: type.mime, received: declaredMime });
     if (!input.sourcePath && !input.stream) throw bridgeError("BUNDLE_SOURCE_REQUIRED", "\u9644\u4EF6\u5BFC\u5165\u9700\u8981 sourcePath \u6216 stream", 400);
     await this.#prepareOwner(info);
-    const temporary = join9(info.directory, `.${randomBytes2(12).toString("hex")}.upload.tmp`);
+    const temporary = join10(info.directory, `.${randomBytes2(12).toString("hex")}.upload.tmp`);
     let imported;
     try {
       imported = input.sourcePath ? await this.#copySource(input.sourcePath, temporary, { allowExternal: input.allowExternalPath === true }) : await this.#consumeStream(input.stream, temporary);
@@ -3857,9 +4067,9 @@ ${right}`;
         await this.#quota(info, imported.size);
         const names = new Set((await this.#entries(info, { includeArchived: true })).map((entry) => caseKey(entry.name)));
         const finalName = this.#allocateName(requestedName, names);
-        const target = join9(info.directory, finalName);
+        const target = join10(info.directory, finalName);
         await this.#assertSafePath(this.projectRoot, target, { allowMissing: true });
-        await rename3(temporary, target);
+        await rename4(temporary, target);
         const result2 = await this.#fileInfo(info, { name: finalName, path: target, archived: false });
         return { ...result2, mimeType: type.mime, disposition: type.disposition ?? "inline" };
       }));
@@ -3895,7 +4105,7 @@ var MapManager = class _MapManager {
     this.stores = /* @__PURE__ */ new Map();
     this.bundles = /* @__PURE__ */ new Map();
     this.lastImplicitKey = null;
-    this.lockPath = join10(this.projectRoot, ".live-dot-map", ".bridge", "map-manager.lock");
+    this.lockPath = join11(this.projectRoot, ".live-dot-map", ".bridge", "map-manager.lock");
   }
   static async open(options) {
     const manager = new _MapManager(options);
@@ -4014,17 +4224,17 @@ var MapManager = class _MapManager {
 // src/bridge/tool-service.mjs
 import { randomUUID as randomUUID4 } from "node:crypto";
 import { readdir as readdir6, stat as stat7 } from "node:fs/promises";
-import { basename as basename3, join as join12, isAbsolute as isAbsolute3 } from "node:path";
+import { basename as basename3, join as join13, isAbsolute as isAbsolute3 } from "node:path";
 
 // src/bridge/context-document-provider.mjs
-import { createHash as createHash5 } from "node:crypto";
+import { createHash as createHash6 } from "node:crypto";
 import {
   lstat as lstat5,
   readdir as readdir5,
-  readFile as readFile8,
+  readFile as readFile9,
   realpath as realpath5
 } from "node:fs/promises";
-import { extname as extname2, join as join11, relative as relative4, resolve as resolve8, sep as sep3 } from "node:path";
+import { extname as extname2, join as join12, relative as relative4, resolve as resolve8, sep as sep3 } from "node:path";
 var MAX_MARKDOWN_BYTES3 = 2 * 1024 * 1024;
 var SAFE_OWNER_ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
 var ASSET_TYPES2 = Object.freeze(Object.fromEntries(
@@ -4049,7 +4259,7 @@ function projectRelative(root, candidate) {
   return relative4(root, candidate).replace(/\\/g, "/");
 }
 function digest4(content) {
-  return createHash5("sha256").update(content).digest("hex");
+  return createHash6("sha256").update(content).digest("hex");
 }
 function collectionOwner(collection, item) {
   const ownerId = String(item?.id ?? "");
@@ -4196,7 +4406,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
     const safety = await requireRegularPath(root, candidate, { allowMissing });
     if (!safety.metadata) return;
     if (safety.metadata.size > MAX_MARKDOWN_BYTES3) throw contextError("CONTEXT_MARKDOWN_TOO_LARGE", "\u4E0A\u4E0B\u6587 Markdown \u8D85\u8FC7 2 MiB", 413, { path: candidate, size: safety.metadata.size });
-    const content = await readFile8(safety.resolved, "utf8");
+    const content = await readFile9(safety.resolved, "utf8");
     const path = projectRelative(root, safety.resolved);
     const existing = markdownByPath.get(path.toLowerCase());
     if (existing) {
@@ -4268,6 +4478,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
       etag: String(card.etag ?? ""),
       updatedAt: String(card.updatedAt ?? ""),
       summaryOnly: true,
+      ...typeof card.lead === "string" ? { lead: card.lead } : {},
       assets: Array.isArray(card.assets) ? card.assets : [],
       owners: [{ ownerKind: owner2.ownerKind, ownerId: owner2.ownerId }]
     };
@@ -4275,7 +4486,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
     result2.markdown.push(info);
   };
   const scanOwner = async (owner2) => {
-    const directory = join11(mapRoot, owner2.directoryKind, owner2.ownerId);
+    const directory = join12(mapRoot, owner2.directoryKind, owner2.ownerId);
     const ownerMetadata = await lstat5(directory).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
       throw error3;
     })());
@@ -4286,7 +4497,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
     const useIndex = mdIndex && typeof mdIndex.getOrRefreshCard === "function";
     for (const entry of entries) {
       if (entry.name === ".archive" || entry.name.startsWith(".")) continue;
-      const candidate = join11(directory, entry.name);
+      const candidate = join12(directory, entry.name);
       const metadata = await lstat5(candidate).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
         throw error3;
       })());
@@ -4561,21 +4772,21 @@ var MANAGE_ACTIONS = Object.freeze([
   "human"
 ]);
 var AGENT_TOOL_DEFINITIONS = Object.freeze([
-  def("map_look", "\u770B\u5730\u56FE\u76EE\u5F55\uFF1A\u8FD4\u56DE\u76F8\u5173\u8282\u70B9/\u6587\u6863\u7684 id\u3001\u540D\u79F0\u3001\u7C7B\u578B\u3001\u8DEF\u5F84\u548C\u4E00\u53E5\u7406\u7531\uFF0C\u4E0D\u542B\u6B63\u6587\u3002\u5148 look \u627E\u8DEF\u5F84\uFF0C\u518D map_read\u3002", {
+  def("map_look", "\u770B\u5730\u56FE\u76EE\u5F55\uFF0C\u4E0D\u542B\u6B63\u6587\u3002\u4E0D\u5E26 query \u8FD4\u56DE\u6574\u5F20\u76EE\u5F55\uFF08\u6BCF\u9879\u4E00\u53E5\u6458\u8981\uFF0C\u6309\u610F\u601D\u81EA\u5DF1\u6311\uFF09\uFF1B\u5E26 query \u8FD4\u56DE\u5173\u952E\u8BCD\u76F8\u5173\u9879\u548C\u7406\u7531\uFF0C\u6CA1\u547D\u4E2D\u5C31\u6362\u4E2A\u8BF4\u6CD5\u3002\u518D\u7528 map_read \u8BFB\u6B63\u6587\u3002", {
     query: { type: "string", description: "\u5173\u952E\u8BCD\uFF0C\u53EF\u7A7A" },
     nodeId: { type: "string" },
     limit: { type: "integer", minimum: 1, maximum: 12 }
   }),
-  def("map_read", "\u8BFB\u6B63\u6587\u3002path \u7528 look \u7ED9\u7684\u8DEF\u5F84\u6216\u8282\u70B9 id\uFF1B\u540C\u4F1A\u8BDD\u5185\u672A\u53D8\u5316\u7684\u6587\u4EF6\u53EA\u56DE unchanged\uFF0Cforce:true \u5F3A\u5236\u91CD\u8BFB\uFF1B\u4EE5 / \u7ED3\u5C3E\u5217\u51FA\u8D44\u6599\u5305\u6587\u4EF6\u3002", {
+  def("map_read", '\u8BFB\u6B63\u6587\uFF08index.md \u9644\u5E26\u8BE5\u8282\u70B9\u7684\u6807\u6CE8 anns\uFF09\u3002path \u7528 look \u7ED9\u7684\u8DEF\u5F84\u6216\u8282\u70B9 id\uFF1B\u540C\u4F1A\u8BDD\u5185\u672A\u53D8\u5316\u7684\u6587\u4EF6\u53EA\u56DE unchanged\uFF0Cforce:true \u5F3A\u5236\u91CD\u8BFB\uFF1B\u4EE5 / \u7ED3\u5C3E\u5217\u51FA\u8D44\u6599\u5305\u6587\u4EF6\u53CA\u8BF4\u660E\u3002\u7ED3\u679C\u5E26 meta:"\u7F3A\u6458\u8981|\u6458\u8981\u8FC7\u671F|\u65E0\u8BF4\u660E" \u65F6\uFF0C\u8BFB\u61C2\u540E\u7528 map_write \u7684 meta \u8865\u4E00\u53E5\u3002', {
     path: { type: "string" },
     force: { type: "boolean" }
   }, ["path"]),
-  def("map_write", "\u5199\u5165\u3002path+content \u9ED8\u8BA4\u8FFD\u52A0\uFF08\u6587\u4EF6\u4E0D\u5B58\u5728\u5219\u65B0\u5EFA\uFF09\uFF1B\u5E26 baseEtag \u4E3A\u6574\u6587\u66FF\u6362\u3002node:{name,kind} \u65B0\u5EFA\u8282\u70B9\uFF1Back:[id] \u786E\u8BA4\u4EBA\u7C7B\u6807\u6CE8\uFF1Bcommands \u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002", {
+  def("map_write", "\u5199\u5165\u3002path+content \u9ED8\u8BA4\u8FFD\u52A0\uFF08\u6587\u4EF6\u4E0D\u5B58\u5728\u5219\u65B0\u5EFA\uFF09\uFF1B\u5E26 baseEtag \u4E3A\u6574\u6587\u66FF\u6362\u3002node:{name,kind} \u65B0\u5EFA\u8282\u70B9\uFF1Bmeta:{summary?, files?:{\u6587\u4EF6\u540D:\u8BF4\u660E}} \u5199 Agent\u5143\u6570\u636E\uFF08\u4E00\u53E5\u8BDD\u5BFC\u822A\uFF0C\u4E0D\u5F53\u8BC1\u636E\uFF09\uFF1Bcommands \u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002", {
     path: { type: "string" },
     content: { type: "string" },
     baseEtag: { type: "string" },
     node: { type: "object", properties: { name: { type: "string" }, kind: { type: "string", enum: ["goal", "problem"] }, near: { type: "string" } } },
-    ack: { type: "array", items: { type: "string" } },
+    meta: { type: "object", properties: { summary: { type: "string" }, files: { type: "object" } } },
     commands: { type: "array", items: { type: "object" } }
   }),
   def("analysis_run", "\u5BF9\u8D44\u6599\u5305\u91CC\u7684 CSV/JSONL/JSON \u8868\u505A\u786E\u5B9A\u6027\u7EDF\u8BA1\uFF0C\u53EA\u56DE\u6458\u8981\u3002op: describe \u5B57\u6BB5\u6982\u51B5 | group \u5206\u7EC4\u5BF9\u6BD4 | top \u524D20%\u5BF9\u6BD4\u5176\u4F59\u3002", {
@@ -4712,9 +4923,63 @@ function markdownTitle(text, path) {
   const heading = String(text ?? "").match(/^\s*#{1,6}\s+(.+)$/m);
   return shortText(heading ? heading[1] : path.split("/").slice(-2).join("/"), 30);
 }
+var CATALOG_LIMIT = 40;
+var isHidden = (item) => item?.archived === true || item?.shelved === true;
+async function loadMetaTexts(context, documents) {
+  const texts = /* @__PURE__ */ new Map();
+  for (const doc of documents.markdown || []) {
+    if (!isMetaFile(doc.path)) continue;
+    const ownerId = String(doc.ownerId ?? "");
+    let text = doc.summaryOnly ? null : doc.text;
+    if (text == null) {
+      text = await context.bundleStore.readMarkdown({ ownerKind: doc.ownerKind, ownerId, fileName: META_FILE }).then((file) => String(file.content ?? "")).catch(() => null);
+    }
+    if (text == null) continue;
+    doc.text = text;
+    doc.summaryOnly = false;
+    const index = await context.bundleStore.readMarkdown({ ownerKind: doc.ownerKind, ownerId, fileName: "index.md" }).then((file) => String(file.content ?? "")).catch(() => "");
+    texts.set(ownerId, { text, indexVer: bodyVersion(index) });
+  }
+  return texts;
+}
+function catalogSummary(meta, indexDoc, name) {
+  const summary = meta ? metaView(parseMeta(meta.text), { indexVer: meta.indexVer }).summary : null;
+  if (summary?.text) return `${summary.text}${summary.stale ? "\uFF08\u8FC7\u671F\uFF09" : ""}`;
+  const lead = typeof indexDoc?.lead === "string" ? indexDoc.lead : indexDoc && !indexDoc.summaryOnly ? markdownLead(indexDoc.text) : "";
+  return lead === name ? "" : lead;
+}
+function catalogRows(document, documents, metaTexts) {
+  const routes = new Map((document.routes || []).map((route) => [String(route.id), route]));
+  const fileCount = /* @__PURE__ */ new Map();
+  const indexDocs = /* @__PURE__ */ new Map();
+  for (const entry of [...documents.markdown || [], ...documents.assets || []]) {
+    if (isMetaFile(entry.path)) continue;
+    for (const owner2 of entry.owners || [{ ownerId: entry.ownerId }]) {
+      const id = String(owner2.ownerId ?? "");
+      if (!id) continue;
+      fileCount.set(id, (fileCount.get(id) ?? 0) + 1);
+      if (entry.isIndex && !indexDocs.has(id)) indexDocs.set(id, entry);
+    }
+  }
+  const rows = [];
+  for (const node of document.nodes || []) {
+    if (isHidden(node) || typeof node.route === "string" && isHidden(routes.get(node.route))) continue;
+    const id = String(node.id);
+    const name = shortText(node.name ?? id, 30);
+    rows.push([id, name, String(node.kind ?? "goal"), relativeMapPath(node.md) || `nodes/${id}/index.md`, catalogSummary(metaTexts.get(id), indexDocs.get(id), name), fileCount.get(id) ?? 0]);
+  }
+  for (const edge of document.edges || []) {
+    const id = String(edge.id);
+    if (isHidden(edge) || !indexDocs.has(id)) continue;
+    const name = shortText(edge.name ?? id, 30);
+    rows.push([id, name, "edge", relativeMapPath(edge.md) || `routes/${id}/index.md`, catalogSummary(metaTexts.get(id), indexDocs.get(id), name), fileCount.get(id) ?? 0]);
+  }
+  return rows;
+}
 async function look(service, args) {
   const { context, documents } = await service.agentView({ ...args, includeHistory: args.includeHistory === true });
   const document = context.snapshot.document;
+  const metaTexts = await loadMetaTexts(context, documents);
   const query = String(args.query ?? args.q ?? "").trim();
   const nodeId = args.nodeId ?? args.currentNodeId ?? args.node;
   const limit = Math.max(1, Math.min(12, Number.isInteger(args.limit) ? args.limit : 5));
@@ -4730,26 +4995,33 @@ async function look(service, args) {
   const seenPaths = new Set(rows.map((row) => row[3]).filter(Boolean));
   if (query) {
     for (const hit of retrieved.markdown) {
-      const path = relativeMapPath(hit.path);
+      let path = relativeMapPath(hit.path);
+      const source = documents.markdown.find((doc) => doc.path === hit.path);
+      const meta = isMetaFile(path);
+      if (meta) path = path.replace(/[^/]+$/, "index.md");
       if (!path || seenPaths.has(path)) continue;
       seenPaths.add(path);
-      const source = documents.markdown.find((doc) => doc.path === hit.path);
-      rows.push([path.split("/")[1] ?? path, markdownTitle(source?.text, path), "md", path, "\u6B63\u6587\u547D\u4E2D"]);
+      const ownerId = path.split("/")[1] ?? path;
+      const owner2 = meta ? [...document.nodes || [], ...document.edges || []].find((item) => String(item.id) === ownerId) : null;
+      rows.push([ownerId, owner2 ? shortText(owner2.name ?? ownerId, 30) : markdownTitle(source?.text, path), meta ? String(owner2?.kind ?? "goal") : "md", path, meta ? "\u5143\u6570\u636E\u547D\u4E2D" : "\u6B63\u6587\u547D\u4E2D"]);
     }
   }
-  const humanAnns = (document.anns || []).filter((ann) => ann.source === "human" && ["new", "delivered"].includes(String(ann.attention))).map((ann) => String(ann.id));
-  const humanMd = await new HumanMdUpdateLog({ projectRoot: context.projectRoot, mapKey: context.mapKey }).unacknowledged().catch(() => []);
-  const human = [...humanAnns, ...humanMd.map((item) => item.id)];
   const goal = shortText(service.shared.buildProjectProjection(document).totalGoal, 60);
   const result2 = {
     map: context.mapKey,
     name: shortText(document.name, 30),
     rev: context.snapshot.revision,
-    ...goal ? { goal } : {},
-    ...human.length ? { human: human.slice(0, 5), ...human.length > 5 ? { humanMore: human.length - 5 } : {} } : {},
-    cols: ["id", "name", "kind", "path", "why"],
-    items: rows.slice(0, limit)
+    ...goal ? { goal } : {}
   };
+  if (!focused) {
+    const catalog = catalogRows(document, documents, metaTexts);
+    const cap = Number.isInteger(args.limit) ? limit : CATALOG_LIMIT;
+    Object.assign(result2, { cols: ["id", "name", "kind", "path", "summary", "files"], items: catalog.slice(0, cap) });
+    if (catalog.length > cap) Object.assign(result2, { more: catalog.length - cap, hint: "\u76EE\u5F55\u8FC7\u957F\uFF0C\u7528 query \u5173\u952E\u8BCD\u7F29\u5C0F" });
+    if (!catalog.length) result2.hint = "\u5730\u56FE\u8FD8\u6CA1\u6709\u5185\u5BB9";
+    return result2;
+  }
+  Object.assign(result2, { cols: ["id", "name", "kind", "path", "why"], items: rows.slice(0, limit) });
   if (rows.length > limit) result2.more = rows.length - limit;
   if (!rows.length) result2.hint = query ? "\u6CA1\u6709\u547D\u4E2D\uFF0C\u6362\u4E2A\u5173\u952E\u8BCD\u6216\u4E0D\u5E26 query \u770B\u603B\u89C8" : "\u5730\u56FE\u8FD8\u6CA1\u6709\u5185\u5BB9";
   return result2;
@@ -4762,7 +5034,6 @@ async function read(service, args) {
   const ann = (document.anns || []).find((item) => String(item.id) === annId);
   if (ann) {
     const on = ann.target?.id ? `${ann.target.kind === "node" ? "nodes" : "routes"}/${ann.target.id}/index.md` : "canvas";
-    const pending = ann.source === "human" && ["new", "delivered"].includes(String(ann.attention));
     return {
       // updatedBy 会被 ack 改成确认的 Agent，署名要看来源。
       id: ann.id,
@@ -4770,17 +5041,28 @@ async function read(service, args) {
       text: String(ann.text ?? ""),
       on,
       by: ann.source === "human" ? "human" : ann.createdBy ?? ann.updatedBy ?? ann.source,
-      ...ann.priority ? { priority: ann.priority } : {},
-      ...pending ? { pending: true, hint: "\u5904\u7406\u5B8C\u7528 ack \u786E\u8BA4\u8FD9\u6761\u6807\u6CE8" } : {}
+      ...ann.priority ? { priority: ann.priority } : {}
     };
   }
   const target = parseTarget(args.path, document);
   const owner2 = { ...scope, ownerKind: target.ownerKind, ownerId: target.ownerId };
   if (target.listing) {
-    const listed = await service.dispatchLegacy("map_list_bundle_files", { ...owner2, includeArchived: args.includeArchived === true });
+    const facts = await bundleFacts(context, target, { includeArchived: args.includeArchived === true });
+    const view = await currentMeta(context, target, facts);
+    const refs = referenceLines(facts.mdTexts, facts.files.map((file2) => file2.name));
+    const describe2 = (file2) => {
+      if (file2.name === "index.md") return "\u4E3B\u6587\u6863";
+      const entry = view.files.get(file2.name);
+      if (entry) return describeEntry(entry);
+      if (refs.has(file2.name)) return `\u5F15\u7528\u5904\uFF1A${refs.get(file2.name)}`;
+      if (/\.(md|markdown)$/i.test(file2.name) && file2.title) return `\u6807\u9898\uFF1A${file2.title}`;
+      return "\u672A\u63CF\u8FF0";
+    };
     return {
       path: `${target.ownerKind === "node" ? "nodes" : "routes"}/${target.ownerId}/`,
-      files: (listed.files || []).map((file2) => ({ name: file2.fileName ?? file2.name, kind: file2.kind, size: file2.size, ...file2.archived ? { archived: true } : {} }))
+      cols: ["name", "kind", "size", "note"],
+      files: facts.all.map((file2) => [file2.name, file2.kind, file2.size, file2.archived ? "\u5DF2\u5F52\u6863" : describe2(file2)]),
+      ...view.missing.length ? { gone: view.missing.map((entry) => entry.name) } : {}
     };
   }
   const fileName = target.fileName || "index.md";
@@ -4788,12 +5070,16 @@ async function read(service, args) {
     const asset = await service.dispatchLegacy("map_read_asset", { ...owner2, fileName, includeContent: false });
     const text = typeof asset.content === "string" ? asset.content : void 0;
     const limit = 64 * 1024;
+    const facts = await bundleFacts(context, target);
+    const view = await currentMeta(context, target, facts);
+    const entry = view.files.get(asset.fileName ?? fileName);
     return {
       path: target.display,
       kind: asset.kind,
       mimeType: asset.mimeType,
       size: asset.size,
       file: asset.path,
+      ...entry ? { note: describeEntry(entry) } : view.deleted.has(`file:${fileName}`) ? {} : { meta: "\u65E0\u8BF4\u660E" },
       ...text !== void 0 ? { content: text.length > limit ? text.slice(0, limit) : text, ...text.length > limit ? { truncated: true } : {} } : {}
     };
   }
@@ -4804,12 +5090,110 @@ async function read(service, args) {
   }
   sent?.set(target.display, file.etag);
   const result2 = { path: target.display, etag: file.etag, content: String(file.content ?? "") };
-  if (!target.fileName) {
-    const listed = await service.dispatchLegacy("map_list_bundle_files", owner2).catch(() => ({ files: [] }));
-    const others = (listed.files || []).map((item) => item.fileName ?? item.name).filter((name) => name && name !== "index.md");
-    if (others.length) result2.files = others;
+  if (fileName === "index.md") {
+    const anns = (document.anns || []).filter((ann2) => !isHidden(ann2) && String(ann2.target?.id ?? "") === target.ownerId).map((ann2) => [String(ann2.id), String(ann2.text ?? ""), ann2.source === "human" ? "human" : String(ann2.createdBy ?? ann2.source ?? "").replace(/^agent:/, "")]);
+    if (anns.length) result2.anns = anns;
+    const facts = await bundleFacts(context, target);
+    if (facts.files.length) result2.otherFiles = facts.files.length;
+    const view = await currentMeta(context, target, facts);
+    if (!view.summary && !view.deleted.has("summary")) result2.meta = "\u7F3A\u6458\u8981";
+    else if (view.summary?.stale) result2.meta = "\u6458\u8981\u8FC7\u671F";
   }
   return result2;
+}
+async function bundleFacts(context, target, { includeArchived = false } = {}) {
+  const store = context.bundleStore;
+  const owner2 = { ownerKind: target.ownerKind, ownerId: target.ownerId };
+  const listed = await store.list({ ...owner2, includeArchived }).catch(() => []);
+  const facts = { all: [], files: [], mdTexts: [], indexVer: "", metaText: null, metaEtag: null };
+  for (const entry of listed) {
+    const name = entry.fileName ?? entry.name;
+    if (isMetaFile(name)) {
+      if (!entry.archived) {
+        facts.metaEtag = entry.etag;
+        facts.metaText = String((await store.readMarkdown({ ...owner2, fileName: name }).catch(() => ({}))).content ?? "");
+      }
+      continue;
+    }
+    const file = { name, kind: entry.kind, size: entry.size, archived: Boolean(entry.archived) };
+    facts.all.push(file);
+    if (entry.archived) continue;
+    if (entry.kind === "markdown") {
+      const content = String((await store.readMarkdown({ ...owner2, fileName: name }).catch(() => ({}))).content ?? "");
+      facts.mdTexts.push(content);
+      file.ver = contentVersion(content);
+      if (name === "index.md") facts.indexVer = bodyVersion(content);
+      file.title = content.match(/^\s*#{1,6}\s+(.+)$/m)?.[1]?.trim() ?? "";
+    } else {
+      const asset = await store.readAsset({ ...owner2, fileName: name }).catch(() => null);
+      file.ver = asset?.buffer ? contentVersion(asset.buffer) : "";
+    }
+    if (name !== "index.md") facts.files.push(file);
+  }
+  return facts;
+}
+function metaStateFor(context, target) {
+  return metaStatePath(context.bundleStore.mapRoot, target.ownerKind === "node" ? "nodes" : "routes", target.ownerId);
+}
+async function currentMeta(context, target, facts) {
+  const state = await readMetaState(metaStateFor(context, target));
+  const { model, deleted } = reconcile(facts.metaText ?? "", state);
+  return { model, deleted, state, ...metaView(model, { files: facts.files, indexVer: facts.indexVer }) };
+}
+var collapse = (text) => String(text ?? "").replace(/\s+/g, "");
+async function writeMeta(service, context, document, args) {
+  const meta = args.meta;
+  if (!args.path) throw new BridgeError("META_PATH_REQUIRED", 'meta \u9700\u8981 path \u6307\u660E\u8282\u70B9\uFF0C\u5982 path:"n3"', { status: 400 });
+  const target = parseTarget(args.path, document);
+  const facts = await bundleFacts(context, target);
+  const current = await currentMeta(context, target, facts);
+  const { deleted } = current;
+  const model = { ...current.model, files: /* @__PURE__ */ new Map() };
+  for (const [name, entry] of current.files) model.files.set(name, stripView(entry));
+  for (const entry of current.missing) model.files.set(entry.name, stripView(entry));
+  const userAsked = meta.userAsked === true;
+  const by = String(service.actor).replace(/^agent:/, "");
+  const date = todayLabel();
+  const label = (text) => collapse(text).length >= 6 && facts.mdTexts.some((md) => collapse(md).includes(collapse(text))) ? "\u539F\u8BDD" : "\u63A8\u65AD";
+  const guard = (key, existing, what) => {
+    if (userAsked) return;
+    if (existing?.label === "\u4EBA") throw new BridgeError("META_HUMAN_LOCKED", `${what}\u662F\u4EBA\u5199/\u4EBA\u6539\u7684\uFF0CAgent \u4E0D\u6539\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u65F6\u5E26 meta.userAsked:true`, { status: 409 });
+    if (deleted.has(key)) throw new BridgeError("META_HUMAN_DELETED", `${what}\u88AB\u4EBA\u5220\u8FC7\uFF0C\u4E0D\u518D\u8865\u5199\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u65F6\u5E26 meta.userAsked:true`, { status: 409 });
+  };
+  const written = [];
+  if (typeof meta.summary === "string" && meta.summary.trim()) {
+    guard("summary", model.summary, "\u6458\u8981");
+    const text = oneLine(meta.summary, 60);
+    model.summary = { text, label: label(text), by, date, ver: facts.indexVer };
+    deleted.delete("summary");
+    written.push("summary");
+  }
+  const fileNotes = meta.files && typeof meta.files === "object" ? Object.entries(meta.files) : [];
+  for (const [rawName, rawText] of fileNotes) {
+    const name = String(rawName).split("/").pop();
+    const file = facts.files.find((item) => item.name === name);
+    if (!file) {
+      const names = facts.files.map((item) => item.name);
+      throw new BridgeError("META_FILE_NOT_FOUND", `\u8D44\u6599\u5305\u91CC\u6CA1\u6709\u6587\u4EF6\u300C${name}\u300D${names.length ? `\uFF1B\u73B0\u6709\uFF1A${names.slice(0, 20).join("\u3001")}` : ""}`, { status: 404 });
+    }
+    if (typeof rawText !== "string" || !rawText.trim()) continue;
+    guard(`file:${name}`, model.files.get(name), `\u300C${name}\u300D\u7684\u8BF4\u660E`);
+    const text = oneLine(rawText, 60);
+    model.files.set(name, { name, text, label: label(text), by, date, ver: file.ver });
+    deleted.delete(`file:${name}`);
+    written.push(name);
+  }
+  if (!written.length) throw new BridgeError("META_EMPTY", 'meta \u81F3\u5C11\u8981\u6709 summary \u6216 files:{\u6587\u4EF6\u540D:"\u8BF4\u660E"}', { status: 400 });
+  const content = renderMeta(model);
+  const owner2 = { ownerKind: target.ownerKind, ownerId: target.ownerId };
+  if (facts.metaText === null) await context.bundleStore.createMarkdown({ ...owner2, fileName: META_FILE, content });
+  else await context.bundleStore.replaceMarkdown({ ...owner2, fileName: META_FILE, content, baseEtag: facts.metaEtag });
+  await writeMetaState(metaStateFor(context, target), { written: content, deleted: [...deleted] });
+  return { path: `${target.ownerKind === "node" ? "nodes" : "routes"}/${target.ownerId}/${META_FILE}`, wrote: written };
+}
+function stripView(entry) {
+  const { stale: _stale, renamedFrom: _renamed, missing: _missing, ...rest } = entry;
+  return rest;
 }
 function nextNodeId(document) {
   let max = 0;
@@ -4833,8 +5217,12 @@ async function write(service, args) {
   let { context } = await service.agentView({ ...scope, skipDocuments: true });
   let document = context.snapshot.document;
   const hasContent = typeof args.content === "string";
-  if (!args.node && !args.commands && !args.ack && !(args.path && hasContent)) {
-    throw new BridgeError("WRITE_NOTHING", "map_write \u81F3\u5C11\u9700\u8981 path+content\u3001node\u3001ack \u6216 commands \u4E4B\u4E00", { status: 400 });
+  const hasMeta = Boolean(args.meta && typeof args.meta === "object");
+  if (!args.node && !args.commands && !args.ack && !hasMeta && !(args.path && hasContent)) {
+    throw new BridgeError("WRITE_NOTHING", "map_write \u81F3\u5C11\u9700\u8981 path+content\u3001node\u3001meta \u6216 commands \u4E4B\u4E00", { status: 400 });
+  }
+  if (hasContent && args.path && isMetaFile(String(args.path))) {
+    throw new BridgeError("META_WRITE_VIA_META", `${META_FILE} \u7531\u7A0B\u5E8F\u6392\u7248\uFF0C\u4E0D\u80FD\u76F4\u63A5\u5199\uFF1B\u7528 map_write({path:"n3", meta:{summary:"\u2026", files:{"\u6587\u4EF6\u540D":"\u8BF4\u660E"}}})`, { status: 400 });
   }
   const commands = Array.isArray(args.commands) ? [...args.commands] : [];
   let createdNode = null;
@@ -4903,6 +5291,11 @@ async function write(service, args) {
     out.path = `${target.ownerKind === "node" ? "nodes" : "routes"}/${target.ownerId}/${result2?.fileName ?? fileName}`;
     if (result2?.etag) out.etag = result2.etag;
   }
+  if (hasMeta) {
+    out.meta = await writeMeta(service, context, document, { ...args, path: args.path ?? createdNode ?? void 0 });
+  } else if (createdNode) {
+    out.hint = `\u5199\u4E00\u53E5\u6458\u8981\uFF1Amap_write({path:"${createdNode}", meta:{summary:"\u2026"}})`;
+  }
   return out;
 }
 async function analyze(service, args) {
@@ -4963,7 +5356,12 @@ async function manage(service, args) {
       const { target, owner: owner2 } = await ownerFrom();
       if (!args.sourcePath) throw new BridgeError("SOURCE_PATH_REQUIRED", "import \u9700\u8981 sourcePath", { status: 400 });
       const imported = await service.dispatchLegacy("map_import_asset", { ...owner2, sourcePath: String(args.sourcePath), ...target.fileName ? { fileName: target.fileName } : {} });
-      return { ok: true, path: `${target.ownerKind === "node" ? "nodes" : "routes"}/${target.ownerId}/${imported.fileName ?? imported.name ?? ""}` };
+      const importedName = imported.fileName ?? imported.name ?? "";
+      return {
+        ok: true,
+        path: `${target.ownerKind === "node" ? "nodes" : "routes"}/${target.ownerId}/${importedName}`,
+        hint: `\u5199\u4E00\u53E5\u8BF4\u660E\uFF1Amap_write({path:"${target.ownerId}", meta:{files:{"${importedName}":"\u2026"}}})`
+      };
     }
     case "validate": {
       const result2 = await service.dispatchLegacy("map_validate", scope);
@@ -5065,7 +5463,7 @@ async function syncBundleIndexToMainMarkdown(bundleStore, ownerKind, ownerId) {
   if (!bundleStore || !ownerKind || !ownerId) return;
   try {
     const list2 = await bundleStore.list({ ownerKind, ownerId, includeArchived: false });
-    const otherFiles = (list2 || []).filter((f) => f.fileName !== "index.md" && f.name !== "index.md");
+    const otherFiles = (list2 || []).filter((f) => f.fileName !== "index.md" && f.name !== "index.md" && !isMetaFile(f.fileName ?? f.name));
     const indexEntry = await bundleStore.readMarkdown({ ownerKind, ownerId, fileName: "index.md" }).catch(() => null);
     if (!indexEntry || typeof indexEntry.content !== "string") return;
     const currentContent = indexEntry.content;
@@ -5263,7 +5661,7 @@ var ToolService = class {
       await index.load();
       this.mdIndexes.set(key, index);
     }
-    await index.ensureBuilt({ mapRoot: join12(context.projectRoot, ".live-dot-map", "maps", context.mapKey) });
+    await index.ensureBuilt({ mapRoot: join13(context.projectRoot, ".live-dot-map", "maps", context.mapKey) });
     return index;
   }
   /** 写路径成功后刷单 owner 卡片（保存/改名/归档/资产/建节点等，双写全覆盖）。 */
@@ -5272,7 +5670,7 @@ var ToolService = class {
     try {
       const index = await this.#mdIndexFor(context);
       await index.refreshOwnerAndPersist({
-        mapRoot: join12(context.projectRoot, ".live-dot-map", "maps", context.mapKey),
+        mapRoot: join13(context.projectRoot, ".live-dot-map", "maps", context.mapKey),
         ownerKind: ownerKindNodeOrRoute === "route" ? "routes" : "nodes",
         ownerId: String(ownerId)
       });
@@ -5418,7 +5816,7 @@ var ToolService = class {
       const knownIds = new Set([...document.nodes || [], ...document.routes || []].map((item) => String(item.id)));
       const orphanBundles = [];
       for (const kind of ["nodes", "routes"]) {
-        const dir = join12(context.projectRoot, ".live-dot-map", "maps", mapKey, kind);
+        const dir = join13(context.projectRoot, ".live-dot-map", "maps", mapKey, kind);
         let entries = [];
         try {
           entries = await readdir6(dir, { withFileTypes: true });
@@ -5439,7 +5837,7 @@ var ToolService = class {
     const file = ownerArgs(args, mapKey);
     const ownerCollection = file.ownerKind === "route" ? "routes" : "nodes";
     if (!(document[ownerCollection] || []).some((item) => String(item.id) === String(file.ownerId))) {
-      const bundleDir = join12(context.projectRoot, ".live-dot-map", "maps", mapKey, ownerCollection, String(file.ownerId));
+      const bundleDir = join13(context.projectRoot, ".live-dot-map", "maps", mapKey, ownerCollection, String(file.ownerId));
       let bundleDirExists = false;
       try {
         bundleDirExists = (await stat7(bundleDir)).isDirectory();
@@ -5561,11 +5959,11 @@ var ToolService = class {
 import { randomUUID as randomUUID5 } from "node:crypto";
 import {
   lstat as lstat6,
-  mkdir as mkdir6,
-  rename as rename4,
+  mkdir as mkdir7,
+  rename as rename5,
   rm as rm4
 } from "node:fs/promises";
-import { join as join13, resolve as resolve9 } from "node:path";
+import { join as join14, resolve as resolve9 } from "node:path";
 var PURGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
 var PURGE_COLLECTIONS = /* @__PURE__ */ new Set(["nodes", "routes", "edges", "anns"]);
 var ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
@@ -5651,7 +6049,7 @@ function applyPhysicalPurge(document, { collection, id }, now) {
   return next;
 }
 function packagePath(mapRoot, collection, id) {
-  return join13(mapRoot, collection, id);
+  return join14(mapRoot, collection, id);
 }
 function purgePackageOwners(document, collection, id) {
   const owners = collection === "nodes" ? [{ collection: "nodes", id }] : collection === "edges" ? [{ collection: "routes", id }] : [];
@@ -5690,8 +6088,8 @@ var ArchiveLifecycle = class {
     this.recycleBin = options.recycleBin;
     this.faultInjector = options.faultInjector ?? (() => {
     });
-    this.stagingRoot = join13(this.mapRoot, ".bridge", "purge-staging");
-    this.lockPath = join13(this.mapRoot, ".bridge", "purge.lock");
+    this.stagingRoot = join14(this.mapRoot, ".bridge", "purge-staging");
+    this.lockPath = join14(this.mapRoot, ".bridge", "purge.lock");
   }
   eligible(item, options = {}) {
     return isPurgeEligible(item, { retentionMs: this.retentionMs, ...options });
@@ -5706,10 +6104,10 @@ var ArchiveLifecycle = class {
     const base = this.shared;
     const physicalShared = {
       ...base,
-      applyEnvelope(document, envelope2, options = {}) {
-        if (envelope2?.actor !== "system:purge") throw error("PURGE_ACTOR_INVALID", "\u7269\u7406\u6E05\u9664\u53EA\u80FD\u7531\u7CFB\u7EDF\u751F\u547D\u5468\u671F\u670D\u52A1\u6267\u884C", 403);
-        const command2 = envelope2?.commands?.[0];
-        if (!command2 || command2.op !== "purge" || envelope2.commands.length !== 1) throw error("PURGE_COMMAND_INVALID", "\u7269\u7406\u6E05\u9664\u547D\u4EE4\u65E0\u6548", 400);
+      applyEnvelope(document, envelope, options = {}) {
+        if (envelope?.actor !== "system:purge") throw error("PURGE_ACTOR_INVALID", "\u7269\u7406\u6E05\u9664\u53EA\u80FD\u7531\u7CFB\u7EDF\u751F\u547D\u5468\u671F\u670D\u52A1\u6267\u884C", 403);
+        const command2 = envelope?.commands?.[0];
+        if (!command2 || command2.op !== "purge" || envelope.commands.length !== 1) throw error("PURGE_COMMAND_INVALID", "\u7269\u7406\u6E05\u9664\u547D\u4EE4\u65E0\u6548", 400);
         return applyPhysicalPurge(document, command2, options.now ?? (/* @__PURE__ */ new Date()).toISOString());
       }
     };
@@ -5736,8 +6134,8 @@ var ArchiveLifecycle = class {
         const target = packagePath(txnRoot, collection, id);
         await assertPackagePath(target);
         if (await exists(target)) throw error("PURGE_STAGING_CONFLICT", "\u6E05\u9664\u6682\u5B58\u76EE\u5F55\u5DF2\u6709\u540C\u540D\u8D44\u6599\u5305", 409, { collection, id });
-        await ensureDirectory(join13(txnRoot, collection));
-        await rename4(source, target);
+        await ensureDirectory(join14(txnRoot, collection));
+        await rename5(source, target);
         moved.push({ collection, id, source, target });
       }
       return moved;
@@ -5755,8 +6153,8 @@ var ArchiveLifecycle = class {
         throw error("PURGE_PACKAGE_ROLLBACK_FAILED", "\u8D44\u6599\u5305\u5DF2\u4E0D\u5728\u6682\u5B58\u76EE\u5F55\uFF0C\u65E0\u6CD5\u6062\u590D", 500, item);
       }
       if (sourceExists) throw error("PURGE_PACKAGE_ROLLBACK_CONFLICT", "\u8D44\u6599\u5305\u6062\u590D\u76EE\u6807\u5DF2\u88AB\u5360\u7528\uFF0C\u62D2\u7EDD\u8986\u76D6", 409, item);
-      await ensureDirectory(join13(this.mapRoot, item.collection));
-      await rename4(item.target, item.source);
+      await ensureDirectory(join14(this.mapRoot, item.collection));
+      await rename5(item.target, item.source);
     }
   }
   async #rollback(snapshotName, moved, mapAttempted) {
@@ -5803,7 +6201,7 @@ var ArchiveLifecycle = class {
       const snapshot = await this.store.createSnapshot();
       const snapshotName = String(snapshot.path).split(/[\\/]/).pop();
       const transactionId = `${now.toISOString().replace(/[:.]/g, "-")}-${randomUUID5()}`;
-      const txnRoot = join13(this.stagingRoot, transactionId);
+      const txnRoot = join14(this.stagingRoot, transactionId);
       const packageOwners = purgePackageOwners(before.document, collection, id);
       let moved = [];
       let mapAttempted = false;
@@ -5860,7 +6258,7 @@ var ArchiveLifecycle = class {
 import { spawn } from "node:child_process";
 import { access, lstat as lstat7 } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname as dirname6, join as join14, resolve as resolve10, sep as sep4 } from "node:path";
+import { dirname as dirname7, join as join15, resolve as resolve10, sep as sep4 } from "node:path";
 var TRANSACTION_ID = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function failure(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
@@ -5870,18 +6268,18 @@ function defaultNativeHelperPath(options = {}) {
   const fromEnv = options.envHelper ?? process.env.LIVEDOT_NATIVE_HELPER;
   if (fromEnv && existsSync(fromEnv)) return resolve10(fromEnv);
   const execPath = options.execPath ?? process.execPath;
-  const fromExec = join14(dirname6(resolve10(execPath)), "..", "LiveDotMapSetup.exe");
+  const fromExec = join15(dirname7(resolve10(execPath)), "..", "LiveDotMapSetup.exe");
   if (existsSync(fromExec)) return fromExec;
   if (options.localAppData) {
-    return join14(resolve10(options.localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+    return join15(resolve10(options.localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
   }
-  const fromRelease = join14(process.cwd(), "installer", "winforms", "bin", "Release", "net8.0-windows", "win-x64", "LiveDotMapSetup.exe");
+  const fromRelease = join15(process.cwd(), "installer", "winforms", "bin", "Release", "net8.0-windows", "win-x64", "LiveDotMapSetup.exe");
   if (existsSync(fromRelease)) return fromRelease;
-  const fromDist = join14(process.cwd(), "dist", "windows-installer", "LiveDotMapSetup.exe");
+  const fromDist = join15(process.cwd(), "dist", "windows-installer", "LiveDotMapSetup.exe");
   if (existsSync(fromDist)) return fromDist;
   const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return null;
-  return join14(resolve10(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+  return join15(resolve10(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
 }
 async function assertPurgeStagingPath(value) {
   const target = resolve10(String(value ?? ""));
@@ -5894,7 +6292,7 @@ async function assertPurgeStagingPath(value) {
   let current = parts[0].endsWith(":") ? `${parts[0]}${sep4}` : parts[0] || sep4;
   for (const part of parts.slice(1)) {
     if (!part) continue;
-    current = join14(current, part);
+    current = join15(current, part);
     const metadata = await lstat7(current).catch((cause) => {
       if (cause?.code === "ENOENT") return null;
       throw cause;
@@ -5984,8 +6382,8 @@ var NativeRecycleBin = class {
 import { execFile as childExecFile, spawn as childSpawn } from "node:child_process";
 import { randomUUID as randomUUID6 } from "node:crypto";
 import { homedir as homedir3 } from "node:os";
-import { lstat as lstat8, mkdir as mkdir7, readdir as readdir7, readFile as readFile9, realpath as realpath6, stat as stat8 } from "node:fs/promises";
-import { dirname as dirname7, isAbsolute as isAbsolute4, join as join15, relative as relative5, resolve as resolve11, win32 } from "node:path";
+import { lstat as lstat8, mkdir as mkdir8, readdir as readdir7, readFile as readFile10, realpath as realpath6, stat as stat8 } from "node:fs/promises";
+import { dirname as dirname8, isAbsolute as isAbsolute4, join as join16, relative as relative5, resolve as resolve11, win32 } from "node:path";
 var SETTINGS_VERSION = 1;
 var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "terminal", "gitbash", "system", "folder", "manual"]);
 var EXE_NAME = /^(Code|Antigravity|pycharm64|wt|git-bash)\.exe$/i;
@@ -5999,8 +6397,8 @@ var EXTRA_EDITORS = [
       const out = [];
       const local = process.env.LOCALAPPDATA;
       const programFiles = process.env.ProgramFiles;
-      if (local) out.push(join15(local, "Programs", "Antigravity", "Antigravity.exe"));
-      if (programFiles) out.push(join15(programFiles, "Antigravity", "Antigravity.exe"));
+      if (local) out.push(join16(local, "Programs", "Antigravity", "Antigravity.exe"));
+      if (programFiles) out.push(join16(programFiles, "Antigravity", "Antigravity.exe"));
       return out;
     }
   },
@@ -6012,12 +6410,12 @@ var EXTRA_EDITORS = [
       const out = [];
       const local = process.env.LOCALAPPDATA;
       if (local) {
-        out.push(join15(local, "Programs", "PyCharm", "bin", "pycharm64.exe"));
-        const toolbox = join15(local, "JetBrains", "Toolbox", "apps");
+        out.push(join16(local, "Programs", "PyCharm", "bin", "pycharm64.exe"));
+        const toolbox = join16(local, "JetBrains", "Toolbox", "apps");
         out.push(...await scanVersionedEditors(toolbox, 3));
       }
       const programFiles = process.env.ProgramFiles;
-      if (programFiles) out.push(...await scanVersionedEditors(join15(programFiles, "JetBrains"), 1));
+      if (programFiles) out.push(...await scanVersionedEditors(join16(programFiles, "JetBrains"), 1));
       return out;
     }
   },
@@ -6028,11 +6426,11 @@ var EXTRA_EDITORS = [
     candidates() {
       const out = [];
       const local = process.env.LOCALAPPDATA;
-      if (local) out.push(join15(local, "Microsoft", "WindowsApps", "wt.exe"));
+      if (local) out.push(join16(local, "Microsoft", "WindowsApps", "wt.exe"));
       return out;
     },
     getArgs(target) {
-      return ["-d", dirname7(target)];
+      return ["-d", dirname8(target)];
     }
   },
   {
@@ -6042,13 +6440,13 @@ var EXTRA_EDITORS = [
     candidates() {
       const out = [];
       const programFiles = process.env.ProgramFiles;
-      if (programFiles) out.push(join15(programFiles, "Git", "git-bash.exe"));
+      if (programFiles) out.push(join16(programFiles, "Git", "git-bash.exe"));
       const programFilesX86 = process.env["ProgramFiles(x86)"];
-      if (programFilesX86) out.push(join15(programFilesX86, "Git", "git-bash.exe"));
+      if (programFilesX86) out.push(join16(programFilesX86, "Git", "git-bash.exe"));
       return out;
     },
     getArgs(target) {
-      return [`--cd=${dirname7(target)}`];
+      return [`--cd=${dirname8(target)}`];
     }
   }
 ];
@@ -6062,9 +6460,9 @@ async function scanVersionedEditors(root, depth) {
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const dir = join15(root, entry.name);
+    const dir = join16(root, entry.name);
     if (depth <= 1) {
-      found.push(join15(dir, "bin", "pycharm64.exe"));
+      found.push(join16(dir, "bin", "pycharm64.exe"));
     } else {
       found.push(...await scanVersionedEditors(dir, depth - 1));
     }
@@ -6075,8 +6473,8 @@ function bridgeError2(code, message, status = 400, details) {
   return new BridgeError(code, message, { status, details });
 }
 function defaultSettingsPath() {
-  const localAppData = process.env.LOCALAPPDATA || join15(homedir3(), "AppData", "Local");
-  return join15(localAppData, "live-dot-map", "settings.json");
+  const localAppData = process.env.LOCALAPPDATA || join16(homedir3(), "AppData", "Local");
+  return join16(localAppData, "live-dot-map", "settings.json");
 }
 function normalizePathForCompare(path) {
   const value = resolve11(path);
@@ -6159,9 +6557,9 @@ function knownVSCodePaths() {
   const local = process.env.LOCALAPPDATA;
   const programFiles = process.env.ProgramFiles;
   const programFilesX86 = process.env["ProgramFiles(x86)"];
-  if (local) candidates.push(join15(local, "Programs", "Microsoft VS Code", "Code.exe"));
-  if (programFiles) candidates.push(join15(programFiles, "Microsoft VS Code", "Code.exe"));
-  if (programFilesX86) candidates.push(join15(programFilesX86, "Microsoft VS Code", "Code.exe"));
+  if (local) candidates.push(join16(local, "Programs", "Microsoft VS Code", "Code.exe"));
+  if (programFiles) candidates.push(join16(programFiles, "Microsoft VS Code", "Code.exe"));
+  if (programFilesX86) candidates.push(join16(programFilesX86, "Microsoft VS Code", "Code.exe"));
   return candidates;
 }
 function safeSettings(value) {
@@ -6178,7 +6576,7 @@ function safeSettings(value) {
 }
 async function readSettingsFile(path) {
   try {
-    return safeSettings(JSON.parse(await readFile9(path, "utf8")));
+    return safeSettings(JSON.parse(await readFile10(path, "utf8")));
   } catch (error3) {
     if (error3?.code === "ENOENT" || error3 instanceof SyntaxError) return safeSettings({});
     throw error3;
@@ -6240,7 +6638,7 @@ var EditorService = class _EditorService {
         break;
       } catch (error3) {
         if (!allowMissing || error3?.code !== "ENOENT") throw error3;
-        const parent = dirname7(current);
+        const parent = dirname8(current);
         if (parent === current) throw error3;
         current = parent;
       }
@@ -6453,7 +6851,7 @@ var EditorService = class _EditorService {
     return { id: "manual", label: "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F", available: true };
   }
   async #writeSettings() {
-    await mkdir7(dirname7(this.settingsPath), { recursive: true });
+    await mkdir8(dirname8(this.settingsPath), { recursive: true });
     const output = {
       version: SETTINGS_VERSION,
       preferredEditorId: this.settings.preferredEditorId || null,
@@ -6487,7 +6885,7 @@ var EditorService = class _EditorService {
     if (editorId === "folder") {
       const candidate = await this.#projectPath(relativePath, { kind: targetKind === "directory" ? "directory" : "file" });
       const metadata = await stat8(candidate);
-      const folder = isDirectory(metadata) ? candidate : dirname7(candidate);
+      const folder = isDirectory(metadata) ? candidate : dirname8(candidate);
       await this.#assertNoSymlinkEscape(folder);
       const targetPath = isDirectory(metadata) ? folder : candidate;
       try {
@@ -6700,22 +7098,22 @@ var sharedBridgeContract = Object.freeze({
 });
 
 // agent-kit/lib/installer.mjs
-import { createHash as createHash7, randomUUID as randomUUID8 } from "node:crypto";
+import { createHash as createHash8, randomUUID as randomUUID8 } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access as access3, copyFile as copyFile3, mkdir as mkdir8, readFile as readFile10, rename as rename5, rm as rm5, stat as stat9, writeFile as writeFile2 } from "node:fs/promises";
+import { access as access3, copyFile as copyFile3, mkdir as mkdir9, readFile as readFile11, rename as rename6, rm as rm5, stat as stat9, writeFile as writeFile3 } from "node:fs/promises";
 import { constants as constants2, existsSync as existsSync2 } from "node:fs";
-import { basename as basename4, dirname as dirname9, join as join17, resolve as resolve14 } from "node:path";
+import { basename as basename4, dirname as dirname10, join as join18, resolve as resolve14 } from "node:path";
 import { homedir as homedir5 } from "node:os";
 import { fileURLToPath } from "node:url";
 
 // agent-kit/lib/bridge-client.mjs
-import { createHash as createHash6, randomUUID as randomUUID7 } from "node:crypto";
+import { createHash as createHash7, randomUUID as randomUUID7 } from "node:crypto";
 
 // agent-kit/lib/tool-definitions.generated.mjs
 var MCP_TOOL_DEFINITIONS = Object.freeze([
   {
     "name": "map_look",
-    "description": "\u770B\u5730\u56FE\u76EE\u5F55\uFF1A\u8FD4\u56DE\u76F8\u5173\u8282\u70B9/\u6587\u6863\u7684 id\u3001\u540D\u79F0\u3001\u7C7B\u578B\u3001\u8DEF\u5F84\u548C\u4E00\u53E5\u7406\u7531\uFF0C\u4E0D\u542B\u6B63\u6587\u3002\u5148 look \u627E\u8DEF\u5F84\uFF0C\u518D map_read\u3002",
+    "description": "\u770B\u5730\u56FE\u76EE\u5F55\uFF0C\u4E0D\u542B\u6B63\u6587\u3002\u4E0D\u5E26 query \u8FD4\u56DE\u6574\u5F20\u76EE\u5F55\uFF08\u6BCF\u9879\u4E00\u53E5\u6458\u8981\uFF0C\u6309\u610F\u601D\u81EA\u5DF1\u6311\uFF09\uFF1B\u5E26 query \u8FD4\u56DE\u5173\u952E\u8BCD\u76F8\u5173\u9879\u548C\u7406\u7531\uFF0C\u6CA1\u547D\u4E2D\u5C31\u6362\u4E2A\u8BF4\u6CD5\u3002\u518D\u7528 map_read \u8BFB\u6B63\u6587\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6737,7 +7135,7 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_read",
-    "description": "\u8BFB\u6B63\u6587\u3002path \u7528 look \u7ED9\u7684\u8DEF\u5F84\u6216\u8282\u70B9 id\uFF1B\u540C\u4F1A\u8BDD\u5185\u672A\u53D8\u5316\u7684\u6587\u4EF6\u53EA\u56DE unchanged\uFF0Cforce:true \u5F3A\u5236\u91CD\u8BFB\uFF1B\u4EE5 / \u7ED3\u5C3E\u5217\u51FA\u8D44\u6599\u5305\u6587\u4EF6\u3002",
+    "description": '\u8BFB\u6B63\u6587\uFF08index.md \u9644\u5E26\u8BE5\u8282\u70B9\u7684\u6807\u6CE8 anns\uFF09\u3002path \u7528 look \u7ED9\u7684\u8DEF\u5F84\u6216\u8282\u70B9 id\uFF1B\u540C\u4F1A\u8BDD\u5185\u672A\u53D8\u5316\u7684\u6587\u4EF6\u53EA\u56DE unchanged\uFF0Cforce:true \u5F3A\u5236\u91CD\u8BFB\uFF1B\u4EE5 / \u7ED3\u5C3E\u5217\u51FA\u8D44\u6599\u5305\u6587\u4EF6\u53CA\u8BF4\u660E\u3002\u7ED3\u679C\u5E26 meta:"\u7F3A\u6458\u8981|\u6458\u8981\u8FC7\u671F|\u65E0\u8BF4\u660E" \u65F6\uFF0C\u8BFB\u61C2\u540E\u7528 map_write \u7684 meta \u8865\u4E00\u53E5\u3002',
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6756,7 +7154,7 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_write",
-    "description": "\u5199\u5165\u3002path+content \u9ED8\u8BA4\u8FFD\u52A0\uFF08\u6587\u4EF6\u4E0D\u5B58\u5728\u5219\u65B0\u5EFA\uFF09\uFF1B\u5E26 baseEtag \u4E3A\u6574\u6587\u66FF\u6362\u3002node:{name,kind} \u65B0\u5EFA\u8282\u70B9\uFF1Back:[id] \u786E\u8BA4\u4EBA\u7C7B\u6807\u6CE8\uFF1Bcommands \u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002",
+    "description": "\u5199\u5165\u3002path+content \u9ED8\u8BA4\u8FFD\u52A0\uFF08\u6587\u4EF6\u4E0D\u5B58\u5728\u5219\u65B0\u5EFA\uFF09\uFF1B\u5E26 baseEtag \u4E3A\u6574\u6587\u66FF\u6362\u3002node:{name,kind} \u65B0\u5EFA\u8282\u70B9\uFF1Bmeta:{summary?, files?:{\u6587\u4EF6\u540D:\u8BF4\u660E}} \u5199 Agent\u5143\u6570\u636E\uFF08\u4E00\u53E5\u8BDD\u5BFC\u822A\uFF0C\u4E0D\u5F53\u8BC1\u636E\uFF09\uFF1Bcommands \u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -6787,10 +7185,15 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
             }
           }
         },
-        "ack": {
-          "type": "array",
-          "items": {
-            "type": "string"
+        "meta": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "files": {
+              "type": "object"
+            }
           }
         },
         "commands": {
@@ -6915,23 +7318,23 @@ function assertLoopbackUrl(value) {
   return url;
 }
 function projectIdForRoot(projectRoot) {
-  const digest6 = createHash6("sha256").update(String(projectRoot)).digest("hex").slice(0, 32);
+  const digest6 = createHash7("sha256").update(String(projectRoot)).digest("hex").slice(0, 32);
   return `project:${digest6}`;
 }
 
 // agent-kit/lib/shortcut.mjs
 import { execFileSync } from "node:child_process";
 import { homedir as homedir4 } from "node:os";
-import { dirname as dirname8, join as join16, resolve as resolve13 } from "node:path";
+import { dirname as dirname9, join as join17, resolve as resolve13 } from "node:path";
 function windowsDesktopDirectory({ platform = process.platform, env = process.env, exec = execFileSync } = {}) {
-  if (platform !== "win32") return join16(homedir4(), "Desktop");
+  if (platform !== "win32") return join17(homedir4(), "Desktop");
   try {
     const output = exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "[Environment]::GetFolderPath('Desktop')"], { encoding: "utf8", timeout: 5e3 });
     const path = String(output || "").trim();
     if (path) return path;
   } catch {
   }
-  return join16(env.USERPROFILE || homedir4(), "Desktop");
+  return join17(env.USERPROFILE || homedir4(), "Desktop");
 }
 
 // agent-kit/lib/portable-node.mjs
@@ -7016,9 +7419,9 @@ var map_template_default = {
 var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code", "antigravity"]);
 var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy", "qoder", "zcode"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
-var skillTargetPaths = (home, id) => id === "codex" ? join17(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join17(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join17(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : id === "codebuddy" ? join17(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "zcode" ? join17(home, ".zcode", "skills", "live-dot-map", "SKILL.md") : existsSync2(join17(home, ".qoder")) && !existsSync2(join17(home, ".qoder-cn")) ? join17(home, ".qoder", "skills", "live-dot-map", "SKILL.md") : join17(home, ".qoder-cn", "skills", "live-dot-map", "SKILL.md");
-var kimiPluginRoot = (home) => join17(home, ".kimi-code", "plugins", "live-dot-map");
-var codebuddyPluginRoot = (home) => join17(home, ".codebuddy", "plugins", "live-dot-map");
+var skillTargetPaths = (home, id) => id === "codex" ? join18(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join18(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join18(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : id === "codebuddy" ? join18(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "zcode" ? join18(home, ".zcode", "skills", "live-dot-map", "SKILL.md") : existsSync2(join18(home, ".qoder")) && !existsSync2(join18(home, ".qoder-cn")) ? join18(home, ".qoder", "skills", "live-dot-map", "SKILL.md") : join18(home, ".qoder-cn", "skills", "live-dot-map", "SKILL.md");
+var kimiPluginRoot = (home) => join18(home, ".kimi-code", "plugins", "live-dot-map");
+var codebuddyPluginRoot = (home) => join18(home, ".codebuddy", "plugins", "live-dot-map");
 var ADAPTER_PROBES = Object.freeze({
   codex: ["codex"],
   "claude-code": ["claude", "claude-code"],
@@ -7034,53 +7437,53 @@ function adapterFingerprints(id, { platform, home }) {
     const programFiles = process.env.ProgramFiles;
     const out = [];
     if (platform === "win32") {
-      if (local) out.push(join17(local, "Programs", "Antigravity", "Antigravity.exe"));
-      if (programFiles) out.push(join17(programFiles, "Antigravity", "Antigravity.exe"));
+      if (local) out.push(join18(local, "Programs", "Antigravity", "Antigravity.exe"));
+      if (programFiles) out.push(join18(programFiles, "Antigravity", "Antigravity.exe"));
     }
-    out.push(join17(home, ".gemini", "antigravity-ide"));
+    out.push(join18(home, ".gemini", "antigravity-ide"));
     return out;
   }
   if (id === "qoder") {
     const out = [
-      join17(home, ".qoder-cn"),
-      join17(home, ".qoder")
+      join18(home, ".qoder-cn"),
+      join18(home, ".qoder")
     ];
     const appData = process.env.APPDATA;
     const local = process.env.LOCALAPPDATA;
     const programFiles = process.env.ProgramFiles;
     if (platform === "win32") {
       if (appData) {
-        out.push(join17(appData, "QoderCN"));
-        out.push(join17(appData, "Qoder"));
+        out.push(join18(appData, "QoderCN"));
+        out.push(join18(appData, "Qoder"));
       }
       if (local) {
-        out.push(join17(local, "Programs", "QoderCN", "QoderCN.exe"));
-        out.push(join17(local, "Programs", "Qoder", "Qoder.exe"));
+        out.push(join18(local, "Programs", "QoderCN", "QoderCN.exe"));
+        out.push(join18(local, "Programs", "Qoder", "Qoder.exe"));
       }
       if (programFiles) {
-        out.push(join17(programFiles, "QoderCN", "QoderCN.exe"));
-        out.push(join17(programFiles, "Qoder", "Qoder.exe"));
+        out.push(join18(programFiles, "QoderCN", "QoderCN.exe"));
+        out.push(join18(programFiles, "Qoder", "Qoder.exe"));
       }
     }
     return out;
   }
   if (id === "zcode") {
     const out = [
-      join17(home, ".zcode")
+      join18(home, ".zcode")
     ];
     const appData = process.env.APPDATA;
     const local = process.env.LOCALAPPDATA;
     const programFiles = process.env.ProgramFiles;
     if (platform === "win32") {
       if (appData) {
-        out.push(join17(appData, "ZCode"));
+        out.push(join18(appData, "ZCode"));
       }
       if (local) {
-        out.push(join17(local, "@zcodedesktop-updater"));
-        out.push(join17(local, "Programs", "ZCode", "ZCode.exe"));
+        out.push(join18(local, "@zcodedesktop-updater"));
+        out.push(join18(local, "Programs", "ZCode", "ZCode.exe"));
       }
       if (programFiles) {
-        out.push(join17(programFiles, "ZCode", "ZCode.exe"));
+        out.push(join18(programFiles, "ZCode", "ZCode.exe"));
       }
       out.push("D:\\zcode\\ZCode.exe");
     }
@@ -7097,10 +7500,10 @@ async function exists2(path) {
   }
 }
 async function atomicText(path, text) {
-  await mkdir8(dirname9(path), { recursive: true });
+  await mkdir9(dirname10(path), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${randomUUID8()}`;
-  await writeFile2(temp, text, { encoding: "utf8", flag: "wx" });
-  await rename5(temp, path);
+  await writeFile3(temp, text, { encoding: "utf8", flag: "wx" });
+  await rename6(temp, path);
 }
 async function atomicJson(path, value) {
   await atomicText(path, `${JSON.stringify(value, null, 2)}
@@ -7108,20 +7511,20 @@ async function atomicJson(path, value) {
 }
 async function readJson2(path, fallback = {}) {
   try {
-    const value = JSON.parse(await readFile10(path, "utf8"));
+    const value = JSON.parse(await readFile11(path, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
   } catch {
     return fallback;
   }
 }
 function sha256(bytes) {
-  return createHash7("sha256").update(bytes).digest("hex");
+  return createHash8("sha256").update(bytes).digest("hex");
 }
 async function captureFile(path) {
   try {
     const metadata = await stat9(path);
     if (metadata.isDirectory()) return { path, exists: true, kind: "directory", sha256: null, content: null };
-    const bytes = await readFile10(path);
+    const bytes = await readFile11(path);
     return { path, exists: true, kind: "file", sha256: sha256(bytes), content: bytes.toString("base64") };
   } catch {
     return { path, exists: false, kind: "missing", sha256: null, content: null };
@@ -7130,42 +7533,42 @@ async function captureFile(path) {
 async function restoreCapturedFile(entry) {
   if (entry?.kind === "directory") return;
   if (entry?.exists) {
-    await mkdir8(dirname9(entry.path), { recursive: true });
-    await writeFile2(entry.path, Buffer.from(String(entry.content || ""), "base64"));
+    await mkdir9(dirname10(entry.path), { recursive: true });
+    await writeFile3(entry.path, Buffer.from(String(entry.content || ""), "base64"));
   } else {
     await rm5(entry.path, { force: true }).catch(() => void 0);
   }
 }
 function qoderConfigPaths(home) {
   const paths = [
-    join17(home, ".qoder-cn", "mcp.json"),
-    join17(home, ".qoder", "mcp.json")
+    join18(home, ".qoder-cn", "mcp.json"),
+    join18(home, ".qoder", "mcp.json")
   ];
   if (process.env.APPDATA && (process.env.APPDATA.startsWith(home) || home === homedir5())) {
     paths.push(
-      join17(process.env.APPDATA, "QoderCN", "SharedClientCache", "mcp.json"),
-      join17(process.env.APPDATA, "Qoder", "SharedClientCache", "mcp.json")
+      join18(process.env.APPDATA, "QoderCN", "SharedClientCache", "mcp.json"),
+      join18(process.env.APPDATA, "Qoder", "SharedClientCache", "mcp.json")
     );
   }
   return paths;
 }
 function zcodeConfigPaths(home) {
   return [
-    join17(home, ".zcode", "cli", "config.json")
+    join18(home, ".zcode", "cli", "config.json")
   ];
 }
 var adapterConfigPaths = (home, id) => {
   switch (id) {
     case "codex":
-      return [join17(home, ".codex", "config.toml"), join17(home, ".codex", "hooks.json")];
+      return [join18(home, ".codex", "config.toml"), join18(home, ".codex", "hooks.json")];
     case "claude-code":
-      return [join17(home, ".claude", "settings.json")];
+      return [join18(home, ".claude", "settings.json")];
     case "kimi-code":
-      return [join17(home, ".kimi-code", "mcp.json"), join17(kimiPluginRoot(home), "kimi.plugin.json")];
+      return [join18(home, ".kimi-code", "mcp.json"), join18(kimiPluginRoot(home), "kimi.plugin.json")];
     case "antigravity":
-      return [join17(home, ".gemini", "config", "mcp_config.json"), join17(home, ".gemini", "antigravity-ide", "mcp_config.json")];
+      return [join18(home, ".gemini", "config", "mcp_config.json"), join18(home, ".gemini", "antigravity-ide", "mcp_config.json")];
     case "codebuddy":
-      return [join17(home, ".codebuddy", "settings.json"), join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join17(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+      return [join18(home, ".codebuddy", "settings.json"), join18(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join18(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join18(codebuddyPluginRoot(home), "hooks", "hooks.json")];
     case "qoder":
       return qoderConfigPaths(home);
     case "zcode":
@@ -7217,8 +7620,8 @@ async function discoverEmbeddedCodeBuddy({ platform = process.platform } = {}) {
     return [match[1].trim().replace(/^"|"$/g, "").replace(/,\d+$/, "")];
   }));
   for (const iconPath of iconPaths) {
-    const installRoot = dirname9(iconPath);
-    const candidate = join17(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
+    const installRoot = dirname10(iconPath);
+    const candidate = join18(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
     if (await exists2(candidate)) return candidate;
   }
   return null;
@@ -7229,7 +7632,7 @@ async function detectInstalledAdapters({ projectRoot = process.cwd(), platform =
   const checks = await Promise.all(ALL_ADAPTERS.map(async (id) => {
     const configPaths = adapterConfigPaths(home, id);
     const configured = (await Promise.all(configPaths.map(async (path) => {
-      const text = await readFile10(path, "utf8").catch(() => "");
+      const text = await readFile11(path, "utf8").catch(() => "");
       return text.includes("livedot-map");
     }))).some(Boolean);
     const probes = platform === "win32" || platform === "darwin" || platform === "linux" ? ADAPTER_PROBES[id] : [];
@@ -7316,10 +7719,10 @@ function assertNoDuplicateTomlTables(text) {
   }
 }
 async function writeCodexConfig(home, nodeCommand, runtime) {
-  const path = join17(home, ".codex", "config.toml");
+  const path = join18(home, ".codex", "config.toml");
   const begin = "# BEGIN LIVE-DOT-MAP";
   const end = "# END LIVE-DOT-MAP";
-  const old = await readFile10(path, "utf8").catch(() => "");
+  const old = await readFile11(path, "utf8").catch(() => "");
   const stripped = stripCodexMcpBlock(old);
   const block = [begin, '[mcp_servers."livedot-map"]', `command = ${tomlString(nodeCommand)}`, `args = [${[...runtimeArgs(runtime), "mcp", "--agent", "codex"].map(tomlString).join(", ")}]`, "required = false", end].join("\n");
   const newContent = `${stripped ? `${stripped}
@@ -7330,12 +7733,12 @@ async function writeCodexConfig(home, nodeCommand, runtime) {
   if (newContent.trim() !== old.trim()) {
     await atomicText(path, newContent);
   }
-  const hooksPath = join17(home, ".codex", "hooks.json");
+  const hooksPath = join18(home, ".codex", "hooks.json");
   await atomicJson(hooksPath, mergeHooks(await readJson2(hooksPath), hooksFor(nodeCommand, runtime, "codex")));
   return [path, hooksPath];
 }
 async function writeClaudeConfig(home, nodeCommand, runtime) {
-  const settingsPath = join17(home, ".claude", "settings.json");
+  const settingsPath = join18(home, ".claude", "settings.json");
   const settings = await readJson2(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, "claude");
@@ -7350,13 +7753,13 @@ async function writeClaudeConfig(home, nodeCommand, runtime) {
   return [settingsPath];
 }
 async function writeKimiConfig(home, nodeCommand, runtime) {
-  const mcpPath = join17(home, ".kimi-code", "mcp.json");
+  const mcpPath = join18(home, ".kimi-code", "mcp.json");
   const mcp = await readJson2(mcpPath);
   mcp.mcpServers = { ...mcp.mcpServers || {}, "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "kimi"] } };
   await atomicJson(mcpPath, mcp);
   const plugin = kimiPluginRoot(home);
-  const pluginRuntime = join17(plugin, "runtime", "livedot.mjs");
-  await mkdir8(dirname9(pluginRuntime), { recursive: true });
+  const pluginRuntime = join18(plugin, "runtime", "livedot.mjs");
+  await mkdir9(dirname10(pluginRuntime), { recursive: true });
   if (!seaRuntime()) await copyFile3(runtime, pluginRuntime);
   const manifest = {
     name: "livedot-map",
@@ -7369,14 +7772,14 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
       { event: "Stop", command: command(nodeCommand, runtime, "kimi", "stop"), timeout: 30 }
     ]
   };
-  await atomicJson(join17(plugin, "kimi.plugin.json"), manifest);
-  return [mcpPath, join17(plugin, "kimi.plugin.json")];
+  await atomicJson(join18(plugin, "kimi.plugin.json"), manifest);
+  return [mcpPath, join18(plugin, "kimi.plugin.json")];
 }
 async function writeAntigravityConfig(home, nodeCommand, runtime) {
   const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "antigravity"] };
   const paths = [
-    join17(home, ".gemini", "config", "mcp_config.json"),
-    join17(home, ".gemini", "antigravity-ide", "mcp_config.json")
+    join18(home, ".gemini", "config", "mcp_config.json"),
+    join18(home, ".gemini", "antigravity-ide", "mcp_config.json")
   ];
   for (const path of paths) {
     const mcp = await readJson2(path);
@@ -7385,7 +7788,7 @@ async function writeAntigravityConfig(home, nodeCommand, runtime) {
     mcp.mcpServers = servers;
     await atomicJson(path, mcp);
   }
-  const configPath = join17(home, ".gemini", "config", "config.json");
+  const configPath = join18(home, ".gemini", "config", "config.json");
   try {
     const config = await readJson2(configPath);
     if (config && typeof config === "object") {
@@ -7407,7 +7810,7 @@ async function writeAntigravityConfig(home, nodeCommand, runtime) {
   return paths;
 }
 async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
-  const settingsPath = join17(home, ".codebuddy", "settings.json");
+  const settingsPath = join18(home, ".codebuddy", "settings.json");
   const settings = await readJson2(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, "codebuddy");
@@ -7422,10 +7825,10 @@ async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
     hooks: "./hooks/hooks.json",
     mcpServers: { "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "codebuddy"] } }
   };
-  await atomicJson(join17(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
-  await atomicJson(join17(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
-  await atomicJson(join17(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
-  return [settingsPath, join17(plugin, ".codebuddy-plugin", "plugin.json"), join17(plugin, ".workbuddy-plugin", "plugin.json"), join17(plugin, "hooks", "hooks.json")];
+  await atomicJson(join18(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
+  await atomicJson(join18(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
+  await atomicJson(join18(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
+  return [settingsPath, join18(plugin, ".codebuddy-plugin", "plugin.json"), join18(plugin, ".workbuddy-plugin", "plugin.json"), join18(plugin, "hooks", "hooks.json")];
 }
 async function writeQoderConfig(home, nodeCommand, runtime) {
   const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "qoder"] };
@@ -7490,13 +7893,13 @@ async function installProject({
   }
   if (!canonicalSkill || !await exists2(canonicalSkill)) throw new Error(`\u7F3A\u5C11 canonical Skill: ${canonicalCandidates[0]}`);
   if (!seaRuntime() && !await exists2(sourceRuntime)) throw new Error(`\u7F3A\u5C11\u5DF2\u6784\u5EFA\u8FD0\u884C\u65F6: ${sourceRuntime}`);
-  const dataDir = join17(root, ".live-dot-map");
-  const globalDataDir = join17(home, ".live-dot-map");
-  const runtime = seaRuntime() ? null : join17(globalDataDir, "livedot.mjs");
-  await mkdir8(dataDir, { recursive: true });
+  const dataDir = join18(root, ".live-dot-map");
+  const globalDataDir = join18(home, ".live-dot-map");
+  const runtime = seaRuntime() ? null : join18(globalDataDir, "livedot.mjs");
+  await mkdir9(dataDir, { recursive: true });
   const projectId = projectIdForRoot(root);
-  const mapPath = join17(dataDir, "map.json");
-  const configPath = join17(dataDir, "agent-kit.json");
+  const mapPath = join18(dataDir, "map.json");
+  const configPath = join18(dataDir, "agent-kit.json");
   const old = await readJson2(configPath);
   const url = bridgeUrl || old?.bridge?.url || "http://127.0.0.1:0";
   assertLoopbackUrl(url);
@@ -7507,11 +7910,11 @@ async function installProject({
     if (targetAdapters && !targetAdapters.includes(id)) continue;
     if (detected[id]?.discovered) installed[id] = true;
   }
-  const backupPath = join17(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
+  const backupPath = join18(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
   const beforeBackup = await captureFile(backupPath);
   const oldRuntime = runtime ? await captureFile(runtime) : { exists: false, kind: "missing", path: null };
   const oldMap = await captureFile(mapPath);
-  const mapsLayoutExists = await exists2(join17(dataDir, "maps"));
+  const mapsLayoutExists = await exists2(join18(dataDir, "maps"));
   let createdMapsLayout = false;
   const touched = /* @__PURE__ */ new Set([configPath, ...runtime ? [runtime] : []]);
   for (const id of /* @__PURE__ */ new Set([...Object.keys(old.installed || {}), ...Object.keys(installed)])) for (const path of adapterConfigPaths(home, id)) touched.add(path);
@@ -7528,22 +7931,22 @@ async function installProject({
     await restoreCapturedFile(beforeBackup);
     if (!oldMap.exists) await rm5(mapPath, { force: true }).catch(() => void 0);
     if (createdMapsLayout) {
-      await rm5(join17(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
-      await rm5(join17(dataDir, "active-map"), { force: true }).catch(() => void 0);
+      await rm5(join18(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
+      await rm5(join18(dataDir, "active-map"), { force: true }).catch(() => void 0);
     }
     if (runtime && !oldRuntime.exists) await rm5(runtime, { force: true }).catch(() => void 0);
   };
   try {
     await atomicJson(backupPath, backup);
     if (runtime && resolve14(sourceRuntime) !== resolve14(runtime)) {
-      await mkdir8(globalDataDir, { recursive: true });
+      await mkdir9(globalDataDir, { recursive: true });
       await copyFile3(sourceRuntime, runtime);
     }
     for (const id of Object.keys(installed)) {
       if (targetAdapters && !targetAdapters.includes(id)) continue;
       const target = skillTargetPaths(home, id);
       if (!target) continue;
-      await mkdir8(dirname9(target), { recursive: true });
+      await mkdir9(dirname10(target), { recursive: true });
       await copyFile3(canonicalSkill, target);
     }
     if (!oldMap.exists && !mapsLayoutExists) {
@@ -7563,8 +7966,8 @@ async function installProject({
           item.md = `.live-dot-map/maps/default${item.md.slice(".live-dot-map".length)}`;
         }
       }
-      await atomicJson(join17(dataDir, "maps", "default", "map.json"), map);
-      await atomicText(join17(dataDir, "active-map"), "default\n");
+      await atomicJson(join18(dataDir, "maps", "default", "map.json"), map);
+      await atomicText(join18(dataDir, "active-map"), "default\n");
       createdMapsLayout = true;
     }
     const shouldWrite = (id) => Boolean(installed[id]) && (!targetAdapters || targetAdapters.includes(id));
@@ -7626,17 +8029,17 @@ async function installProject({
 }
 async function uninstallProject({ projectRoot = process.cwd(), platform = process.platform, env = process.env, exec } = {}) {
   const root = resolve14(projectRoot);
-  const dataDir = join17(root, ".live-dot-map");
-  const configPath = join17(dataDir, "agent-kit.json");
+  const dataDir = join18(root, ".live-dot-map");
+  const configPath = join18(dataDir, "agent-kit.json");
   const config = await readJson2(configPath, null);
-  if (!config || typeof config !== "object") return { ok: false, reason: "not-installed", projectRoot: root, mapPreserved: await exists2(join17(dataDir, "map.json")) || await exists2(join17(dataDir, "maps")) };
-  const backupPath = typeof config.installBackup === "string" ? config.installBackup : join17(dataDir, "backups", "agent-kit-install.json");
+  if (!config || typeof config !== "object") return { ok: false, reason: "not-installed", projectRoot: root, mapPreserved: await exists2(join18(dataDir, "map.json")) || await exists2(join18(dataDir, "maps")) };
+  const backupPath = typeof config.installBackup === "string" ? config.installBackup : join18(dataDir, "backups", "agent-kit-install.json");
   const backup = await readJson2(backupPath, null);
   const installedFiles = config.installedFiles && typeof config.installedFiles === "object" ? config.installedFiles : {};
   const restored = [];
   const skipped = [];
   for (const entry of Array.isArray(backup?.files) ? backup.files : []) {
-    if (!entry?.path || entry.path === join17(dataDir, "map.json") || entry.path === backupPath) continue;
+    if (!entry?.path || entry.path === join18(dataDir, "map.json") || entry.path === backupPath) continue;
     const current = await captureFile(entry.path);
     const expected = installedFiles[entry.path];
     let configOwned = false;
@@ -7659,16 +8062,16 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
       skipped.push({ path: entry.path, reason: "after-install-change" });
     }
   }
-  const launcherPaths = [join17(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), join17(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
+  const launcherPaths = [join18(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), join18(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
   const homeRoot = config.homeRoot ? resolve14(config.homeRoot) : null;
   if (homeRoot && config.installed?.antigravity) {
     for (const name of ["antigravity", "antigravity-ide", "antigravity-cli"]) {
-      await rm5(join17(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
+      await rm5(join18(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
     }
   }
   if (platform === "win32") {
     const desktop = windowsDesktopDirectory({ platform, env, exec });
-    launcherPaths.push(join17(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), join17(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
+    launcherPaths.push(join18(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), join18(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
   }
   for (const path of launcherPaths) {
     const current = await captureFile(path);
@@ -7679,29 +8082,29 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
       restored.push(path);
     }
   }
-  const mapPreserved = await exists2(join17(dataDir, "map.json")) || await exists2(join17(dataDir, "maps"));
+  const mapPreserved = await exists2(join18(dataDir, "map.json")) || await exists2(join18(dataDir, "maps"));
   return { ok: skipped.length === 0, projectRoot: root, restored, skipped, mapPreserved, backupPath };
 }
 async function doctorProject({ projectRoot = process.cwd(), checkBridge = false, bridgeClient, offline = true, homeRoot = homedir5() } = {}) {
   const root = resolve14(projectRoot);
   const home = resolve14(homeRoot);
-  const configPath = join17(root, ".live-dot-map", "agent-kit.json");
+  const configPath = join18(root, ".live-dot-map", "agent-kit.json");
   const config = await readJson2(configPath, null);
   const installed = config?.installed && typeof config.installed === "object" ? config.installed : {};
   const expected = [
     ["agent-kit-config", configPath]
   ];
-  if (config?.runtimeMode !== "sea" && config?.runtime !== null) expected.push(["runtime", join17(home, ".live-dot-map", "livedot.mjs")]);
-  if (installed.codex) expected.push(["codex-hooks", join17(home, ".codex", "hooks.json")], ["codex-mcp", join17(home, ".codex", "config.toml")]);
-  if (installed["claude-code"]) expected.push(["claude-hooks", join17(home, ".claude", "settings.json")]);
-  if (installed["kimi-code"]) expected.push(["kimi-mcp", join17(home, ".kimi-code", "mcp.json")], ["kimi-plugin", join17(kimiPluginRoot(home), "kimi.plugin.json")]);
-  if (installed.antigravity) expected.push(["antigravity-mcp", join17(home, ".gemini", "config", "mcp_config.json")]);
-  if (installed.codebuddy) expected.push(["codebuddy-hooks", join17(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", join17(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
-  if (installed.qoder) expected.push(["qoder-mcp", existsSync2(join17(home, ".qoder-cn", "mcp.json")) ? join17(home, ".qoder-cn", "mcp.json") : join17(home, ".qoder", "mcp.json")]);
-  if (installed.zcode) expected.push(["zcode-mcp", join17(home, ".zcode", "cli", "config.json")]);
+  if (config?.runtimeMode !== "sea" && config?.runtime !== null) expected.push(["runtime", join18(home, ".live-dot-map", "livedot.mjs")]);
+  if (installed.codex) expected.push(["codex-hooks", join18(home, ".codex", "hooks.json")], ["codex-mcp", join18(home, ".codex", "config.toml")]);
+  if (installed["claude-code"]) expected.push(["claude-hooks", join18(home, ".claude", "settings.json")]);
+  if (installed["kimi-code"]) expected.push(["kimi-mcp", join18(home, ".kimi-code", "mcp.json")], ["kimi-plugin", join18(kimiPluginRoot(home), "kimi.plugin.json")]);
+  if (installed.antigravity) expected.push(["antigravity-mcp", join18(home, ".gemini", "config", "mcp_config.json")]);
+  if (installed.codebuddy) expected.push(["codebuddy-hooks", join18(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", join18(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
+  if (installed.qoder) expected.push(["qoder-mcp", existsSync2(join18(home, ".qoder-cn", "mcp.json")) ? join18(home, ".qoder-cn", "mcp.json") : join18(home, ".qoder", "mcp.json")]);
+  if (installed.zcode) expected.push(["zcode-mcp", join18(home, ".zcode", "cli", "config.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
-  checks.push({ name: "map", ok: await exists2(join17(root, ".live-dot-map", "map.json")) || await exists2(join17(root, ".live-dot-map", "maps")), detail: join17(root, ".live-dot-map") });
+  checks.push({ name: "map", ok: await exists2(join18(root, ".live-dot-map", "map.json")) || await exists2(join18(root, ".live-dot-map", "maps")), detail: join18(root, ".live-dot-map") });
   const detectedAgents = await detectInstalledAdapters({ projectRoot: root, homeRoot: home });
   checks.push({ name: "agent-discovery", ok: Object.values(detectedAgents).every((item) => !item.discovered || Boolean(installed[item.id])), detail: detectedAgents });
   checks.push({ name: "node", ok: runtimePlan({ offline }).use === "system-node", detail: process.versions.node });
@@ -7721,22 +8124,22 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
 var SESSION_COOKIE = "ldm_bridge_session";
 var DEFAULT_BODY_LIMIT = 16 * 1024 * 1024;
 var DEFAULT_SESSION_TTL = 8 * 60 * 60 * 1e3;
-var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || join18(homedir6(), ".live-dot-map", "recent-projects.json");
+var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || join19(homedir6(), ".live-dot-map", "recent-projects.json");
 async function recordRecentProject(root) {
   let recent = [];
   try {
-    const parsed = JSON.parse(await readFile11(RECENT_PROJECTS_FILE(), "utf8"));
+    const parsed = JSON.parse(await readFile12(RECENT_PROJECTS_FILE(), "utf8"));
     if (Array.isArray(parsed)) recent = parsed.filter((item) => typeof item === "string");
   } catch {
   }
   recent = [root, ...recent.filter((item) => item !== root)].slice(0, 15);
-  await mkdir9(dirname10(RECENT_PROJECTS_FILE()), { recursive: true });
-  await writeFile3(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
+  await mkdir10(dirname11(RECENT_PROJECTS_FILE()), { recursive: true });
+  await writeFile4(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
 `, "utf8");
 }
 async function readRecentProjects() {
   try {
-    const parsed = JSON.parse(await readFile11(RECENT_PROJECTS_FILE(), "utf8"));
+    const parsed = JSON.parse(await readFile12(RECENT_PROJECTS_FILE(), "utf8"));
     const list2 = Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
     const valid = [];
     for (const item of list2) {
@@ -7867,9 +8270,9 @@ if ($path) {
 `;
 }
 async function pickProjectFolder({ logger = noopLogger } = {}) {
-  const tmpDir = join18(homedir6(), ".live-dot-map", "tmp");
-  await mkdir9(tmpDir, { recursive: true });
-  const marker = join18(tmpDir, `pick-${randomUUID9()}.txt`);
+  const tmpDir = join19(homedir6(), ".live-dot-map", "tmp");
+  await mkdir10(tmpDir, { recursive: true });
+  const marker = join19(tmpDir, `pick-${randomUUID9()}.txt`);
   const script = buildPickFolderScript(marker);
   const run = await new Promise((resolveRun, rejectRun) => {
     const child = spawn3("powershell.exe", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script], { windowsHide: true });
@@ -7902,7 +8305,7 @@ async function pickProjectFolder({ logger = noopLogger } = {}) {
     return { cancelled: true };
   }
   try {
-    const text = (await readFile11(marker, "utf8")).trim();
+    const text = (await readFile12(marker, "utf8")).trim();
     await rm6(marker, { force: true }).catch(() => void 0);
     if (text) {
       await logger.info("project.pick", { outcome: "ok", mode, path: text, diag });
@@ -7919,8 +8322,8 @@ function randomToken(bytes = 32) {
   return randomBytes3(bytes).toString("base64url");
 }
 async function recordAgentHealth(root, actor, event, status, error3) {
-  const path = join18(root, ".live-dot-map", ".bridge", "agent-health.json");
-  const prior = await readFile11(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
+  const path = join19(root, ".live-dot-map", ".bridge", "agent-health.json");
+  const prior = await readFile12(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   records[String(actor).replace(/^agent:/, "")] = {
     status,
@@ -7930,24 +8333,24 @@ async function recordAgentHealth(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: error3?.code || "BRIDGE_MCP_FAILED", message: String(error3?.message || error3 || "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await mkdir9(join18(root, ".live-dot-map", ".bridge"), { recursive: true });
+  await mkdir10(join19(root, ".live-dot-map", ".bridge"), { recursive: true });
   const temporary = `${path}.${process.pid}.${randomToken(8)}.tmp`;
   try {
-    await writeFile3(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
+    await writeFile4(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
 `, "utf8");
-    await rename6(temporary, path);
+    await rename7(temporary, path);
   } catch {
   }
 }
 async function readAgentHealth(root) {
-  return readFile11(join18(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
+  return readFile12(join19(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
     const value = JSON.parse(text);
     return value && typeof value.records === "object" && !Array.isArray(value.records) ? value.records : {};
   }).catch(() => ({}));
 }
 async function readObject(path) {
   try {
-    const value = JSON.parse(await readFile11(path, "utf8"));
+    const value = JSON.parse(await readFile12(path, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
   } catch {
     return null;
@@ -7955,7 +8358,7 @@ async function readObject(path) {
 }
 async function sha256File(path) {
   try {
-    return createHash8("sha256").update(await readFile11(path)).digest("hex");
+    return createHash9("sha256").update(await readFile12(path)).digest("hex");
   } catch {
     return null;
   }
@@ -7963,19 +8366,19 @@ async function sha256File(path) {
 async function refreshAgentRuntime({ runtimeSource, homeRoot } = {}) {
   if (!runtimeSource) return false;
   const source = resolve15(runtimeSource);
-  const target = join18(resolve15(homeRoot || homedir6()), ".live-dot-map", "livedot.mjs");
+  const target = join19(resolve15(homeRoot || homedir6()), ".live-dot-map", "livedot.mjs");
   if (source.toLowerCase() === target.toLowerCase()) return false;
   const [sourceHash, targetHash] = await Promise.all([sha256File(source), sha256File(target)]);
   if (!sourceHash || sourceHash === targetHash) return false;
-  const temp = join18(dirname10(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
-  await mkdir9(dirname10(target), { recursive: true });
-  await writeFile3(temp, await readFile11(source));
-  await rename6(temp, target);
+  const temp = join19(dirname11(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
+  await mkdir10(dirname11(target), { recursive: true });
+  await writeFile4(temp, await readFile12(source));
+  await rename7(temp, target);
   return true;
 }
 function runtimeSources({ sourceRoot, runtimeSource } = {}) {
   const entry = process.argv[1] ? resolve15(process.argv[1]) : "";
-  const entryRoot = entry ? dirname10(entry) : "";
+  const entryRoot = entry ? dirname11(entry) : "";
   const roots = [
     sourceRoot,
     process.env.LIVEDOT_AGENT_KIT_SOURCE,
@@ -7986,7 +8389,7 @@ function runtimeSources({ sourceRoot, runtimeSource } = {}) {
   const runtimes = [
     runtimeSource,
     process.env.LIVEDOT_RUNTIME_SOURCE,
-    ...uniqueRoots.map((root) => join18(root, "livedot.mjs"))
+    ...uniqueRoots.map((root) => join19(root, "livedot.mjs"))
   ].filter(Boolean).map((value) => resolve15(value));
   return { sourceRoot: uniqueRoots[0] || process.cwd(), runtimeSource: runtimes[0] || "" };
 }
@@ -8002,7 +8405,7 @@ async function ensureProjectAgentConfig(projectRoot, {
   try {
     const detected = await detect({ projectRoot: root, platform, ...homeRoot ? { homeRoot } : {} });
     const available = Object.values(detected || {}).filter((item) => item?.discovered === true);
-    const configPath = join18(root, ".live-dot-map", "agent-kit.json");
+    const configPath = join19(root, ".live-dot-map", "agent-kit.json");
     const existing = await readObject(configPath);
     if (!available.length) {
       return { ok: true, status: "none", changed: false, projectRoot: root, detectedAgents: detected || {}, configured: existing?.installed || {} };
@@ -8197,7 +8600,7 @@ async function createBridgeServer({
   // 安装版：桥 exe 位于 <安装目录>/current/payload/，payload-manifest.json 就在旁边。
   // 用 exe 自身目录而不是 process.cwd()：启动器「正常启动」与更新器「重启」的 cwd 不一致，
   // 以 cwd 为准会导致正常启动时读不到本地安装信息（current:null），更新判定失效。
-  installRoot = process.execPath ? dirname10(resolve15(process.execPath)) : process.cwd(),
+  installRoot = process.execPath ? dirname11(resolve15(process.execPath)) : process.cwd(),
   spawnUpdater = null,
   restartOnUpdate = true,
   shutdownHandler = null
@@ -8446,7 +8849,7 @@ async function createBridgeServer({
   const UPDATE_BASE = (updateBase || process.env.LIVEDOT_UPDATE_BASE || "https://livedotmap.top/windows-installer").replace(/\/+$/, "");
   async function readLocalPayloadInfo() {
     try {
-      const parsed = JSON.parse(await readFile11(join18(installRoot, "payload-manifest.json"), "utf8"));
+      const parsed = JSON.parse(await readFile12(join19(installRoot, "payload-manifest.json"), "utf8"));
       return {
         version: typeof parsed.version === "string" ? parsed.version : null,
         payloadHash: typeof parsed.payloadHash === "string" ? parsed.payloadHash : null
@@ -8532,10 +8935,10 @@ async function createBridgeServer({
     }
     if (!response.ok) throw new BridgeError("UPDATE_DOWNLOAD_FAILED", `\u66F4\u65B0\u5305\u4E0B\u8F7D\u5931\u8D25\uFF08${label}\uFF0CHTTP ${response.status}\uFF09\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5`, { status: 502 });
     const buffer = Buffer.from(await response.arrayBuffer());
-    const actual = createHash8("sha256").update(buffer).digest("hex");
+    const actual = createHash9("sha256").update(buffer).digest("hex");
     if (actual !== meta.sha256.toLowerCase()) throw new BridgeError("UPDATE_CHECKSUM_MISMATCH", `\u66F4\u65B0\u5305\u6821\u9A8C\u5931\u8D25\uFF08${label} \u4E0E\u6E05\u5355\u4E0D\u4E00\u81F4\uFF0C\u6587\u4EF6\u53EF\u80FD\u635F\u574F\u6216\u88AB\u7BE1\u6539\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62\uFF0C\u73B0\u6709\u7248\u672C\u4E0D\u53D7\u5F71\u54CD`, { status: 502 });
-    await mkdir9(dirname10(target), { recursive: true });
-    await writeFile3(target, buffer);
+    await mkdir10(dirname11(target), { recursive: true });
+    await writeFile4(target, buffer);
   }
   async function applyUpdate() {
     const local = await readLocalPayloadInfo();
@@ -8543,15 +8946,15 @@ async function createBridgeServer({
     if (!isUpdateAvailable(local, manifest)) {
       throw new BridgeError("ALREADY_UP_TO_DATE", `Current version ${local.version ?? "unknown"} is up to date`, { status: 409 });
     }
-    const tempRoot = join18(process.env.TEMP || process.env.TMP || homedir6(), `livedot-update-${manifest.version}-${randomUUID9()}`);
-    const payloadDir = join18(tempRoot, "payload");
-    await mkdir9(payloadDir, { recursive: true });
+    const tempRoot = join19(process.env.TEMP || process.env.TMP || homedir6(), `livedot-update-${manifest.version}-${randomUUID9()}`);
+    const payloadDir = join19(tempRoot, "payload");
+    await mkdir10(payloadDir, { recursive: true });
     try {
       for (const [relative6, meta] of Object.entries(manifest.files)) {
         if (relative6.includes("..") || relative6.startsWith("/") || /^[a-zA-Z]:/.test(relative6)) {
           throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file path: ${relative6}`, { status: 502 });
         }
-        await downloadUpdateFile(meta, join18(payloadDir, relative6), relative6);
+        await downloadUpdateFile(meta, join19(payloadDir, relative6), relative6);
       }
     } catch (error3) {
       await rm6(tempRoot, { recursive: true, force: true }).catch(() => void 0);
@@ -8559,7 +8962,7 @@ async function createBridgeServer({
     }
     let updater;
     if (manifest.installer && typeof manifest.installer === "object") {
-      updater = join18(tempRoot, "LiveDotMapSetup.exe");
+      updater = join19(tempRoot, "LiveDotMapSetup.exe");
       try {
         await downloadUpdateFile(manifest.installer, updater, "LiveDotMapSetup.exe");
       } catch (error3) {
@@ -8567,7 +8970,7 @@ async function createBridgeServer({
         throw error3;
       }
     } else {
-      updater = resolve15(join18(installRoot, "..", "LiveDotMapSetup.exe"));
+      updater = resolve15(join19(installRoot, "..", "LiveDotMapSetup.exe"));
       try {
         await access4(updater);
       } catch {
@@ -8575,7 +8978,7 @@ async function createBridgeServer({
         throw new BridgeError("UPDATER_UNAVAILABLE", "Installer entry not found; updates are only available in installed mode", { status: 501 });
       }
     }
-    const updaterArgs = ["--update", join18(tempRoot, "LiveDotMapSetup.exe"), resolve15(join18(installRoot, ".."))];
+    const updaterArgs = ["--update", join19(tempRoot, "LiveDotMapSetup.exe"), resolve15(join19(installRoot, ".."))];
     if (spawnUpdater) {
       spawnUpdater(updater, updaterArgs);
     } else {
@@ -8994,7 +9397,7 @@ async function createBridgeServer({
         const detected = await detectInstalledAdapters({ projectRoot: root });
         let config = {};
         try {
-          const parsed = JSON.parse(await readFile11(join18(root, ".live-dot-map", "agent-kit.json"), "utf8"));
+          const parsed = JSON.parse(await readFile12(join19(root, ".live-dot-map", "agent-kit.json"), "utf8"));
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) config = parsed;
         } catch {
         }
@@ -9297,7 +9700,7 @@ async function createBridgeServer({
                   logger.warn("bundle.ensureIndex", { ownerId: command2.value.id, error: error3?.message });
                 });
                 await index.refreshOwnerAndPersist({
-                  mapRoot: join18(session.projectRoot, ".live-dot-map", "maps", session.activeMapId ?? await resolveActiveMap(session.projectRoot)),
+                  mapRoot: join19(session.projectRoot, ".live-dot-map", "maps", session.activeMapId ?? await resolveActiveMap(session.projectRoot)),
                   ownerKind: "nodes",
                   ownerId: command2.value.id
                 }).catch((error3) => {
@@ -9463,51 +9866,51 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
 
 // src/bridge/project-registry.mjs
 import { randomBytes as randomBytes5, randomUUID as randomUUID11 } from "node:crypto";
-import { chmod as chmod2, mkdir as mkdir11, readFile as readFile13, rename as rename8, writeFile as writeFile5 } from "node:fs/promises";
-import { dirname as dirname12 } from "node:path";
+import { chmod as chmod2, mkdir as mkdir12, readFile as readFile14, rename as rename9, writeFile as writeFile6 } from "node:fs/promises";
+import { dirname as dirname13 } from "node:path";
 
 // src/bridge/runtime-state.mjs
 import { randomBytes as randomBytes4, randomUUID as randomUUID10 } from "node:crypto";
 import { execFile as execFile2 } from "node:child_process";
-import { chmod, mkdir as mkdir10, open as open3, readFile as readFile12, rename as rename7, rm as rm7, writeFile as writeFile4 } from "node:fs/promises";
-import { dirname as dirname11, join as join19, resolve as resolve16 } from "node:path";
+import { chmod, mkdir as mkdir11, open as open3, readFile as readFile13, rename as rename8, rm as rm7, writeFile as writeFile5 } from "node:fs/promises";
+import { dirname as dirname12, join as join20, resolve as resolve16 } from "node:path";
 import { homedir as homedir7 } from "node:os";
 import { promisify } from "node:util";
 var execFileAsync = promisify(execFile2);
 var SCHEMA_VERSION = 1;
 function defaultRuntimeStateDir() {
   if (process.env.LIVEDOT_RUNTIME_STATE_DIR) return resolve16(process.env.LIVEDOT_RUNTIME_STATE_DIR);
-  const localAppData = process.env.LOCALAPPDATA || join19(homedir7(), "AppData", "Local");
-  return join19(localAppData, "live-dot-map", "run");
+  const localAppData = process.env.LOCALAPPDATA || join20(homedir7(), "AppData", "Local");
+  return join20(localAppData, "live-dot-map", "run");
 }
 async function privateDirectory(path) {
-  await mkdir10(path, { recursive: true, mode: 448 });
+  await mkdir11(path, { recursive: true, mode: 448 });
   await chmod(path, 448).catch(() => void 0);
 }
 async function atomicPrivateWrite(path, value) {
-  await privateDirectory(dirname11(path));
+  await privateDirectory(dirname12(path));
   const temporary = `${path}.${process.pid}.${randomUUID10()}.tmp`;
-  await writeFile4(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
+  await writeFile5(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod(temporary, 384).catch(() => void 0);
-  await rename7(temporary, path);
+  await rename8(temporary, path);
   await chmod(path, 384).catch(() => void 0);
 }
 function runtimePaths(runtimeStateDir = defaultRuntimeStateDir()) {
   const root = resolve16(runtimeStateDir);
   return {
     root,
-    bridge: join19(root, "bridge.json"),
-    controlToken: join19(root, "control.token"),
-    lock: join19(root, "singleton.lock"),
-    sessions: join19(root, "sessions.json"),
-    projects: join19(root, "projects.json")
+    bridge: join20(root, "bridge.json"),
+    controlToken: join20(root, "control.token"),
+    lock: join20(root, "singleton.lock"),
+    sessions: join20(root, "sessions.json"),
+    projects: join20(root, "projects.json")
   };
 }
 async function readBridgeState(runtimeStateDir) {
   const paths = runtimePaths(runtimeStateDir);
   let parsed;
   try {
-    parsed = JSON.parse(await readFile12(paths.bridge, "utf8"));
+    parsed = JSON.parse(await readFile13(paths.bridge, "utf8"));
   } catch (error3) {
     if (error3?.code === "ENOENT") return null;
     throw new BridgeError("BRIDGE_STATE_CORRUPT", "Bridge runtime state is unreadable", { cause: error3 });
@@ -9529,7 +9932,7 @@ async function writeBridgeState(runtimeStateDir, { pid, port, startedAt = (/* @_
 async function readOrCreateControlToken(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).controlToken;
   try {
-    const value = (await readFile12(path, "utf8")).trim();
+    const value = (await readFile13(path, "utf8")).trim();
     if (!/^[A-Za-z0-9_-]{43,}$/.test(value)) throw new Error("invalid token");
     return value;
   } catch (error3) {
@@ -9539,21 +9942,21 @@ async function readOrCreateControlToken(runtimeStateDir) {
   }
   const token = randomBytes4(32).toString("base64url");
   try {
-    await privateDirectory(dirname11(path));
-    await writeFile4(path, `${token}
+    await privateDirectory(dirname12(path));
+    await writeFile5(path, `${token}
 `, { encoding: "utf8", mode: 384, flag: "wx" });
     await chmod(path, 384).catch(() => void 0);
     return token;
   } catch (error3) {
     if (error3?.code !== "EEXIST") throw error3;
-    const existing = (await readFile12(path, "utf8")).trim();
+    const existing = (await readFile13(path, "utf8")).trim();
     if (!/^[A-Za-z0-9_-]{43,}$/.test(existing)) throw new BridgeError("CONTROL_TOKEN_CORRUPT", "Bridge control token is invalid");
     return existing;
   }
 }
 async function acquireSingletonLock(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).lock;
-  await privateDirectory(dirname11(path));
+  await privateDirectory(dirname12(path));
   let handle;
   try {
     handle = await open3(path, "wx", 384);
@@ -9609,7 +10012,7 @@ async function clearStaleSingletonLock(runtimeStateDir, expectedPid, options = {
   const path = runtimePaths(runtimeStateDir).lock;
   let lock;
   try {
-    lock = JSON.parse(await readFile12(path, "utf8"));
+    lock = JSON.parse(await readFile13(path, "utf8"));
   } catch (error3) {
     if (error3?.code === "ENOENT") return true;
     throw new BridgeError("BRIDGE_LOCK_CORRUPT", "Bridge singleton lock is unreadable", { cause: error3 });
@@ -9647,11 +10050,11 @@ function handleValue() {
   return `ph_${randomBytes5(24).toString("base64url")}`;
 }
 async function atomicWrite(path, data) {
-  await mkdir11(dirname12(path), { recursive: true, mode: 448 });
+  await mkdir12(dirname13(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${randomUUID11()}.tmp`;
-  await writeFile5(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
+  await writeFile6(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod2(temporary, 384).catch(() => void 0);
-  await rename8(temporary, path);
+  await rename9(temporary, path);
   await chmod2(path, 384).catch(() => void 0);
 }
 var ProjectRegistry = class _ProjectRegistry {
@@ -9665,7 +10068,7 @@ var ProjectRegistry = class _ProjectRegistry {
   static async open({ runtimeStateDir, filePath = runtimePaths(runtimeStateDir).projects, canonicalize } = {}) {
     let entries = [];
     try {
-      const parsed = JSON.parse(await readFile13(filePath, "utf8"));
+      const parsed = JSON.parse(await readFile14(filePath, "utf8"));
       if (parsed?.schemaVersion !== SCHEMA_VERSION2 || !Array.isArray(parsed.projects)) throw new Error("invalid shape");
       entries = parsed.projects;
       for (const entry of entries) {
@@ -9712,7 +10115,7 @@ var ProjectRegistry = class _ProjectRegistry {
   async refresh() {
     let parsed;
     try {
-      parsed = JSON.parse(await readFile13(this.filePath, "utf8"));
+      parsed = JSON.parse(await readFile14(this.filePath, "utf8"));
     } catch (error3) {
       if (error3?.code === "ENOENT") return;
       throw new BridgeError("PROJECT_REGISTRY_CORRUPT", "Project authorization registry is unreadable or invalid", { cause: error3 });
@@ -9737,19 +10140,19 @@ var ProjectRegistry = class _ProjectRegistry {
 };
 
 // src/bridge/session-store.mjs
-import { createHash as createHash9, randomBytes as randomBytes6, randomUUID as randomUUID12 } from "node:crypto";
-import { chmod as chmod3, mkdir as mkdir12, readFile as readFile14, rename as rename9, writeFile as writeFile6 } from "node:fs/promises";
-import { dirname as dirname13 } from "node:path";
+import { createHash as createHash10, randomBytes as randomBytes6, randomUUID as randomUUID12 } from "node:crypto";
+import { chmod as chmod3, mkdir as mkdir13, readFile as readFile15, rename as rename10, writeFile as writeFile7 } from "node:fs/promises";
+import { dirname as dirname14 } from "node:path";
 var SCHEMA_VERSION3 = 1;
 var DAY = 24 * 60 * 60 * 1e3;
 var secret = () => randomBytes6(32).toString("base64url");
-var digest5 = (value) => createHash9("sha256").update(String(value)).digest("base64url");
+var digest5 = (value) => createHash10("sha256").update(String(value)).digest("base64url");
 async function atomicWrite2(path, content) {
-  await mkdir12(dirname13(path), { recursive: true, mode: 448 });
+  await mkdir13(dirname14(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${randomUUID12()}.tmp`;
-  await writeFile6(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
+  await writeFile7(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod3(temporary, 384).catch(() => void 0);
-  await rename9(temporary, path);
+  await rename10(temporary, path);
   await chmod3(path, 384).catch(() => void 0);
 }
 var SessionStore = class _SessionStore {
@@ -9770,7 +10173,7 @@ var SessionStore = class _SessionStore {
     const filePath = options.filePath || runtimePaths(options.runtimeStateDir).sessions;
     let sessions = [];
     try {
-      const parsed = JSON.parse(await readFile14(filePath, "utf8"));
+      const parsed = JSON.parse(await readFile15(filePath, "utf8"));
       if (parsed?.schemaVersion !== SCHEMA_VERSION3 || !Array.isArray(parsed.sessions)) throw new Error("invalid shape");
       sessions = parsed.sessions;
       for (const session of sessions) {
@@ -9884,123 +10287,6 @@ var SessionStore = class _SessionStore {
   }
 };
 
-// agent-kit/lib/hook-notice.mjs
-import { mkdir as mkdir13, readFile as readFile15, rename as rename10, writeFile as writeFile7 } from "node:fs/promises";
-import { dirname as dirname14, join as join20 } from "node:path";
-var HOOK_LINE_MAX_BYTES = 160;
-var MAX_LISTED_IDS = 3;
-var ELLIPSIS = "\u2026";
-function truncateUtf8(text, maxBytes = HOOK_LINE_MAX_BYTES) {
-  const value = String(text ?? "");
-  if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
-  const budget = maxBytes - Buffer.byteLength(ELLIPSIS, "utf8");
-  let output = "";
-  let used = 0;
-  for (const char of value) {
-    const size = Buffer.byteLength(char, "utf8");
-    if (used + size > budget) break;
-    output += char;
-    used += size;
-  }
-  return `${output}${ELLIPSIS}`;
-}
-function safeAgentName(agent) {
-  const cleaned = String(agent ?? "").replace(/^agent:/, "").replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "").slice(0, 64);
-  return cleaned || "generic";
-}
-function agentReadPath(root, agent) {
-  return join20(root, ".live-dot-map", ".bridge", "agent-read", `${safeAgentName(agent)}.json`);
-}
-function legacyReadPath(root) {
-  return join20(root, ".live-dot-map", "agent-read.json");
-}
-async function readTimestamp(path) {
-  try {
-    const parsed = JSON.parse(await readFile15(path, "utf8"));
-    const value = typeof parsed?.updatedAt === "string" ? Date.parse(parsed.updatedAt) : Number.NaN;
-    return Number.isFinite(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
-async function readAgentWatermark(root, agent, now = Date.now()) {
-  const own = await readTimestamp(agentReadPath(root, agent));
-  if (own !== null) return { since: own, initialized: true };
-  const legacy = await readTimestamp(legacyReadPath(root));
-  return { since: legacy ?? now, initialized: false };
-}
-async function writeAgentWatermark(root, agent, timestamp) {
-  const path = agentReadPath(root, agent);
-  await mkdir13(dirname14(path), { recursive: true });
-  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile7(temporary, `${JSON.stringify({ version: 1, updatedAt: new Date(timestamp).toISOString() })}
-`, "utf8");
-  await rename10(temporary, path);
-}
-function byLabel(updatedBy) {
-  const value = typeof updatedBy === "string" && updatedBy.trim() ? updatedBy.trim() : "?";
-  return value.replace(/^agent:/, "");
-}
-function isPendingHumanAnn(item) {
-  return item?.source === "human" && ["new", "delivered"].includes(String(item?.attention));
-}
-function collectChanges(document, since, actor) {
-  const humanAnns = [];
-  const human = [];
-  const others = [];
-  for (const collection of ["nodes", "edges", "anns", "routes"]) {
-    const items = Array.isArray(document?.[collection]) ? document[collection] : [];
-    for (const item of items) {
-      if (!item || item.updatedBy === actor) continue;
-      const updated = Date.parse(String(item.updatedAt));
-      if (!Number.isFinite(updated) || updated <= since) continue;
-      if (collection === "anns" && isPendingHumanAnn(item)) {
-        humanAnns.push({ id: String(item.id), by: "human" });
-        continue;
-      }
-      const entry = { id: String(item.id), by: byLabel(item.updatedBy) };
-      (entry.by === "human" ? human : others).push(entry);
-    }
-  }
-  return [...humanAnns, ...human, ...others];
-}
-function mergeNotices(deliveredIds, changes) {
-  const seen = /* @__PURE__ */ new Set();
-  const merged = [];
-  for (const entry of [...deliveredIds.map((id) => ({ id: String(id), by: "human" })), ...changes]) {
-    if (seen.has(entry.id)) continue;
-    seen.add(entry.id);
-    merged.push(entry);
-  }
-  return merged;
-}
-function fitLine(build2, count) {
-  for (let shown = Math.min(MAX_LISTED_IDS, count); shown >= 0; shown -= 1) {
-    const line = build2(shown);
-    if (Buffer.byteLength(line, "utf8") <= HOOK_LINE_MAX_BYTES) return line;
-  }
-  return truncateUtf8(build2(0));
-}
-function formatChangeLine(entries) {
-  const list2 = entries.filter(Boolean);
-  if (!list2.length) return "";
-  return fitLine((shown) => {
-    const ids = list2.slice(0, shown).map((entry) => `${entry.id}(${entry.by})`).join("\u3001");
-    const more = shown < list2.length ? "\u7B49" : "";
-    const body = ids ? `\uFF1A${ids}${more}` : "";
-    return `[\u6D3B\u70B9\u5730\u56FE] ${list2.length}\u5904\u65B0\u53D8\u5316${body}\uFF1B\u7528 livedot look \u67E5\u770B`;
-  }, list2.length);
-}
-function formatPendingLine(ids) {
-  const list2 = ids.map(String).filter(Boolean);
-  if (!list2.length) return "";
-  return fitLine((shown) => {
-    const shownIds = list2.slice(0, shown).join("\u3001");
-    const more = shown < list2.length ? "\u7B49" : "";
-    return `[\u6D3B\u70B9\u5730\u56FE] ${list2.length} \u6761\u4EBA\u7C7B\u6807\u6CE8\u5F85\u786E\u8BA4${shownIds ? `\uFF1A${shownIds}${more}` : ""}`;
-  }, list2.length);
-}
-
 // src/cli/agent-cli.ts
 import { writeFile as writeFile8 } from "node:fs/promises";
 var AGENT_COMMANDS = /* @__PURE__ */ new Set(["look", "read", "write", "note", "analyze", "manage"]);
@@ -10008,17 +10294,16 @@ var INVOKE = 'node "$HOME/.live-dot-map/livedot.mjs"';
 var HELP = `livedot\uFF1A\u6D3B\u70B9\u5730\u56FE\u8BB0\u5FC6\u7A7A\u95F4\u7684\u547D\u4EE4\u884C\uFF0C\u7ED9 Agent \u7528\uFF0C\u8F93\u51FA\u7D27\u51D1 JSON\u3002
 \u8C03\u7528\uFF1A${INVOKE} <\u547D\u4EE4> \u2026\uFF08\u4E0B\u6587\u7B80\u5199 livedot\uFF09
 
-livedot look [\u5173\u952E\u8BCD] [--node n3]         \u770B\u76EE\u5F55\uFF1Aid/\u540D\u79F0/\u7C7B\u578B/\u8DEF\u5F84/\u7406\u7531\uFF0C\u4E0D\u542B\u6B63\u6587
-livedot read <\u8DEF\u5F84|\u8282\u70B9id> [--force]       \u8BFB\u6B63\u6587\uFF1B\u8DEF\u5F84\u53D6 look \u7ED3\u679C\u7684 path \u5217
+livedot look [\u5173\u952E\u8BCD] [--node n3]         \u770B\u76EE\u5F55\uFF0C\u4E0D\u542B\u6B63\u6587\uFF1B\u4E0D\u5E26\u5173\u952E\u8BCD=\u6574\u5F20\u76EE\u5F55+\u6BCF\u9879\u4E00\u53E5\u6458\u8981
+livedot read <\u8DEF\u5F84|\u8282\u70B9id> [--force]       \u8BFB\u6B63\u6587\uFF08\u9644\u8BE5\u8282\u70B9\u6807\u6CE8 anns\uFF09\uFF1B\u8DEF\u5F84\u53D6 look \u7ED3\u679C\u7684 path \u5217
 livedot write <\u8DEF\u5F84> "<\u5185\u5BB9>"              \u8FFD\u52A0\u5230\u6587\u4EF6\u672B\u5C3E\uFF08\u6587\u4EF6\u4E0D\u5B58\u5728\u5C31\u65B0\u5EFA\uFF09
 livedot write <\u8DEF\u5F84> - --etag <etag>       \u4ECE stdin \u8BFB\u5185\u5BB9\u6574\u6587\u66FF\u6362\uFF08etag \u53D6\u81EA read\uFF09
 livedot write --new "<\u8282\u70B9\u540D>" [--kind problem] ["<\u5185\u5BB9>"]   \u65B0\u5EFA\u8282\u70B9
-livedot write --ack a1,a2                  \u786E\u8BA4\u4EBA\u7C7B\u6807\u6CE8\uFF08look \u7ED3\u679C\u7684 human \u5B57\u6BB5\uFF09
+livedot write n3 --summary "<\u4E00\u53E5\u8BDD>"      \u5199\u8282\u70B9\u6458\u8981\uFF08Agent\u5143\u6570\u636E\uFF0C\u53EA\u5BFC\u822A\uFF09
+livedot write n3 --file <\u6587\u4EF6\u540D> "<\u8BF4\u660E>"  \u5199\u8D44\u6599\u5305\u91CC\u67D0\u4E2A\u6587\u4EF6\u7684\u4E00\u53E5\u8BF4\u660E
 livedot note <\u8282\u70B9id> "<\u4E00\u53E5\u8BDD>"           \u7ED9\u8282\u70B9\u8FFD\u52A0\u4E00\u6761\u5E26\u65F6\u95F4\u7684\u8BB0\u5F55
 livedot analyze <\u6570\u636E\u6587\u4EF6> describe|group|top [--by \u5B57\u6BB5] [--metric \u6307\u6807]
 livedot manage <\u52A8\u4F5C> [...]                \u4F4E\u9891\u7BA1\u7406\uFF0C\u89C1 livedot manage --help
-
-look \u7ED3\u679C\u6709 human\uFF08\u5F85\u786E\u8BA4\u7684\u4EBA\u7C7B\u6807\u6CE8 id\uFF09\u65F6\uFF1Alivedot read <\u6807\u6CE8id> \u770B\u5168\u6587 \u2192 \u5904\u7406 \u2192 livedot write --ack <\u6807\u6CE8id>
 
 \u4F8B\uFF1A
   livedot look "\u6296\u97F3 \u7206\u6B3E"
@@ -10030,15 +10315,16 @@ look \u7ED3\u679C\u6709 human\uFF08\u5F85\u786E\u8BA4\u7684\u4EBA\u7C7B\u6807\u6
 \u51FA\u9519\uFF1Astderr \u8F93\u51FA {"error":{"code","message"}}\uFF0C\u9000\u51FA\u7801 1\uFF1B\u6309 message \u91CC\u7684\u7528\u6CD5\u6539\u6B63\u540E\u91CD\u8BD5\u3002`;
 var COMMAND_HELP = {
   look: `livedot look [\u5173\u952E\u8BCD] [--node <\u8282\u70B9id>] [--limit 5] [--all]
-\u8FD4\u56DE {map,name,rev,goal?,human?,cols,items}\u3002items \u6BCF\u884C [id,\u540D\u79F0,\u7C7B\u578B,\u8DEF\u5F84,\u7406\u7531]\uFF1Bhuman \u662F\u5F85\u786E\u8BA4\u7684\u4EBA\u7C7B\u6807\u6CE8 id\u3002
---all \u542B\u5DF2\u5F52\u6863\u5386\u53F2\u3002\u4F8B\uFF1Alivedot look "\u6570\u636E\u5206\u6790"`,
+\u8FD4\u56DE {map,name,rev,goal?,cols,items}\u3002\u4E0D\u5E26\u5173\u952E\u8BCD\uFF1Aitems \u6BCF\u884C [id,\u540D\u79F0,\u7C7B\u578B,\u8DEF\u5F84,\u6458\u8981,\u6587\u4EF6\u6570]\uFF0C\u6309\u610F\u601D\u81EA\u5DF1\u6311\uFF1B
+\u5E26\u5173\u952E\u8BCD\uFF1A\u6BCF\u884C [id,\u540D\u79F0,\u7C7B\u578B,\u8DEF\u5F84,\u7406\u7531]\uFF0C\u6CA1\u547D\u4E2D\u6362\u4E2A\u8BF4\u6CD5\u3002--all \u542B\u5DF2\u5F52\u6863\u5386\u53F2\u3002\u4F8B\uFF1Alivedot look "\u6570\u636E\u5206\u6790"`,
   read: `livedot read <\u8DEF\u5F84|\u8282\u70B9id|\u6807\u6CE8id> [--force]
-\u8DEF\u5F84\u5982 nodes/n3/index.md\u3001nodes/n3/\u65B9\u6848.md\uFF1B\u53EA\u5199 n3 \u8BFB\u4E3B\u6587\u6863\u5E76\u5217\u51FA\u8D44\u6599\u5305\u6587\u4EF6\uFF1B\u4EE5 / \u7ED3\u5C3E\u53EA\u5217\u6587\u4EF6\uFF1Ba1 \u8FD9\u7C7B\u6807\u6CE8 id \u8FD4\u56DE\u6807\u6CE8\u5168\u6587\u3002
+\u8DEF\u5F84\u5982 nodes/n3/index.md\u3001nodes/n3/\u65B9\u6848.md\uFF1B\u53EA\u5199 n3 \u8BFB\u4E3B\u6587\u6863\uFF08\u9644\u6807\u6CE8 anns\u3001\u5176\u4ED6\u6587\u4EF6\u6570 otherFiles\uFF09\uFF1B\u4EE5 / \u7ED3\u5C3E\u5217\u6587\u4EF6\uFF1Ba1 \u8FD9\u7C7B\u6807\u6CE8 id \u8FD4\u56DE\u6807\u6CE8\u5168\u6587\u3002
 \u540C\u4E00 --session \u5185\u6587\u4EF6\u6CA1\u53D8\u65F6\u53EA\u56DE {unchanged:true}\uFF0C--force \u5F3A\u5236\u91CD\u8BFB\u3002\u4F8B\uFF1Alivedot read n3`,
   write: `livedot write <\u8DEF\u5F84> "<\u5185\u5BB9>"            \u8FFD\u52A0\uFF08\u9ED8\u8BA4\uFF0C\u4E0D\u4F1A\u8986\u76D6\u5DF2\u6709\u5185\u5BB9\uFF09
 livedot write <\u8DEF\u5F84> - --etag <etag>     \u4ECE stdin \u8BFB\u5185\u5BB9\u6574\u6587\u66FF\u6362\uFF0Cetag \u53D6\u81EA read \u7ED3\u679C
 livedot write --new "<\u8282\u70B9\u540D>" [--kind goal|problem] [--near n3] ["<\u5185\u5BB9>"]
-livedot write --ack a1,a2 [--summary "\u2026"]
+livedot write n3 --summary "<\u4E00\u53E5\u8BDD>"    \u5199\u8282\u70B9\u6458\u8981\u5230 Agent\u5143\u6570\u636E.md\uFF08read \u8FD4\u56DE meta:"\u7F3A\u6458\u8981|\u6458\u8981\u8FC7\u671F" \u65F6\uFF09
+livedot write n3 --file <\u6587\u4EF6\u540D> "<\u8BF4\u660E>" \u5199\u6587\u4EF6\u8BF4\u660E\uFF08read \u8FD4\u56DE meta:"\u65E0\u8BF4\u660E" \u65F6\uFF09\uFF1B\u4EBA\u6539\u8FC7/\u5220\u8FC7\u7684\u4E0D\u80FD\u5199\uFF0C\u7528\u6237\u660E\u786E\u8981\u6C42\u65F6\u52A0 --user-asked
 \u4F8B\uFF1Alivedot write nodes/n3/index.md "## \u7ED3\u8BBA\\n\u94A2\u7434\u914D\u4E50\u7EC4\u4E2D\u4F4D\u64AD\u653E 41 \u4E07"`,
   note: `livedot note <\u8282\u70B9id> "<\u4E00\u53E5\u8BDD>"
 \u5728\u8282\u70B9\u4E3B\u6587\u6863\u672B\u5C3E\u8FFD\u52A0\u4E00\u884C "- 10-05 14:30 \xB7 \u4E00\u53E5\u8BDD"\u3002\u4F8B\uFF1Alivedot note n3 "\u6539\u7528\u6696\u8272\u5C01\u9762\uFF0C\u5F85\u89C2\u5BDF"`,
@@ -10058,18 +10344,18 @@ livedot write --ack a1,a2 [--summary "\u2026"]
   archive --path n3/\u8349\u7A3F.md                \u5F52\u6863\uFF08\u53EF\u6062\u590D\uFF09
   restore --path n3/\u8349\u7A3F.md
   import --path n3 --source <\u672C\u673A\u6587\u4EF6\u8DEF\u5F84>  \u5BFC\u5165\u9644\u4EF6/\u6570\u636E
-  validate | checkpoint | plan | human     \u6821\u9A8C / \u68C0\u67E5\u70B9 / \u6574\u7406\u5EFA\u8BAE / \u5F85\u786E\u8BA4\u4EBA\u7C7B\u66F4\u65B0`
+  validate | checkpoint | plan             \u6821\u9A8C / \u68C0\u67E5\u70B9 / \u6574\u7406\u5EFA\u8BAE`
 };
 var COMMON_FLAGS = /* @__PURE__ */ new Set(["project", "map", "agent", "session", "out", "runtime-state-dir", "app", "help"]);
 var COMMAND_FLAGS = {
   look: ["node", "limit", "all"],
   read: ["force"],
-  write: ["etag", "new", "kind", "near", "ack", "summary", "replace-all"],
+  write: ["etag", "new", "kind", "near", "summary", "file", "user-asked", "replace-all"],
   note: [],
   analyze: ["by", "metric", "agg", "ratio", "fields"],
   manage: ["path", "name", "to", "source", "include-archived"]
 };
-var BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["force", "all", "help", "include-archived", "replace-all"]);
+var BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["force", "all", "help", "include-archived", "replace-all", "user-asked"]);
 var CliError = class extends Error {
   code;
   constructor(code, message) {
@@ -10132,7 +10418,10 @@ function unknownFlagError(command2, flag) {
 var CLI_REWRITES = [
   [/ 用法：.*$/s, ""],
   [/map_write（不带 baseEtag 即追加）/g, "livedot write\uFF08\u4E0D\u5E26 --etag \u5373\u8FFD\u52A0\uFF09"],
-  [/map_write\(\{ack:\[…\]\}\)/g, "livedot write --ack <id>"],
+  [/map_write\(\{path:"([^"]+)", meta:\{summary:"…"\}\}\)/g, 'livedot write $1 --summary "\u2026"'],
+  [/map_write\(\{path:"([^"]+)", meta:\{files:\{"([^"]+)":"…"\}\}\}\)/g, 'livedot write $1 --file "$2" "\u2026"'],
+  [/map_write\(\{path:"n3", meta:\{summary:"…", files:\{"文件名":"说明"\}\}\}\)/g, 'livedot write n3 --summary "\u2026" \u6216 livedot write n3 --file <\u6587\u4EF6\u540D> "\u8BF4\u660E"'],
+  [/带 meta\.userAsked:true/g, "\u52A0 --user-asked"],
   [/map_manage\(\{action:"(\w+)"\}\)/g, "livedot manage $1"],
   [/map_write\(\{commands:\[…\]\}\)/g, "MCP map_write \u7684 commands\uFF08CLI \u4E0D\u652F\u6301\uFF09"],
   [/\bmap_look\b/g, "livedot look"],
@@ -10191,13 +10480,26 @@ async function build(command2, positional, flags) {
   if (command2 === "write") {
     const args = { ...scope };
     const created = str(flags, "new");
-    const ack = list(str(flags, "ack"));
+    const summary = str(flags, "summary");
+    const file = str(flags, "file");
+    if (summary || file) {
+      const [owner2, note] = positional;
+      if (!owner2) throw usageError(command2, "\u7F3A\u5C11 <\u8282\u70B9id>");
+      if (file && note === void 0) throw usageError(command2, '\u7F3A\u5C11\u6587\u4EF6\u8BF4\u660E "<\u8BF4\u660E>"');
+      args.path = owner2;
+      args.meta = {
+        ...summary ? { summary: unescapeInline(summary) } : {},
+        ...file ? { files: { [file]: unescapeInline(note ?? "") } } : {},
+        ...flags["user-asked"] === true ? { userAsked: true } : {}
+      };
+      return { tool: "map_write", args };
+    }
     let path;
     let content;
     if (created) {
       args.node = { name: created, ...str(flags, "kind") ? { kind: str(flags, "kind") } : {}, ...str(flags, "near") ? { near: str(flags, "near") } : {} };
       content = positional[0];
-    } else if (!ack) {
+    } else {
       [path, content] = positional;
       if (!path) throw usageError(command2, "\u7F3A\u5C11 <\u8DEF\u5F84>");
       if (content === void 0) throw usageError(command2, '\u7F3A\u5C11 "<\u5185\u5BB9>"\uFF08\u7528 - \u8868\u793A\u4ECE stdin \u8BFB\uFF09');
@@ -10208,10 +10510,6 @@ async function build(command2, positional, flags) {
     if (content !== void 0) args.content = content;
     if (str(flags, "etag")) args.baseEtag = str(flags, "etag");
     if (flags["replace-all"] === true) args.allowContentRemoval = true;
-    if (ack) {
-      args.ack = ack;
-      if (str(flags, "summary")) args.summary = str(flags, "summary");
-    }
     return { tool: "map_write", args };
   }
   if (command2 === "note") {
@@ -10292,6 +10590,9 @@ async function runAgentCli(argv, callTool) {
     const { tool, args } = await build(command2, positional, flags);
     if (globals.session) args.sessionId = globals.session;
     const value = await callTool(tool, args, globals);
+    if (value && typeof value === "object" && typeof value.hint === "string") {
+      value.hint = cliMessage(command2, String(value.hint), true);
+    }
     const out = str(flags, "out");
     if (out) {
       await writeFile8(out, `${JSON.stringify(value, null, 2)}
@@ -10461,9 +10762,6 @@ function unavailableToolResult(qualification) {
 }
 function toolTextResult(value) {
   return { content: [{ type: "text", text: JSON.stringify(value === void 0 ? null : value) }] };
-}
-function envelope(projectId, revision, actor, sessionId, commands) {
-  return { projectId, baseRevision: revision, commandId: `cmd-${randomUUID13()}`, actor, sessionId, commands };
 }
 var toolDefinitions = TOOL_DEFINITIONS;
 var MCP_SESSION_ID = `mcp-${randomUUID13()}`;
@@ -10733,63 +11031,11 @@ async function runHook(kind, args) {
   const sessionId = String(args.session || `session-${randomUUID13()}`);
   const qualification = await inspectProjectQualification(root);
   if (!qualification.ok) return;
+  if (kind === "stop" && !process.stdin.isTTY) for await (const _chunk of process.stdin) {
+  }
   const logger = createLogger({ source: "agent" });
-  await logger.info("agent.hook.start", { event: kind, actor, project: root });
-  const shared = await loadSharedAdapter();
-  const manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
-  const resolvedMap = await manager.resolve();
-  const store = resolvedMap.store;
-  const tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: "hook" });
-  const scanAt = Date.now();
-  const snapshot = await store.snapshot();
-  const document = snapshot.document;
-  if (kind === "session-start" || kind === "user-prompt") {
-    await notifyChanges(kind === "session-start" ? "SessionStart" : "UserPromptSubmit");
-    await recordAgentHealth2(root, actor, `hook:${kind}`, "ok");
-    await manager.close();
-    return;
-  }
-  if (kind === "stop") {
-    if (!process.stdin.isTTY) for await (const _chunk of process.stdin) {
-    }
-    const updates = await tools.dispatch("map_list_human_updates", {});
-    const pendingIds = (Array.isArray(updates.updates) ? updates.updates : []).map((item) => String(item?.id ?? "")).filter(Boolean);
-    const desiredStatus = pendingIds.length ? "incomplete" : "closed";
-    const ui = document.ui && typeof document.ui === "object" ? document.ui : {};
-    const collaboration = ui.collaboration && typeof ui.collaboration === "object" ? ui.collaboration : {};
-    const currentStatus = typeof collaboration.status === "string" ? collaboration.status : "closed";
-    if (currentStatus !== desiredStatus) {
-      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{
-        op: "set_ui",
-        patch: { collaboration: {
-          status: desiredStatus,
-          agent: actor,
-          sessionId,
-          at: (/* @__PURE__ */ new Date()).toISOString(),
-          ...pendingIds.length ? { reason: `${pendingIds.length} \u6761\u4EBA\u7C7B\u6807\u6CE8\u672A\u5B8C\u6210\u6458\u8981\u5F15\u7528\u4E0E\u786E\u8BA4` } : {}
-        } }
-      }]));
-    }
-    if (pendingIds.length) process.stdout.write(`${JSON.stringify({ systemMessage: formatPendingLine(pendingIds) })}
-`);
-    await recordAgentHealth2(root, actor, "hook:stop", "ok");
-    await manager.close();
-  }
-  async function notifyChanges(hookEventName) {
-    const { since, initialized } = await readAgentWatermark(root, agent, scanAt);
-    const changes = collectChanges(document, since, actor);
-    const anns = Array.isArray(document.anns) ? document.anns : [];
-    const deliveredIds = anns.filter((ann) => ann.source === "human" && ann.attention === "new").map((ann) => String(ann.id));
-    if (deliveredIds.length) {
-      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: "deliver_annotations", ids: deliveredIds, deliveryId: sessionId }]));
-    }
-    const notices = mergeNotices(deliveredIds, changes);
-    if (notices.length || !initialized) await writeAgentWatermark(root, agent, scanAt);
-    if (!notices.length) return;
-    const output = { hookSpecificOutput: { hookEventName, additionalContext: formatChangeLine(notices) } };
-    process.stdout.write(`${JSON.stringify(output)}
-`);
-  }
+  await logger.info("agent.hook.start", { event: kind, actor, project: root, sessionId });
+  await recordAgentHealth2(root, actor, `hook:${kind}`, "ok");
 }
 function hasDirtyGitWorktree(root) {
   try {

@@ -103,7 +103,9 @@ test('map_write 默认追加不覆盖；带 baseEtag 才整文替换；人类原
   assert.equal(created.mode, 'create');
   assert.equal(created.path, 'nodes/n1/方案.md');
   const listed = await service.dispatch('map_read', { path: 'nodes/n1/' });
-  assert.deepEqual(listed.files.map((file) => file.name).sort(), ['index.md', '方案.md'].sort());
+  assert.deepEqual(listed.cols, ['name', 'kind', 'size', 'note']);
+  assert.deepEqual(listed.files.map((row) => row[0]).sort(), ['index.md', '方案.md'].sort());
+  assert.equal(listed.files.find((row) => row[0] === '方案.md')[3], '标题：方案');
 });
 
 test('map_write 冲突报错不带整份正文，提示先 map_read', async (t) => {
@@ -124,7 +126,7 @@ test('参数错误时报错带正确用法', async (t) => {
   await assert.rejects(service.dispatch('map_get_context_typo'), (error) => error.code === 'UNKNOWN_MCP_TOOL' && /map_look/.test(error.message));
 });
 
-test('ack 确认人类标注；map_look 列出待确认的人类标注 id', async (t) => {
+test('人类标注随 read 主文档返回 anns；look 不推送待确认清单；旧 ack 仍兼容', async (t) => {
   const { service, manager, mapKey } = await openService(t);
   await service.dispatch('map_write', { node: { name: '标注测试' } });
   const context = await manager.resolve({ mapKey });
@@ -137,18 +139,16 @@ test('ack 确认人类标注；map_look 列出待确认的人类标注 id', asyn
     commands: [{ op: 'create', collection: 'anns', value: { id: 'a1', text: '请先看这里', target: { kind: 'node', id: 'n1' } } }],
   });
   const looked = await service.dispatch('map_look', {});
-  assert.deepEqual(looked.human, ['a1']);
+  assert.equal(looked.human, undefined);
+  const indexed = await service.dispatch('map_read', { path: 'n1' });
+  assert.deepEqual(indexed.anns, [['a1', '请先看这里', 'human']]);
   const annotation = await service.dispatch('map_read', { path: 'a1' });
   assert.equal(annotation.text, '请先看这里');
   assert.equal(annotation.on, 'nodes/n1/index.md');
-  assert.equal(annotation.pending, true);
+  assert.equal(annotation.by, 'human');
   const acked = await service.dispatch('map_write', { ack: ['a1'] });
   assert.deepEqual(acked.acked, ['a1']);
-  const afterAck = await service.dispatch('map_read', { path: 'a1' });
-  assert.equal(afterAck.by, 'human');
-  assert.equal(afterAck.pending, undefined);
-  const after = await service.dispatch('map_look', {});
-  assert.equal(after.human, undefined);
+  assert.equal((await service.dispatch('map_read', { path: 'a1' })).by, 'human');
 });
 
 test('map_manage 覆盖地图与资料包的低频管理', async (t) => {
@@ -203,12 +203,13 @@ test('analysis_run 对资料包 CSV 做 describe / group / top，小样本标记
   );
 });
 
-test('注入预算：70 个 md / 12 个节点时 map_look ≤ 1.5KB，带关键词仍 ≤ 1.5KB 且不凑数', async (t) => {
+test('注入预算：70 个 md / 12 个节点时 map_look 总览列全 12 个节点每行 ≤ 200B，带关键词 ≤ 1.5KB 且不凑数', async (t) => {
   const { service } = await openService(t);
   await seedLargeMap(service);
   const overview = await service.dispatch('map_look', {});
-  assert.ok(bytes(overview) <= 1536, `map_look 空查询 ${bytes(overview)}B`);
-  assert.ok(overview.items.length <= 5);
+  assert.equal(overview.items.length, 12);
+  assert.ok(bytes(overview) <= 12 * 200, `map_look 空查询 ${bytes(overview)}B`);
+  for (const row of overview.items) assert.ok(bytes(row) <= 200, JSON.stringify(row));
   const legacy = await service.dispatch('map_get_context', {});
   assert.ok(bytes(legacy) > bytes(overview) * 3, `旧 get_context ${bytes(legacy)}B vs look ${bytes(overview)}B`);
 

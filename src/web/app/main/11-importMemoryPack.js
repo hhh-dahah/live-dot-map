@@ -912,14 +912,16 @@ function showMdEditor(object, path, text, initialEtag, save, bundleOptions = nul
     }
     fileList.textContent = '';
     if (!files.length) { const empty = document.createElement('div'); empty.className = 'mdv-empty'; empty.textContent = '暂无补充资料'; fileList.appendChild(empty); return; }
-    for (const file of files) {
+    const isAgentMeta = file => String(file.name || file.fileName || '') === 'Agent元数据.md' && !file.archived;
+    for (const file of [...files.filter(f => !isAgentMeta(f)), ...files.filter(isAgentMeta)]) {
       const name = String(file.name || file.fileName || '');
+      const agentMeta = isAgentMeta(file);
       const row = document.createElement('div'); row.className = 'mdv-file';
-      const button = document.createElement('button'); button.type = 'button'; button.title = name;
-      button.className = `mdv-name${name === currentName && !file.archived ? ' on' : ''}${file.archived ? ' archived' : ''}`;
+      const button = document.createElement('button'); button.type = 'button'; button.title = agentMeta ? `${name}（Agent 维护的摘要与文件说明，人可修改）` : name;
+      button.className = `mdv-name${name === currentName && !file.archived ? ' on' : ''}${file.archived ? ' archived' : ''}${agentMeta ? ' agent-meta' : ''}`;
       const icon = /\.(png|jpe?g|gif|webp|svg)$/i.test(name) ? I.img : /\.md$/i.test(name) ? I.md : I.app;
       button.innerHTML = `${icon}<span></span>`;
-      button.querySelector('span').textContent = `${name}${file.isIndex ? ' · 主文档' : file.archived ? ' · 已归档' : ''}`;
+      button.querySelector('span').textContent = `${name}${file.isIndex ? ' · 主文档' : file.archived ? ' · 已归档' : agentMeta ? ' · Agent 维护' : ''}`;
       button.addEventListener('click', () => void selectBundleFile(file));
       /* 右键:复制文件名 / 相对路径 / Markdown 引用(图片用 ![] 语法) */
       row.addEventListener('contextmenu', ev => {

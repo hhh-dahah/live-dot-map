@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile as nodeReadFile, stat as nodeStat, readdir as nodeReaddir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { atomicWriteFile, ensureDirectory, withFileLock } from './fs-utils.mjs';
+import { markdownLead } from './agent-meta.mjs';
 
 /**
  * per-map md 卡片索引 —— 「节点记概要、后端包记详细信息、Agent 智能索引」的落地层。
@@ -107,7 +108,8 @@ export class MdIndex {
       throw error;
     }
     const existing = this.#cards.get(relativePath);
-    const fresh = !existing || existing.mtimeMs !== stat.mtimeMs || existing.bytes !== stat.size;
+    // 旧卡片没有 lead 字段，按失效处理补上。
+    const fresh = !existing || existing.mtimeMs !== stat.mtimeMs || existing.bytes !== stat.size || typeof existing.lead !== 'string';
     if (!fresh) return existing;
     const content = await this.fs.readFile(absolute, 'utf8');
     const card = {
@@ -117,6 +119,7 @@ export class MdIndex {
       bytes: stat.size,
       title: firstHeading(content) || '',
       summary: visibleSummary(content),
+      lead: markdownLead(content),
       ownerKind: typeof existing?.ownerKind === 'string' ? existing.ownerKind : inferOwnerKind(relativePath),
       ownerId: typeof existing?.ownerId === 'string' ? existing.ownerId : inferOwnerId(relativePath),
       assets: existing?.assets ?? [],
@@ -156,6 +159,7 @@ export class MdIndex {
           bytes: stat.size,
           title: firstHeading(content) || '',
           summary: visibleSummary(content),
+          lead: markdownLead(content),
           ownerKind: ownerKind === 'nodes' ? 'node' : 'route',
           ownerId,
           assets,

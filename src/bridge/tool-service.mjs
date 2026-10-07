@@ -6,6 +6,7 @@ import { ContextDocumentProvider } from './context-document-provider.mjs';
 import { HumanMdUpdateLog } from './human-md-updates.mjs';
 import { MdIndex } from './md-index.mjs';
 import { AGENT_TOOL_DEFINITIONS, AGENT_TOOL_NAMES, runAgentTool } from './agent-tools.mjs';
+import { isMetaFile } from './agent-meta.mjs';
 
 const schema = (name, description, properties = {}, required = []) => ({
   name,
@@ -90,7 +91,7 @@ export async function syncBundleIndexToMainMarkdown(bundleStore, ownerKind, owne
   if (!bundleStore || !ownerKind || !ownerId) return;
   try {
     const list = await bundleStore.list({ ownerKind, ownerId, includeArchived: false });
-    const otherFiles = (list || []).filter((f) => f.fileName !== 'index.md' && f.name !== 'index.md');
+    const otherFiles = (list || []).filter((f) => f.fileName !== 'index.md' && f.name !== 'index.md' && !isMetaFile(f.fileName ?? f.name));
 
     const indexEntry = await bundleStore.readMarkdown({ ownerKind, ownerId, fileName: 'index.md' }).catch(() => null);
     if (!indexEntry || typeof indexEntry.content !== 'string') return;

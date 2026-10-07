@@ -24,14 +24,6 @@ import { loadSharedAdapter } from '../bridge/shared-adapter.mjs';
 import { readCurrentProject, resolveGitWorktreeMain, resolveProjectRootToUse } from '../bridge/current-project.mjs';
 import { canonicalDirectory } from '../bridge/fs-utils.mjs';
 import { doctorProject, installProject, uninstallProject } from '../../agent-kit/lib/installer.mjs';
-import {
-  collectChanges,
-  formatChangeLine,
-  formatPendingLine,
-  mergeNotices,
-  readAgentWatermark,
-  writeAgentWatermark,
-} from '../../agent-kit/lib/hook-notice.mjs';
 import { AGENT_COMMANDS, runAgentCli, type CliGlobals } from './agent-cli.ts';
 
 if (isSea()) process.env.LIVEDOT_SEA = '1';
@@ -218,10 +210,6 @@ function unavailableToolResult(qualification: ProjectQualification): Json {
 // 只发一份紧凑文本：content 与 structuredContent 同发会让 Agent 上下文里同一份数据出现两次。
 function toolTextResult(value: unknown): Json {
   return { content: [{ type: 'text', text: JSON.stringify(value === undefined ? null : value) }] };
-}
-
-function envelope(projectId: string, revision: number, actor: string, sessionId: string, commands: Json[]): Json {
-  return { projectId, baseRevision: revision, commandId: `cmd-${randomUUID()}`, actor, sessionId, commands };
 }
 
 function compactHookContext(value: unknown): Json {
@@ -547,63 +535,12 @@ async function runHook(kind: string, args: Args): Promise<void> {
   // Hook 在未初始化/错误/只读目录中必须完全静默成功：不能打开 store，
   // 也不能落 health、日志或其他运行态文件。
   if (!qualification.ok) return;
+  // 记忆按需取用（look/read），hook 不推送任何内容、不写地图：同一张地图上并行多个任务时，
+  // 系统无法判断哪条变化该推给哪个 Agent。挂钩保留，只记录连接健康；Stop 排空 stdin 防 EPIPE。
+  if (kind === 'stop' && !process.stdin.isTTY) for await (const _chunk of process.stdin) { /* drain */ }
   const logger = createLogger({ source: 'agent' });
-  await logger.info('agent.hook.start', { event: kind, actor, project: root });
-  const shared = await loadSharedAdapter();
-  const manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
-  const resolvedMap = await manager.resolve();
-  const store = resolvedMap.store;
-  const tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: 'hook' });
-  // 水位取快照之前的时刻：快照之后别人的写入一定晚于水位，下次不会漏报。
-  const scanAt = Date.now();
-  const snapshot = await store.snapshot();
-  const document = snapshot.document as Json;
-  if (kind === 'session-start' || kind === 'user-prompt') {
-    await notifyChanges(kind === 'session-start' ? 'SessionStart' : 'UserPromptSubmit');
-    await recordAgentHealth(root, actor, `hook:${kind}`, 'ok');
-    await manager.close();
-    return;
-  }
-  if (kind === 'stop') {
-    // Stop 永不拦截；仍需排空 stdin，避免 Agent 端写管道时报 EPIPE。
-    if (!process.stdin.isTTY) for await (const _chunk of process.stdin) { /* drain */ }
-    const updates = await tools.dispatch('map_list_human_updates', {}) as Json;
-    const pendingIds = (Array.isArray(updates.updates) ? updates.updates as Json[] : [])
-      .map((item) => String(item?.id ?? '')).filter(Boolean);
-    const desiredStatus = pendingIds.length ? 'incomplete' : 'closed';
-    const ui = (document.ui && typeof document.ui === 'object' ? document.ui : {}) as Json;
-    const collaboration = (ui.collaboration && typeof ui.collaboration === 'object' ? ui.collaboration : {}) as Json;
-    const currentStatus = typeof collaboration.status === 'string' ? collaboration.status : 'closed';
-    // 只在状态真的变化时写 set_ui：每次 Stop 都写会凭空制造一次地图修订。
-    if (currentStatus !== desiredStatus) {
-      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{
-        op: 'set_ui',
-        patch: { collaboration: {
-          status: desiredStatus, agent: actor, sessionId, at: new Date().toISOString(),
-          ...(pendingIds.length ? { reason: `${pendingIds.length} 条人类标注未完成摘要引用与确认` } : {}),
-        } },
-      }]) as never);
-    }
-    // Codex validates hook stdout against the event schema; only systemMessage goes on the wire.
-    if (pendingIds.length) process.stdout.write(`${JSON.stringify({ systemMessage: formatPendingLine(pendingIds) })}\n`);
-    await recordAgentHealth(root, actor, 'hook:stop', 'ok');
-    await manager.close();
-  }
-
-  async function notifyChanges(hookEventName: 'SessionStart' | 'UserPromptSubmit'): Promise<void> {
-    const { since, initialized } = await readAgentWatermark(root, agent, scanAt);
-    const changes = collectChanges(document, since, actor);
-    const anns = Array.isArray(document.anns) ? document.anns as Json[] : [];
-    const deliveredIds = anns.filter((ann) => ann.source === 'human' && ann.attention === 'new').map((ann) => String(ann.id));
-    if (deliveredIds.length) {
-      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: 'deliver_annotations', ids: deliveredIds, deliveryId: sessionId }]) as never);
-    }
-    const notices = mergeNotices(deliveredIds, changes);
-    if (notices.length || !initialized) await writeAgentWatermark(root, agent, scanAt);
-    if (!notices.length) return;
-    const output = { hookSpecificOutput: { hookEventName, additionalContext: formatChangeLine(notices) } };
-    process.stdout.write(`${JSON.stringify(output)}\n`);
-  }
+  await logger.info('agent.hook.start', { event: kind, actor, project: root, sessionId });
+  await recordAgentHealth(root, actor, `hook:${kind}`, 'ok');
 }
 
 // 主仓库根裸 serve 时的脏树检测：有已跟踪文件的未提交改动 → 视为开发/测试上下文。

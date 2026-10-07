@@ -2,7 +2,7 @@
 export const MCP_TOOL_DEFINITIONS = Object.freeze([
   {
     "name": "map_look",
-    "description": "看地图目录：返回相关节点/文档的 id、名称、类型、路径和一句理由，不含正文。先 look 找路径，再 map_read。",
+    "description": "看地图目录，不含正文。不带 query 返回整张目录（每项一句摘要，按意思自己挑）；带 query 返回关键词相关项和理由，没命中就换个说法。再用 map_read 读正文。",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -24,7 +24,7 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_read",
-    "description": "读正文。path 用 look 给的路径或节点 id；同会话内未变化的文件只回 unchanged，force:true 强制重读；以 / 结尾列出资料包文件。",
+    "description": "读正文（index.md 附带该节点的标注 anns）。path 用 look 给的路径或节点 id；同会话内未变化的文件只回 unchanged，force:true 强制重读；以 / 结尾列出资料包文件及说明。结果带 meta:\"缺摘要|摘要过期|无说明\" 时，读懂后用 map_write 的 meta 补一句。",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -43,7 +43,7 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
   },
   {
     "name": "map_write",
-    "description": "写入。path+content 默认追加（文件不存在则新建）；带 baseEtag 为整文替换。node:{name,kind} 新建节点；ack:[id] 确认人类标注；commands 提交地图命令。",
+    "description": "写入。path+content 默认追加（文件不存在则新建）；带 baseEtag 为整文替换。node:{name,kind} 新建节点；meta:{summary?, files?:{文件名:说明}} 写 Agent元数据（一句话导航，不当证据）；commands 提交地图命令。",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -74,10 +74,15 @@ export const MCP_TOOL_DEFINITIONS = Object.freeze([
             }
           }
         },
-        "ack": {
-          "type": "array",
-          "items": {
-            "type": "string"
+        "meta": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "files": {
+              "type": "object"
+            }
           }
         },
         "commands": {
