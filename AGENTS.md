@@ -22,3 +22,5 @@
 3. **合并收口**：一切合并只在主工位、先过 `node scripts/merge-guard.mjs <分支>`（闸门即质量把关）；工位严禁自行 merge/rebase 同步或合入。**用户只在 master 总验收，不满意整批回退**。
 4. **产物不手工裁决**：构建产物冲突一律合源码重建（app.html 由 src/web 源经 `npm run build:app` 生成）。
 5. **测试必隔离**：一律 `npm run dev`（自动隔离实例、页面带【测试】标记），不碰常驻生产桥。
+6. **工作树与删除**：只有登记的正式工位联接真实记忆（`node scripts/worktree-link.mjs --list` 查看，新增用 `--new <路径> <分支>`）；临时工作树不联接，需要记忆就复制一份。删除工作树只用 `node scripts/worktree-remove.mjs <路径>`，不直接 `git worktree remove`（Windows 上会穿过联接删掉真实地图，加不加 `--force` 都会）。任何递归删除前先查目录里有没有联接；看旧代码优先 `git show <提交>:<文件>`。
+7. **恢复数据先核对再汇报**：按「已核对内容正确 / 只找回文件名 / 未核验」分类，不笼统说“找回了”。
