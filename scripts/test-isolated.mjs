@@ -13,6 +13,7 @@ const defaults = {
   LIVEDOT_RECENT_PROJECTS_FILE: join(sandbox, 'recent-projects.json'),
   LIVEDOT_RUNTIME_STATE_DIR: join(sandbox, 'runtime'),
   LIVEDOT_LOG_DIR: join(sandbox, 'logs'),
+  LIVEDOT_MAP_LEDGER_FILE: join(sandbox, 'known-maps.json'),
 };
 const env = { ...process.env };
 for (const [key, value] of Object.entries(defaults)) env[key] ??= value;

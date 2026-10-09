@@ -145,6 +145,10 @@ window.LiveDotApp = {
     const current = states[state] || ['var(--warn)','未知状态']; dot.style.background=current[0]; dot.title=(detail || current[1]) + (typeof agentActivityLine === 'function' ? agentActivityLine() : ''); label.textContent=current[1];
     try{ window.LiveDotUI?.onStatusChange?.(state, detail); }catch{ /* 状态弹窗是附加能力，不能影响主流程 */ }
   },
+  // 桥客户端需要用户拍板时用的确认框；cancelLabel 传 null 只留一个按钮。
+  confirm(options){
+    return typeof confirmDialog === 'function' ? confirmDialog(options) : Promise.resolve(false);
+  },
   // Agent 刚写回的新对象高亮：给对应画布元素加 pulse 类（动画结束后自动移除）
   flashObjects(ids){
     if (!Array.isArray(ids) || !ids.length) return;

@@ -23,6 +23,7 @@ import {
 import { loadSharedAdapter } from '../bridge/shared-adapter.mjs';
 import { readCurrentProject, resolveGitWorktreeMain, resolveProjectRootToUse } from '../bridge/current-project.mjs';
 import { canonicalDirectory } from '../bridge/fs-utils.mjs';
+import { MapLedger } from '../bridge/map-ledger.mjs';
 import { doctorProject, installProject, uninstallProject } from '../../agent-kit/lib/installer.mjs';
 import { AGENT_COMMANDS, runAgentCli, type CliGlobals } from './agent-cli.ts';
 
@@ -760,7 +761,21 @@ async function main(): Promise<void> {
     if (!result.ok && result.reason !== 'not-installed') process.exitCode = 1;
     return;
   }
-  process.stdout.write('活点地图 v2\n  Agent 命令：livedot.mjs look|read|write|note|analyze|manage …（详见 livedot.mjs --help）\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n');
+  if (command === 'forget-maps') {
+    // 桥用 canonicalDirectory 作账本键，这里必须同样归一，否则 forget 不到。
+    const requested = resolve(required(args, 'project'));
+    const root = await canonicalDirectory(requested).catch(() => requested);
+    const ledger = new MapLedger();
+    const missing = await ledger.findMissing(root);
+    if (!missing.length) {
+      process.stdout.write(`${JSON.stringify({ ok: true, removed: [], message: '账本里没有不见了的地图，无需处理', ledgerFile: ledger.file }, null, 2)}\n`);
+      return;
+    }
+    const result = await ledger.forget(root, missing.map((map) => map.id));
+    process.stdout.write(`${JSON.stringify({ ok: true, ...result, message: '已从账本移除，重新打开项目即可' }, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write('活点地图 v2\n  Agent 命令：livedot.mjs look|read|write|note|analyze|manage …（详见 livedot.mjs --help）\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n  livedot.mjs forget-maps --project <path>   （确认地图是故意删除后，解除“地图丢失”拦截）\n');
 }
 
 void main().catch(async (error) => {

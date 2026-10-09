@@ -12,6 +12,7 @@ import { MarkdownStore } from './markdown-store.mjs';
 import { HumanMdUpdateLog } from './human-md-updates.mjs';
 import { MdIndex } from './md-index.mjs';
 import { MapManager } from './map-manager.mjs';
+import { MapLedger } from './map-ledger.mjs';
 import { ToolService } from './tool-service.mjs';
 import { ArchiveLifecycle } from './archive-lifecycle.mjs';
 import { NativeRecycleBin } from './recycle-bin.mjs';
@@ -513,6 +514,8 @@ export async function createBridgeServer({
   projectRegistry = null,
   sessionStore = null,
   recentProjectsStore = { record: recordRecentProject, list: readRecentProjects },
+  // 地图账本（已知地图清单，存在 .live-dot-map 之外）；传 null 关闭丢图检测。
+  mapLedger = new MapLedger(),
   recycleBin = null,
   nativeHelper = null,
   editorOpener = null,
@@ -690,6 +693,7 @@ export async function createBridgeServer({
         pollIntervalMs,
         clock,
         faultInjector,
+        ledger: mapLedger,
         onEvent: (event) => events.publish(
           storeKey(root, event.mapKey),
           event.type === 'external' ? { ...event, type: 'revision', source: 'external' } : event,
@@ -762,9 +766,18 @@ export async function createBridgeServer({
     // Agent 的 MCP 通道不暴露此接口）。目录不存在返回明确 404。
     if (!roots.has(root)) roots.set(root, true);
     await recentProjectsStore.record(root).catch(() => undefined);
+    // 账本记得的地图不见了就停下，绝不让 ensureMapsLayout 补一张空 default 盖上去。
+    // 每次打开都查：常驻桥里缓存的 MapManager 不会再走 initialize。
+    try {
+      await mapLedger?.assertPresent(root);
+    } catch (error) {
+      if (error?.code === 'MAPS_MISSING') logger.error('project.maps-missing', { root, missing: error.details?.missing });
+      throw error;
+    }
     // 打开项目时幂等迁移到多地图布局（老项目先备份再动），再按指针打开当前地图。
     const { activeMap } = await ensureMapsLayout(root);
     const store = await openMapStore(root, activeMap);
+    await (await mapManagerFor(root)).recordLedger();
     markdownStoreFor(root);
     logger.info('project.open', { root, map: activeMap });
     return { root, store, mapId: activeMap };

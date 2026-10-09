@@ -1241,8 +1241,8 @@ var init_shared = __esm({
 import { randomUUID as randomUUID13 } from "node:crypto";
 import { access as access5, lstat as lstat9, mkdir as mkdir14, readFile as readFile16, readdir as readdir8, rename as rename11, stat as stat10, writeFile as writeFile9 } from "node:fs/promises";
 import { constants as constants3, existsSync as existsSync3 } from "node:fs";
-import { dirname as dirname15, join as join21, resolve as resolve17 } from "node:path";
-import { homedir as homedir8 } from "node:os";
+import { dirname as dirname16, join as join22, resolve as resolve18 } from "node:path";
+import { homedir as homedir9 } from "node:os";
 import { execFileSync as execFileSync2, spawn as spawn4 } from "node:child_process";
 import { createInterface } from "node:readline";
 import { isSea } from "node:sea";
@@ -1403,7 +1403,7 @@ async function withFileLock(path, operation, { timeoutMs = 5e3, staleMs = 3e4 } 
         timeout.code = "LOCK_TIMEOUT";
         throw timeout;
       }
-      await new Promise((resolve18) => setTimeout(resolve18, 20));
+      await new Promise((resolve19) => setTimeout(resolve19, 20));
     }
   }
   try {
@@ -2462,9 +2462,9 @@ var ProjectStore = class _ProjectStore {
 import { randomBytes as randomBytes3, randomUUID as randomUUID9, createHash as createHash9, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { access as access4, mkdir as mkdir10, readFile as readFile12, rename as rename7, rm as rm6, writeFile as writeFile4 } from "node:fs/promises";
-import { basename as basename5, dirname as dirname11, isAbsolute as isAbsolute5, join as join19, resolve as resolve15 } from "node:path";
+import { basename as basename5, dirname as dirname12, isAbsolute as isAbsolute5, join as join20, resolve as resolve16 } from "node:path";
 import { spawn as spawn3 } from "node:child_process";
-import { homedir as homedir6 } from "node:os";
+import { homedir as homedir7 } from "node:os";
 
 // src/bridge/current-project.mjs
 import { lstatSync, readFileSync } from "node:fs";
@@ -4102,6 +4102,8 @@ var MapManager = class _MapManager {
     });
     this.onActiveMapChanged = options.onActiveMapChanged ?? (() => {
     });
+    this.ledger = options.ledger ?? null;
+    this.ledgerTimer = null;
     this.stores = /* @__PURE__ */ new Map();
     this.bundles = /* @__PURE__ */ new Map();
     this.lastImplicitKey = null;
@@ -4113,8 +4115,23 @@ var MapManager = class _MapManager {
     return manager;
   }
   async initialize() {
+    await this.ledger?.assertPresent(this.projectRoot);
     await withFileLock(this.lockPath, () => ensureMapsLayout(this.projectRoot));
+    await this.recordLedger();
     return this;
+  }
+  /** 账本只是保护网，记账失败不能影响正常读写。 */
+  async recordLedger() {
+    if (!this.ledger) return;
+    await this.ledger.record(this.projectRoot).catch(() => void 0);
+  }
+  #scheduleLedgerRecord() {
+    if (!this.ledger || this.ledgerTimer) return;
+    this.ledgerTimer = setTimeout(() => {
+      this.ledgerTimer = null;
+      void this.recordLedger();
+    }, 5e3);
+    this.ledgerTimer.unref?.();
   }
   async #assertMapExists(mapKey) {
     if (!isSafeMapId(mapKey)) throw new BridgeError("INVALID_MAP_KEY", "mapKey \u65E0\u6548", { status: 400 });
@@ -4136,7 +4153,10 @@ var MapManager = class _MapManager {
         pollIntervalMs: this.pollIntervalMs,
         clock: this.clock,
         faultInjector: this.faultInjector,
-        onEvent: (event) => this.onEvent({ ...event, mapKey })
+        onEvent: (event) => {
+          this.#scheduleLedgerRecord();
+          this.onEvent({ ...event, mapKey });
+        }
       });
       this.stores.set(mapKey, store);
     }
@@ -4145,7 +4165,12 @@ var MapManager = class _MapManager {
   async resolve(options = {}) {
     const explicit = typeof options.mapKey === "string" && options.mapKey.length > 0;
     const mapKey = explicit ? options.mapKey : await resolveActiveMap(this.projectRoot);
-    await this.#assertMapExists(mapKey);
+    try {
+      await this.#assertMapExists(mapKey);
+    } catch (error3) {
+      if (error3?.code === "MAP_NOT_FOUND") await this.ledger?.assertPresent(this.projectRoot);
+      throw error3;
+    }
     if (!explicit && this.lastImplicitKey && this.lastImplicitKey !== mapKey) {
       const stale = this.stores.get(this.lastImplicitKey);
       await stale?.close().catch(() => void 0);
@@ -4194,6 +4219,7 @@ var MapManager = class _MapManager {
       const context = await this.resolve({ mapKey });
       await writeActiveMap(this.projectRoot, mapKey);
       this.onActiveMapChanged({ type: "active-map-changed", mapKey, documentId: context.documentId });
+      await this.recordLedger();
       return { activeMap: mapKey, documentId: context.documentId, ...context.snapshot };
     }).catch((error3) => {
       if (error3?.code === "LOCK_TIMEOUT") throw new BridgeError("MAP_MANAGER_BUSY", "\u5730\u56FE\u7BA1\u7406\u64CD\u4F5C\u7E41\u5FD9\uFF0C\u8BF7\u91CD\u8BD5", { status: 409 });
@@ -4204,7 +4230,7 @@ var MapManager = class _MapManager {
     const context = await this.resolve({ mapKey });
     const displayName = String(name ?? "").trim().slice(0, 80);
     if (!displayName) throw new BridgeError("MAP_NAME_REQUIRED", "\u5730\u56FE\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A", { status: 400 });
-    return context.store.execute({
+    const executed = await context.store.execute({
       projectId: context.documentId,
       baseRevision: context.snapshot.revision,
       commandId: `map-rename-${randomUUID2()}`,
@@ -4212,8 +4238,12 @@ var MapManager = class _MapManager {
       sessionId: `map-manager-${randomUUID2()}`,
       commands: [{ op: "set_meta", patch: { name: displayName } }]
     });
+    await this.recordLedger();
+    return executed;
   }
   async close() {
+    clearTimeout(this.ledgerTimer);
+    this.ledgerTimer = null;
     await Promise.all([...this.stores.values()].map((store) => store.close().catch(() => void 0)));
     this.stores.clear();
     this.bundles.clear();
@@ -4221,10 +4251,148 @@ var MapManager = class _MapManager {
   }
 };
 
+// src/bridge/map-ledger.mjs
+import { copyFile as copyFile3 } from "node:fs/promises";
+import { homedir as homedir3 } from "node:os";
+import { dirname as dirname7, join as join12, resolve as resolve8 } from "node:path";
+var LEDGER_VERSION = 1;
+function defaultLedgerFile(env = process.env) {
+  if (env.LIVEDOT_MAP_LEDGER_FILE) return resolve8(env.LIVEDOT_MAP_LEDGER_FILE);
+  if (env.LIVEDOT_RECENT_PROJECTS_FILE) return join12(dirname7(resolve8(env.LIVEDOT_RECENT_PROJECTS_FILE)), "known-maps.json");
+  if (env.LIVEDOT_TEST_ROOT) return join12(resolve8(env.LIVEDOT_TEST_ROOT), "known-maps.json");
+  return join12(homedir3(), ".live-dot-map", "known-maps.json");
+}
+function projectKey(projectRoot) {
+  const absolute = resolve8(projectRoot);
+  return process.platform === "win32" ? absolute.toLowerCase() : absolute;
+}
+async function inspectPresentMaps(projectRoot) {
+  const present = /* @__PURE__ */ new Map();
+  for (const id of await listMapIds(projectRoot)) {
+    const path = join12(mapsRoot(projectRoot), id, "map.json");
+    if (!await exists(path)) continue;
+    const document = await readJson(path).catch(() => null);
+    present.set(id, {
+      name: typeof document?.name === "string" && document.name ? document.name : id,
+      nodes: Array.isArray(document?.nodes) ? document.nodes.length : 0,
+      edges: Array.isArray(document?.edges) ? document.edges.length : 0,
+      revision: Number.isSafeInteger(document?.revision) ? document.revision : 0
+    });
+  }
+  return present;
+}
+function mapsMissingMessage(projectRoot, missing) {
+  const names = missing.map((map) => `\u300C${map.name || map.id}\u300D${map.nodes ? `${map.nodes} \u4E2A\u8282\u70B9` : ""}`).join("\u3001");
+  return [
+    `\u6D3B\u70B9\u5730\u56FE\u53D1\u73B0\u5730\u56FE\u4E0D\u89C1\u4E86\uFF1A\u8FD9\u4E2A\u9879\u76EE\u4EE5\u524D\u6709 ${missing.length} \u5F20\u5730\u56FE\uFF08${names}\uFF09\uFF0C\u73B0\u5728 .live-dot-map\\maps \u91CC\u627E\u4E0D\u5230\u3002`,
+    "\u4E3A\u4E86\u4E0D\u8BA9\u65B0\u5EFA\u7684\u7A7A\u5730\u56FE\u628A\u5B83\u4EEC\u76D6\u6389\uFF0C\u5DF2\u505C\u6B62\u6253\u5F00\u3002",
+    `\u8BF7\u5148\u4ECE\u5907\u4EFD\uFF08\u4F8B\u5982\u5938\u514B\u7F51\u76D8\uFF09\u628A .live-dot-map \u6587\u4EF6\u5939\u6062\u590D\u5230 ${projectRoot}\uFF0C\u518D\u91CD\u65B0\u6253\u5F00\u3002`,
+    `\u5982\u679C\u786E\u8BA4\u662F\u6545\u610F\u5220\u9664\u7684\uFF0C\u8FD0\u884C\uFF1Anode "%USERPROFILE%\\.live-dot-map\\livedot.mjs" forget-maps --project "${projectRoot}"`
+  ].join("\n");
+}
+var MapLedger = class {
+  constructor({ file, clock } = {}) {
+    this.explicitFile = file ? resolve8(file) : null;
+    this.clock = clock ?? (() => /* @__PURE__ */ new Date());
+  }
+  get file() {
+    return this.explicitFile ?? defaultLedgerFile();
+  }
+  async #read() {
+    try {
+      const parsed = await readJson(this.file);
+      if (parsed && typeof parsed === "object" && parsed.projects && typeof parsed.projects === "object") return { ledger: parsed, corrupt: false };
+      return { ledger: { version: LEDGER_VERSION, projects: {} }, corrupt: true };
+    } catch (error3) {
+      if (error3?.code === "ENOENT") return { ledger: { version: LEDGER_VERSION, projects: {} }, corrupt: false };
+      return { ledger: { version: LEDGER_VERSION, projects: {} }, corrupt: true };
+    }
+  }
+  async #update(mutate) {
+    const file = this.file;
+    return withFileLock(`${file}.lock`, async () => {
+      const { ledger, corrupt } = await this.#read();
+      if (corrupt) {
+        const stamp2 = this.clock().toISOString().replace(/[:.]/g, "-");
+        await copyFile3(file, `${file}.corrupt-${stamp2}`).catch(() => void 0);
+      }
+      const result2 = await mutate(ledger);
+      await writeJsonAtomic(file, ledger);
+      return result2;
+    });
+  }
+  /** 账本里记过、但现在 map.json 已不在的地图。 */
+  async findMissing(projectRoot) {
+    const { ledger } = await this.#read();
+    const entry = ledger.projects[projectKey(projectRoot)];
+    if (!entry?.maps || typeof entry.maps !== "object") return [];
+    const known = Object.entries(entry.maps);
+    if (!known.length) return [];
+    const present = await inspectPresentMaps(projectRoot);
+    return known.filter(([id]) => !present.has(id)).map(([id, info]) => ({ id, name: String(info?.name || id), nodes: Number(info?.nodes) || 0, lastSeenAt: info?.lastSeenAt ?? null }));
+  }
+  async assertPresent(projectRoot) {
+    const missing = await this.findMissing(projectRoot);
+    if (!missing.length) return;
+    throw new BridgeError("MAPS_MISSING", mapsMissingMessage(projectRoot, missing), {
+      status: 409,
+      details: { projectRoot, missing, ledgerFile: this.file }
+    });
+  }
+  /**
+   * 记下当前在的地图。没内容的新图不入账（删了也不值得报警）；
+   * 已入账的图即使被清空也继续跟踪，账本里“不见了”的图保持原样等待恢复或 forget。
+   */
+  async record(projectRoot) {
+    const present = await inspectPresentMaps(projectRoot);
+    const now = this.clock().toISOString();
+    return this.#update((ledger) => {
+      const key = projectKey(projectRoot);
+      const entry = ledger.projects[key] ?? { root: resolve8(projectRoot), maps: {} };
+      entry.root = resolve8(projectRoot);
+      entry.maps ??= {};
+      for (const [id, info] of present) {
+        if (!entry.maps[id] && info.nodes + info.edges === 0) continue;
+        entry.maps[id] = { ...info, lastSeenAt: now };
+      }
+      if (Object.keys(entry.maps).length) {
+        entry.updatedAt = now;
+        ledger.projects[key] = entry;
+      }
+      ledger.version = LEDGER_VERSION;
+      return Object.keys(entry.maps);
+    });
+  }
+  /**
+   * 用户确认是故意删除后，把不见了的图（或指定 id）从账本移除。
+   * @param {string} projectRoot
+   * @param {string[] | null} [mapIds]
+   */
+  async forget(projectRoot, mapIds = null) {
+    const missing = await this.findMissing(projectRoot);
+    const targets = new Set(mapIds?.length ? mapIds : missing.map((map) => map.id));
+    return this.#update((ledger) => {
+      const key = projectKey(projectRoot);
+      const entry = ledger.projects[key];
+      const removed = [];
+      if (entry?.maps) {
+        for (const id of targets) {
+          if (entry.maps[id]) {
+            removed.push({ id, name: entry.maps[id].name ?? id });
+            delete entry.maps[id];
+          }
+        }
+        if (!Object.keys(entry.maps).length) delete ledger.projects[key];
+      }
+      return { removed, ledgerFile: this.file };
+    });
+  }
+};
+
 // src/bridge/tool-service.mjs
 import { randomUUID as randomUUID4 } from "node:crypto";
 import { readdir as readdir6, stat as stat7 } from "node:fs/promises";
-import { basename as basename3, join as join13, isAbsolute as isAbsolute3 } from "node:path";
+import { basename as basename3, join as join14, isAbsolute as isAbsolute3 } from "node:path";
 
 // src/bridge/context-document-provider.mjs
 import { createHash as createHash6 } from "node:crypto";
@@ -4234,7 +4402,7 @@ import {
   readFile as readFile9,
   realpath as realpath5
 } from "node:fs/promises";
-import { extname as extname2, join as join12, relative as relative4, resolve as resolve8, sep as sep3 } from "node:path";
+import { extname as extname2, join as join13, relative as relative4, resolve as resolve9, sep as sep3 } from "node:path";
 var MAX_MARKDOWN_BYTES3 = 2 * 1024 * 1024;
 var SAFE_OWNER_ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
 var ASSET_TYPES2 = Object.freeze(Object.fromEntries(
@@ -4305,7 +4473,7 @@ async function requireRegularPath(root, candidate, { allowMissing = false } = {}
     if (error3?.code === "ENOENT") throw contextError("CONTEXT_PROJECT_NOT_FOUND", "\u4E0A\u4E0B\u6587\u9879\u76EE\u6839\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
     throw error3;
   });
-  const resolved = resolve8(candidate);
+  const resolved = resolve9(candidate);
   if (!within2(rootReal, resolved)) throw contextError("CONTEXT_PATH_OUTSIDE_PROJECT", "\u4E0A\u4E0B\u6587\u6587\u4EF6\u4E0D\u5728\u9879\u76EE\u6839\u76EE\u5F55\u5185", 403, { path: candidate });
   let cursor = resolved;
   let target;
@@ -4333,7 +4501,7 @@ async function requireSafeDirectory(root, candidate, { allowMissing = true } = {
     if (error3?.code === "ENOENT") throw contextError("CONTEXT_PROJECT_NOT_FOUND", "\u4E0A\u4E0B\u6587\u9879\u76EE\u6839\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
     throw error3;
   });
-  const resolved = resolve8(candidate);
+  const resolved = resolve9(candidate);
   if (!within2(rootReal, resolved)) throw contextError("CONTEXT_PATH_OUTSIDE_PROJECT", "\u4E0A\u4E0B\u6587\u76EE\u5F55\u4E0D\u5728\u9879\u76EE\u6839\u76EE\u5F55\u5185", 403, { path: candidate });
   let cursor = resolved;
   while (true) {
@@ -4354,8 +4522,8 @@ async function requireSafeDirectory(root, candidate, { allowMissing = true } = {
   return { rootReal, resolved };
 }
 function dirnameSafe(value) {
-  const normalized = resolve8(value);
-  const parent = resolve8(normalized, "..");
+  const normalized = resolve9(value);
+  const parent = resolve9(normalized, "..");
   return parent === normalized ? normalized : parent;
 }
 function isReservedRelative(relativePath) {
@@ -4367,7 +4535,7 @@ function isReservedRelative(relativePath) {
   return false;
 }
 function normalizedMapRoot(root, mapKey) {
-  return resolve8(root, ".live-dot-map", "maps", mapKey);
+  return resolve9(root, ".live-dot-map", "maps", mapKey);
 }
 function isInsideMap(root, mapRoot, candidate) {
   const mapRelative = projectRelative(root, mapRoot).toLowerCase().replace(/\\/g, "/");
@@ -4388,7 +4556,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
   if (typeof projectRoot !== "string" || !projectRoot.trim()) throw contextError("CONTEXT_PROJECT_REQUIRED", "\u4E0A\u4E0B\u6587\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
   if (!isSafeMapId(mapKey)) throw contextError("CONTEXT_MAP_INVALID", "\u4E0A\u4E0B\u6587\u5730\u56FE ID \u65E0\u6548", 400, { mapKey });
   if (!document || typeof document !== "object") throw contextError("CONTEXT_DOCUMENT_REQUIRED", "\u4E0A\u4E0B\u6587\u9700\u8981\u5F53\u524D\u5730\u56FE\u6587\u6863", 400);
-  const root = resolve8(projectRoot);
+  const root = resolve9(projectRoot);
   const mapRoot = normalizedMapRoot(root, mapKey);
   const mapDir = `.live-dot-map/maps/${mapKey}`;
   const result2 = { mapKey, mapDir, markdown: [], assets: [] };
@@ -4486,7 +4654,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
     result2.markdown.push(info);
   };
   const scanOwner = async (owner2) => {
-    const directory = join12(mapRoot, owner2.directoryKind, owner2.ownerId);
+    const directory = join13(mapRoot, owner2.directoryKind, owner2.ownerId);
     const ownerMetadata = await lstat5(directory).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
       throw error3;
     })());
@@ -4497,7 +4665,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
     const useIndex = mdIndex && typeof mdIndex.getOrRefreshCard === "function";
     for (const entry of entries) {
       if (entry.name === ".archive" || entry.name.startsWith(".")) continue;
-      const candidate = join12(directory, entry.name);
+      const candidate = join13(directory, entry.name);
       const metadata = await lstat5(candidate).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
         throw error3;
       })());
@@ -4521,7 +4689,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
   for (const owner2 of owners) {
     const pointer = textPath(owner2.item?.md);
     if (!pointer || !/\.md$/i.test(pointer)) continue;
-    const candidate = resolve8(root, pointer);
+    const candidate = resolve9(root, pointer);
     const relativePath = projectRelative(root, candidate);
     if (isReservedRelative(relativePath)) continue;
     if (!within2(root, candidate)) continue;
@@ -5661,7 +5829,7 @@ var ToolService = class {
       await index.load();
       this.mdIndexes.set(key, index);
     }
-    await index.ensureBuilt({ mapRoot: join13(context.projectRoot, ".live-dot-map", "maps", context.mapKey) });
+    await index.ensureBuilt({ mapRoot: join14(context.projectRoot, ".live-dot-map", "maps", context.mapKey) });
     return index;
   }
   /** 写路径成功后刷单 owner 卡片（保存/改名/归档/资产/建节点等，双写全覆盖）。 */
@@ -5670,7 +5838,7 @@ var ToolService = class {
     try {
       const index = await this.#mdIndexFor(context);
       await index.refreshOwnerAndPersist({
-        mapRoot: join13(context.projectRoot, ".live-dot-map", "maps", context.mapKey),
+        mapRoot: join14(context.projectRoot, ".live-dot-map", "maps", context.mapKey),
         ownerKind: ownerKindNodeOrRoute === "route" ? "routes" : "nodes",
         ownerId: String(ownerId)
       });
@@ -5816,7 +5984,7 @@ var ToolService = class {
       const knownIds = new Set([...document.nodes || [], ...document.routes || []].map((item) => String(item.id)));
       const orphanBundles = [];
       for (const kind of ["nodes", "routes"]) {
-        const dir = join13(context.projectRoot, ".live-dot-map", "maps", mapKey, kind);
+        const dir = join14(context.projectRoot, ".live-dot-map", "maps", mapKey, kind);
         let entries = [];
         try {
           entries = await readdir6(dir, { withFileTypes: true });
@@ -5837,7 +6005,7 @@ var ToolService = class {
     const file = ownerArgs(args, mapKey);
     const ownerCollection = file.ownerKind === "route" ? "routes" : "nodes";
     if (!(document[ownerCollection] || []).some((item) => String(item.id) === String(file.ownerId))) {
-      const bundleDir = join13(context.projectRoot, ".live-dot-map", "maps", mapKey, ownerCollection, String(file.ownerId));
+      const bundleDir = join14(context.projectRoot, ".live-dot-map", "maps", mapKey, ownerCollection, String(file.ownerId));
       let bundleDirExists = false;
       try {
         bundleDirExists = (await stat7(bundleDir)).isDirectory();
@@ -5963,7 +6131,7 @@ import {
   rename as rename5,
   rm as rm4
 } from "node:fs/promises";
-import { join as join14, resolve as resolve9 } from "node:path";
+import { join as join15, resolve as resolve10 } from "node:path";
 var PURGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
 var PURGE_COLLECTIONS = /* @__PURE__ */ new Set(["nodes", "routes", "edges", "anns"]);
 var ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
@@ -6049,7 +6217,7 @@ function applyPhysicalPurge(document, { collection, id }, now) {
   return next;
 }
 function packagePath(mapRoot, collection, id) {
-  return join14(mapRoot, collection, id);
+  return join15(mapRoot, collection, id);
 }
 function purgePackageOwners(document, collection, id) {
   const owners = collection === "nodes" ? [{ collection: "nodes", id }] : collection === "edges" ? [{ collection: "routes", id }] : [];
@@ -6080,16 +6248,16 @@ var ArchiveLifecycle = class {
   constructor(options = {}) {
     if (!options.store) throw error("PURGE_STORE_REQUIRED", "\u5F52\u6863\u751F\u547D\u5468\u671F\u9700\u8981 ProjectStore", 500);
     this.store = options.store;
-    this.projectRoot = resolve9(options.projectRoot ?? this.store.projectRoot);
-    this.mapRoot = resolve9(options.mapRoot ?? this.store.dataDirectory);
+    this.projectRoot = resolve10(options.projectRoot ?? this.store.projectRoot);
+    this.mapRoot = resolve10(options.mapRoot ?? this.store.dataDirectory);
     this.shared = options.shared ?? this.store.shared;
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.retentionMs = Number(options.retentionMs ?? PURGE_RETENTION_MS);
     this.recycleBin = options.recycleBin;
     this.faultInjector = options.faultInjector ?? (() => {
     });
-    this.stagingRoot = join14(this.mapRoot, ".bridge", "purge-staging");
-    this.lockPath = join14(this.mapRoot, ".bridge", "purge.lock");
+    this.stagingRoot = join15(this.mapRoot, ".bridge", "purge-staging");
+    this.lockPath = join15(this.mapRoot, ".bridge", "purge.lock");
   }
   eligible(item, options = {}) {
     return isPurgeEligible(item, { retentionMs: this.retentionMs, ...options });
@@ -6134,7 +6302,7 @@ var ArchiveLifecycle = class {
         const target = packagePath(txnRoot, collection, id);
         await assertPackagePath(target);
         if (await exists(target)) throw error("PURGE_STAGING_CONFLICT", "\u6E05\u9664\u6682\u5B58\u76EE\u5F55\u5DF2\u6709\u540C\u540D\u8D44\u6599\u5305", 409, { collection, id });
-        await ensureDirectory(join14(txnRoot, collection));
+        await ensureDirectory(join15(txnRoot, collection));
         await rename5(source, target);
         moved.push({ collection, id, source, target });
       }
@@ -6153,7 +6321,7 @@ var ArchiveLifecycle = class {
         throw error("PURGE_PACKAGE_ROLLBACK_FAILED", "\u8D44\u6599\u5305\u5DF2\u4E0D\u5728\u6682\u5B58\u76EE\u5F55\uFF0C\u65E0\u6CD5\u6062\u590D", 500, item);
       }
       if (sourceExists) throw error("PURGE_PACKAGE_ROLLBACK_CONFLICT", "\u8D44\u6599\u5305\u6062\u590D\u76EE\u6807\u5DF2\u88AB\u5360\u7528\uFF0C\u62D2\u7EDD\u8986\u76D6", 409, item);
-      await ensureDirectory(join14(this.mapRoot, item.collection));
+      await ensureDirectory(join15(this.mapRoot, item.collection));
       await rename5(item.target, item.source);
     }
   }
@@ -6201,7 +6369,7 @@ var ArchiveLifecycle = class {
       const snapshot = await this.store.createSnapshot();
       const snapshotName = String(snapshot.path).split(/[\\/]/).pop();
       const transactionId = `${now.toISOString().replace(/[:.]/g, "-")}-${randomUUID5()}`;
-      const txnRoot = join14(this.stagingRoot, transactionId);
+      const txnRoot = join15(this.stagingRoot, transactionId);
       const packageOwners = purgePackageOwners(before.document, collection, id);
       let moved = [];
       let mapAttempted = false;
@@ -6258,31 +6426,31 @@ var ArchiveLifecycle = class {
 import { spawn } from "node:child_process";
 import { access, lstat as lstat7 } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname as dirname7, join as join15, resolve as resolve10, sep as sep4 } from "node:path";
+import { dirname as dirname8, join as join16, resolve as resolve11, sep as sep4 } from "node:path";
 var TRANSACTION_ID = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function failure(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
 }
 function defaultNativeHelperPath(options = {}) {
-  if (options.helperPath) return resolve10(options.helperPath);
+  if (options.helperPath) return resolve11(options.helperPath);
   const fromEnv = options.envHelper ?? process.env.LIVEDOT_NATIVE_HELPER;
-  if (fromEnv && existsSync(fromEnv)) return resolve10(fromEnv);
+  if (fromEnv && existsSync(fromEnv)) return resolve11(fromEnv);
   const execPath = options.execPath ?? process.execPath;
-  const fromExec = join15(dirname7(resolve10(execPath)), "..", "LiveDotMapSetup.exe");
+  const fromExec = join16(dirname8(resolve11(execPath)), "..", "LiveDotMapSetup.exe");
   if (existsSync(fromExec)) return fromExec;
   if (options.localAppData) {
-    return join15(resolve10(options.localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+    return join16(resolve11(options.localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
   }
-  const fromRelease = join15(process.cwd(), "installer", "winforms", "bin", "Release", "net8.0-windows", "win-x64", "LiveDotMapSetup.exe");
+  const fromRelease = join16(process.cwd(), "installer", "winforms", "bin", "Release", "net8.0-windows", "win-x64", "LiveDotMapSetup.exe");
   if (existsSync(fromRelease)) return fromRelease;
-  const fromDist = join15(process.cwd(), "dist", "windows-installer", "LiveDotMapSetup.exe");
+  const fromDist = join16(process.cwd(), "dist", "windows-installer", "LiveDotMapSetup.exe");
   if (existsSync(fromDist)) return fromDist;
   const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return null;
-  return join15(resolve10(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+  return join16(resolve11(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
 }
 async function assertPurgeStagingPath(value) {
-  const target = resolve10(String(value ?? ""));
+  const target = resolve11(String(value ?? ""));
   const parts = target.split(sep4);
   const marker = parts.findIndex((part) => part.toLowerCase() === ".live-dot-map");
   const suffix = marker >= 0 ? parts.slice(marker) : [];
@@ -6292,7 +6460,7 @@ async function assertPurgeStagingPath(value) {
   let current = parts[0].endsWith(":") ? `${parts[0]}${sep4}` : parts[0] || sep4;
   for (const part of parts.slice(1)) {
     if (!part) continue;
-    current = join15(current, part);
+    current = join16(current, part);
     const metadata = await lstat7(current).catch((cause) => {
       if (cause?.code === "ENOENT") return null;
       throw cause;
@@ -6361,7 +6529,7 @@ function runHelper(spawnImpl, executable, args, timeoutMs) {
 var NativeRecycleBin = class {
   constructor(options = {}) {
     const candidate = options.helperPath ?? defaultNativeHelperPath(options);
-    this.helperPath = candidate ? resolve10(candidate) : null;
+    this.helperPath = candidate ? resolve11(candidate) : null;
     this.spawnImpl = options.spawnImpl ?? spawn;
     this.timeoutMs = Math.max(1e3, Number(options.timeoutMs) || 3e4);
   }
@@ -6381,9 +6549,9 @@ var NativeRecycleBin = class {
 // src/bridge/editor-service.mjs
 import { execFile as childExecFile, spawn as childSpawn } from "node:child_process";
 import { randomUUID as randomUUID6 } from "node:crypto";
-import { homedir as homedir3 } from "node:os";
+import { homedir as homedir4 } from "node:os";
 import { lstat as lstat8, mkdir as mkdir8, readdir as readdir7, readFile as readFile10, realpath as realpath6, stat as stat8 } from "node:fs/promises";
-import { dirname as dirname8, isAbsolute as isAbsolute4, join as join16, relative as relative5, resolve as resolve11, win32 } from "node:path";
+import { dirname as dirname9, isAbsolute as isAbsolute4, join as join17, relative as relative5, resolve as resolve12, win32 } from "node:path";
 var SETTINGS_VERSION = 1;
 var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "terminal", "gitbash", "system", "folder", "manual"]);
 var EXE_NAME = /^(Code|Antigravity|pycharm64|wt|git-bash)\.exe$/i;
@@ -6397,8 +6565,8 @@ var EXTRA_EDITORS = [
       const out = [];
       const local = process.env.LOCALAPPDATA;
       const programFiles = process.env.ProgramFiles;
-      if (local) out.push(join16(local, "Programs", "Antigravity", "Antigravity.exe"));
-      if (programFiles) out.push(join16(programFiles, "Antigravity", "Antigravity.exe"));
+      if (local) out.push(join17(local, "Programs", "Antigravity", "Antigravity.exe"));
+      if (programFiles) out.push(join17(programFiles, "Antigravity", "Antigravity.exe"));
       return out;
     }
   },
@@ -6410,12 +6578,12 @@ var EXTRA_EDITORS = [
       const out = [];
       const local = process.env.LOCALAPPDATA;
       if (local) {
-        out.push(join16(local, "Programs", "PyCharm", "bin", "pycharm64.exe"));
-        const toolbox = join16(local, "JetBrains", "Toolbox", "apps");
+        out.push(join17(local, "Programs", "PyCharm", "bin", "pycharm64.exe"));
+        const toolbox = join17(local, "JetBrains", "Toolbox", "apps");
         out.push(...await scanVersionedEditors(toolbox, 3));
       }
       const programFiles = process.env.ProgramFiles;
-      if (programFiles) out.push(...await scanVersionedEditors(join16(programFiles, "JetBrains"), 1));
+      if (programFiles) out.push(...await scanVersionedEditors(join17(programFiles, "JetBrains"), 1));
       return out;
     }
   },
@@ -6426,11 +6594,11 @@ var EXTRA_EDITORS = [
     candidates() {
       const out = [];
       const local = process.env.LOCALAPPDATA;
-      if (local) out.push(join16(local, "Microsoft", "WindowsApps", "wt.exe"));
+      if (local) out.push(join17(local, "Microsoft", "WindowsApps", "wt.exe"));
       return out;
     },
     getArgs(target) {
-      return ["-d", dirname8(target)];
+      return ["-d", dirname9(target)];
     }
   },
   {
@@ -6440,13 +6608,13 @@ var EXTRA_EDITORS = [
     candidates() {
       const out = [];
       const programFiles = process.env.ProgramFiles;
-      if (programFiles) out.push(join16(programFiles, "Git", "git-bash.exe"));
+      if (programFiles) out.push(join17(programFiles, "Git", "git-bash.exe"));
       const programFilesX86 = process.env["ProgramFiles(x86)"];
-      if (programFilesX86) out.push(join16(programFilesX86, "Git", "git-bash.exe"));
+      if (programFilesX86) out.push(join17(programFilesX86, "Git", "git-bash.exe"));
       return out;
     },
     getArgs(target) {
-      return [`--cd=${dirname8(target)}`];
+      return [`--cd=${dirname9(target)}`];
     }
   }
 ];
@@ -6460,9 +6628,9 @@ async function scanVersionedEditors(root, depth) {
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const dir = join16(root, entry.name);
+    const dir = join17(root, entry.name);
     if (depth <= 1) {
-      found.push(join16(dir, "bin", "pycharm64.exe"));
+      found.push(join17(dir, "bin", "pycharm64.exe"));
     } else {
       found.push(...await scanVersionedEditors(dir, depth - 1));
     }
@@ -6473,11 +6641,11 @@ function bridgeError2(code, message, status = 400, details) {
   return new BridgeError(code, message, { status, details });
 }
 function defaultSettingsPath() {
-  const localAppData = process.env.LOCALAPPDATA || join16(homedir3(), "AppData", "Local");
-  return join16(localAppData, "live-dot-map", "settings.json");
+  const localAppData = process.env.LOCALAPPDATA || join17(homedir4(), "AppData", "Local");
+  return join17(localAppData, "live-dot-map", "settings.json");
 }
 function normalizePathForCompare(path) {
-  const value = resolve11(path);
+  const value = resolve12(path);
   return process.platform === "win32" ? value.toLowerCase() : value;
 }
 function isInside(root, candidate, { allowRoot = false } = {}) {
@@ -6557,9 +6725,9 @@ function knownVSCodePaths() {
   const local = process.env.LOCALAPPDATA;
   const programFiles = process.env.ProgramFiles;
   const programFilesX86 = process.env["ProgramFiles(x86)"];
-  if (local) candidates.push(join16(local, "Programs", "Microsoft VS Code", "Code.exe"));
-  if (programFiles) candidates.push(join16(programFiles, "Microsoft VS Code", "Code.exe"));
-  if (programFilesX86) candidates.push(join16(programFilesX86, "Microsoft VS Code", "Code.exe"));
+  if (local) candidates.push(join17(local, "Programs", "Microsoft VS Code", "Code.exe"));
+  if (programFiles) candidates.push(join17(programFiles, "Microsoft VS Code", "Code.exe"));
+  if (programFilesX86) candidates.push(join17(programFilesX86, "Microsoft VS Code", "Code.exe"));
   return candidates;
 }
 function safeSettings(value) {
@@ -6585,8 +6753,8 @@ async function readSettingsFile(path) {
 var EditorService = class _EditorService {
   constructor(options = {}) {
     if (!options.projectRoot) throw bridgeError2("PROJECT_ROOT_REQUIRED", "\u7F16\u8F91\u5668\u670D\u52A1\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
-    this.projectRoot = resolve11(options.projectRoot);
-    this.settingsPath = resolve11(options.settingsPath || defaultSettingsPath());
+    this.projectRoot = resolve12(options.projectRoot);
+    this.settingsPath = resolve12(options.settingsPath || defaultSettingsPath());
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.spawn = options.spawn ?? childSpawn;
     this.nativeHelper = options.nativeHelper ?? null;
@@ -6624,13 +6792,13 @@ var EditorService = class _EditorService {
     }
     if (isLink(metadata) || !isDirectory(metadata)) throw bridgeError2("PROJECT_ROOT_INVALID", "\u9879\u76EE\u76EE\u5F55\u4E0D\u662F\u5B89\u5168\u7684\u666E\u901A\u76EE\u5F55", 403);
     const canonical = await realpath6(this.projectRoot);
-    if (!isInside(resolve11(this.projectRoot, ".."), canonical, { allowRoot: true })) {
+    if (!isInside(resolve12(this.projectRoot, ".."), canonical, { allowRoot: true })) {
       throw bridgeError2("PROJECT_ROOT_INVALID", "\u9879\u76EE\u76EE\u5F55\u65E0\u6CD5\u5B89\u5168\u89E3\u6790", 403);
     }
   }
   async #assertNoSymlinkEscape(candidate, { allowMissing = false, root = this.projectRoot } = {}) {
     const canonicalRoot = await realpath6(root);
-    let current = resolve11(candidate);
+    let current = resolve12(candidate);
     let metadata = null;
     while (true) {
       try {
@@ -6638,7 +6806,7 @@ var EditorService = class _EditorService {
         break;
       } catch (error3) {
         if (!allowMissing || error3?.code !== "ENOENT") throw error3;
-        const parent = dirname8(current);
+        const parent = dirname9(current);
         if (parent === current) throw error3;
         current = parent;
       }
@@ -6655,7 +6823,7 @@ var EditorService = class _EditorService {
       throw bridgeError2("INVALID_EDITOR_PATH", "\u7F16\u8F91\u5668\u76EE\u6807\u8DEF\u5F84\u65E0\u6548", 400);
     }
     if (isAbsoluteAny(relativePath)) throw bridgeError2("EDITOR_PATH_OUTSIDE_PROJECT", "\u7F16\u8F91\u5668\u53EA\u80FD\u6253\u5F00\u9879\u76EE\u5185\u6587\u4EF6", 403);
-    const candidate = resolve11(this.projectRoot, relativePath);
+    const candidate = resolve12(this.projectRoot, relativePath);
     if (!isInside(this.projectRoot, candidate, { allowRoot: kind === "directory" })) {
       throw bridgeError2("EDITOR_PATH_OUTSIDE_PROJECT", "\u7F16\u8F91\u5668\u53EA\u80FD\u6253\u5F00\u9879\u76EE\u5185\u6587\u4EF6", 403);
     }
@@ -6686,10 +6854,10 @@ var EditorService = class _EditorService {
     }
     if (isLink(metadata) || !isRegularFile(metadata)) throw bridgeError2("EDITOR_EXECUTABLE_INVALID", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u4E0D\u662F\u5B89\u5168\u7684\u666E\u901A\u6587\u4EF6", 403);
     const canonical = await realpath6(path);
-    if (!isInside(resolve11(path, ".."), canonical, { allowRoot: true })) {
+    if (!isInside(resolve12(path, ".."), canonical, { allowRoot: true })) {
       throw bridgeError2("EDITOR_EXECUTABLE_INVALID", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u65E0\u6CD5\u5B89\u5168\u89E3\u6790", 403);
     }
-    return resolve11(path);
+    return resolve12(path);
   }
   async #assertManualExecutable(path) {
     if (typeof path !== "string" || !isAbsoluteAny(path) || !/\.exe$/i.test(path)) {
@@ -6711,7 +6879,7 @@ var EditorService = class _EditorService {
     if (normalizePathForCompare(canonical) !== normalizePathForCompare(path)) {
       throw bridgeError2("MANUAL_EDITOR_INVALID", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u4E0D\u80FD\u662F\u7B26\u53F7\u94FE\u63A5\u6216\u91CD\u89E3\u6790\u70B9", 403);
     }
-    return resolve11(path);
+    return resolve12(path);
   }
   async #resolveVSCode() {
     if (this.vscodePath) {
@@ -6851,7 +7019,7 @@ var EditorService = class _EditorService {
     return { id: "manual", label: "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F", available: true };
   }
   async #writeSettings() {
-    await mkdir8(dirname8(this.settingsPath), { recursive: true });
+    await mkdir8(dirname9(this.settingsPath), { recursive: true });
     const output = {
       version: SETTINGS_VERSION,
       preferredEditorId: this.settings.preferredEditorId || null,
@@ -6885,7 +7053,7 @@ var EditorService = class _EditorService {
     if (editorId === "folder") {
       const candidate = await this.#projectPath(relativePath, { kind: targetKind === "directory" ? "directory" : "file" });
       const metadata = await stat8(candidate);
-      const folder = isDirectory(metadata) ? candidate : dirname8(candidate);
+      const folder = isDirectory(metadata) ? candidate : dirname9(candidate);
       await this.#assertNoSymlinkEscape(folder);
       const targetPath = isDirectory(metadata) ? folder : candidate;
       try {
@@ -6973,21 +7141,21 @@ var EditorService = class _EditorService {
 // src/bridge/native-helper.mjs
 import { spawn as spawn2 } from "node:child_process";
 import { access as access2 } from "node:fs/promises";
-import { resolve as resolve12 } from "node:path";
+import { resolve as resolve13 } from "node:path";
 function error2(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
 }
 var MODES = Object.freeze({
   "pick-editor": (request) => ["--pick-editor"],
-  "save-as": (request) => ["--save-as", resolve12(String(request.sourcePath || ""))],
-  "open-default": (request) => ["--open-default", resolve12(String(request.targetPath || ""))],
-  "open-folder": (request) => ["--open-folder", resolve12(String(request.targetPath || ""))],
-  "open-manual": (request) => ["--open-manual", resolve12(String(request.executablePath || "")), resolve12(String(request.targetPath || ""))]
+  "save-as": (request) => ["--save-as", resolve13(String(request.sourcePath || ""))],
+  "open-default": (request) => ["--open-default", resolve13(String(request.targetPath || ""))],
+  "open-folder": (request) => ["--open-folder", resolve13(String(request.targetPath || ""))],
+  "open-manual": (request) => ["--open-manual", resolve13(String(request.executablePath || "")), resolve13(String(request.targetPath || ""))]
 });
 var NativeWindowsHelper = class {
   constructor(options = {}) {
     const candidate = options.helperPath ?? defaultNativeHelperPath(options);
-    this.helperPath = candidate ? resolve12(candidate) : null;
+    this.helperPath = candidate ? resolve13(candidate) : null;
     this.spawnImpl = options.spawnImpl ?? spawn2;
     this.timeoutMs = Math.max(1e3, Number(options.timeoutMs) || 12e4);
   }
@@ -6999,7 +7167,7 @@ var NativeWindowsHelper = class {
       throw error2("NATIVE_HELPER_UNAVAILABLE", "\u672A\u627E\u5230\u672C\u4EA7\u54C1\u539F\u751F\u52A9\u624B");
     });
     const args = buildArgs(request);
-    if (args.some((value, index) => index > 0 && (!value || value === resolve12("")))) {
+    if (args.some((value, index) => index > 0 && (!value || value === resolve13("")))) {
       throw error2("NATIVE_HELPER_ARGUMENT_REQUIRED", "\u539F\u751F\u52A9\u624B\u7F3A\u5C11\u76EE\u6807\u8DEF\u5F84", 400);
     }
     return new Promise((resolvePromise, reject) => {
@@ -7100,10 +7268,10 @@ var sharedBridgeContract = Object.freeze({
 // agent-kit/lib/installer.mjs
 import { createHash as createHash8, randomUUID as randomUUID8 } from "node:crypto";
 import { execFile } from "node:child_process";
-import { access as access3, copyFile as copyFile3, mkdir as mkdir9, readFile as readFile11, rename as rename6, rm as rm5, stat as stat9, writeFile as writeFile3 } from "node:fs/promises";
+import { access as access3, copyFile as copyFile4, mkdir as mkdir9, readFile as readFile11, rename as rename6, rm as rm5, stat as stat9, writeFile as writeFile3 } from "node:fs/promises";
 import { constants as constants2, existsSync as existsSync2 } from "node:fs";
-import { basename as basename4, dirname as dirname10, join as join18, resolve as resolve14 } from "node:path";
-import { homedir as homedir5 } from "node:os";
+import { basename as basename4, dirname as dirname11, join as join19, resolve as resolve15 } from "node:path";
+import { homedir as homedir6 } from "node:os";
 import { fileURLToPath } from "node:url";
 
 // agent-kit/lib/bridge-client.mjs
@@ -7324,17 +7492,17 @@ function projectIdForRoot(projectRoot) {
 
 // agent-kit/lib/shortcut.mjs
 import { execFileSync } from "node:child_process";
-import { homedir as homedir4 } from "node:os";
-import { dirname as dirname9, join as join17, resolve as resolve13 } from "node:path";
+import { homedir as homedir5 } from "node:os";
+import { dirname as dirname10, join as join18, resolve as resolve14 } from "node:path";
 function windowsDesktopDirectory({ platform = process.platform, env = process.env, exec = execFileSync } = {}) {
-  if (platform !== "win32") return join17(homedir4(), "Desktop");
+  if (platform !== "win32") return join18(homedir5(), "Desktop");
   try {
     const output = exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "[Environment]::GetFolderPath('Desktop')"], { encoding: "utf8", timeout: 5e3 });
     const path = String(output || "").trim();
     if (path) return path;
   } catch {
   }
-  return join17(env.USERPROFILE || homedir4(), "Desktop");
+  return join18(env.USERPROFILE || homedir5(), "Desktop");
 }
 
 // agent-kit/lib/portable-node.mjs
@@ -7419,9 +7587,9 @@ var map_template_default = {
 var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code", "antigravity"]);
 var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy", "qoder", "zcode"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
-var skillTargetPaths = (home, id) => id === "codex" ? join18(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join18(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join18(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : id === "codebuddy" ? join18(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "zcode" ? join18(home, ".zcode", "skills", "live-dot-map", "SKILL.md") : existsSync2(join18(home, ".qoder")) && !existsSync2(join18(home, ".qoder-cn")) ? join18(home, ".qoder", "skills", "live-dot-map", "SKILL.md") : join18(home, ".qoder-cn", "skills", "live-dot-map", "SKILL.md");
-var kimiPluginRoot = (home) => join18(home, ".kimi-code", "plugins", "live-dot-map");
-var codebuddyPluginRoot = (home) => join18(home, ".codebuddy", "plugins", "live-dot-map");
+var skillTargetPaths = (home, id) => id === "codex" ? join19(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? join19(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? join19(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : id === "codebuddy" ? join19(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "zcode" ? join19(home, ".zcode", "skills", "live-dot-map", "SKILL.md") : existsSync2(join19(home, ".qoder")) && !existsSync2(join19(home, ".qoder-cn")) ? join19(home, ".qoder", "skills", "live-dot-map", "SKILL.md") : join19(home, ".qoder-cn", "skills", "live-dot-map", "SKILL.md");
+var kimiPluginRoot = (home) => join19(home, ".kimi-code", "plugins", "live-dot-map");
+var codebuddyPluginRoot = (home) => join19(home, ".codebuddy", "plugins", "live-dot-map");
 var ADAPTER_PROBES = Object.freeze({
   codex: ["codex"],
   "claude-code": ["claude", "claude-code"],
@@ -7437,53 +7605,53 @@ function adapterFingerprints(id, { platform, home }) {
     const programFiles = process.env.ProgramFiles;
     const out = [];
     if (platform === "win32") {
-      if (local) out.push(join18(local, "Programs", "Antigravity", "Antigravity.exe"));
-      if (programFiles) out.push(join18(programFiles, "Antigravity", "Antigravity.exe"));
+      if (local) out.push(join19(local, "Programs", "Antigravity", "Antigravity.exe"));
+      if (programFiles) out.push(join19(programFiles, "Antigravity", "Antigravity.exe"));
     }
-    out.push(join18(home, ".gemini", "antigravity-ide"));
+    out.push(join19(home, ".gemini", "antigravity-ide"));
     return out;
   }
   if (id === "qoder") {
     const out = [
-      join18(home, ".qoder-cn"),
-      join18(home, ".qoder")
+      join19(home, ".qoder-cn"),
+      join19(home, ".qoder")
     ];
     const appData = process.env.APPDATA;
     const local = process.env.LOCALAPPDATA;
     const programFiles = process.env.ProgramFiles;
     if (platform === "win32") {
       if (appData) {
-        out.push(join18(appData, "QoderCN"));
-        out.push(join18(appData, "Qoder"));
+        out.push(join19(appData, "QoderCN"));
+        out.push(join19(appData, "Qoder"));
       }
       if (local) {
-        out.push(join18(local, "Programs", "QoderCN", "QoderCN.exe"));
-        out.push(join18(local, "Programs", "Qoder", "Qoder.exe"));
+        out.push(join19(local, "Programs", "QoderCN", "QoderCN.exe"));
+        out.push(join19(local, "Programs", "Qoder", "Qoder.exe"));
       }
       if (programFiles) {
-        out.push(join18(programFiles, "QoderCN", "QoderCN.exe"));
-        out.push(join18(programFiles, "Qoder", "Qoder.exe"));
+        out.push(join19(programFiles, "QoderCN", "QoderCN.exe"));
+        out.push(join19(programFiles, "Qoder", "Qoder.exe"));
       }
     }
     return out;
   }
   if (id === "zcode") {
     const out = [
-      join18(home, ".zcode")
+      join19(home, ".zcode")
     ];
     const appData = process.env.APPDATA;
     const local = process.env.LOCALAPPDATA;
     const programFiles = process.env.ProgramFiles;
     if (platform === "win32") {
       if (appData) {
-        out.push(join18(appData, "ZCode"));
+        out.push(join19(appData, "ZCode"));
       }
       if (local) {
-        out.push(join18(local, "@zcodedesktop-updater"));
-        out.push(join18(local, "Programs", "ZCode", "ZCode.exe"));
+        out.push(join19(local, "@zcodedesktop-updater"));
+        out.push(join19(local, "Programs", "ZCode", "ZCode.exe"));
       }
       if (programFiles) {
-        out.push(join18(programFiles, "ZCode", "ZCode.exe"));
+        out.push(join19(programFiles, "ZCode", "ZCode.exe"));
       }
       out.push("D:\\zcode\\ZCode.exe");
     }
@@ -7500,7 +7668,7 @@ async function exists2(path) {
   }
 }
 async function atomicText(path, text) {
-  await mkdir9(dirname10(path), { recursive: true });
+  await mkdir9(dirname11(path), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${randomUUID8()}`;
   await writeFile3(temp, text, { encoding: "utf8", flag: "wx" });
   await rename6(temp, path);
@@ -7533,7 +7701,7 @@ async function captureFile(path) {
 async function restoreCapturedFile(entry) {
   if (entry?.kind === "directory") return;
   if (entry?.exists) {
-    await mkdir9(dirname10(entry.path), { recursive: true });
+    await mkdir9(dirname11(entry.path), { recursive: true });
     await writeFile3(entry.path, Buffer.from(String(entry.content || ""), "base64"));
   } else {
     await rm5(entry.path, { force: true }).catch(() => void 0);
@@ -7541,34 +7709,34 @@ async function restoreCapturedFile(entry) {
 }
 function qoderConfigPaths(home) {
   const paths = [
-    join18(home, ".qoder-cn", "mcp.json"),
-    join18(home, ".qoder", "mcp.json")
+    join19(home, ".qoder-cn", "mcp.json"),
+    join19(home, ".qoder", "mcp.json")
   ];
-  if (process.env.APPDATA && (process.env.APPDATA.startsWith(home) || home === homedir5())) {
+  if (process.env.APPDATA && (process.env.APPDATA.startsWith(home) || home === homedir6())) {
     paths.push(
-      join18(process.env.APPDATA, "QoderCN", "SharedClientCache", "mcp.json"),
-      join18(process.env.APPDATA, "Qoder", "SharedClientCache", "mcp.json")
+      join19(process.env.APPDATA, "QoderCN", "SharedClientCache", "mcp.json"),
+      join19(process.env.APPDATA, "Qoder", "SharedClientCache", "mcp.json")
     );
   }
   return paths;
 }
 function zcodeConfigPaths(home) {
   return [
-    join18(home, ".zcode", "cli", "config.json")
+    join19(home, ".zcode", "cli", "config.json")
   ];
 }
 var adapterConfigPaths = (home, id) => {
   switch (id) {
     case "codex":
-      return [join18(home, ".codex", "config.toml"), join18(home, ".codex", "hooks.json")];
+      return [join19(home, ".codex", "config.toml"), join19(home, ".codex", "hooks.json")];
     case "claude-code":
-      return [join18(home, ".claude", "settings.json")];
+      return [join19(home, ".claude", "settings.json")];
     case "kimi-code":
-      return [join18(home, ".kimi-code", "mcp.json"), join18(kimiPluginRoot(home), "kimi.plugin.json")];
+      return [join19(home, ".kimi-code", "mcp.json"), join19(kimiPluginRoot(home), "kimi.plugin.json")];
     case "antigravity":
-      return [join18(home, ".gemini", "config", "mcp_config.json"), join18(home, ".gemini", "antigravity-ide", "mcp_config.json")];
+      return [join19(home, ".gemini", "config", "mcp_config.json"), join19(home, ".gemini", "antigravity-ide", "mcp_config.json")];
     case "codebuddy":
-      return [join18(home, ".codebuddy", "settings.json"), join18(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join18(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join18(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+      return [join19(home, ".codebuddy", "settings.json"), join19(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), join19(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), join19(codebuddyPluginRoot(home), "hooks", "hooks.json")];
     case "qoder":
       return qoderConfigPaths(home);
     case "zcode":
@@ -7588,16 +7756,16 @@ function command(nodeCommand, runtime, agent, event) {
   return process.platform === "win32" ? ["cmd", "/d", "/s", "/c", invocation].join(" ") : invocation;
 }
 function execProbe(file, args = []) {
-  return new Promise((resolve18) => {
+  return new Promise((resolve19) => {
     execFile(file, args, { windowsHide: true, timeout: 4e3 }, (error3, stdout = "") => {
-      resolve18(!error3 && String(stdout).trim().length > 0);
+      resolve19(!error3 && String(stdout).trim().length > 0);
     });
   });
 }
 function execText(file, args = [], timeout = 2500) {
-  return new Promise((resolve18) => {
+  return new Promise((resolve19) => {
     execFile(file, args, { windowsHide: true, timeout, encoding: "utf8" }, (error3, stdout = "") => {
-      resolve18(error3 ? "" : String(stdout));
+      resolve19(error3 ? "" : String(stdout));
     });
   });
 }
@@ -7620,15 +7788,15 @@ async function discoverEmbeddedCodeBuddy({ platform = process.platform } = {}) {
     return [match[1].trim().replace(/^"|"$/g, "").replace(/,\d+$/, "")];
   }));
   for (const iconPath of iconPaths) {
-    const installRoot = dirname10(iconPath);
-    const candidate = join18(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
+    const installRoot = dirname11(iconPath);
+    const candidate = join19(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
     if (await exists2(candidate)) return candidate;
   }
   return null;
 }
-async function detectInstalledAdapters({ projectRoot = process.cwd(), platform = process.platform, homeRoot = homedir5() } = {}) {
-  const root = resolve14(projectRoot);
-  const home = resolve14(homeRoot);
+async function detectInstalledAdapters({ projectRoot = process.cwd(), platform = process.platform, homeRoot = homedir6() } = {}) {
+  const root = resolve15(projectRoot);
+  const home = resolve15(homeRoot);
   const checks = await Promise.all(ALL_ADAPTERS.map(async (id) => {
     const configPaths = adapterConfigPaths(home, id);
     const configured = (await Promise.all(configPaths.map(async (path) => {
@@ -7719,7 +7887,7 @@ function assertNoDuplicateTomlTables(text) {
   }
 }
 async function writeCodexConfig(home, nodeCommand, runtime) {
-  const path = join18(home, ".codex", "config.toml");
+  const path = join19(home, ".codex", "config.toml");
   const begin = "# BEGIN LIVE-DOT-MAP";
   const end = "# END LIVE-DOT-MAP";
   const old = await readFile11(path, "utf8").catch(() => "");
@@ -7733,12 +7901,12 @@ async function writeCodexConfig(home, nodeCommand, runtime) {
   if (newContent.trim() !== old.trim()) {
     await atomicText(path, newContent);
   }
-  const hooksPath = join18(home, ".codex", "hooks.json");
+  const hooksPath = join19(home, ".codex", "hooks.json");
   await atomicJson(hooksPath, mergeHooks(await readJson2(hooksPath), hooksFor(nodeCommand, runtime, "codex")));
   return [path, hooksPath];
 }
 async function writeClaudeConfig(home, nodeCommand, runtime) {
-  const settingsPath = join18(home, ".claude", "settings.json");
+  const settingsPath = join19(home, ".claude", "settings.json");
   const settings = await readJson2(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, "claude");
@@ -7753,14 +7921,14 @@ async function writeClaudeConfig(home, nodeCommand, runtime) {
   return [settingsPath];
 }
 async function writeKimiConfig(home, nodeCommand, runtime) {
-  const mcpPath = join18(home, ".kimi-code", "mcp.json");
+  const mcpPath = join19(home, ".kimi-code", "mcp.json");
   const mcp = await readJson2(mcpPath);
   mcp.mcpServers = { ...mcp.mcpServers || {}, "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "kimi"] } };
   await atomicJson(mcpPath, mcp);
   const plugin = kimiPluginRoot(home);
-  const pluginRuntime = join18(plugin, "runtime", "livedot.mjs");
-  await mkdir9(dirname10(pluginRuntime), { recursive: true });
-  if (!seaRuntime()) await copyFile3(runtime, pluginRuntime);
+  const pluginRuntime = join19(plugin, "runtime", "livedot.mjs");
+  await mkdir9(dirname11(pluginRuntime), { recursive: true });
+  if (!seaRuntime()) await copyFile4(runtime, pluginRuntime);
   const manifest = {
     name: "livedot-map",
     version: "2.0.0",
@@ -7772,14 +7940,14 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
       { event: "Stop", command: command(nodeCommand, runtime, "kimi", "stop"), timeout: 30 }
     ]
   };
-  await atomicJson(join18(plugin, "kimi.plugin.json"), manifest);
-  return [mcpPath, join18(plugin, "kimi.plugin.json")];
+  await atomicJson(join19(plugin, "kimi.plugin.json"), manifest);
+  return [mcpPath, join19(plugin, "kimi.plugin.json")];
 }
 async function writeAntigravityConfig(home, nodeCommand, runtime) {
   const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "antigravity"] };
   const paths = [
-    join18(home, ".gemini", "config", "mcp_config.json"),
-    join18(home, ".gemini", "antigravity-ide", "mcp_config.json")
+    join19(home, ".gemini", "config", "mcp_config.json"),
+    join19(home, ".gemini", "antigravity-ide", "mcp_config.json")
   ];
   for (const path of paths) {
     const mcp = await readJson2(path);
@@ -7788,7 +7956,7 @@ async function writeAntigravityConfig(home, nodeCommand, runtime) {
     mcp.mcpServers = servers;
     await atomicJson(path, mcp);
   }
-  const configPath = join18(home, ".gemini", "config", "config.json");
+  const configPath = join19(home, ".gemini", "config", "config.json");
   try {
     const config = await readJson2(configPath);
     if (config && typeof config === "object") {
@@ -7810,7 +7978,7 @@ async function writeAntigravityConfig(home, nodeCommand, runtime) {
   return paths;
 }
 async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
-  const settingsPath = join18(home, ".codebuddy", "settings.json");
+  const settingsPath = join19(home, ".codebuddy", "settings.json");
   const settings = await readJson2(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, "codebuddy");
@@ -7825,10 +7993,10 @@ async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
     hooks: "./hooks/hooks.json",
     mcpServers: { "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "codebuddy"] } }
   };
-  await atomicJson(join18(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
-  await atomicJson(join18(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
-  await atomicJson(join18(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
-  return [settingsPath, join18(plugin, ".codebuddy-plugin", "plugin.json"), join18(plugin, ".workbuddy-plugin", "plugin.json"), join18(plugin, "hooks", "hooks.json")];
+  await atomicJson(join19(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
+  await atomicJson(join19(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
+  await atomicJson(join19(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
+  return [settingsPath, join19(plugin, ".codebuddy-plugin", "plugin.json"), join19(plugin, ".workbuddy-plugin", "plugin.json"), join19(plugin, "hooks", "hooks.json")];
 }
 async function writeQoderConfig(home, nodeCommand, runtime) {
   const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "qoder"] };
@@ -7877,15 +8045,15 @@ async function installProject({
   exec,
   discoverAgents = true,
   detectedAgents = null,
-  homeRoot = homedir5(),
+  homeRoot = homedir6(),
   targetAdapters = null
 } = {}) {
-  const root = resolve14(projectRoot);
-  const home = resolve14(homeRoot);
+  const root = resolve15(projectRoot);
+  const home = resolve15(homeRoot);
   if (!await exists2(root)) throw new Error(`\u9879\u76EE\u76EE\u5F55\u4E0D\u5B58\u5728: ${root}`);
-  const source = resolve14(sourceRoot instanceof URL ? fileURLToPath(sourceRoot) : sourceRoot || process.cwd());
-  const sourceRuntime = resolve14(runtimeSource || resolve14(source, "livedot.mjs"));
-  const canonicalCandidates = [resolve14(source, "skills", "live-dot-map", "SKILL.md"), resolve14(source, "agent-kit", "skills", "live-dot-map", "SKILL.md")];
+  const source = resolve15(sourceRoot instanceof URL ? fileURLToPath(sourceRoot) : sourceRoot || process.cwd());
+  const sourceRuntime = resolve15(runtimeSource || resolve15(source, "livedot.mjs"));
+  const canonicalCandidates = [resolve15(source, "skills", "live-dot-map", "SKILL.md"), resolve15(source, "agent-kit", "skills", "live-dot-map", "SKILL.md")];
   let canonicalSkill = null;
   for (const candidate of canonicalCandidates) if (await exists2(candidate)) {
     canonicalSkill = candidate;
@@ -7893,13 +8061,13 @@ async function installProject({
   }
   if (!canonicalSkill || !await exists2(canonicalSkill)) throw new Error(`\u7F3A\u5C11 canonical Skill: ${canonicalCandidates[0]}`);
   if (!seaRuntime() && !await exists2(sourceRuntime)) throw new Error(`\u7F3A\u5C11\u5DF2\u6784\u5EFA\u8FD0\u884C\u65F6: ${sourceRuntime}`);
-  const dataDir = join18(root, ".live-dot-map");
-  const globalDataDir = join18(home, ".live-dot-map");
-  const runtime = seaRuntime() ? null : join18(globalDataDir, "livedot.mjs");
+  const dataDir = join19(root, ".live-dot-map");
+  const globalDataDir = join19(home, ".live-dot-map");
+  const runtime = seaRuntime() ? null : join19(globalDataDir, "livedot.mjs");
   await mkdir9(dataDir, { recursive: true });
   const projectId = projectIdForRoot(root);
-  const mapPath = join18(dataDir, "map.json");
-  const configPath = join18(dataDir, "agent-kit.json");
+  const mapPath = join19(dataDir, "map.json");
+  const configPath = join19(dataDir, "agent-kit.json");
   const old = await readJson2(configPath);
   const url = bridgeUrl || old?.bridge?.url || "http://127.0.0.1:0";
   assertLoopbackUrl(url);
@@ -7910,11 +8078,11 @@ async function installProject({
     if (targetAdapters && !targetAdapters.includes(id)) continue;
     if (detected[id]?.discovered) installed[id] = true;
   }
-  const backupPath = join18(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
+  const backupPath = join19(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
   const beforeBackup = await captureFile(backupPath);
   const oldRuntime = runtime ? await captureFile(runtime) : { exists: false, kind: "missing", path: null };
   const oldMap = await captureFile(mapPath);
-  const mapsLayoutExists = await exists2(join18(dataDir, "maps"));
+  const mapsLayoutExists = await exists2(join19(dataDir, "maps"));
   let createdMapsLayout = false;
   const touched = /* @__PURE__ */ new Set([configPath, ...runtime ? [runtime] : []]);
   for (const id of /* @__PURE__ */ new Set([...Object.keys(old.installed || {}), ...Object.keys(installed)])) for (const path of adapterConfigPaths(home, id)) touched.add(path);
@@ -7931,23 +8099,23 @@ async function installProject({
     await restoreCapturedFile(beforeBackup);
     if (!oldMap.exists) await rm5(mapPath, { force: true }).catch(() => void 0);
     if (createdMapsLayout) {
-      await rm5(join18(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
-      await rm5(join18(dataDir, "active-map"), { force: true }).catch(() => void 0);
+      await rm5(join19(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
+      await rm5(join19(dataDir, "active-map"), { force: true }).catch(() => void 0);
     }
     if (runtime && !oldRuntime.exists) await rm5(runtime, { force: true }).catch(() => void 0);
   };
   try {
     await atomicJson(backupPath, backup);
-    if (runtime && resolve14(sourceRuntime) !== resolve14(runtime)) {
+    if (runtime && resolve15(sourceRuntime) !== resolve15(runtime)) {
       await mkdir9(globalDataDir, { recursive: true });
-      await copyFile3(sourceRuntime, runtime);
+      await copyFile4(sourceRuntime, runtime);
     }
     for (const id of Object.keys(installed)) {
       if (targetAdapters && !targetAdapters.includes(id)) continue;
       const target = skillTargetPaths(home, id);
       if (!target) continue;
-      await mkdir9(dirname10(target), { recursive: true });
-      await copyFile3(canonicalSkill, target);
+      await mkdir9(dirname11(target), { recursive: true });
+      await copyFile4(canonicalSkill, target);
     }
     if (!oldMap.exists && !mapsLayoutExists) {
       const map = structuredClone(map_template_default);
@@ -7966,8 +8134,8 @@ async function installProject({
           item.md = `.live-dot-map/maps/default${item.md.slice(".live-dot-map".length)}`;
         }
       }
-      await atomicJson(join18(dataDir, "maps", "default", "map.json"), map);
-      await atomicText(join18(dataDir, "active-map"), "default\n");
+      await atomicJson(join19(dataDir, "maps", "default", "map.json"), map);
+      await atomicText(join19(dataDir, "active-map"), "default\n");
       createdMapsLayout = true;
     }
     const shouldWrite = (id) => Boolean(installed[id]) && (!targetAdapters || targetAdapters.includes(id));
@@ -8028,18 +8196,18 @@ async function installProject({
   }
 }
 async function uninstallProject({ projectRoot = process.cwd(), platform = process.platform, env = process.env, exec } = {}) {
-  const root = resolve14(projectRoot);
-  const dataDir = join18(root, ".live-dot-map");
-  const configPath = join18(dataDir, "agent-kit.json");
+  const root = resolve15(projectRoot);
+  const dataDir = join19(root, ".live-dot-map");
+  const configPath = join19(dataDir, "agent-kit.json");
   const config = await readJson2(configPath, null);
-  if (!config || typeof config !== "object") return { ok: false, reason: "not-installed", projectRoot: root, mapPreserved: await exists2(join18(dataDir, "map.json")) || await exists2(join18(dataDir, "maps")) };
-  const backupPath = typeof config.installBackup === "string" ? config.installBackup : join18(dataDir, "backups", "agent-kit-install.json");
+  if (!config || typeof config !== "object") return { ok: false, reason: "not-installed", projectRoot: root, mapPreserved: await exists2(join19(dataDir, "map.json")) || await exists2(join19(dataDir, "maps")) };
+  const backupPath = typeof config.installBackup === "string" ? config.installBackup : join19(dataDir, "backups", "agent-kit-install.json");
   const backup = await readJson2(backupPath, null);
   const installedFiles = config.installedFiles && typeof config.installedFiles === "object" ? config.installedFiles : {};
   const restored = [];
   const skipped = [];
   for (const entry of Array.isArray(backup?.files) ? backup.files : []) {
-    if (!entry?.path || entry.path === join18(dataDir, "map.json") || entry.path === backupPath) continue;
+    if (!entry?.path || entry.path === join19(dataDir, "map.json") || entry.path === backupPath) continue;
     const current = await captureFile(entry.path);
     const expected = installedFiles[entry.path];
     let configOwned = false;
@@ -8062,16 +8230,16 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
       skipped.push({ path: entry.path, reason: "after-install-change" });
     }
   }
-  const launcherPaths = [join18(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), join18(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
-  const homeRoot = config.homeRoot ? resolve14(config.homeRoot) : null;
+  const launcherPaths = [join19(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), join19(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
+  const homeRoot = config.homeRoot ? resolve15(config.homeRoot) : null;
   if (homeRoot && config.installed?.antigravity) {
     for (const name of ["antigravity", "antigravity-ide", "antigravity-cli"]) {
-      await rm5(join18(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
+      await rm5(join19(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
     }
   }
   if (platform === "win32") {
     const desktop = windowsDesktopDirectory({ platform, env, exec });
-    launcherPaths.push(join18(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), join18(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
+    launcherPaths.push(join19(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), join19(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
   }
   for (const path of launcherPaths) {
     const current = await captureFile(path);
@@ -8082,29 +8250,29 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
       restored.push(path);
     }
   }
-  const mapPreserved = await exists2(join18(dataDir, "map.json")) || await exists2(join18(dataDir, "maps"));
+  const mapPreserved = await exists2(join19(dataDir, "map.json")) || await exists2(join19(dataDir, "maps"));
   return { ok: skipped.length === 0, projectRoot: root, restored, skipped, mapPreserved, backupPath };
 }
-async function doctorProject({ projectRoot = process.cwd(), checkBridge = false, bridgeClient, offline = true, homeRoot = homedir5() } = {}) {
-  const root = resolve14(projectRoot);
-  const home = resolve14(homeRoot);
-  const configPath = join18(root, ".live-dot-map", "agent-kit.json");
+async function doctorProject({ projectRoot = process.cwd(), checkBridge = false, bridgeClient, offline = true, homeRoot = homedir6() } = {}) {
+  const root = resolve15(projectRoot);
+  const home = resolve15(homeRoot);
+  const configPath = join19(root, ".live-dot-map", "agent-kit.json");
   const config = await readJson2(configPath, null);
   const installed = config?.installed && typeof config.installed === "object" ? config.installed : {};
   const expected = [
     ["agent-kit-config", configPath]
   ];
-  if (config?.runtimeMode !== "sea" && config?.runtime !== null) expected.push(["runtime", join18(home, ".live-dot-map", "livedot.mjs")]);
-  if (installed.codex) expected.push(["codex-hooks", join18(home, ".codex", "hooks.json")], ["codex-mcp", join18(home, ".codex", "config.toml")]);
-  if (installed["claude-code"]) expected.push(["claude-hooks", join18(home, ".claude", "settings.json")]);
-  if (installed["kimi-code"]) expected.push(["kimi-mcp", join18(home, ".kimi-code", "mcp.json")], ["kimi-plugin", join18(kimiPluginRoot(home), "kimi.plugin.json")]);
-  if (installed.antigravity) expected.push(["antigravity-mcp", join18(home, ".gemini", "config", "mcp_config.json")]);
-  if (installed.codebuddy) expected.push(["codebuddy-hooks", join18(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", join18(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
-  if (installed.qoder) expected.push(["qoder-mcp", existsSync2(join18(home, ".qoder-cn", "mcp.json")) ? join18(home, ".qoder-cn", "mcp.json") : join18(home, ".qoder", "mcp.json")]);
-  if (installed.zcode) expected.push(["zcode-mcp", join18(home, ".zcode", "cli", "config.json")]);
+  if (config?.runtimeMode !== "sea" && config?.runtime !== null) expected.push(["runtime", join19(home, ".live-dot-map", "livedot.mjs")]);
+  if (installed.codex) expected.push(["codex-hooks", join19(home, ".codex", "hooks.json")], ["codex-mcp", join19(home, ".codex", "config.toml")]);
+  if (installed["claude-code"]) expected.push(["claude-hooks", join19(home, ".claude", "settings.json")]);
+  if (installed["kimi-code"]) expected.push(["kimi-mcp", join19(home, ".kimi-code", "mcp.json")], ["kimi-plugin", join19(kimiPluginRoot(home), "kimi.plugin.json")]);
+  if (installed.antigravity) expected.push(["antigravity-mcp", join19(home, ".gemini", "config", "mcp_config.json")]);
+  if (installed.codebuddy) expected.push(["codebuddy-hooks", join19(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", join19(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
+  if (installed.qoder) expected.push(["qoder-mcp", existsSync2(join19(home, ".qoder-cn", "mcp.json")) ? join19(home, ".qoder-cn", "mcp.json") : join19(home, ".qoder", "mcp.json")]);
+  if (installed.zcode) expected.push(["zcode-mcp", join19(home, ".zcode", "cli", "config.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
-  checks.push({ name: "map", ok: await exists2(join18(root, ".live-dot-map", "map.json")) || await exists2(join18(root, ".live-dot-map", "maps")), detail: join18(root, ".live-dot-map") });
+  checks.push({ name: "map", ok: await exists2(join19(root, ".live-dot-map", "map.json")) || await exists2(join19(root, ".live-dot-map", "maps")), detail: join19(root, ".live-dot-map") });
   const detectedAgents = await detectInstalledAdapters({ projectRoot: root, homeRoot: home });
   checks.push({ name: "agent-discovery", ok: Object.values(detectedAgents).every((item) => !item.discovered || Boolean(installed[item.id])), detail: detectedAgents });
   checks.push({ name: "node", ok: runtimePlan({ offline }).use === "system-node", detail: process.versions.node });
@@ -8124,7 +8292,7 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
 var SESSION_COOKIE = "ldm_bridge_session";
 var DEFAULT_BODY_LIMIT = 16 * 1024 * 1024;
 var DEFAULT_SESSION_TTL = 8 * 60 * 60 * 1e3;
-var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || join19(homedir6(), ".live-dot-map", "recent-projects.json");
+var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || join20(homedir7(), ".live-dot-map", "recent-projects.json");
 async function recordRecentProject(root) {
   let recent = [];
   try {
@@ -8133,7 +8301,7 @@ async function recordRecentProject(root) {
   } catch {
   }
   recent = [root, ...recent.filter((item) => item !== root)].slice(0, 15);
-  await mkdir10(dirname11(RECENT_PROJECTS_FILE()), { recursive: true });
+  await mkdir10(dirname12(RECENT_PROJECTS_FILE()), { recursive: true });
   await writeFile4(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
 `, "utf8");
 }
@@ -8270,9 +8438,9 @@ if ($path) {
 `;
 }
 async function pickProjectFolder({ logger = noopLogger } = {}) {
-  const tmpDir = join19(homedir6(), ".live-dot-map", "tmp");
+  const tmpDir = join20(homedir7(), ".live-dot-map", "tmp");
   await mkdir10(tmpDir, { recursive: true });
-  const marker = join19(tmpDir, `pick-${randomUUID9()}.txt`);
+  const marker = join20(tmpDir, `pick-${randomUUID9()}.txt`);
   const script = buildPickFolderScript(marker);
   const run = await new Promise((resolveRun, rejectRun) => {
     const child = spawn3("powershell.exe", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script], { windowsHide: true });
@@ -8322,7 +8490,7 @@ function randomToken(bytes = 32) {
   return randomBytes3(bytes).toString("base64url");
 }
 async function recordAgentHealth(root, actor, event, status, error3) {
-  const path = join19(root, ".live-dot-map", ".bridge", "agent-health.json");
+  const path = join20(root, ".live-dot-map", ".bridge", "agent-health.json");
   const prior = await readFile12(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   records[String(actor).replace(/^agent:/, "")] = {
@@ -8333,7 +8501,7 @@ async function recordAgentHealth(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: error3?.code || "BRIDGE_MCP_FAILED", message: String(error3?.message || error3 || "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await mkdir10(join19(root, ".live-dot-map", ".bridge"), { recursive: true });
+  await mkdir10(join20(root, ".live-dot-map", ".bridge"), { recursive: true });
   const temporary = `${path}.${process.pid}.${randomToken(8)}.tmp`;
   try {
     await writeFile4(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
@@ -8343,7 +8511,7 @@ async function recordAgentHealth(root, actor, event, status, error3) {
   }
 }
 async function readAgentHealth(root) {
-  return readFile12(join19(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
+  return readFile12(join20(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
     const value = JSON.parse(text);
     return value && typeof value.records === "object" && !Array.isArray(value.records) ? value.records : {};
   }).catch(() => ({}));
@@ -8365,32 +8533,32 @@ async function sha256File(path) {
 }
 async function refreshAgentRuntime({ runtimeSource, homeRoot } = {}) {
   if (!runtimeSource) return false;
-  const source = resolve15(runtimeSource);
-  const target = join19(resolve15(homeRoot || homedir6()), ".live-dot-map", "livedot.mjs");
+  const source = resolve16(runtimeSource);
+  const target = join20(resolve16(homeRoot || homedir7()), ".live-dot-map", "livedot.mjs");
   if (source.toLowerCase() === target.toLowerCase()) return false;
   const [sourceHash, targetHash] = await Promise.all([sha256File(source), sha256File(target)]);
   if (!sourceHash || sourceHash === targetHash) return false;
-  const temp = join19(dirname11(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
-  await mkdir10(dirname11(target), { recursive: true });
+  const temp = join20(dirname12(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
+  await mkdir10(dirname12(target), { recursive: true });
   await writeFile4(temp, await readFile12(source));
   await rename7(temp, target);
   return true;
 }
 function runtimeSources({ sourceRoot, runtimeSource } = {}) {
-  const entry = process.argv[1] ? resolve15(process.argv[1]) : "";
-  const entryRoot = entry ? dirname11(entry) : "";
+  const entry = process.argv[1] ? resolve16(process.argv[1]) : "";
+  const entryRoot = entry ? dirname12(entry) : "";
   const roots = [
     sourceRoot,
     process.env.LIVEDOT_AGENT_KIT_SOURCE,
     process.cwd(),
     entryRoot
-  ].filter(Boolean).map((value) => resolve15(value));
+  ].filter(Boolean).map((value) => resolve16(value));
   const uniqueRoots = [...new Set(roots)];
   const runtimes = [
     runtimeSource,
     process.env.LIVEDOT_RUNTIME_SOURCE,
-    ...uniqueRoots.map((root) => join19(root, "livedot.mjs"))
-  ].filter(Boolean).map((value) => resolve15(value));
+    ...uniqueRoots.map((root) => join20(root, "livedot.mjs"))
+  ].filter(Boolean).map((value) => resolve16(value));
   return { sourceRoot: uniqueRoots[0] || process.cwd(), runtimeSource: runtimes[0] || "" };
 }
 async function ensureProjectAgentConfig(projectRoot, {
@@ -8401,11 +8569,11 @@ async function ensureProjectAgentConfig(projectRoot, {
   detect = detectInstalledAdapters,
   install = installProject
 } = {}) {
-  const root = resolve15(projectRoot);
+  const root = resolve16(projectRoot);
   try {
     const detected = await detect({ projectRoot: root, platform, ...homeRoot ? { homeRoot } : {} });
     const available = Object.values(detected || {}).filter((item) => item?.discovered === true);
-    const configPath = join19(root, ".live-dot-map", "agent-kit.json");
+    const configPath = join20(root, ".live-dot-map", "agent-kit.json");
     const existing = await readObject(configPath);
     if (!available.length) {
       return { ok: true, status: "none", changed: false, projectRoot: root, detectedAgents: detected || {}, configured: existing?.installed || {} };
@@ -8586,6 +8754,8 @@ async function createBridgeServer({
   projectRegistry = null,
   sessionStore = null,
   recentProjectsStore = { record: recordRecentProject, list: readRecentProjects },
+  // 地图账本（已知地图清单，存在 .live-dot-map 之外）；传 null 关闭丢图检测。
+  mapLedger = new MapLedger(),
   recycleBin = null,
   nativeHelper = null,
   editorOpener = null,
@@ -8600,7 +8770,7 @@ async function createBridgeServer({
   // 安装版：桥 exe 位于 <安装目录>/current/payload/，payload-manifest.json 就在旁边。
   // 用 exe 自身目录而不是 process.cwd()：启动器「正常启动」与更新器「重启」的 cwd 不一致，
   // 以 cwd 为准会导致正常启动时读不到本地安装信息（current:null），更新判定失效。
-  installRoot = process.execPath ? dirname11(resolve15(process.execPath)) : process.cwd(),
+  installRoot = process.execPath ? dirname12(resolve16(process.execPath)) : process.cwd(),
   spawnUpdater = null,
   restartOnUpdate = true,
   shutdownHandler = null
@@ -8748,6 +8918,7 @@ async function createBridgeServer({
         pollIntervalMs,
         clock,
         faultInjector,
+        ledger: mapLedger,
         onEvent: (event) => events.publish(
           storeKey(root, event.mapKey),
           event.type === "external" ? { ...event, type: "revision", source: "external" } : event
@@ -8810,8 +8981,15 @@ async function createBridgeServer({
     }
     if (!roots.has(root)) roots.set(root, true);
     await recentProjectsStore.record(root).catch(() => void 0);
+    try {
+      await mapLedger?.assertPresent(root);
+    } catch (error3) {
+      if (error3?.code === "MAPS_MISSING") logger.error("project.maps-missing", { root, missing: error3.details?.missing });
+      throw error3;
+    }
     const { activeMap } = await ensureMapsLayout(root);
     const store = await openMapStore(root, activeMap);
+    await (await mapManagerFor(root)).recordLedger();
     markdownStoreFor(root);
     logger.info("project.open", { root, map: activeMap });
     return { root, store, mapId: activeMap };
@@ -8849,7 +9027,7 @@ async function createBridgeServer({
   const UPDATE_BASE = (updateBase || process.env.LIVEDOT_UPDATE_BASE || "https://livedotmap.top/windows-installer").replace(/\/+$/, "");
   async function readLocalPayloadInfo() {
     try {
-      const parsed = JSON.parse(await readFile12(join19(installRoot, "payload-manifest.json"), "utf8"));
+      const parsed = JSON.parse(await readFile12(join20(installRoot, "payload-manifest.json"), "utf8"));
       return {
         version: typeof parsed.version === "string" ? parsed.version : null,
         payloadHash: typeof parsed.payloadHash === "string" ? parsed.payloadHash : null
@@ -8937,7 +9115,7 @@ async function createBridgeServer({
     const buffer = Buffer.from(await response.arrayBuffer());
     const actual = createHash9("sha256").update(buffer).digest("hex");
     if (actual !== meta.sha256.toLowerCase()) throw new BridgeError("UPDATE_CHECKSUM_MISMATCH", `\u66F4\u65B0\u5305\u6821\u9A8C\u5931\u8D25\uFF08${label} \u4E0E\u6E05\u5355\u4E0D\u4E00\u81F4\uFF0C\u6587\u4EF6\u53EF\u80FD\u635F\u574F\u6216\u88AB\u7BE1\u6539\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62\uFF0C\u73B0\u6709\u7248\u672C\u4E0D\u53D7\u5F71\u54CD`, { status: 502 });
-    await mkdir10(dirname11(target), { recursive: true });
+    await mkdir10(dirname12(target), { recursive: true });
     await writeFile4(target, buffer);
   }
   async function applyUpdate() {
@@ -8946,15 +9124,15 @@ async function createBridgeServer({
     if (!isUpdateAvailable(local, manifest)) {
       throw new BridgeError("ALREADY_UP_TO_DATE", `Current version ${local.version ?? "unknown"} is up to date`, { status: 409 });
     }
-    const tempRoot = join19(process.env.TEMP || process.env.TMP || homedir6(), `livedot-update-${manifest.version}-${randomUUID9()}`);
-    const payloadDir = join19(tempRoot, "payload");
+    const tempRoot = join20(process.env.TEMP || process.env.TMP || homedir7(), `livedot-update-${manifest.version}-${randomUUID9()}`);
+    const payloadDir = join20(tempRoot, "payload");
     await mkdir10(payloadDir, { recursive: true });
     try {
       for (const [relative6, meta] of Object.entries(manifest.files)) {
         if (relative6.includes("..") || relative6.startsWith("/") || /^[a-zA-Z]:/.test(relative6)) {
           throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file path: ${relative6}`, { status: 502 });
         }
-        await downloadUpdateFile(meta, join19(payloadDir, relative6), relative6);
+        await downloadUpdateFile(meta, join20(payloadDir, relative6), relative6);
       }
     } catch (error3) {
       await rm6(tempRoot, { recursive: true, force: true }).catch(() => void 0);
@@ -8962,7 +9140,7 @@ async function createBridgeServer({
     }
     let updater;
     if (manifest.installer && typeof manifest.installer === "object") {
-      updater = join19(tempRoot, "LiveDotMapSetup.exe");
+      updater = join20(tempRoot, "LiveDotMapSetup.exe");
       try {
         await downloadUpdateFile(manifest.installer, updater, "LiveDotMapSetup.exe");
       } catch (error3) {
@@ -8970,7 +9148,7 @@ async function createBridgeServer({
         throw error3;
       }
     } else {
-      updater = resolve15(join19(installRoot, "..", "LiveDotMapSetup.exe"));
+      updater = resolve16(join20(installRoot, "..", "LiveDotMapSetup.exe"));
       try {
         await access4(updater);
       } catch {
@@ -8978,7 +9156,7 @@ async function createBridgeServer({
         throw new BridgeError("UPDATER_UNAVAILABLE", "Installer entry not found; updates are only available in installed mode", { status: 501 });
       }
     }
-    const updaterArgs = ["--update", join19(tempRoot, "LiveDotMapSetup.exe"), resolve15(join19(installRoot, ".."))];
+    const updaterArgs = ["--update", join20(tempRoot, "LiveDotMapSetup.exe"), resolve16(join20(installRoot, ".."))];
     if (spawnUpdater) {
       spawnUpdater(updater, updaterArgs);
     } else {
@@ -9397,7 +9575,7 @@ async function createBridgeServer({
         const detected = await detectInstalledAdapters({ projectRoot: root });
         let config = {};
         try {
-          const parsed = JSON.parse(await readFile12(join19(root, ".live-dot-map", "agent-kit.json"), "utf8"));
+          const parsed = JSON.parse(await readFile12(join20(root, ".live-dot-map", "agent-kit.json"), "utf8"));
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) config = parsed;
         } catch {
         }
@@ -9700,7 +9878,7 @@ async function createBridgeServer({
                   logger.warn("bundle.ensureIndex", { ownerId: command2.value.id, error: error3?.message });
                 });
                 await index.refreshOwnerAndPersist({
-                  mapRoot: join19(session.projectRoot, ".live-dot-map", "maps", session.activeMapId ?? await resolveActiveMap(session.projectRoot)),
+                  mapRoot: join20(session.projectRoot, ".live-dot-map", "maps", session.activeMapId ?? await resolveActiveMap(session.projectRoot)),
                   ownerKind: "nodes",
                   ownerId: command2.value.id
                 }).catch((error3) => {
@@ -9781,9 +9959,9 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
   server.headersTimeout = 1e4;
   server.requestTimeout = 15e3;
   server.keepAliveTimeout = 5e3;
-  await new Promise((resolve18, reject) => {
+  await new Promise((resolve19, reject) => {
     server.once("error", reject);
-    server.listen(listenPort, host, resolve18);
+    server.listen(listenPort, host, resolve19);
   });
   port = server.address().port;
   async function pollActiveMaps() {
@@ -9856,8 +10034,8 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
       await Promise.all([...mapManagers.values()].map((manager) => manager.close()));
       if (sessionStore) await sessionStore.flush();
       else sessions.clear();
-      await new Promise((resolve18, reject) => {
-        server.close((error3) => error3 ? reject(error3) : resolve18());
+      await new Promise((resolve19, reject) => {
+        server.close((error3) => error3 ? reject(error3) : resolve19());
         server.closeAllConnections?.();
       });
     }
@@ -9867,28 +10045,28 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
 // src/bridge/project-registry.mjs
 import { randomBytes as randomBytes5, randomUUID as randomUUID11 } from "node:crypto";
 import { chmod as chmod2, mkdir as mkdir12, readFile as readFile14, rename as rename9, writeFile as writeFile6 } from "node:fs/promises";
-import { dirname as dirname13 } from "node:path";
+import { dirname as dirname14 } from "node:path";
 
 // src/bridge/runtime-state.mjs
 import { randomBytes as randomBytes4, randomUUID as randomUUID10 } from "node:crypto";
 import { execFile as execFile2 } from "node:child_process";
 import { chmod, mkdir as mkdir11, open as open3, readFile as readFile13, rename as rename8, rm as rm7, writeFile as writeFile5 } from "node:fs/promises";
-import { dirname as dirname12, join as join20, resolve as resolve16 } from "node:path";
-import { homedir as homedir7 } from "node:os";
+import { dirname as dirname13, join as join21, resolve as resolve17 } from "node:path";
+import { homedir as homedir8 } from "node:os";
 import { promisify } from "node:util";
 var execFileAsync = promisify(execFile2);
 var SCHEMA_VERSION = 1;
 function defaultRuntimeStateDir() {
-  if (process.env.LIVEDOT_RUNTIME_STATE_DIR) return resolve16(process.env.LIVEDOT_RUNTIME_STATE_DIR);
-  const localAppData = process.env.LOCALAPPDATA || join20(homedir7(), "AppData", "Local");
-  return join20(localAppData, "live-dot-map", "run");
+  if (process.env.LIVEDOT_RUNTIME_STATE_DIR) return resolve17(process.env.LIVEDOT_RUNTIME_STATE_DIR);
+  const localAppData = process.env.LOCALAPPDATA || join21(homedir8(), "AppData", "Local");
+  return join21(localAppData, "live-dot-map", "run");
 }
 async function privateDirectory(path) {
   await mkdir11(path, { recursive: true, mode: 448 });
   await chmod(path, 448).catch(() => void 0);
 }
 async function atomicPrivateWrite(path, value) {
-  await privateDirectory(dirname12(path));
+  await privateDirectory(dirname13(path));
   const temporary = `${path}.${process.pid}.${randomUUID10()}.tmp`;
   await writeFile5(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod(temporary, 384).catch(() => void 0);
@@ -9896,14 +10074,14 @@ async function atomicPrivateWrite(path, value) {
   await chmod(path, 384).catch(() => void 0);
 }
 function runtimePaths(runtimeStateDir = defaultRuntimeStateDir()) {
-  const root = resolve16(runtimeStateDir);
+  const root = resolve17(runtimeStateDir);
   return {
     root,
-    bridge: join20(root, "bridge.json"),
-    controlToken: join20(root, "control.token"),
-    lock: join20(root, "singleton.lock"),
-    sessions: join20(root, "sessions.json"),
-    projects: join20(root, "projects.json")
+    bridge: join21(root, "bridge.json"),
+    controlToken: join21(root, "control.token"),
+    lock: join21(root, "singleton.lock"),
+    sessions: join21(root, "sessions.json"),
+    projects: join21(root, "projects.json")
   };
 }
 async function readBridgeState(runtimeStateDir) {
@@ -9942,7 +10120,7 @@ async function readOrCreateControlToken(runtimeStateDir) {
   }
   const token = randomBytes4(32).toString("base64url");
   try {
-    await privateDirectory(dirname12(path));
+    await privateDirectory(dirname13(path));
     await writeFile5(path, `${token}
 `, { encoding: "utf8", mode: 384, flag: "wx" });
     await chmod(path, 384).catch(() => void 0);
@@ -9956,7 +10134,7 @@ async function readOrCreateControlToken(runtimeStateDir) {
 }
 async function acquireSingletonLock(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).lock;
-  await privateDirectory(dirname12(path));
+  await privateDirectory(dirname13(path));
   let handle;
   try {
     handle = await open3(path, "wx", 384);
@@ -10050,7 +10228,7 @@ function handleValue() {
   return `ph_${randomBytes5(24).toString("base64url")}`;
 }
 async function atomicWrite(path, data) {
-  await mkdir12(dirname13(path), { recursive: true, mode: 448 });
+  await mkdir12(dirname14(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${randomUUID11()}.tmp`;
   await writeFile6(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod2(temporary, 384).catch(() => void 0);
@@ -10142,13 +10320,13 @@ var ProjectRegistry = class _ProjectRegistry {
 // src/bridge/session-store.mjs
 import { createHash as createHash10, randomBytes as randomBytes6, randomUUID as randomUUID12 } from "node:crypto";
 import { chmod as chmod3, mkdir as mkdir13, readFile as readFile15, rename as rename10, writeFile as writeFile7 } from "node:fs/promises";
-import { dirname as dirname14 } from "node:path";
+import { dirname as dirname15 } from "node:path";
 var SCHEMA_VERSION3 = 1;
 var DAY = 24 * 60 * 60 * 1e3;
 var secret = () => randomBytes6(32).toString("base64url");
 var digest5 = (value) => createHash10("sha256").update(String(value)).digest("base64url");
 async function atomicWrite2(path, content) {
-  await mkdir13(dirname14(path), { recursive: true, mode: 448 });
+  await mkdir13(dirname15(path), { recursive: true, mode: 448 });
   const temporary = `${path}.${process.pid}.${randomUUID12()}.tmp`;
   await writeFile7(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
   await chmod3(temporary, 384).catch(() => void 0);
@@ -10697,7 +10875,7 @@ async function shutdownRunningBridge(state, controlToken) {
   return !isProcessAlive(state.pid);
 }
 async function recordAgentHealth2(root, actor, event, status, error3) {
-  const path = join21(root, ".live-dot-map", ".bridge", "agent-health.json");
+  const path = join22(root, ".live-dot-map", ".bridge", "agent-health.json");
   const prior = await readFile16(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   const value = error3;
@@ -10709,7 +10887,7 @@ async function recordAgentHealth2(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: value?.code ?? "HOOK_FAILED", message: String(value?.message ?? value ?? "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await mkdir14(dirname15(path), { recursive: true });
+  await mkdir14(dirname16(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${randomUUID13()}.tmp`;
   try {
     await writeFile9(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
@@ -10719,12 +10897,12 @@ async function recordAgentHealth2(root, actor, event, status, error3) {
   }
 }
 async function inspectProjectQualification(projectRoot) {
-  const root = resolve17(projectRoot);
+  const root = resolve18(projectRoot);
   const rootMetadata = await lstat9(root).catch(() => null);
   if (!rootMetadata || !rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
     return { ok: false, code: "PROJECT_NOT_FOUND", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u6709\u6548\u9879\u76EE\u76EE\u5F55\u3002" };
   }
-  const dataDirectory = join21(root, ".live-dot-map");
+  const dataDirectory = join22(root, ".live-dot-map");
   const dataMetadata = await stat10(dataDirectory).catch(() => null);
   if (!dataMetadata) return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u8FD8\u6CA1\u6709\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
   if (!dataMetadata.isDirectory()) {
@@ -10734,15 +10912,15 @@ async function inspectProjectQualification(projectRoot) {
     const metadata = await stat10(path).catch(() => null);
     return Boolean(metadata && metadata.isFile());
   };
-  const legacy = await marker(join21(dataDirectory, "map.json"));
-  const mapsPath = join21(dataDirectory, "maps");
+  const legacy = await marker(join22(dataDirectory, "map.json"));
+  const mapsPath = join22(dataDirectory, "maps");
   const mapsMetadata = await stat10(mapsPath).catch(() => null);
   let packageMap = false;
   if (mapsMetadata?.isDirectory()) {
     const entries = await readdir8(mapsPath, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      if (await marker(join21(mapsPath, entry.name, "map.json"))) {
+      if (await marker(join22(mapsPath, entry.name, "map.json"))) {
         packageMap = true;
         break;
       }
@@ -10788,17 +10966,17 @@ async function probeBridgeControl(handle) {
 async function resolveAppHtmlPath(explicit) {
   const candidates = [];
   if (explicit) candidates.push(explicit);
-  if (process.argv[1]) candidates.push(join21(dirname15(resolve17(process.argv[1])), "app.html"));
-  candidates.push(join21(dirname15(process.execPath), "app.html"));
-  candidates.push(join21(homedir8(), ".live-dot-map", "app.html"));
-  candidates.push(join21(process.cwd(), "app.html"));
+  if (process.argv[1]) candidates.push(join22(dirname16(resolve18(process.argv[1])), "app.html"));
+  candidates.push(join22(dirname16(process.execPath), "app.html"));
+  candidates.push(join22(homedir9(), ".live-dot-map", "app.html"));
+  candidates.push(join22(process.cwd(), "app.html"));
   for (const candidate of [...new Set(candidates)]) {
     if (await access5(candidate, constants3.F_OK).then(() => true).catch(() => false)) return candidate;
   }
   return null;
 }
 async function igniteBridge(projectRoot, appPath, runtimeStateDir) {
-  const script = process.argv[1] ? resolve17(process.argv[1]) : "";
+  const script = process.argv[1] ? resolve18(process.argv[1]) : "";
   const serveArgs = [
     ...isSea() || !script ? [] : [script],
     "serve",
@@ -10852,7 +11030,7 @@ async function forwardToolCall(handle, targetRoot, actor, name, args) {
   return body.result;
 }
 async function runMcpProxy(projectRoot, actor, options) {
-  const root = resolve17(projectRoot);
+  const root = resolve18(projectRoot);
   let currentRoot = await resolveProjectRootToUse(null, root);
   let qualification = await inspectProjectQualification(currentRoot);
   if (!qualification.ok && currentRoot !== root) {
@@ -10933,7 +11111,7 @@ async function runMcpProxy(projectRoot, actor, options) {
   }
 }
 async function runMcpLocal(projectRoot, actor) {
-  const root = resolve17(projectRoot);
+  const root = resolve18(projectRoot);
   const qualification = await inspectProjectQualification(root);
   const logger = qualification.ok ? createLogger({ source: "agent" }) : noopLogger;
   let currentRoot = root;
@@ -10988,8 +11166,8 @@ async function runMcpLocal(projectRoot, actor) {
   for (const entry of entries.values()) await entry.manager.close().catch(() => void 0);
 }
 async function callAgentTool(name, args, globals) {
-  const explicit = globals.project ? resolve17(globals.project) : null;
-  const fallback = explicit ?? resolve17(process.cwd());
+  const explicit = globals.project ? resolve18(globals.project) : null;
+  const fallback = explicit ?? resolve18(process.cwd());
   let root = await resolveProjectRootToUse(explicit, fallback);
   let qualification = await inspectProjectQualification(root);
   if (!qualification.ok && root !== fallback) {
@@ -11001,8 +11179,8 @@ async function callAgentTool(name, args, globals) {
   }
   const actor = `agent:${globals.agent || "cli"}`;
   const options = {
-    runtimeStateDir: globals.runtimeStateDir ? resolve17(globals.runtimeStateDir) : void 0,
-    appPath: globals.app ? resolve17(globals.app) : void 0
+    runtimeStateDir: globals.runtimeStateDir ? resolve18(globals.runtimeStateDir) : void 0,
+    appPath: globals.app ? resolve18(globals.app) : void 0
   };
   if (process.env.LIVEDOT_MCP_LOCAL !== "1") {
     try {
@@ -11025,7 +11203,7 @@ async function runMcp(projectRoot, actor, options = {}) {
   return runMcpProxy(projectRoot, actor, options);
 }
 async function runHook(kind, args) {
-  const root = resolve17(required(args, "project"));
+  const root = resolve18(required(args, "project"));
   const agent = String(args.agent || "generic");
   const actor = `agent:${agent}`;
   const sessionId = String(args.session || `session-${randomUUID13()}`);
@@ -11039,7 +11217,7 @@ async function runHook(kind, args) {
 }
 function hasDirtyGitWorktree(root) {
   try {
-    if (!existsSync3(join21(root, ".git"))) return false;
+    if (!existsSync3(join22(root, ".git"))) return false;
     const status = execFileSync2("git", ["-C", root, "status", "--porcelain=v1", "--untracked-files=no"], {
       encoding: "utf8",
       windowsHide: true,
@@ -11066,16 +11244,16 @@ async function main() {
   const { command: command2, args } = parseArgs(argv);
   if (command2 === "serve") {
     const logger = createLogger({ source: "bridge" });
-    const requestedRoot = resolve17(required(args, "project"));
+    const requestedRoot = resolve18(required(args, "project"));
     const worktreeMain = resolveGitWorktreeMain(requestedRoot);
     const projectRoot = await canonicalDirectory(worktreeMain ?? requestedRoot).catch(() => requestedRoot);
-    let runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? resolve17(args["runtime-state-dir"]) : void 0;
+    let runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? resolve18(args["runtime-state-dir"]) : void 0;
     if (!runtimeStateDir && worktreeMain) {
-      runtimeStateDir = join21(requestedRoot, ".live-dot-map-dev");
+      runtimeStateDir = join22(requestedRoot, ".live-dot-map-dev");
       await logger.info("bridge.worktree-isolated", { worktree: requestedRoot, runtimeStateDir });
     }
     if (!runtimeStateDir && !worktreeMain && hasDirtyGitWorktree(requestedRoot)) {
-      runtimeStateDir = join21(requestedRoot, ".live-dot-map-dev");
+      runtimeStateDir = join22(requestedRoot, ".live-dot-map-dev");
       await logger.info("bridge.dev-isolated", { reason: "dirty-tree", worktree: requestedRoot, runtimeStateDir });
     }
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
@@ -11088,7 +11266,7 @@ async function main() {
       const image = await bridgeProcessImagePath(state.pid);
       const imageName = image ? image.replace(/\\/g, "/").split("/").pop().toLowerCase() : "";
       const looksLikeBridge = /^(livedot-bridge[^/]*\.exe|livedotmapsetup\.exe|node\.exe|node)$/.test(imageName) || imageName.includes("livedot");
-      if (image && looksLikeBridge && resolve17(image).toLowerCase() !== resolve17(process.execPath).toLowerCase()) {
+      if (image && looksLikeBridge && resolve18(image).toLowerCase() !== resolve18(process.execPath).toLowerCase()) {
         await logger.info("bridge.replace-stale", { pid: state.pid, image });
         const stalePort = state.port;
         if (!await shutdownRunningBridge(state, controlToken)) {
@@ -11148,18 +11326,18 @@ async function main() {
       }
       throw new Error("Bridge \u6B63\u5728\u542F\u52A8\uFF0C\u4F46\u5728 2 \u79D2\u5185\u6CA1\u6709\u8FDB\u5165\u53EF\u590D\u7528\u72B6\u6001");
     }
-    const appPath = resolve17(typeof args.app === "string" ? args.app : join21(process.cwd(), "app.html"));
+    const appPath = resolve18(typeof args.app === "string" ? args.app : join22(process.cwd(), "app.html"));
     const appHtml = runtimeStateDir ? markDevCanvas(await readFile16(appPath, "utf8")) : await readFile16(appPath, "utf8");
-    const assetRoot = dirname15(appPath);
+    const assetRoot = dirname16(appPath);
     const staticAssets = {};
     for (const [urlPath, file, type] of [
       ["/sw.js", "sw.js", "text/javascript; charset=utf-8"],
       ["/manifest.webmanifest", "manifest.webmanifest", "application/manifest+json; charset=utf-8"],
-      ["/icons/icon-192.png", join21("icons", "icon-192.png"), "image/png"],
-      ["/icons/icon-512.png", join21("icons", "icon-512.png"), "image/png"]
+      ["/icons/icon-192.png", join22("icons", "icon-192.png"), "image/png"],
+      ["/icons/icon-512.png", join22("icons", "icon-512.png"), "image/png"]
     ]) {
       try {
-        staticAssets[urlPath] = { body: await readFile16(join21(assetRoot, file)), type };
+        staticAssets[urlPath] = { body: await readFile16(join22(assetRoot, file)), type };
       } catch {
       }
     }
@@ -11201,20 +11379,20 @@ async function main() {
     return;
   }
   if (command2 === "mcp") {
-    const project = resolve17(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
+    const project = resolve18(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
     return runMcp(project, `agent:${String(args.agent || "generic")}`, {
-      runtimeStateDir: typeof args["runtime-state-dir"] === "string" ? resolve17(args["runtime-state-dir"]) : void 0,
-      appPath: typeof args.app === "string" ? resolve17(args.app) : void 0
+      runtimeStateDir: typeof args["runtime-state-dir"] === "string" ? resolve18(args["runtime-state-dir"]) : void 0,
+      appPath: typeof args.app === "string" ? resolve18(args.app) : void 0
     });
   }
   if (command2 === "hook") {
-    const project = resolve17(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
+    const project = resolve18(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
     return runHook(String(args.event || "session-start"), { ...args, project });
   }
   if (command2 === "install") {
-    const root = resolve17(typeof args.project === "string" ? args.project : process.cwd());
+    const root = resolve18(typeof args.project === "string" ? args.project : process.cwd());
     const runtimeSource = process.env.LIVEDOT_RUNTIME_SOURCE || process.argv[1] || process.cwd();
-    const appPath = resolve17(typeof args.app === "string" ? args.app : join21(dirname15(runtimeSource), "app.html"));
+    const appPath = resolve18(typeof args.app === "string" ? args.app : join22(dirname16(runtimeSource), "app.html"));
     const install = installProject;
     const result2 = await install({ projectRoot: root, runtimeSource, appPath, createDesktopShortcut: args["no-shortcut"] !== true, register: false });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
@@ -11222,7 +11400,7 @@ async function main() {
     return;
   }
   if (command2 === "doctor") {
-    const root = resolve17(required(args, "project"));
+    const root = resolve18(required(args, "project"));
     const result2 = await doctorProject({ projectRoot: root });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
 `);
@@ -11230,19 +11408,34 @@ async function main() {
     return;
   }
   if (command2 === "uninstall") {
-    const root = resolve17(required(args, "project"));
+    const root = resolve18(required(args, "project"));
     const result2 = await uninstallProject({ projectRoot: root });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
 `);
     if (!result2.ok && result2.reason !== "not-installed") process.exitCode = 1;
     return;
   }
-  process.stdout.write("\u6D3B\u70B9\u5730\u56FE v2\n  Agent \u547D\u4EE4\uFF1Alivedot.mjs look|read|write|note|analyze|manage \u2026\uFF08\u8BE6\u89C1 livedot.mjs --help\uFF09\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n");
+  if (command2 === "forget-maps") {
+    const requested = resolve18(required(args, "project"));
+    const root = await canonicalDirectory(requested).catch(() => requested);
+    const ledger = new MapLedger();
+    const missing = await ledger.findMissing(root);
+    if (!missing.length) {
+      process.stdout.write(`${JSON.stringify({ ok: true, removed: [], message: "\u8D26\u672C\u91CC\u6CA1\u6709\u4E0D\u89C1\u4E86\u7684\u5730\u56FE\uFF0C\u65E0\u9700\u5904\u7406", ledgerFile: ledger.file }, null, 2)}
+`);
+      return;
+    }
+    const result2 = await ledger.forget(root, missing.map((map) => map.id));
+    process.stdout.write(`${JSON.stringify({ ok: true, ...result2, message: "\u5DF2\u4ECE\u8D26\u672C\u79FB\u9664\uFF0C\u91CD\u65B0\u6253\u5F00\u9879\u76EE\u5373\u53EF" }, null, 2)}
+`);
+    return;
+  }
+  process.stdout.write("\u6D3B\u70B9\u5730\u56FE v2\n  Agent \u547D\u4EE4\uFF1Alivedot.mjs look|read|write|note|analyze|manage \u2026\uFF08\u8BE6\u89C1 livedot.mjs --help\uFF09\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n  livedot.mjs forget-maps --project <path>   \uFF08\u786E\u8BA4\u5730\u56FE\u662F\u6545\u610F\u5220\u9664\u540E\uFF0C\u89E3\u9664\u201C\u5730\u56FE\u4E22\u5931\u201D\u62E6\u622A\uFF09\n");
 }
 void main().catch(async (error3) => {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed.command === "hook" || parsed.command === "mcp") {
-    const project = resolve17(typeof parsed.args.project === "string" && parsed.args.project.trim() ? parsed.args.project : process.cwd());
+    const project = resolve18(typeof parsed.args.project === "string" && parsed.args.project.trim() ? parsed.args.project : process.cwd());
     await recordAgentHealth2(project, `agent:${String(parsed.args.agent || "generic")}`, `${parsed.command === "hook" ? `hook:${String(parsed.args.event || "unknown")}` : "mcp:process"}`, "error", error3).catch(() => void 0);
   }
   await createLogger({ source: parsed.command === "serve" ? "bridge" : "agent" }).error("process.error", { command: parsed.command, error: error3 });

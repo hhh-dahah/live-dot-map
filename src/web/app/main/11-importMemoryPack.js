@@ -177,7 +177,7 @@ function confirmDialog({ title, body, confirmLabel = '确定', cancelLabel = '�
     const card = document.createElement('div'); card.className = 'ld-dialog';
     card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true'); card.setAttribute('aria-label', title);
     const h = document.createElement('div'); h.className = 'ld-dialog-title'; h.textContent = title;
-    const p = document.createElement('div'); p.className = 'ld-dialog-body'; p.textContent = body;
+    const p = document.createElement('div'); p.className = 'ld-dialog-body'; p.textContent = body; p.style.whiteSpace = 'pre-line';
     const actions = document.createElement('div'); actions.className = 'ld-dialog-actions';
     const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'mdv-btn'; cancel.textContent = cancelLabel;
     const ok = document.createElement('button'); ok.type = 'button'; ok.className = `ld-dialog-primary${danger ? ' danger' : ''}`; ok.textContent = confirmLabel;
@@ -186,7 +186,8 @@ function confirmDialog({ title, body, confirmLabel = '确定', cancelLabel = '�
     ok.addEventListener('click', () => done(true));
     ov.addEventListener('pointerdown', e => { if (e.target === ov) done(false); });
     ov.addEventListener('keydown', e => { if (e.key === 'Escape') done(false); });
-    actions.append(cancel, ok); card.append(h, p, actions); ov.appendChild(card);
+    if (cancelLabel === null) actions.append(ok); else actions.append(cancel, ok);
+    card.append(h, p, actions); ov.appendChild(card);
     document.body.appendChild(ov); ok.focus();
   });
 }

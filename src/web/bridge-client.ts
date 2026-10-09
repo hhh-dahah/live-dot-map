@@ -8,6 +8,7 @@ declare global {
       setStatus(state: SyncState, detail?: string): void;
       flashObjects?(ids: string[]): void;
       refreshAgentStatus?(): Promise<JsonMap | null>;
+      confirm?(options: { title: string; body: string; confirmLabel?: string; cancelLabel?: string | null; danger?: boolean }): Promise<boolean>;
     };
     LiveDotBridge?: BridgeClient;
   }
@@ -24,6 +25,31 @@ function randomId(prefix: string): string {
 
 function equal(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/**
+ * 本地草稿与桥上地图对不上、像是桥那边的数据丢了时返回原因，否则返回空串。
+ * 10-07 事故：地图目录被删后桥建了空图，画布把旧草稿自动合并写进去，盖掉了现场。
+ */
+export function suspectBridgeDataLoss(storedDraft: JsonMap | null | undefined, bridgeDocument: JsonMap): string {
+  if (!storedDraft) return '';
+  const base = storedDraft.baseSnapshot as JsonMap | undefined;
+  const draft = storedDraft.draft as JsonMap | undefined;
+  if (!base || !draft) return '';
+  const baseRevision = Number(storedDraft.baseRevision);
+  const revision = Number(bridgeDocument.revision);
+  if (Number.isFinite(baseRevision) && Number.isFinite(revision) && baseRevision > revision) {
+    return `本地草稿基于第 ${baseRevision} 版，桥上的地图却只有第 ${revision} 版`;
+  }
+  if (base.mapId && bridgeDocument.mapId && String(base.mapId) !== String(bridgeDocument.mapId)) {
+    return '本地草稿属于另一张地图（地图 ID 对不上），桥上的地图像是重新建的';
+  }
+  const count = (value: unknown) => (Array.isArray(value) ? value.length : 0);
+  const localNodes = Math.max(count(base.nodes), count(draft.nodes));
+  if (localNodes >= 3 && count(bridgeDocument.nodes) === 0) {
+    return `本地草稿有 ${localNodes} 个节点，桥上的地图却是空的`;
+  }
+  return '';
 }
 
 function publicPatch(current: JsonMap, previous: JsonMap): JsonMap {
@@ -109,6 +135,21 @@ async function saveDraft(key: string, value: JsonMap | null): Promise<void> {
     transaction.onerror = () => reject(transaction.error);
   });
   db.close();
+}
+
+function downloadJson(filename: string, value: unknown): void {
+  const page = globalThis.document;
+  if (!page?.body || typeof URL.createObjectURL !== 'function') return;
+  try {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }));
+    const link = page.createElement('a');
+    link.href = url;
+    link.download = filename;
+    page.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  } catch { /* 下载失败时 IndexedDB 里仍有另存副本 */ }
 }
 
 async function readDraft(key: string): Promise<JsonMap | null> {
@@ -322,6 +363,45 @@ export class BridgeClient {
     }
   }
 
+  /**
+   * 草稿写回桥之前的闸门。疑似桥端丢数据时先问用户；用户不写（或没有确认框可用）
+   * 就把草稿另存到 IndexedDB 的 held 键并下载一份文件，返回 false，调用方不得写入。
+   */
+  private async confirmDraftWrite(draftKey: string, storedDraft: JsonMap | null, bridgeDocument: JsonMap, mapKey: string): Promise<boolean> {
+    const reason = suspectBridgeDataLoss(storedDraft, bridgeDocument);
+    if (!reason || !storedDraft) return true;
+    this.log('client.draft.suspect-loss', { reason, map: mapKey }, 'warn');
+    const confirmed = await (window.LiveDotApp?.confirm?.({
+      title: '地图可能丢了，先别写入',
+      body: `${reason}。\n这通常说明 .live-dot-map 里的地图文件被删或被换掉了，直接写入会把浏览器里的旧草稿盖到桥上。\n\n建议选「先不写」：草稿会另存一份并下载成备份文件，然后从备份（例如夸克网盘）恢复 .live-dot-map 再重新打开。\n只有确认桥上的地图本来就该是现在这样，才选「仍然写入」。`,
+      confirmLabel: '仍然写入',
+      cancelLabel: '先不写，保留草稿',
+      danger: true,
+    }) ?? Promise.resolve(false)).catch(() => false);
+    if (confirmed) {
+      this.log('client.draft.suspect-loss.confirmed', { map: mapKey }, 'warn');
+      return true;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const heldKey = `${draftKey}|held-${stamp}`;
+    await saveDraft(heldKey, storedDraft).catch(() => undefined);
+    downloadJson(`活点地图-草稿备份-${mapKey}-${stamp}.json`, storedDraft.draft);
+    this.log('client.draft.held', { map: mapKey, heldKey }, 'warn');
+    return false;
+  }
+
+  /** 桥拒绝打开（账本记得的地图不见了）：弹窗说清楚，状态点不够显眼。 */
+  private showMapsMissing(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    void window.LiveDotApp?.confirm?.({
+      title: '地图不见了，已停止打开',
+      body: message,
+      confirmLabel: '知道了',
+      cancelLabel: null,
+      danger: true,
+    })?.catch(() => undefined);
+  }
+
   async initialize(): Promise<void> {
     if (!window.LiveDotApp) return;
     const url = new URL(location.href);
@@ -385,6 +465,11 @@ export class BridgeClient {
       this.mapKey = String(opened.activeMap ?? this.mapKey);
       let renderDocument = document;
       let storedDraft = await readDraft(this.draftKey()).catch(() => null);
+      let draftHeld = false;
+      if (storedDraft && !(await this.confirmDraftWrite(this.draftKey(), storedDraft, document, this.mapKey))) {
+        storedDraft = null;
+        draftHeld = true;
+      }
       let baseSnapshot = storedDraft?.baseSnapshot as JsonMap | undefined;
       let localDraft = storedDraft?.draft as JsonMap | undefined;
       const storedCommandId = String(storedDraft?.commandId ?? '');
@@ -405,10 +490,10 @@ export class BridgeClient {
                 projectId: this.projectId,
                 documentId: this.projectId,
                 mapKey: this.mapKey,
-                baseRevision: Number(storedDraft.baseRevision),
+                baseRevision: Number(storedDraft?.baseRevision),
                 commandId: storedCommandId,
                 actor: 'human',
-                sessionId: String(storedDraft.sessionId || this.sessionId),
+                sessionId: String(storedDraft?.sessionId || this.sessionId),
                 commands: replayCommands,
               },
             });
@@ -437,9 +522,10 @@ export class BridgeClient {
         if (this.dirty && !merged.conflicts.length) this.timer = window.setTimeout(() => void this.flush(), 350);
       } else {
         window.LiveDotApp.load(document);
-        window.LiveDotApp.setStatus('saved', `revision ${this.revision}`);
+        if (draftHeld) window.LiveDotApp.setStatus('error', '地图疑似丢失：本地草稿已另存并下载，没有写入桥');
+        else window.LiveDotApp.setStatus('saved', `revision ${this.revision}`);
       }
-      this.log('client.init', { revision: this.revision, resumed: Boolean(resumedRoot), draftRecovered: Boolean(storedDraft) });
+      this.log('client.init', { revision: this.revision, resumed: Boolean(resumedRoot), draftRecovered: Boolean(storedDraft), draftHeld });
       void this.refreshAgentStatus();
       this.startEvents();
       url.searchParams.delete('token');
@@ -450,6 +536,7 @@ export class BridgeClient {
       const state = code === 'UNAUTHENTICATED' || code === 'BOOTSTRAP_CONSUMED' ? 'offline' : 'error';
       this.logError('client.init.failed', error);
       window.LiveDotApp.setStatus(state, state === 'offline' ? '本地桥会话已结束，请从活点地图重新打开项目' : (error instanceof Error ? error.message : '本地桥连接失败'));
+      if (code === 'MAPS_MISSING') this.showMapsMissing(error);
     }
   }
 
@@ -771,6 +858,7 @@ export class BridgeClient {
       return result;
     } catch (error) {
       this.resumePendingAfterTransitionFailure();
+      if ((error as { code?: unknown })?.code === 'MAPS_MISSING') this.showMapsMissing(error);
       throw error;
     } finally {
       this.endMapTransition();
@@ -788,6 +876,7 @@ export class BridgeClient {
       return result;
     } catch (error) {
       this.resumePendingAfterTransitionFailure();
+      if ((error as { code?: unknown })?.code === 'MAPS_MISSING') this.showMapsMissing(error);
       throw error;
     } finally {
       this.endMapTransition();
@@ -855,6 +944,7 @@ export class BridgeClient {
       return result;
     } catch (error) {
       this.resumePendingAfterTransitionFailure();
+      if ((error as { code?: unknown })?.code === 'MAPS_MISSING') this.showMapsMissing(error);
       throw error;
     } finally {
       this.endMapTransition();
@@ -892,7 +982,12 @@ export class BridgeClient {
     const projectId = String(result.projectId ?? document.mapId);
     const revision = Number(result.revision ?? document.revision);
     const targetDraftKey = this.draftKeyFor(mapKey, handle);
-    const storedDraft = await readDraft(targetDraftKey).catch(() => null);
+    let storedDraft = await readDraft(targetDraftKey).catch(() => null);
+    let draftHeld = false;
+    if (storedDraft && !(await this.confirmDraftWrite(targetDraftKey, storedDraft, document, mapKey))) {
+      storedDraft = null;
+      draftHeld = true;
+    }
     let renderDocument = document;
     let pending: JsonMap | null = null;
     let dirty = false;
@@ -938,12 +1033,14 @@ export class BridgeClient {
       clearTimeout(this.timer);
       this.timer = 0;
       window.LiveDotApp?.load(renderDocument);
-      const status = conflicts.length ? 'conflict' : dirty ? 'draft' : 'saved';
-      const detail = conflicts.length
-        ? `草稿有 ${conflicts.length} 处冲突，已保留双方版本`
-        : dirty ? '已恢复本地草稿' : `已切换到 ${label || root} · revision ${this.revision}`;
+      const status = draftHeld ? 'error' : conflicts.length ? 'conflict' : dirty ? 'draft' : 'saved';
+      const detail = draftHeld
+        ? '地图疑似丢失：本地草稿已另存并下载，没有写入桥'
+        : conflicts.length
+          ? `草稿有 ${conflicts.length} 处冲突，已保留双方版本`
+          : dirty ? '已恢复本地草稿' : `已切换到 ${label || root} · revision ${this.revision}`;
       window.LiveDotApp?.setStatus(status, detail);
-      this.log('project.switch', { root, map: mapKey, revision: this.revision, draftRecovered: dirty, conflicts: conflicts.length });
+      this.log('project.switch', { root, map: mapKey, revision: this.revision, draftRecovered: dirty, draftHeld, conflicts: conflicts.length });
       if (dirty && !conflicts.length) this.timer = window.setTimeout(() => void this.flush(), 350);
       this.startEvents();
     } catch (error) {

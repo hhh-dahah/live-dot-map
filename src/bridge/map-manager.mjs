@@ -32,6 +32,8 @@ export class MapManager {
     this.faultInjector = options.faultInjector;
     this.onEvent = options.onEvent ?? (() => {});
     this.onActiveMapChanged = options.onActiveMapChanged ?? (() => {});
+    this.ledger = options.ledger ?? null;
+    this.ledgerTimer = null;
     this.stores = new Map();
     this.bundles = new Map();
     this.lastImplicitKey = null;
@@ -45,8 +47,26 @@ export class MapManager {
   }
 
   async initialize() {
+    // 先查账本再加锁：地图整体丢失时连 .bridge 目录都不该补建，更不能建空 default。
+    await this.ledger?.assertPresent(this.projectRoot);
     await withFileLock(this.lockPath, () => ensureMapsLayout(this.projectRoot));
+    await this.recordLedger();
     return this;
+  }
+
+  /** 账本只是保护网，记账失败不能影响正常读写。 */
+  async recordLedger() {
+    if (!this.ledger) return;
+    await this.ledger.record(this.projectRoot).catch(() => undefined);
+  }
+
+  #scheduleLedgerRecord() {
+    if (!this.ledger || this.ledgerTimer) return;
+    this.ledgerTimer = setTimeout(() => {
+      this.ledgerTimer = null;
+      void this.recordLedger();
+    }, 5_000);
+    this.ledgerTimer.unref?.();
   }
 
   async #assertMapExists(mapKey) {
@@ -70,7 +90,10 @@ export class MapManager {
         pollIntervalMs: this.pollIntervalMs,
         clock: this.clock,
         faultInjector: this.faultInjector,
-        onEvent: (event) => this.onEvent({ ...event, mapKey }),
+        onEvent: (event) => {
+          this.#scheduleLedgerRecord();
+          this.onEvent({ ...event, mapKey });
+        },
       });
       this.stores.set(mapKey, store);
     }
@@ -80,7 +103,13 @@ export class MapManager {
   async resolve(options = {}) {
     const explicit = typeof options.mapKey === 'string' && options.mapKey.length > 0;
     const mapKey = explicit ? options.mapKey : await resolveActiveMap(this.projectRoot);
-    await this.#assertMapExists(mapKey);
+    try {
+      await this.#assertMapExists(mapKey);
+    } catch (error) {
+      // 运行中地图被删：账本记得它就报“丢失”，而不是普通的“不存在”。
+      if (error?.code === 'MAP_NOT_FOUND') await this.ledger?.assertPresent(this.projectRoot);
+      throw error;
+    }
     if (!explicit && this.lastImplicitKey && this.lastImplicitKey !== mapKey) {
       const stale = this.stores.get(this.lastImplicitKey);
       await stale?.close().catch(() => undefined);
@@ -134,6 +163,7 @@ export class MapManager {
       // 只有目标图已经完整打开并通过校验后才提交 pointer。
       await writeActiveMap(this.projectRoot, mapKey);
       this.onActiveMapChanged({ type: 'active-map-changed', mapKey, documentId: context.documentId });
+      await this.recordLedger();
       return { activeMap: mapKey, documentId: context.documentId, ...context.snapshot };
     }).catch((error) => {
       if (error?.code === 'LOCK_TIMEOUT') throw new BridgeError('MAP_MANAGER_BUSY', '地图管理操作繁忙，请重试', { status: 409 });
@@ -145,7 +175,7 @@ export class MapManager {
     const context = await this.resolve({ mapKey });
     const displayName = String(name ?? '').trim().slice(0, 80);
     if (!displayName) throw new BridgeError('MAP_NAME_REQUIRED', '地图名称不能为空', { status: 400 });
-    return context.store.execute({
+    const executed = await context.store.execute({
       projectId: context.documentId,
       baseRevision: context.snapshot.revision,
       commandId: `map-rename-${randomUUID()}`,
@@ -153,9 +183,13 @@ export class MapManager {
       sessionId: `map-manager-${randomUUID()}`,
       commands: [{ op: 'set_meta', patch: { name: displayName } }],
     });
+    await this.recordLedger();
+    return executed;
   }
 
   async close() {
+    clearTimeout(this.ledgerTimer);
+    this.ledgerTimer = null;
     await Promise.all([...this.stores.values()].map((store) => store.close().catch(() => undefined)));
     this.stores.clear();
     this.bundles.clear();
