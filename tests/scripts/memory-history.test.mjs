@@ -124,7 +124,7 @@ test('历史目录不能放在记忆目录里面', (t) => {
   const memory = makeMemory(base);
   const result = spawnSync(process.execPath, [SCRIPT, 'init', '--work-tree', memory, '--history', join(memory, 'history')], { encoding: 'utf8', env: ENV });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /不能放在记忆目录里面/);
+  assert.match(result.stderr, /不能放在被备份的目录里面/);
 });
 
 test('GitHub 仓库：排除专利图、发现密钥不提交不推送、清除后推送到远端', (t) => {
@@ -153,4 +153,35 @@ test('GitHub 仓库：排除专利图、发现密钥不提交不推送、清除�
   assert.equal(run(history, 'snapshot').code, 0);
   assert.equal(gitLog(remote).length, 2);
   assert.match(run(history, 'status').out, /待推送：0/);
+});
+
+test('普通文件夹：不要求 maps，排除虚拟环境和 LaTeX 中间文件，大量删除同样拦截', (t) => {
+  const base = mkdtempSync(join(tmpdir(), 'livedot-history-test-'));
+  t.after(() => rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
+  const docs = join(base, 'docs');
+  mkdirSync(join(docs, 'patent-tex', '.venv', 'Lib'), { recursive: true });
+  mkdirSync(join(docs, 'patent-tex', '__pycache__'), { recursive: true });
+  writeFileSync(join(docs, 'patent-tex', '.venv', 'Lib', 'big.dll'), 'x');
+  writeFileSync(join(docs, 'patent-tex', '__pycache__', 'a.pyc'), 'x');
+  writeFileSync(join(docs, 'patent-tex', 'main.tex'), '\\documentclass{article}\n');
+  writeFileSync(join(docs, 'patent-tex', 'main.aux'), 'x');
+  for (let i = 0; i < 12; i += 1) writeFileSync(join(docs, `笔记${i}.md`), `# ${i}\n`);
+  const history = join(base, '文档历史');
+
+  const refused = spawnSync(process.execPath, [SCRIPT, 'init', '--work-tree', docs, '--history', history], { encoding: 'utf8', env: ENV });
+  assert.notEqual(refused.status, 0, '没有 --kind files 时应按记忆目录检查');
+  const init = spawnSync(process.execPath, [SCRIPT, 'init', '--work-tree', docs, '--history', history, '--kind', 'files'], { encoding: 'utf8', env: ENV });
+  assert.equal(init.status, 0, init.stderr);
+
+  const gitDir = join(history, 'memory.git');
+  assert.equal(run(history, 'snapshot').code, 0);
+  const files = execFileSync('git', [`--git-dir=${gitDir}`, 'ls-tree', '-r', '--name-only', 'HEAD'], { encoding: 'utf8', env: ENV });
+  assert.match(files, /patent-tex\/main\.tex/);
+  assert.doesNotMatch(files, /\.venv|__pycache__|\.pyc|\.aux/);
+
+  for (let i = 0; i < 12; i += 1) rmSync(join(docs, `笔记${i}.md`));
+  const result = run(history, 'snapshot');
+  assert.equal(result.code, 2);
+  assert.equal(gitLog(gitDir).length, 1);
+  assert.equal(JSON.parse(readFileSync(join(history, 'livedot-history.json'), 'utf8')).kind, 'files');
 });
