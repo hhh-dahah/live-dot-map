@@ -90,7 +90,7 @@ const toBytes = (data) => (data instanceof Uint8Array ? data : new Uint8Array(da
  *        资料包文件，path 形如 nodes/n1/index.md
  * @returns {Promise<{zip:Uint8Array, manifest:object}>}
  */
-export async function buildMemoryPack({ document, files, now } = {}) {
+export async function buildMemoryPack({ document, files, now, scope } = {}) {
   if (!document || typeof document !== 'object') throw new TypeError('打包需要地图文档');
   const entries = {};
   const manifestFiles = [];
@@ -130,6 +130,7 @@ export async function buildMemoryPack({ document, files, now } = {}) {
     nodeCount,
     files: manifestFiles,
     stubs: manifestStubs,
+    ...(scope ? { scope } : {}),
   };
   entries['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2));
   entries['map.json'] = strToU8(JSON.stringify(document, null, 2));
@@ -220,6 +221,148 @@ export async function parseMemoryPack(zipBytes) {
   return { manifest, document, files };
 }
 
+/* ---------- 节点包：导出单个节点或节点及下游，导入时并入当前地图 ---------- */
+
+const live = (item) => item && item.archived !== true;
+
+/**
+ * 选出要导出的对象。下游 = 沿连线 from→to 能走到的节点。
+ * 连线只收两端都在范围内的，以及从范围内节点伸出的悬空方案线（to 为 null）。
+ */
+export function collectNodeScope(document, rootId, { downstream = false } = {}) {
+  const nodes = (document?.nodes ?? []).filter(live);
+  const edges = (document?.edges ?? []).filter(live);
+  const nodeIds = new Set();
+  if (!nodes.some((node) => node.id === rootId)) throw new Error(`找不到节点 ${rootId}`);
+  nodeIds.add(rootId);
+  if (downstream) {
+    const known = new Set(nodes.map((node) => node.id));
+    const queue = [rootId];
+    while (queue.length) {
+      const current = queue.shift();
+      for (const edge of edges) {
+        if (edge.from !== current || edge.to === null || edge.to === undefined) continue;
+        if (!known.has(edge.to) || nodeIds.has(edge.to)) continue;
+        nodeIds.add(edge.to);
+        queue.push(edge.to);
+      }
+    }
+  }
+  const edgeIds = new Set(edges
+    .filter((edge) => nodeIds.has(edge.from) && (edge.to === null || edge.to === undefined || nodeIds.has(edge.to)))
+    .map((edge) => edge.id));
+  const annIds = new Set((document?.anns ?? []).filter(live).filter((ann) => (
+    (ann.target?.kind === 'node' && nodeIds.has(ann.target.id)) || (ann.target?.kind === 'edge' && edgeIds.has(ann.target.id))
+  )).map((ann) => ann.id));
+  return { rootId, downstream, nodeIds, edgeIds, annIds };
+}
+
+/** 按范围裁出一份仍能通过 v2 校验的地图文档（只带被引用到的路线）。 */
+export function extractScopeDocument(document, scope) {
+  const copy = (value) => JSON.parse(JSON.stringify(value));
+  const nodes = copy((document.nodes ?? []).filter((node) => scope.nodeIds.has(node.id)));
+  const edges = copy((document.edges ?? []).filter((edge) => scope.edgeIds.has(edge.id)));
+  const anns = copy((document.anns ?? []).filter((ann) => scope.annIds.has(ann.id)));
+  const routeIds = new Set([...nodes, ...edges].map((item) => item.route).filter(Boolean));
+  const routes = copy((document.routes ?? []).filter((route) => routeIds.has(route.id))).map((route) => {
+    if (route.currentNodeId && !scope.nodeIds.has(route.currentNodeId)) delete route.currentNodeId;
+    return route;
+  });
+  const root = nodes.find((node) => node.id === scope.rootId);
+  return { ...copy(document), name: String(root?.name || document.name || '节点'), nodes, edges, anns, routes };
+}
+
+/** 包内文件属于哪个对象：nodes/<节点id>/…，routes/<连线id>/…（连线资料包放在 routes 目录下）。 */
+export function packFileOwner(path) {
+  const segments = String(path).split('/');
+  if (segments.length < 3 || !segments[1]) return null;
+  if (segments[0] === 'nodes') return { kind: 'node', id: segments[1], fileName: segments.slice(2).join('/') };
+  if (segments[0] === 'routes') return { kind: 'route', id: segments[1], fileName: segments.slice(2).join('/') };
+  return null;
+}
+
+/**
+ * 把包里的节点、连线、标注重新编号后并入目标地图。
+ * 两台电脑上的编号都是各自从 1 往上数的，原样并入一定撞号，所以一律换新号，
+ * 并同步改写连线两端、标注目标和资料包路径。
+ * @param counters 目标地图当前的 { nextNum, nextEdge, nextAnn }
+ * @param routeIds 目标地图已有的路线 id；包里引用的路线若不存在就清空
+ * @param anchor 根节点要放到的世界坐标；不给则保持原坐标
+ */
+export function remapNodePack(document, { counters, routeIds = [], anchor = null, rootId = null } = {}) {
+  const copy = (value) => JSON.parse(JSON.stringify(value));
+  const existingRoutes = new Set(routeIds);
+  let nextNum = Math.max(1, Number(counters?.nextNum) || 1);
+  let nextEdge = Math.max(1, Number(counters?.nextEdge) || 1);
+  let nextAnn = Math.max(1, Number(counters?.nextAnn) || 1);
+  const sourceNodes = (document?.nodes ?? []).filter(live);
+  if (!sourceNodes.length) throw new Error('包里没有可导入的节点');
+  const root = sourceNodes.find((node) => node.id === rootId) ?? sourceNodes[0];
+  const shiftX = anchor && Number.isFinite(root.x) ? anchor.x - root.x : 0;
+  const shiftY = anchor && Number.isFinite(root.y) ? anchor.y - root.y : 0;
+  const scrub = (item) => {
+    for (const key of ['md', 'archived', 'archivedAt', 'archivedBy', 'archiveReason']) delete item[key];
+    if (item.route && !existingRoutes.has(item.route)) item.route = null;
+    return item;
+  };
+
+  const nodeMap = new Map();
+  const nodes = sourceNodes.map((source) => {
+    const node = scrub(copy(source));
+    node.id = `n${nextNum}`;
+    node.num = String(nextNum).padStart(2, '0');
+    nextNum += 1;
+    if (Number.isFinite(node.x)) node.x += shiftX;
+    if (Number.isFinite(node.y)) node.y += shiftY;
+    nodeMap.set(source.id, node.id);
+    return node;
+  });
+
+  const edgeMap = new Map();
+  const edges = [];
+  for (const source of (document?.edges ?? []).filter(live)) {
+    const from = nodeMap.get(source.from);
+    const dangling = source.to === null || source.to === undefined;
+    const to = dangling ? null : nodeMap.get(source.to);
+    // 指向包外节点的连线没有落点，悬空方案线又缺偏移量，只能丢掉。
+    if (!from || (!dangling && !to)) continue;
+    const edge = scrub(copy(source));
+    edge.id = `e${nextEdge}`;
+    nextEdge += 1;
+    edge.from = from;
+    edge.to = to;
+    edgeMap.set(source.id, edge.id);
+    edges.push(edge);
+  }
+
+  const anns = [];
+  for (const source of (document?.anns ?? []).filter(live)) {
+    const kind = source.target?.kind;
+    const targetId = kind === 'node' ? nodeMap.get(source.target.id) : kind === 'edge' ? edgeMap.get(source.target.id) : null;
+    if (!targetId) continue;
+    const ann = copy(source);
+    ann.id = `a${nextAnn}`;
+    nextAnn += 1;
+    ann.target = { ...ann.target, id: targetId };
+    anns.push(ann);
+  }
+
+  const renamePath = (path) => {
+    const owner = packFileOwner(path);
+    if (!owner) return null;
+    const id = owner.kind === 'node' ? nodeMap.get(owner.id) : edgeMap.get(owner.id);
+    return id ? `${owner.kind === 'node' ? 'nodes' : 'routes'}/${id}/${owner.fileName}` : null;
+  };
+
+  return {
+    nodes, edges, anns,
+    rootId: nodeMap.get(root.id),
+    nodeMap, edgeMap,
+    counters: { nextNum, nextEdge, nextAnn },
+    renamePath,
+  };
+}
+
 export function installMemoryPackApi(target = globalThis) {
   const api = {
     PACK_FORMAT,
@@ -234,6 +377,10 @@ export function installMemoryPackApi(target = globalThis) {
     buildMemoryPack,
     sniffMemoryPack,
     parseMemoryPack,
+    collectNodeScope,
+    extractScopeDocument,
+    packFileOwner,
+    remapNodePack,
   };
   target.LiveDotMemoryPack = api;
   return api;

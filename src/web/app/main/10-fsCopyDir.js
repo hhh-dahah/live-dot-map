@@ -218,16 +218,45 @@ async function exportMemoryPack(){
   if (!bridge?.active){ toast('导出记忆包需要本地桥连接；可改用「仅导出拓扑 (.json)」。'); return; }
   let mapDocument;
   try{ mapDocument = serializeForSave(); }catch(e){ bridge.logError?.('pack.export.failed', e); toast('导出失败，请重试。'); return; }
+  // 方案线（连线）的资料包和路线一样放在 routes/<id>/ 下，ownerKind 都是 route。
+  const owners = [
+    ...S.nodes.map(n => ['node', String(n.id)]),
+    ...S.edges.map(e => ['route', String(e.id)]),
+    ...S.routes.map(r => ['route', String(r.id)]),
+  ];
+  await downloadMemoryPack({ document: mapDocument, owners, fileStem: `${packSafeName(S.name)}-记忆包`, doneText: '已导出记忆包' });
+}
+/* 节点包：单个节点或节点及下游，格式与整图记忆包相同，manifest.scope 标明范围 */
+async function exportNodePack(n, downstream){
+  const bridge = window.LiveDotBridge, packApi = window.LiveDotMemoryPack;
+  if (!packApi){ toast('记忆包组件未加载，请刷新页面重试。'); return; }
+  if (!bridge?.active){ toast('导出节点需要本地桥连接。'); return; }
+  let mapDocument, scope;
+  try{
+    mapDocument = serializeForSave();
+    scope = packApi.collectNodeScope(mapDocument, n.id, { downstream });
+  }catch(e){ bridge.logError?.('pack.node-export.failed', e); toast('导出失败：' + (e?.message || '请重试')); return; }
+  const packDocument = packApi.extractScopeDocument(mapDocument, scope);
+  const owners = [
+    ...[...scope.nodeIds].map(id => ['node', String(id)]),
+    ...[...scope.edgeIds].map(id => ['route', String(id)]),
+  ];
+  const label = downstream ? `${scope.nodeIds.size} 个节点` : '节点';
+  await downloadMemoryPack({
+    document: packDocument, owners,
+    scope: { kind:'nodes', rootId:n.id, downstream: !!downstream },
+    fileStem: `${packSafeName(n.name || n.id)}-${downstream ? '节点及下游' : '节点'}`,
+    doneText: `已导出${label}`,
+  });
+}
+async function downloadMemoryPack({ document: mapDocument, owners, scope, fileStem, doneText }){
+  const bridge = window.LiveDotBridge, packApi = window.LiveDotMemoryPack;
   const ownerName = (kind, id) => {
-    const list = kind === 'node' ? S.nodes : S.routes;
+    const list = kind === 'node' ? S.nodes : [...S.edges, ...S.routes];
     return String((list.find(x => String(x.id) === id) || {}).name || id);
   };
   // 第一阶段：只读清单扫描（不下载字节），筛出大文件
   const scanned = [], bigFiles = [];
-  const owners = [
-    ...S.nodes.map(n => ['node', String(n.id)]),
-    ...S.routes.map(r => ['route', String(r.id)]),
-  ];
   for (const [ownerKind, ownerId] of owners){
     let entries = [];
     try{ entries = await bridge.listBundleFiles(ownerKind, ownerId, false); }catch{ continue; }
@@ -263,14 +292,14 @@ async function exportMemoryPack(){
         files.push({ path: packPath, data: new Uint8Array(await resp.arrayBuffer()), forceInclude: Number(entry.size) > packApi.MAX_PACK_ASSET_BYTES });
       }
     }
-    const { zip, manifest } = await packApi.buildMemoryPack({ document: mapDocument, files });
+    const { zip, manifest } = await packApi.buildMemoryPack({ document: mapDocument, files, scope });
     const blob = new Blob([zip], { type: 'application/zip' });
     const a = document.createElement('a');
     const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     a.href = URL.createObjectURL(blob);
-    a.download = `${packSafeName(S.name)}-记忆包-${stamp}.zip`;
+    a.download = `${fileStem}-${stamp}.zip`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    toast(manifest.stubs.length ? `已导出记忆包（${manifest.stubs.length} 个大文件以占位形式导出）` : '已导出记忆包');
-  }catch(e){ bridge.logError?.('pack.export.failed', e); toast('导出记忆包失败，请重试。'); }
+    toast(manifest.stubs.length ? `${doneText}（${manifest.stubs.length} 个大文件以占位形式导出）` : doneText);
+  }catch(e){ bridge.logError?.('pack.export.failed', e); toast('导出失败，请重试。'); }
 }

@@ -1252,6 +1252,16 @@ export class BridgeClient {
         this.draftCommandId = '';
         window.LiveDotApp?.setStatus('saved', `revision ${this.revision}`);
       } else {
+        // 本次 commandId 已被服务端消费；剩余修改是另一批命令，沿用旧 id 会被判为重放冲突（409）。
+        this.draftCommandId = randomId('cmd');
+        void saveDraft(this.draftKey(), {
+          baseRevision: this.revision,
+          baseSnapshot: structuredClone(this.lastDocument),
+          draft: this.pending,
+          commandId: this.draftCommandId,
+          sessionId: this.sessionId,
+          savedAt: new Date().toISOString(),
+        }).catch(() => undefined);
         window.LiveDotApp?.setStatus('draft', '本地草稿');
       }
       this.retry = 0;

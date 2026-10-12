@@ -116,6 +116,10 @@ function nodeMenu(n, x, y){
     {id:'md', icon:I.md, label:'打开 Markdown', fn(){ openMd(n); }},
     {id:'ref', icon:I.ext, label:'复制引用给 Agent', fn(){ copyObjectRef('node', n); }},
     {sep:true},
+    {id:'export-node', icon:I.save, label:'导出此节点 (.zip)', fn(){ void exportNodePack(n, false); }},
+    {id:'export-tree', icon:I.save, label:'导出此节点及下游 (.zip)', fn(){ void exportNodePack(n, true); }},
+    {id:'import-under', icon:I.paste, label:'导入节点到此节点下…', fn(){ pickPackFile(parsed => importNodePack(parsed, { parent:n })); }},
+    {sep:true},
     {id:'del', icon:I.trash, label:'删除', danger:true, fn(){ pushHistory();
       // 删除节点时保留方案线:目标节点边变灰色悬空,起点边删除
       for (const e of S.edges){
@@ -147,6 +151,7 @@ function canvasMenu(x, y){
   const w = toWorld(x, y);
   openMenu([
     {id:'new', icon:I.node, label:'新建节点', fn(){ pushHistory(); addNodeAt(w.x, w.y); }},
+    {id:'import-nodes', icon:I.paste, label:'导入节点…', fn(){ pickPackFile(parsed => importNodePack(parsed, { anchor:w })); }},
     {id:'paste', icon:I.paste, label:'粘贴', fn(){ toast('剪贴板为空'); }}
   ], x, y);
 }

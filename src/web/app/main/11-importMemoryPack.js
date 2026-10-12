@@ -1,10 +1,112 @@
-async function importMemoryPack(file){
+/* 资料包文件落盘：md 走 bundles API，附件走 assets/import（服务端仍做类型/魔数校验）。
+   renamePath 把包内路径换成新图里的路径，返回 null 的文件不导入。返回被跳过的文件名。 */
+async function writePackFiles(bridge, files, renamePath = path => path){
+  const packApi = window.LiveDotMemoryPack;
+  const decoder = new TextDecoder();
+  const skipped = [];
+  for (const f of files){
+    const target = renamePath(f.path);
+    const owner = target && packApi.packFileOwner(target);
+    if (!owner) continue;
+    const { kind: ownerKind, id: ownerId, fileName } = owner;
+    try{
+      if (/\.md$/i.test(fileName)){
+        const content = decoder.decode(f.data);
+        if (fileName === 'index.md'){
+          // 主文档 create API 一律拒绝（BUNDLE_INDEX_CREATE_USE_ENSURE）。节点建好时桥会预建，方案线不预建，
+          // 所以先用带 create 的 Markdown 读取让桥补建，再 read→replace；读不到说明建图命令还没落盘，短退避重试。
+          let lastIdxErr = null;
+          for (let attempt = 0; attempt < 4; attempt++){
+            try{
+              await bridge.readMarkdown(mdPath(ownerKind === 'node' ? 'nodes' : 'routes', ownerId), { create:true, title: ownerId });
+              const current = await bridge.readBundleMarkdown(ownerKind, ownerId, 'index.md');
+              await bridge.replaceBundleMarkdown(ownerKind, ownerId, 'index.md', content, String(current.etag || ''));
+              lastIdxErr = null;
+              break;
+            }catch(err){
+              lastIdxErr = err;
+              if (![404, 409].includes(Number(err?.status))) throw err;
+              await new Promise(r => setTimeout(r, 400));
+            }
+          }
+          if (lastIdxErr) throw lastIdxErr;
+        } else {
+          await bridge.createBundleMarkdown(ownerKind, ownerId, fileName, content);
+        }
+      } else {
+        // 裸字节缺少 MIME 会被服务端 415 拒绝；按扩展名补声明，服务端仍做魔数校验
+        await bridge.importAsset(ownerKind, ownerId, new Blob([f.data], { type: packMimeOf(fileName) }), fileName);
+      }
+    }catch(e){ skipped.push(fileName); bridge.logError?.('pack.import.file.failed', e, { path: f.path }); }
+  }
+  return skipped;
+}
+async function readPackFile(file){
+  const bridge = window.LiveDotBridge, packApi = window.LiveDotMemoryPack;
+  try{ return await packApi.parseMemoryPack(new Uint8Array(await file.arrayBuffer())); }
+  catch(e){ bridge?.logError?.('pack.import.parse.failed', e); toast('导入失败：' + (e?.message || '不是有效的记忆包')); return null; }
+}
+const isNodePack = parsed => parsed?.manifest?.scope?.kind === 'nodes';
+/* 节点包并入当前地图：一律重新编号；parent 给定时放到它右侧并连一条线，否则放在 anchor。
+   整图记忆包也能走这里，相当于把那张图的所有节点并进来。 */
+async function importNodePack(parsed, { parent = null, anchor = null } = {}){
+  const bridge = window.LiveDotBridge, packApi = window.LiveDotMemoryPack;
+  if (!packApi){ toast('记忆包组件未加载，请刷新页面重试。'); return; }
+  if (!bridge?.active){ toast('导入节点需要本地桥连接。'); return; }
+  if (IO.readOnly){ warnReadOnly(); return; }
+  let result;
+  try{
+    const prepared = window.LiveDotFallback.prepareFallbackDocument(parsed.document);
+    if (prepared.readOnly){ toast('这个包由更新版本导出，当前版本无法导入。'); return; }
+    const at = parent ? { x: parent.x + 180, y: parent.y } : anchor;
+    result = packApi.remapNodePack(prepared.document, {
+      counters: { nextNum: S.nextNum, nextEdge: S.nextEdge, nextAnn: S.nextAnn },
+      routeIds: S.routes.map(r => r.id),
+      anchor: at,
+      rootId: parsed.manifest?.scope?.rootId ?? null,
+    });
+  }catch(e){ bridge.logError?.('pack.node-import.prepare.failed', e); toast('导入失败：' + (e?.message || '包内容无效')); return; }
+  pushHistory();
+  const td = today();
+  for (const node of result.nodes) S.nodes.push({ r:34, createdAt:td, updatedAt:td, ...node, md: mdPath('nodes', node.id) });
+  for (const edge of result.edges) S.edges.push({ createdAt:td, updatedAt:td, ...edge, md: mdPath('routes', edge.id) });
+  for (const ann of result.anns) S.anns.push({ hidden:false, createdAt:td, updatedAt:td, ...ann });
+  S.nextNum = result.counters.nextNum; S.nextEdge = result.counters.nextEdge; S.nextAnn = result.counters.nextAnn;
+  if (parent){
+    const id = 'e' + (S.nextEdge++);
+    S.edges.push({ id, from: parent.id, to: result.rootId, name: `方案${S.edges.filter(o => o.from === parent.id).length + 1}`,
+      status: 'success', route: parent.route ?? null, md: mdPath('routes', id) });
+  }
+  select('node', result.rootId); render(); renderPanel();
+  toast(`正在导入 ${result.nodes.length} 个节点…`);
+  try{
+    // 和整图导入一样直接调度：节点必须先在桥上建好，资料包文件才有地方写。
+    bridge.schedule(serialize());
+    await bridge.flushPending();
+  }catch(e){
+    bridge.logError?.('pack.node-import.flush.failed', e);
+    toast(`节点已加到画布，但没能保存到本地桥：${e?.message || '请重试'}；资料包文件未写入。`);
+    return;
+  }
+  const skipped = await writePackFiles(bridge, parsed.files, result.renamePath);
+  toast(skipped.length ? `已导入 ${result.nodes.length} 个节点（${skipped.length} 个文件被跳过）` : `已导入 ${result.nodes.length} 个节点`);
+}
+function pickPackFile(onParsed){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.zip,application/zip';
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    const parsed = await readPackFile(f);
+    if (parsed) await onParsed(parsed);
+  };
+  inp.click();
+}
+async function importMemoryPack(file, preParsed = null){
   const bridge = window.LiveDotBridge, packApi = window.LiveDotMemoryPack;
   if (!packApi){ toast('记忆包组件未加载，请刷新页面重试。'); return; }
   if (!bridge?.active){ toast('导入记忆包需要本地桥连接。'); return; }
-  let parsed;
-  try{ parsed = await packApi.parseMemoryPack(new Uint8Array(await file.arrayBuffer())); }
-  catch(e){ bridge.logError?.('pack.import.parse.failed', e); toast('导入失败：' + (e?.message || '不是有效的记忆包')); return; }
+  const parsed = preParsed || await readPackFile(file);
+  if (!parsed) return;
   let prepared;
   try{ prepared = window.LiveDotFallback.prepareFallbackDocument(parsed.document); }
   catch(e){ bridge.logError?.('pack.import.document.failed', e); toast('导入失败：' + (e?.message || '记忆包地图数据无效')); return; }
@@ -31,49 +133,7 @@ async function importMemoryPack(file){
         toast(`导入中止：${e?.message || '地图内容未能保存到本地桥'}，未写入资料包文件。`);
         return;
       }
-    // 资料包文件落盘：md 走 bundles API，附件走 assets/import（服务端仍做类型/魔数校验）
-    const decoder = new TextDecoder();
-    const skipped = [];
-    for (const f of parsed.files){
-      const segs = f.path.split('/');
-      const ownerKind = segs[0] === 'routes' ? 'route' : 'node';
-      const ownerId = segs[1];
-      const fileName = segs.slice(2).join('/');
-      if (!ownerId || !fileName) continue;
-      try{
-        if (/\.md$/i.test(fileName)){
-          const content = decoder.decode(f.data);
-          if (fileName === 'index.md'){
-            // 节点 index.md 由桥端 ensureIndex 预建，create API 会拒绝（BUNDLE_INDEX_CREATE_USE_ENSURE），
-            // 只能 read→replace；读不到说明建图命令尚未完全落盘，短退避重试，再试 create 兜底（路线不预建）。
-            let lastIdxErr = null;
-            for (let attempt = 0; attempt < 4; attempt++){
-              try{
-                const current = await bridge.readBundleMarkdown(ownerKind, ownerId, 'index.md');
-                await bridge.replaceBundleMarkdown(ownerKind, ownerId, 'index.md', content, String(current.etag || ''));
-                lastIdxErr = null;
-                break;
-              }catch(readErr){
-                lastIdxErr = readErr;
-                if (Number(readErr?.status) !== 404) throw readErr;
-                try{ await bridge.createBundleMarkdown(ownerKind, ownerId, 'index.md', content); lastIdxErr = null; break; }
-                catch(createErr){
-                  lastIdxErr = createErr;
-                  if (![404, 409].includes(Number(createErr?.status))) throw createErr;
-                  await new Promise(r => setTimeout(r, 400));
-                }
-              }
-            }
-            if (lastIdxErr) throw lastIdxErr;
-          } else {
-            await bridge.createBundleMarkdown(ownerKind, ownerId, fileName, content);
-          }
-        } else {
-          // 裸字节缺少 MIME 会被服务端 415 拒绝；按扩展名补声明，服务端仍做魔数校验
-          await bridge.importAsset(ownerKind, ownerId, new Blob([f.data], { type: packMimeOf(fileName) }), fileName);
-        }
-      }catch(e){ skipped.push(fileName); bridge.logError?.('pack.import.file.failed', e, { path: f.path }); }
-    }
+    const skipped = await writePackFiles(bridge, parsed.files);
     toast(skipped.length ? `已导入为新地图（${skipped.length} 个文件被跳过）` : '已导入为新地图');
   }catch(e){ bridge.logError?.('pack.import.failed', e); toast('导入记忆包失败，请重试。'); }
 }
@@ -102,7 +162,13 @@ function setupDrop(){
     e.preventDefault(); depth = 0; vp.classList.remove('drop-hint');
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
     if (!f) return;
-    if (/\.zip$/i.test(f.name)) return void importMemoryPack(f);
+    if (/\.zip$/i.test(f.name)){
+      // 节点包拖进来就并入当前图、放在落点；整图记忆包仍然建成新地图。
+      const anchor = toWorld(e.clientX, e.clientY);
+      const parsed = await readPackFile(f);
+      if (!parsed) return;
+      return void (isNodePack(parsed) ? importNodePack(parsed, { anchor }) : importMemoryPack(f, parsed));
+    }
     if (!/\.json$/i.test(f.name)){ toast('请拖入 .zip 记忆包或 .json 地图文件。'); return; }
     try{
       const d = JSON.parse(await f.text());

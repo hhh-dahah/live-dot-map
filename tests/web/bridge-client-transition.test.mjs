@@ -231,6 +231,29 @@ test('flushPending 跳过防抖立即提交 pending，断线时抛错由调用�
     assert.equal(client.revision, 2);
     assert.ok(posts >= 1);
 
+    // 提交途中又来新修改：下一批必须换新 commandId，否则服务端判为重放冲突（409）
+    const usedIds = [];
+    const second = mapDocument('地图 A', 'A 第二批');
+    client.pending = structuredClone(draft);
+    client.lastDocument = structuredClone(mapDocument('地图 A', 'A 基线'));
+    client.dirty = true;
+    client.draftCommandId = 'cmd-first';
+    globalThis.fetch = async (url, options = {}) => {
+      const requestUrl = new URL(String(url));
+      if (!requestUrl.pathname.endsWith('/commands')) return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      const body = JSON.parse(options.body);
+      if (usedIds.includes(body.commandId)) return new Response(JSON.stringify({ error: { message: 'commandId was already used for a different command' } }), { status: 409 });
+      usedIds.push(body.commandId);
+      if (usedIds.length === 1) client.pending = structuredClone(second);
+      const doc = usedIds.length === 1 ? draft : second;
+      return new Response(JSON.stringify({ ok: true, revision: client.revision + 1, document: { ...structuredClone(doc), revision: client.revision + 1 } }), { status: 200 });
+    };
+    await client.flushPending();
+    assert.equal(client.pending, null);
+    assert.equal(usedIds.length, 2);
+    assert.notEqual(usedIds[0], usedIds[1]);
+    assert.equal(client.lastDocument.nodes[0].name, 'A 第二批');
+
     // 断线且仍有 pending：抛错，更新流程据此中止而不是带伤重启
     client.pending = structuredClone(draft);
     client.dirty = true;
