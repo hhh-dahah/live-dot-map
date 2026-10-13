@@ -16,4 +16,4 @@
 - **深合并保全既有服务**：严格保留用户在 `config.json` 中配置的其它 MCP 服务器（如 `playwright`、`github`、`arxiv`）及 `skills` 规则，绝不覆盖或删除第三方服务。
 - **独立隔离**：适配 ZCode 时严格隔离，绝不触碰或重写 Codex、Claude、Antigravity、Kimi 等其他正常运转的 Agent 配置。
 - **自愈式运行时绑定**：自动绑定当前宿主机可用的 node 物理绝对路径与 livedot.mjs 脚本路径，避免 GUI 启动无环境变量导致调用失败。
-- **只写适配，不改协议**：严格遵循活点地图标准 24/25 项 MCP 工具定义与 STDIO JSON-RPC 通信规范。
+- **只写适配，不改协议**：严格遵循活点地图标准 5 项 MCP 工具定义与 STDIO JSON-RPC 通信规范。

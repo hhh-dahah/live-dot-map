@@ -1,22 +1,22 @@
 {
   "schema": 1,
   "product": "live-dot-map",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "channel": "internal-rc",
   "signed": false,
   "sourceReleaseManifest": {
     "bytes": 1176,
-    "sha256": "678d46fadc0904951f09de33373dd0600a2aeae498b75d8dc602be51e805f050"
+    "sha256": "022847e9eca38b62679f9bfa18bb7c8689ffea2795b12c4b868ad39634905f85"
   },
-  "payloadHash": "780d7613361f76207d4b1ed329acb627d18351fe8d9f9937e05512cef873b8b1",
+  "payloadHash": "4617314f118f5879f5e4cd70824ebc8593775d3e6abcddb60455a1f33a6566b0",
   "files": {
     "app.html": {
-      "bytes": 402150,
-      "sha256": "75910d63fd6d728b2b4ab6ff82c4fc20e0a1af19ebf52bfe067272a179433445"
+      "bytes": 415624,
+      "sha256": "c521e03d5c0cfb60c3ade7d4ce825e1cfe1509f1e23b86b2942270c9592b939d"
     },
     "livedot-bridge-win-x64.exe": {
-      "bytes": 92359168,
-      "sha256": "2462bc3e69071e9b2aaa694e3eceb4789b6edc7e7688ad522f3d94ed5b254200"
+      "bytes": 92417536,
+      "sha256": "47cc54d4b33ebd31676b4e8941cbefcb8c5cba2eef0dbd221842779b6abc0e6e"
     },
     "manifest.webmanifest": {
       "bytes": 550,
@@ -43,8 +43,8 @@
       "sha256": "eab21d3e55f211882354435dde318e457079e98f7dc6d67cc111af15a01bc4bf"
     },
     "agent-kit/skills/live-dot-map/SKILL.md": {
-      "bytes": 8469,
-      "sha256": "d17f0bf68f95816710f40a69e798e949cadb46ca400dd4568595e0e8a90125f8"
+      "bytes": 2496,
+      "sha256": "c6b81e06f0ef733a7c197f54952941a8189a5674853cc442d263ecc56bbf012c"
     },
     "agent-kit/skills/live-dot-map/templates/attempt.md": {
       "bytes": 290,

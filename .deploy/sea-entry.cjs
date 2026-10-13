@@ -201,17 +201,17 @@ function validateMapDocument(value) {
   const ids = /* @__PURE__ */ new Set();
   const byCollection = { routes: [], nodes: [], edges: [], anns: [] };
   for (const collection of COLLECTIONS) {
-    const list = value[collection];
-    if (!Array.isArray(list)) {
+    const list2 = value[collection];
+    if (!Array.isArray(list2)) {
       errors.push(`${collection} \u5FC5\u987B\u662F\u6570\u7EC4`);
       continue;
     }
-    if (list.length > 1e5) {
+    if (list2.length > 1e5) {
       errors.push(`${collection} \u8D85\u8FC7\u5BF9\u8C61\u4E0A\u9650`);
       continue;
     }
-    for (let i = 0; i < list.length; i += 1) {
-      if (validateBaseObject(list[i], `${collection}[${i}]`, ids, errors)) byCollection[collection].push(list[i]);
+    for (let i = 0; i < list2.length; i += 1) {
+      if (validateBaseObject(list2[i], `${collection}[${i}]`, ids, errors)) byCollection[collection].push(list2[i]);
     }
   }
   const nodeIds = new Set(byCollection.nodes.map((v) => String(v.id)));
@@ -461,14 +461,14 @@ function applyMapCommand(document, command2, options = {}) {
   if (command2.op === "delete") markLegacyTranslated(next);
   return next;
 }
-function applyCommandEnvelope(document, envelope2, options = {}) {
-  if (!envelope2 || !Array.isArray(envelope2.commands) || envelope2.commands.length === 0 || envelope2.commands.length > 100) throw mapError("INVALID_ENVELOPE", 400, "commands \u5FC5\u987B\u5305\u542B 1\u2013100 \u6761\u547D\u4EE4");
-  if (!ID2.test(envelope2.projectId) || !ID2.test(envelope2.commandId) || !ID2.test(envelope2.sessionId)) throw mapError("INVALID_ENVELOPE", 400, "projectId/commandId/sessionId \u65E0\u6548");
-  if (!Number.isInteger(envelope2.baseRevision) || envelope2.baseRevision < 0) throw mapError("INVALID_ENVELOPE", 400, "baseRevision \u65E0\u6548");
-  const agentInitialMap = isAgent(envelope2.actor) && (document.nodes.length === 0 || isObject(document.ui?.initialization) && document.ui.initialization.status === "in_progress");
-  if (isAgent(envelope2.actor)) {
-    const objectCommands = envelope2.commands.filter((command2) => ["create", "update", "archive", "restore", "delete"].includes(command2.op));
-    const nodeCreates = envelope2.commands.filter((command2) => command2.op === "create" && command2.collection === "nodes");
+function applyCommandEnvelope(document, envelope, options = {}) {
+  if (!envelope || !Array.isArray(envelope.commands) || envelope.commands.length === 0 || envelope.commands.length > 100) throw mapError("INVALID_ENVELOPE", 400, "commands \u5FC5\u987B\u5305\u542B 1\u2013100 \u6761\u547D\u4EE4");
+  if (!ID2.test(envelope.projectId) || !ID2.test(envelope.commandId) || !ID2.test(envelope.sessionId)) throw mapError("INVALID_ENVELOPE", 400, "projectId/commandId/sessionId \u65E0\u6548");
+  if (!Number.isInteger(envelope.baseRevision) || envelope.baseRevision < 0) throw mapError("INVALID_ENVELOPE", 400, "baseRevision \u65E0\u6548");
+  const agentInitialMap = isAgent(envelope.actor) && (document.nodes.length === 0 || isObject(document.ui?.initialization) && document.ui.initialization.status === "in_progress");
+  if (isAgent(envelope.actor)) {
+    const objectCommands = envelope.commands.filter((command2) => ["create", "update", "archive", "restore", "delete"].includes(command2.op));
+    const nodeCreates = envelope.commands.filter((command2) => command2.op === "create" && command2.collection === "nodes");
     if (objectCommands.length > MAX_AGENT_OBJECTS_PER_ENVELOPE) throw mapError("AGENT_BATCH_LIMIT", 422, `Agent \u5355\u6B21\u6700\u591A\u4FEE\u6539 ${MAX_AGENT_OBJECTS_PER_ENVELOPE} \u4E2A\u5BF9\u8C61\uFF0C\u8BF7\u5148\u5408\u5E76\u6216\u8BA9\u4EBA\u9009\u62E9`, { maxObjects: MAX_AGENT_OBJECTS_PER_ENVELOPE, suggestion: "\u538B\u7F29\u6267\u884C\u788E\u7247\uFF0C\u4FDD\u7559\u9879\u76EE/\u8DEF\u7EBF\u7EA7\u7ED3\u8BBA" });
     if (nodeCreates.length > MAX_AGENT_NEW_NODES_PER_ENVELOPE) throw mapError("AGENT_NODE_LIMIT", 422, `Agent \u5355\u6B21\u6700\u591A\u65B0\u589E ${MAX_AGENT_NEW_NODES_PER_ENVELOPE} \u4E2A\u6D3B\u8DC3\u8282\u70B9\uFF0C\u8BF7\u5148\u5408\u5E76\u6216\u5206\u9636\u6BB5\u63D0\u4EA4`, { maxNodes: MAX_AGENT_NEW_NODES_PER_ENVELOPE, suggestion: "\u53EA\u4FDD\u7559\u76EE\u6807\u3001\u9636\u6BB5\u3001\u7ED3\u679C\u6216\u5BA1\u6838\u95E8" });
     const activeNodes = document.nodes.filter((node) => visibleNode(document, node)).length;
@@ -477,14 +477,14 @@ function applyCommandEnvelope(document, envelope2, options = {}) {
   const revision = document.revision + 1;
   const now = utcNow(options.now);
   let next = clone2(document);
-  if (agentInitialMap && !isObject(next.ui.initialization)) next.ui.initialization = { status: "in_progress", startedBy: envelope2.actor, startedAt: now };
-  for (const command2 of envelope2.commands) applyOne(next, command2, envelope2.actor, revision, now);
+  if (agentInitialMap && !isObject(next.ui.initialization)) next.ui.initialization = { status: "in_progress", startedBy: envelope.actor, startedAt: now };
+  for (const command2 of envelope.commands) applyOne(next, command2, envelope.actor, revision, now);
   next.revision = revision;
   next.lastEventId += 1;
   next.updatedAt = now;
   const validation = validateMapDocument(next);
   if (!validation.ok) throw mapError("COMMAND_INVALID_RESULT", 422, "\u547D\u4EE4\u4F1A\u4EA7\u751F\u65E0\u6548\u5730\u56FE", validation.errors);
-  if (envelope2.commands.some((command2) => command2.op === "delete")) markLegacyTranslated(next);
+  if (envelope.commands.some((command2) => command2.op === "delete")) markLegacyTranslated(next);
   return next;
 }
 function commandTouches(command2) {
@@ -496,8 +496,8 @@ function commandTouches(command2) {
   if (command2.op === "suggest_milestone") return [`nodes/${command2.nodeId}/milestoneSuggestion`];
   return ["*"];
 }
-function envelopeTouches(envelope2) {
-  return [...new Set(envelope2.commands.flatMap(commandTouches))].sort();
+function envelopeTouches(envelope) {
+  return [...new Set(envelope.commands.flatMap(commandTouches))].sort();
 }
 function tokenize(text) {
   const normalized = text.toLowerCase().normalize("NFKC");
@@ -1026,9 +1026,9 @@ function successfulChains(edges) {
   const byFrom = /* @__PURE__ */ new Map();
   for (const edge of successful) {
     const key = `${String(edge.route ?? "")}:${String(edge.from)}`;
-    const list = byFrom.get(key) ?? [];
-    list.push(edge);
-    byFrom.set(key, list);
+    const list2 = byFrom.get(key) ?? [];
+    list2.push(edge);
+    byFrom.set(key, list2);
   }
   const incoming = new Set(successful.map((edge) => `${String(edge.route ?? "")}:${String(edge.to)}`));
   const starts = successful.filter((edge) => !incoming.has(`${String(edge.route ?? "")}:${String(edge.from)}`));
@@ -1108,9 +1108,9 @@ function planConsolidation(document, options = {}) {
   const nodesByRoute = /* @__PURE__ */ new Map();
   for (const node of active.nodes) {
     const key = String(node.route ?? "");
-    const list = nodesByRoute.get(key) ?? [];
-    list.push(node);
-    nodesByRoute.set(key, list);
+    const list2 = nodesByRoute.get(key) ?? [];
+    list2.push(node);
+    nodesByRoute.set(key, list2);
   }
   for (const [routeId, nodes] of [...nodesByRoute.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const sorted = [...nodes].sort((a, b) => String(a.id).localeCompare(String(b.id)));
@@ -1238,11 +1238,11 @@ var init_shared = __esm({
 });
 
 // src/cli/livedot.ts
-var import_node_crypto17 = require("node:crypto");
-var import_promises21 = require("node:fs/promises");
+var import_node_crypto19 = require("node:crypto");
+var import_promises24 = require("node:fs/promises");
 var import_node_fs5 = require("node:fs");
-var import_node_path24 = require("node:path");
-var import_node_os8 = require("node:os");
+var import_node_path26 = require("node:path");
+var import_node_os9 = require("node:os");
 var import_node_child_process8 = require("node:child_process");
 var import_node_readline = require("node:readline");
 var import_node_sea = require("node:sea");
@@ -1393,7 +1393,7 @@ async function withFileLock(path, operation, { timeoutMs = 5e3, staleMs = 3e4 } 
         timeout.code = "LOCK_TIMEOUT";
         throw timeout;
       }
-      await new Promise((resolve18) => setTimeout(resolve18, 20));
+      await new Promise((resolve19) => setTimeout(resolve19, 20));
     }
   }
   try {
@@ -1522,9 +1522,9 @@ async function createMap(projectRoot, name, { now = () => /* @__PURE__ */ new Da
   throw new BridgeError("MAP_ID_EXHAUSTED", "\u540C\u540D\u5730\u56FE\u6570\u91CF\u8FC7\u591A\uFF0C\u65E0\u6CD5\u5206\u914D\u5B89\u5168 ID", { status: 409 });
 }
 function rewriteMarkdownPaths(document, mapDir) {
-  for (const list of [document?.nodes, document?.edges]) {
-    if (!Array.isArray(list)) continue;
-    for (const item of list) {
+  for (const list2 of [document?.nodes, document?.edges]) {
+    if (!Array.isArray(list2)) continue;
+    for (const item of list2) {
       if (!item || typeof item.md !== "string") continue;
       if (item.md.startsWith(LEGACY_NODES_PREFIX)) item.md = `${mapDir}/nodes/${item.md.slice(LEGACY_NODES_PREFIX.length)}`;
       else if (item.md.startsWith(LEGACY_ROUTES_PREFIX)) item.md = `${mapDir}/routes/${item.md.slice(LEGACY_ROUTES_PREFIX.length)}`;
@@ -1535,13 +1535,13 @@ function rewriteMarkdownPaths(document, mapDir) {
 }
 function rewriteBundlePaths(document, mapDir) {
   let changed = false;
-  for (const [list, kind] of [
+  for (const [list2, kind] of [
     [document?.nodes, "nodes"],
     [document?.edges, "routes"],
     [document?.routes, "routes"]
   ]) {
-    if (!Array.isArray(list)) continue;
-    for (const item of list) {
+    if (!Array.isArray(list2)) continue;
+    for (const item of list2) {
       if (!item || typeof item.id !== "string" || typeof item.md !== "string") continue;
       const current = item.md.replace(/\\/g, "/");
       const finalPath = `${mapDir}/${kind}/${item.id}/index.md`;
@@ -1626,8 +1626,8 @@ async function ensureBundleLayoutLocked(projectRoot, mapId, root, mapPath) {
     await writeJsonAtomic(mapPath, document);
     return { migrated: false, mapId };
   }
-  const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-  const backupDirectory = (0, import_node_path2.join)(root, ".bridge", "backups", `pre-bundle-migration-${stamp}`);
+  const stamp2 = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
+  const backupDirectory = (0, import_node_path2.join)(root, ".bridge", "backups", `pre-bundle-migration-${stamp2}`);
   const journalPath = (0, import_node_path2.join)(root, ".bridge", "migrations", "bundle-layout-v1.json");
   await ensureDirectory(backupDirectory);
   await ensureDirectory((0, import_node_path2.dirname)(journalPath));
@@ -1678,8 +1678,8 @@ async function migrateLegacyLayout(projectRoot) {
     (0, import_node_path2.join)(dataDirectory, "routes"),
     (0, import_node_path2.join)(dataDirectory, ".bridge")
   ]) await rejectSymlink(path);
-  const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-  const backupDirectory = (0, import_node_path2.join)(dataDirectory, ".bridge", "backups", `pre-maps-migration-${stamp}`);
+  const stamp2 = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
+  const backupDirectory = (0, import_node_path2.join)(dataDirectory, ".bridge", "backups", `pre-maps-migration-${stamp2}`);
   await ensureDirectory(backupDirectory);
   await (0, import_promises2.copyFile)((0, import_node_path2.join)(dataDirectory, "map.json"), (0, import_node_path2.join)(backupDirectory, "map.json"));
   for (const name of ["nodes", "routes"]) {
@@ -2336,7 +2336,7 @@ var ProjectStore = class _ProjectStore {
     });
   }
   async #writeSnapshot(reason) {
-    const envelope2 = {
+    const envelope = {
       revision: this.revision,
       checksum: this.checksum,
       createdAt: this.clock().toISOString(),
@@ -2344,7 +2344,7 @@ var ProjectStore = class _ProjectStore {
       document: this.document
     };
     const path = (0, import_node_path3.join)(this.snapshotDirectory, `rev-${String(this.revision).padStart(12, "0")}-${timestampName(this.clock())}.json`);
-    await writeJsonAtomic(path, envelope2);
+    await writeJsonAtomic(path, envelope);
     await this.#pruneJsonDirectory(this.snapshotDirectory, 20);
     return { path, revision: this.revision, checksum: this.checksum };
   }
@@ -2402,15 +2402,15 @@ var ProjectStore = class _ProjectStore {
           details: { source, name }
         });
       }
-      const envelope2 = await readJson((0, import_node_path3.join)(directory, selected));
-      await this.#assertValid(envelope2.document, "INVALID_RECOVERY_IMAGE");
-      if (checksum(envelope2.document) !== envelope2.checksum) {
+      const envelope = await readJson((0, import_node_path3.join)(directory, selected));
+      await this.#assertValid(envelope.document, "INVALID_RECOVERY_IMAGE");
+      if (checksum(envelope.document) !== envelope.checksum) {
         throw new BridgeError("RECOVERY_CHECKSUM_MISMATCH", "Recovery image checksum does not match", { status: 409 });
       }
       const quarantinePath = await quarantineCopy(this.mapPath, this.quarantineDirectory, "map.before-recovery.json");
       const revision = this.revision + 1;
       const commandId = `recover:${(0, import_node_crypto2.randomUUID)()}`;
-      const recoveredDocument = cloneJson(envelope2.document);
+      const recoveredDocument = cloneJson(envelope.document);
       if (Number.isSafeInteger(recoveredDocument.revision)) recoveredDocument.revision = revision;
       if (typeof recoveredDocument.updatedAt === "string") recoveredDocument.updatedAt = this.clock().toISOString();
       await this.#assertValid(recoveredDocument, "INVALID_RECOVERY_IMAGE");
@@ -2419,7 +2419,7 @@ var ProjectStore = class _ProjectStore {
         type: "prepare",
         operation: "recover",
         commandId,
-        requestDigest: checksum({ source, selected, checksum: envelope2.checksum }),
+        requestDigest: checksum({ source, selected, checksum: envelope.checksum }),
         baseRevision: this.revision,
         revision,
         checksum: recoveredChecksum,
@@ -2449,12 +2449,12 @@ var ProjectStore = class _ProjectStore {
 };
 
 // src/bridge/server.mjs
-var import_node_crypto13 = require("node:crypto");
+var import_node_crypto15 = require("node:crypto");
 var import_node_http = require("node:http");
-var import_promises17 = require("node:fs/promises");
-var import_node_path20 = require("node:path");
+var import_promises19 = require("node:fs/promises");
+var import_node_path22 = require("node:path");
 var import_node_child_process6 = require("node:child_process");
-var import_node_os6 = require("node:os");
+var import_node_os7 = require("node:os");
 
 // src/bridge/current-project.mjs
 var import_node_fs = require("node:fs");
@@ -2586,7 +2586,7 @@ function createLogger({ source = "bridge", dir, clock = () => /* @__PURE__ */ ne
       }
     }
   }
-  function write(level, event, fields = {}, entrySource = source) {
+  function write2(level, event, fields = {}, entrySource = source) {
     const at = clock();
     const entry = { at: at.toISOString(), level, source: entrySource, event: String(event).slice(0, 120), ...clean(fields) };
     const file = (0, import_node_path6.join)(root, `livedot-${at.toISOString().slice(0, 10)}.log`);
@@ -2602,16 +2602,16 @@ function createLogger({ source = "bridge", dir, clock = () => /* @__PURE__ */ ne
   }
   const api = {
     dir: root,
-    info: (event, fields) => write("info", event, fields),
-    warn: (event, fields) => write("warn", event, fields),
-    error: (event, fields) => write("error", event, fields),
+    info: (event, fields) => write2("info", event, fields),
+    warn: (event, fields) => write2("warn", event, fields),
+    error: (event, fields) => write2("error", event, fields),
     flush: () => chain,
     // 派生同文件同队列的子来源（如 client），保证多来源写在一条时间线上。
     as: (childSource) => ({
       dir: root,
-      info: (event, fields) => write("info", event, fields, childSource),
-      warn: (event, fields) => write("warn", event, fields, childSource),
-      error: (event, fields) => write("error", event, fields, childSource),
+      info: (event, fields) => write2("info", event, fields, childSource),
+      warn: (event, fields) => write2("warn", event, fields, childSource),
+      error: (event, fields) => write2("error", event, fields, childSource),
       flush: () => chain,
       as: api.as
     })
@@ -2853,13 +2853,13 @@ var HumanMdUpdateLog = class {
     });
   }
   async acknowledge(paths) {
-    const list = [...new Set((Array.isArray(paths) ? paths : []).map(String).filter(Boolean))];
-    if (!list.length) return { acknowledged: [] };
+    const list2 = [...new Set((Array.isArray(paths) ? paths : []).map(String).filter(Boolean))];
+    if (!list2.length) return { acknowledged: [] };
     const ts = (/* @__PURE__ */ new Date()).toISOString();
     await this.#withLock(async () => {
-      for (const path of list) await appendDurable(this.logPath, JSON.stringify({ t: "a", path, ts }));
+      for (const path of list2) await appendDurable(this.logPath, JSON.stringify({ t: "a", path, ts }));
     });
-    return { acknowledged: list };
+    return { acknowledged: list2 };
   }
   /** 未确认的人类 md 写入，按 mtime 倒序。 */
   async unacknowledged() {
@@ -2920,12 +2920,211 @@ var HumanMdUpdateLog = class {
 };
 
 // src/bridge/md-index.mjs
+var import_node_crypto5 = require("node:crypto");
+var import_promises9 = require("node:fs/promises");
+var import_node_path10 = require("node:path");
+
+// src/bridge/agent-meta.mjs
 var import_node_crypto4 = require("node:crypto");
 var import_promises8 = require("node:fs/promises");
 var import_node_path9 = require("node:path");
+var META_FILE = "Agent\u5143\u6570\u636E.md";
+var META_LABELS = Object.freeze(["\u539F\u8BDD", "\u63A8\u65AD", "\u4EBA"]);
+var HEADER = ["# Agent\u5143\u6570\u636E", "> Agent \u7EF4\u62A4\uFF0C\u4EBA\u53EF\u4FEE\u6539\uFF1B\u4EBA\u6539\u8FC7\u7684\u884C\u6807\u300C\u4EBA\u300D\uFF0CAgent \u4E0D\u518D\u6539\u52A8\u3002"];
+var FILES_HEADING = "## \u6587\u4EF6";
+var VERSION_LENGTH = 6;
+var isMetaFile = (name) => String(name ?? "").split("/").pop() === META_FILE;
+var contentVersion = (value) => (0, import_node_crypto4.createHash)("sha256").update(value ?? "").digest("hex").slice(0, VERSION_LENGTH);
+var bodyVersion = (text) => contentVersion(withoutSystemBlocks(text).replace(/\r\n/g, "\n").trimEnd());
+function oneLine(text, max) {
+  const value = String(text ?? "").replace(/\s+/g, " ").replace(/[（）]/g, (char) => char === "\uFF08" ? "(" : ")").trim();
+  return value.length > max ? `${value.slice(0, max)}\u2026` : value;
+}
+function stripMarkdownLine(raw) {
+  return String(raw ?? "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/<[^>]+>/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^\s*(?:[-*+>]|\d+\.)\s+/, "").replace(/[*_`~]/g, "").trim();
+}
+function markdownLead(text, max = 40) {
+  for (const raw of withoutSystemBlocks(text).split(/\r?\n/)) {
+    if (/^\s*#{1,6}\s/.test(raw)) continue;
+    const line = stripMarkdownLine(raw);
+    if (!line || /^[-=|:\s]+$/.test(line)) continue;
+    return oneLine(line, max);
+  }
+  return "";
+}
+function withoutSystemBlocks(text) {
+  return String(text ?? "").replace(/<!--\s*@author:\s*system:[^>]*-->[\s\S]*?<!--\s*\/@author\s*-->/gi, "");
+}
+function parseTail(tail) {
+  if (tail === void 0) return { label: "\u4EBA" };
+  const parts = tail.split("\xB7").map((part) => part.trim()).filter(Boolean);
+  const label = META_LABELS.includes(parts[0]) ? parts[0] : null;
+  if (!label) return { label: "\u4EBA" };
+  const version = parts.map((part) => part.match(/@([0-9a-f]{4,})$/i)?.[1]).find(Boolean);
+  if (label === "\u4EBA") return { label, date: parts[1] && !parts[1].startsWith("@") ? parts[1] : "", ...version ? { ver: version.toLowerCase() } : {} };
+  return { label, by: parts[1] ?? "", date: parts[2] ?? "", ...version ? { ver: version.toLowerCase() } : {} };
+}
+var SUMMARY_LINE = /^摘要[：:]\s*(.*?)\s*(?:（([^（）]*)）)?\s*$/;
+var FILE_LINE = /^[-*]\s+(.+?)[：:]\s*(.*?)\s*(?:（([^（）]*)）)?\s*$/;
+function parseMeta(text) {
+  const result2 = { summary: null, files: /* @__PURE__ */ new Map(), extras: [], lines: /* @__PURE__ */ new Map() };
+  if (typeof text !== "string") return result2;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || HEADER.includes(line) || line === FILES_HEADING) continue;
+    const summary = line.match(SUMMARY_LINE);
+    if (summary && !result2.summary) {
+      result2.summary = { text: summary[1], ...parseTail(summary[2]) };
+      result2.lines.set("summary", line);
+      continue;
+    }
+    const file = line.match(FILE_LINE);
+    if (file && !result2.files.has(file[1].trim())) {
+      const name = file[1].trim();
+      result2.files.set(name, { name, text: file[2], ...parseTail(file[3]) });
+      result2.lines.set(`file:${name}`, line);
+      continue;
+    }
+    result2.extras.push(line);
+  }
+  return result2;
+}
+function tailOf(entry, versionPrefix) {
+  if (entry.label === "\u4EBA") return `\uFF08${["\u4EBA", entry.date, entry.ver ? `${versionPrefix}@${entry.ver}` : ""].filter(Boolean).join(" \xB7 ")}\uFF09`;
+  return `\uFF08${[entry.label, entry.by, entry.date, entry.ver ? `${versionPrefix}@${entry.ver}` : ""].filter(Boolean).join(" \xB7 ")}\uFF09`;
+}
+function renderMeta(model) {
+  const out = [...HEADER, ""];
+  if (model.summary) out.push(`\u6458\u8981\uFF1A${model.summary.text}${tailOf(model.summary, "index.md")}`, "");
+  if (model.files.size) {
+    out.push(FILES_HEADING);
+    for (const entry of model.files.values()) out.push(`- ${entry.name}\uFF1A${entry.text}${tailOf(entry, "")}`);
+    out.push("");
+  }
+  if (model.extras.length) out.push(...model.extras, "");
+  return `${out.join("\n").trimEnd()}
+`;
+}
+function metaStatePath(mapRoot, ownerDirKind, ownerId) {
+  return (0, import_node_path9.join)(mapRoot, ".bridge", "agent-meta", `${ownerDirKind}-${ownerId}.json`);
+}
+async function readMetaState(path) {
+  try {
+    const parsed = JSON.parse(await (0, import_promises8.readFile)(path, "utf8"));
+    return {
+      written: typeof parsed.written === "string" ? parsed.written : null,
+      deleted: Array.isArray(parsed.deleted) ? parsed.deleted.map(String) : []
+    };
+  } catch {
+    return { written: null, deleted: [] };
+  }
+}
+async function writeMetaState(path, state) {
+  await (0, import_promises8.mkdir)((0, import_node_path9.dirname)(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+  await (0, import_promises8.writeFile)(temporary, `${JSON.stringify({ version: 1, written: state.written, deleted: state.deleted })}
+`, "utf8");
+  await (0, import_promises8.rename)(temporary, path);
+}
+function reconcile(currentText, state, now = /* @__PURE__ */ new Date()) {
+  const current = parseMeta(currentText);
+  const written = state.written === null ? null : parseMeta(state.written);
+  const deleted = new Set(state.deleted);
+  const ownLines = new Set(written ? written.lines.values() : []);
+  const markHuman = (entry, key) => {
+    if (entry.label !== "\u4EBA" && !ownLines.has(current.lines.get(key))) return { name: entry.name, text: entry.text, label: "\u4EBA", date: todayLabel(now), ...entry.ver ? { ver: entry.ver } : {} };
+    return entry;
+  };
+  if (current.summary) current.summary = markHuman(current.summary, "summary");
+  for (const [name, entry] of current.files) current.files.set(name, markHuman(entry, `file:${name}`));
+  if (written) {
+    if (written.summary && !current.summary) deleted.add("summary");
+    for (const name of written.files.keys()) if (!current.files.has(name)) deleted.add(`file:${name}`);
+  }
+  return { model: current, deleted };
+}
+function renameMetaText(text, from, to) {
+  if (typeof text !== "string") return text;
+  return text.split(/\r?\n/).map((raw) => {
+    const match = raw.trim().match(FILE_LINE);
+    if (!match || match[1].trim() !== from) return raw;
+    return raw.replace(`${from}\uFF1A`, `${to}\uFF1A`).replace(`${from}:`, `${to}:`);
+  }).join("\n");
+}
+async function syncMetaRename({ mapRoot, ownerDirKind, ownerId, directory, from, to, writeText }) {
+  if (from === to || isMetaFile(from)) return;
+  const metaPath = (0, import_node_path9.join)(directory, META_FILE);
+  const statePath = metaStatePath(mapRoot, ownerDirKind, ownerId);
+  const text = await (0, import_promises8.readFile)(metaPath, "utf8").catch(() => null);
+  const state = await readMetaState(statePath);
+  if (text !== null) {
+    const next = renameMetaText(text, from, to);
+    if (next !== text) await writeText(metaPath, next);
+  }
+  if (state.written !== null || state.deleted.length) {
+    await writeMetaState(statePath, {
+      written: state.written === null ? null : renameMetaText(state.written, from, to),
+      deleted: state.deleted.map((key) => key === `file:${from}` ? `file:${to}` : key)
+    });
+  }
+}
+function referenceLines(markdownTexts, names) {
+  const found = /* @__PURE__ */ new Map();
+  const wanted = new Set(names);
+  for (const text of markdownTexts) {
+    const lines = withoutSystemBlocks(text).split(/\r?\n/);
+    lines.forEach((raw, index) => {
+      for (const name of wanted) {
+        if (found.has(name)) continue;
+        if (!raw.includes(name) && !raw.includes(encodeURI(name))) continue;
+        let line = stripMarkdownLine(raw.split(name).join(" "));
+        for (const offset of [-1, 1, -2, 2]) {
+          if (line) break;
+          const neighbour = lines[index + offset];
+          if (neighbour !== void 0 && !/^\s*#{1,6}\s/.test(neighbour) && !/!\[[^\]]*\]\(/.test(neighbour)) line = stripMarkdownLine(neighbour);
+        }
+        if (line) found.set(name, oneLine(line, 40));
+      }
+    });
+  }
+  return found;
+}
+function metaView(model, { files = [], indexVer = "" } = {}) {
+  const present = new Map(files.map((file) => [file.name, file]));
+  const summary = model.summary ? { ...model.summary, stale: model.summary.label !== "\u4EBA" && Boolean(model.summary.ver) && model.summary.ver !== indexVer } : null;
+  const byName = /* @__PURE__ */ new Map();
+  const orphans = [];
+  for (const entry of model.files.values()) {
+    if (present.has(entry.name)) byName.set(entry.name, entry);
+    else orphans.push(entry);
+  }
+  const unclaimed = files.filter((file) => !byName.has(file.name));
+  const missing = [];
+  for (const entry of orphans) {
+    const match = entry.ver ? unclaimed.find((file) => file.ver === entry.ver && !byName.has(file.name)) : null;
+    if (match) byName.set(match.name, { ...entry, name: match.name, renamedFrom: entry.name });
+    else missing.push({ ...entry, missing: true });
+  }
+  for (const [name, entry] of byName) {
+    const file = present.get(name);
+    byName.set(name, { ...entry, stale: entry.label !== "\u4EBA" && Boolean(entry.ver) && entry.ver !== file.ver });
+  }
+  return { summary, files: byName, missing };
+}
+function describeEntry(entry) {
+  if (!entry) return "";
+  const flags = [entry.label === "\u63A8\u65AD" ? "\u63A8\u65AD" : "", entry.stale ? "\u8FC7\u671F" : ""].filter(Boolean);
+  return `${entry.text}${flags.length ? `\uFF08${flags.join("\uFF0C")}\uFF09` : ""}`;
+}
+function todayLabel(now = /* @__PURE__ */ new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+// src/bridge/md-index.mjs
 var SUMMARIZED_WINDOW = 300;
 function digest2(content) {
-  return (0, import_node_crypto4.createHash)("sha256").update(content).digest("hex");
+  return (0, import_node_crypto5.createHash)("sha256").update(content).digest("hex");
 }
 function visibleSummary(text) {
   return String(text ?? "").replace(/\s+/g, " ").trim().slice(0, SUMMARIZED_WINDOW);
@@ -2941,10 +3140,10 @@ var MdIndex = class {
    */
   constructor(options = {}) {
     if (!options?.projectRoot) throw new TypeError("MdIndex \u9700\u8981 projectRoot");
-    this.projectRoot = (0, import_node_path9.resolve)(options.projectRoot);
+    this.projectRoot = (0, import_node_path10.resolve)(options.projectRoot);
     this.mapKey = String(options.mapKey ?? "default");
-    this.fs = options.fs ?? { readFile: import_promises8.readFile, stat: import_promises8.stat, readdir: import_promises8.readdir };
-    this.indexPath = (0, import_node_path9.join)(
+    this.fs = options.fs ?? { readFile: import_promises9.readFile, stat: import_promises9.stat, readdir: import_promises9.readdir };
+    this.indexPath = (0, import_node_path10.join)(
       this.projectRoot,
       ".live-dot-map",
       "maps",
@@ -2997,14 +3196,14 @@ var MdIndex = class {
     if (!this.#dirty) return this;
     const payload = `${JSON.stringify({ schema: 1, mapKey: this.mapKey, cards: Object.fromEntries(this.#cards) }, null, 0)}
 `;
-    await ensureDirectory((0, import_node_path9.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
+    await ensureDirectory((0, import_node_path10.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
     await atomicWriteFile(this.indexPath, payload);
     this.#dirty = false;
     return this;
   }
   /** 取一张卡；指纹对不上/缺失则重读该文件刷新。mapRoot 用于拼绝对路径。 */
   async getOrRefreshCard({ mapRoot, relativePath }) {
-    const absolute = (0, import_node_path9.join)(this.projectRoot, relativePath);
+    const absolute = (0, import_node_path10.join)(this.projectRoot, relativePath);
     let stat11;
     try {
       stat11 = await this.fs.stat(absolute);
@@ -3017,7 +3216,7 @@ var MdIndex = class {
       throw error3;
     }
     const existing = this.#cards.get(relativePath);
-    const fresh = !existing || existing.mtimeMs !== stat11.mtimeMs || existing.bytes !== stat11.size;
+    const fresh = !existing || existing.mtimeMs !== stat11.mtimeMs || existing.bytes !== stat11.size || typeof existing.lead !== "string";
     if (!fresh) return existing;
     const content = await this.fs.readFile(absolute, "utf8");
     const card = {
@@ -3027,6 +3226,7 @@ var MdIndex = class {
       bytes: stat11.size,
       title: firstHeading(content) || "",
       summary: visibleSummary(content),
+      lead: markdownLead(content),
       ownerKind: typeof existing?.ownerKind === "string" ? existing.ownerKind : inferOwnerKind(relativePath),
       ownerId: typeof existing?.ownerId === "string" ? existing.ownerId : inferOwnerId(relativePath),
       assets: existing?.assets ?? [],
@@ -3038,7 +3238,7 @@ var MdIndex = class {
   }
   /** 按 owner 目录重扫全部 md + 资产清单，刷新该对象所有卡片。 */
   async refreshOwner({ mapRoot, ownerKind, ownerId }) {
-    const directory = (0, import_node_path9.join)(mapRoot, ownerKind, ownerId);
+    const directory = (0, import_node_path10.join)(mapRoot, ownerKind, ownerId);
     let entries = [];
     try {
       entries = await this.fs.readdir(directory, { withFileTypes: true });
@@ -3048,11 +3248,11 @@ var MdIndex = class {
     }
     const assets = entries.filter((entry) => !entry.isDirectory() && !/\.md$/i.test(entry.name)).map((entry) => entry.name).sort();
     const mdFiles = entries.filter((entry) => !entry.isDirectory() && /\.md$/i.test(entry.name));
-    const ownerRelative = (0, import_node_path9.join)(".live-dot-map", "maps", this.mapKey, relativeOwner(ownerKind), ownerId).replace(/\\/g, "/");
+    const ownerRelative = (0, import_node_path10.join)(".live-dot-map", "maps", this.mapKey, relativeOwner(ownerKind), ownerId).replace(/\\/g, "/");
     for (const entry of mdFiles) {
       const relativePath = `${ownerRelative}/${entry.name}`;
       try {
-        const absolute = (0, import_node_path9.join)(directory, entry.name);
+        const absolute = (0, import_node_path10.join)(directory, entry.name);
         const stat11 = await this.fs.stat(absolute);
         const content = await this.fs.readFile(absolute, "utf8");
         this.#cards.set(relativePath, {
@@ -3062,6 +3262,7 @@ var MdIndex = class {
           bytes: stat11.size,
           title: firstHeading(content) || "",
           summary: visibleSummary(content),
+          lead: markdownLead(content),
           ownerKind: ownerKind === "nodes" ? "node" : "route",
           ownerId,
           assets,
@@ -3077,7 +3278,7 @@ var MdIndex = class {
     for (const [directoryKind, ownerKind] of [["nodes", "nodes"], ["routes", "routes"]]) {
       let owners = [];
       try {
-        owners = await this.fs.readdir((0, import_node_path9.join)(mapRoot, directoryKind), { withFileTypes: true });
+        owners = await this.fs.readdir((0, import_node_path10.join)(mapRoot, directoryKind), { withFileTypes: true });
       } catch (error3) {
         if (error3?.code === "ENOENT") continue;
         throw error3;
@@ -3107,7 +3308,7 @@ var MdIndex = class {
     return card.mtimeMs === stat11.mtimeMs && card.bytes === stat11.size;
   }
   async #withLock(operation) {
-    await ensureDirectory((0, import_node_path9.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
+    await ensureDirectory((0, import_node_path10.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey, ".bridge"));
     return withFileLock(this.lockPath, operation, { timeoutMs: 5e3, staleMs: 3e4 });
   }
   /** 供写路径调用：刷完立刻落盘（保存/建节点等关键动作后）。 */
@@ -3122,7 +3323,7 @@ var MdIndex = class {
     const parts = String(relativePath).replace(/\\/g, "/").split("/").filter(Boolean);
     const kindIndex = parts.findIndex((part) => part === "nodes" || part === "routes");
     if (kindIndex < 0 || kindIndex + 1 >= parts.length) return;
-    const mapRoot = (0, import_node_path9.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey);
+    const mapRoot = (0, import_node_path10.join)(this.projectRoot, ".live-dot-map", "maps", this.mapKey);
     await this.refreshOwnerAndPersist({ mapRoot, ownerKind: parts[kindIndex], ownerId: parts[kindIndex + 1] });
   }
 };
@@ -3139,14 +3340,14 @@ function relativeOwner(ownerKind) {
 }
 
 // src/bridge/map-manager.mjs
-var import_node_crypto6 = require("node:crypto");
-var import_node_path11 = require("node:path");
+var import_node_crypto7 = require("node:crypto");
+var import_node_path12 = require("node:path");
 
 // src/bridge/bundle-store.mjs
 var import_node_fs2 = require("node:fs");
-var import_promises9 = require("node:fs/promises");
-var import_node_crypto5 = require("node:crypto");
-var import_node_path10 = require("node:path");
+var import_promises10 = require("node:fs/promises");
+var import_node_crypto6 = require("node:crypto");
+var import_node_path11 = require("node:path");
 var MAX_ASSET_BYTES = 2 * 1024 * 1024 * 1024;
 var MAX_BUNDLE_FILES = 1e3;
 var MAX_MAP_ASSET_BYTES = 50 * 1024 * 1024 * 1024;
@@ -3243,18 +3444,18 @@ function asOptions(args, keys) {
   return Object.fromEntries(keys.map((key, index) => [key, args[index]]));
 }
 function digest3(value) {
-  return (0, import_node_crypto5.createHash)("sha256").update(value).digest("hex");
+  return (0, import_node_crypto6.createHash)("sha256").update(value).digest("hex");
 }
 function caseKey(value) {
   return String(value).normalize("NFKC").toLocaleLowerCase("en-US");
 }
 function within(root, candidate) {
-  const value = (0, import_node_path10.relative)(root, candidate);
-  return value === "" || value !== ".." && !value.startsWith(`..${import_node_path10.sep}`) && !/^[A-Za-z]:[\\/]/.test(value);
+  const value = (0, import_node_path11.relative)(root, candidate);
+  return value === "" || value !== ".." && !value.startsWith(`..${import_node_path11.sep}`) && !/^[A-Za-z]:[\\/]/.test(value);
 }
 function decodeForSecurity(input) {
   let current = String(input);
-  for (let round = 0; round < 4; round += 1) {
+  for (let round2 = 0; round2 < 4; round2 += 1) {
     let decoded;
     try {
       decoded = decodeURIComponent(current);
@@ -3300,20 +3501,20 @@ function normalizeFileName(fileName, { asset = false } = {}) {
   if (value.startsWith(".")) throw bridgeError("BUNDLE_NAME_INVALID", "\u8D44\u6599\u5305\u6587\u4EF6\u540D\u4E0D\u80FD\u4EE5\u70B9\u5F00\u5934", 400);
   if (caseKey(value) === "index.md") return "index.md";
   if (!/\.md$/i.test(value) && !asset) throw bridgeError("BUNDLE_MARKDOWN_REQUIRED", "\u8865\u5145\u8D44\u6599\u5FC5\u987B\u662F .md \u6587\u4EF6", 415);
-  const ext = (0, import_node_path10.extname)(value).toLowerCase();
+  const ext = (0, import_node_path11.extname)(value).toLowerCase();
   if (DANGEROUS_EXTENSIONS.has(ext)) {
     throw bridgeError("BUNDLE_ASSET_TYPE_FORBIDDEN", `\u7981\u6B62\u5BFC\u5165\u7CFB\u7EDF\u53EF\u6267\u884C\u6587\u4EF6\uFF1A${ext}`, 403);
   }
   return value;
 }
 function titleMarkdown(name, title) {
-  const fallback = (0, import_node_path10.basename)(name, (0, import_node_path10.extname)(name)).slice(0, 80) || "\u672A\u547D\u540D\u8D44\u6599";
+  const fallback = (0, import_node_path11.basename)(name, (0, import_node_path11.extname)(name)).slice(0, 80) || "\u672A\u547D\u540D\u8D44\u6599";
   return `# ${String(title || fallback).slice(0, 80)}
 
 `;
 }
 function contentTypeFor(fileName) {
-  const ext = (0, import_node_path10.extname)(fileName).toLowerCase();
+  const ext = (0, import_node_path11.extname)(fileName).toLowerCase();
   if (DANGEROUS_EXTENSIONS.has(ext)) {
     throw bridgeError("BUNDLE_ASSET_TYPE_FORBIDDEN", `\u7981\u6B62\u5BFC\u5165\u7CFB\u7EDF\u53EF\u6267\u884C\u6587\u4EF6\uFF1A${ext}`, 403);
   }
@@ -3350,7 +3551,7 @@ function compareStats(left, right) {
   return Number(left.size) === Number(right.size) && Number(left.mtimeMs) === Number(right.mtimeMs) && (left.ino === void 0 || right.ino === void 0 || Number(left.ino) === Number(right.ino));
 }
 async function safeLstat(path) {
-  return (0, import_promises9.lstat)(path).catch((error3) => {
+  return (0, import_promises10.lstat)(path).catch((error3) => {
     if (error3?.code === "ENOENT") return null;
     throw error3;
   });
@@ -3359,14 +3560,14 @@ var BundleStore = class _BundleStore {
   constructor(options = {}, legacyMapKey = "default") {
     const value = typeof options === "string" ? { projectRoot: options, mapKey: legacyMapKey } : options;
     if (!value?.projectRoot) throw bridgeError("BUNDLE_PROJECT_REQUIRED", "\u8D44\u6599\u5305\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
-    this.projectRoot = (0, import_node_path10.resolve)(value.projectRoot);
+    this.projectRoot = (0, import_node_path11.resolve)(value.projectRoot);
     this.mapKey = value.mapKey ?? legacyMapKey;
     if (!isSafeMapId(this.mapKey)) throw bridgeError("INVALID_MAP_ID", "\u5730\u56FE ID \u65E0\u6548", 400, { mapKey: this.mapKey });
-    this.mapRoot = (0, import_node_path10.resolve)(value.mapDirectory ?? mapDirectory(this.projectRoot, this.mapKey));
+    this.mapRoot = (0, import_node_path11.resolve)(value.mapDirectory ?? mapDirectory(this.projectRoot, this.mapKey));
     this.clock = value.clock ?? (() => /* @__PURE__ */ new Date());
     this.faultInjector = value.faultInjector ?? (() => void 0);
-    this.lockRoot = (0, import_node_path10.join)(this.mapRoot, ".bridge", "bundle-locks");
-    this.commandRoot = (0, import_node_path10.join)(this.mapRoot, ".bridge", "bundle-commands");
+    this.lockRoot = (0, import_node_path11.join)(this.mapRoot, ".bridge", "bundle-locks");
+    this.commandRoot = (0, import_node_path11.join)(this.mapRoot, ".bridge", "bundle-commands");
     this.maxAssetBytes = value.maxAssetBytes ?? MAX_ASSET_BYTES;
     this.maxBundleFiles = value.maxBundleFiles ?? MAX_BUNDLE_FILES;
     this.maxMapAssetBytes = value.maxMapAssetBytes ?? MAX_MAP_ASSET_BYTES;
@@ -3387,22 +3588,22 @@ var BundleStore = class _BundleStore {
     await this.#assertSafePath(this.projectRoot, this.mapRoot, { allowMissing: false });
   }
   async #assertSafePath(root, candidate, { allowMissing = true } = {}) {
-    const rootReal = await (0, import_promises9.realpath)(root).catch((error3) => {
-      if (error3?.code === "ENOENT" && allowMissing) return (0, import_node_path10.resolve)(root);
+    const rootReal = await (0, import_promises10.realpath)(root).catch((error3) => {
+      if (error3?.code === "ENOENT" && allowMissing) return (0, import_node_path11.resolve)(root);
       throw error3;
     });
-    if (!within(rootReal, (0, import_node_path10.resolve)(candidate))) throw bridgeError("BUNDLE_PATH_OUTSIDE_PROJECT", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5728\u9879\u76EE\u5185", 403, { path: candidate });
-    let cursor = (0, import_node_path10.resolve)(candidate);
+    if (!within(rootReal, (0, import_node_path11.resolve)(candidate))) throw bridgeError("BUNDLE_PATH_OUTSIDE_PROJECT", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5728\u9879\u76EE\u5185", 403, { path: candidate });
+    let cursor = (0, import_node_path11.resolve)(candidate);
     while (true) {
       const metadata = await safeLstat(cursor);
       if (metadata) {
         if (metadata.isSymbolicLink()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "\u8D44\u6599\u5305\u62D2\u7EDD\u901A\u8FC7\u7B26\u53F7\u94FE\u63A5\u6216 junction \u8BBF\u95EE", 403, { path: cursor });
-        if (cursor !== (0, import_node_path10.resolve)(candidate) && !metadata.isDirectory()) throw bridgeError("BUNDLE_PATH_INVALID", "\u8D44\u6599\u5305\u7236\u8DEF\u5F84\u4E0D\u662F\u76EE\u5F55", 409, { path: cursor });
+        if (cursor !== (0, import_node_path11.resolve)(candidate) && !metadata.isDirectory()) throw bridgeError("BUNDLE_PATH_INVALID", "\u8D44\u6599\u5305\u7236\u8DEF\u5F84\u4E0D\u662F\u76EE\u5F55", 409, { path: cursor });
         if (cursor === rootReal) break;
       } else if (!allowMissing) {
         throw bridgeError("BUNDLE_NOT_FOUND", "\u8D44\u6599\u5305\u8DEF\u5F84\u4E0D\u5B58\u5728", 404, { path: cursor });
       }
-      const parent = (0, import_node_path10.dirname)(cursor);
+      const parent = (0, import_node_path11.dirname)(cursor);
       if (parent === cursor || !within(rootReal, parent)) break;
       cursor = parent;
     }
@@ -3410,11 +3611,11 @@ var BundleStore = class _BundleStore {
   #ownerInfo(input) {
     const ownerKind = normalizeOwnerKind(input.ownerKind);
     const ownerId = validateOwnerId(input.ownerId);
-    const directory = (0, import_node_path10.join)(this.mapRoot, ownerKind, ownerId);
+    const directory = (0, import_node_path11.join)(this.mapRoot, ownerKind, ownerId);
     return { ownerKind, ownerId, directory };
   }
   #lockPath(ownerKind, ownerId) {
-    return (0, import_node_path10.join)(this.lockRoot, `${digest3(`${ownerKind}/${ownerId}`)}.lock`);
+    return (0, import_node_path11.join)(this.lockRoot, `${digest3(`${ownerKind}/${ownerId}`)}.lock`);
   }
   async #withOwnerLock(info, operation) {
     await this.#ensureMapRoot();
@@ -3430,12 +3631,12 @@ var BundleStore = class _BundleStore {
   }
   async #prepareOwner(info) {
     await this.#assertSafePath(this.projectRoot, info.directory, { allowMissing: true });
-    await (0, import_promises9.mkdir)(info.directory, { recursive: true });
+    await (0, import_promises10.mkdir)(info.directory, { recursive: true });
     await this.#assertSafePath(this.projectRoot, info.directory, { allowMissing: false });
   }
   async #entries(info, { includeArchived = false } = {}) {
     await this.#assertSafePath(this.projectRoot, info.directory, { allowMissing: true });
-    const active = await (0, import_promises9.readdir)(info.directory, { withFileTypes: true }).catch((error3) => {
+    const active = await (0, import_promises10.readdir)(info.directory, { withFileTypes: true }).catch((error3) => {
       if (error3?.code === "ENOENT") return [];
       throw error3;
     });
@@ -3443,35 +3644,35 @@ var BundleStore = class _BundleStore {
     for (const entry of active) {
       if (entry.name === ".archive") continue;
       if (entry.name.startsWith(".")) continue;
-      const path = (0, import_node_path10.join)(info.directory, entry.name);
+      const path = (0, import_node_path11.join)(info.directory, entry.name);
       await this.#assertSafePath(this.projectRoot, path, { allowMissing: false });
       if (!entry.isFile()) continue;
-      if (!/\.md$/i.test(entry.name) && !ASSET_EXTENSIONS.has((0, import_node_path10.extname)(entry.name).toLowerCase())) continue;
+      if (!/\.md$/i.test(entry.name) && !ASSET_EXTENSIONS.has((0, import_node_path11.extname)(entry.name).toLowerCase())) continue;
       output.push({ name: entry.name, path, archived: false });
     }
     if (!includeArchived) return output;
-    const archivedRoot = (0, import_node_path10.join)(info.directory, ".archive");
-    const archived = await (0, import_promises9.readdir)(archivedRoot, { withFileTypes: true }).catch((error3) => {
+    const archivedRoot = (0, import_node_path11.join)(info.directory, ".archive");
+    const archived = await (0, import_promises10.readdir)(archivedRoot, { withFileTypes: true }).catch((error3) => {
       if (error3?.code === "ENOENT") return [];
       throw error3;
     });
     await this.#assertSafePath(this.projectRoot, archivedRoot, { allowMissing: true });
     for (const entry of archived) {
       if (entry.name.startsWith(".") || entry.name.endsWith(".meta.json")) continue;
-      const path = (0, import_node_path10.join)(archivedRoot, entry.name);
+      const path = (0, import_node_path11.join)(archivedRoot, entry.name);
       await this.#assertSafePath(this.projectRoot, path, { allowMissing: false });
-      if (entry.isFile() && (/\.md$/i.test(entry.name) || ASSET_EXTENSIONS.has((0, import_node_path10.extname)(entry.name).toLowerCase()))) {
+      if (entry.isFile() && (/\.md$/i.test(entry.name) || ASSET_EXTENSIONS.has((0, import_node_path11.extname)(entry.name).toLowerCase()))) {
         output.push({ name: entry.name, path, archived: true });
       }
     }
     return output;
   }
   async #fileInfo(info, entry) {
-    const metadata = await (0, import_promises9.stat)(entry.path);
+    const metadata = await (0, import_promises10.stat)(entry.path);
     const isIndex = entry.name === "index.md";
     const isMarkdown = isIndex || /\.md$/i.test(entry.name);
     const type = isMarkdown ? { mime: "text/markdown; charset=utf-8", kind: "markdown" } : contentTypeFor(entry.name);
-    const markdownContent = isMarkdown ? entry.content === void 0 ? await (0, import_promises9.readFile)(entry.path) : Buffer.from(entry.content) : void 0;
+    const markdownContent = isMarkdown ? entry.content === void 0 ? await (0, import_promises10.readFile)(entry.path) : Buffer.from(entry.content) : void 0;
     return {
       ownerKind: info.ownerKind === "nodes" ? "node" : "route",
       ownerId: info.ownerId,
@@ -3514,7 +3715,7 @@ var BundleStore = class _BundleStore {
       archived: Boolean(input.archived ?? options.archived),
       asset: Boolean(input.asset ?? options.asset)
     });
-    const data = await (0, import_promises9.readFile)(entry.path);
+    const data = await (0, import_promises10.readFile)(entry.path);
     const metadata = await this.#fileInfo(info, { ...entry, content: data });
     return { ...metadata, content: metadata.kind === "markdown" ? data.toString("utf8") : data, buffer: data };
   }
@@ -3543,7 +3744,7 @@ var BundleStore = class _BundleStore {
       if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
       const names = new Set(entries.map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = (0, import_node_path10.join)(info.directory, finalName);
+      const target = (0, import_node_path11.join)(info.directory, finalName);
       await atomicWriteFile(target, content);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
@@ -3553,7 +3754,7 @@ var BundleStore = class _BundleStore {
     const info = this.#ownerInfo(input);
     return this.#withOwnerLock(info, async () => {
       await this.#prepareOwner(info);
-      const target = (0, import_node_path10.join)(info.directory, "index.md");
+      const target = (0, import_node_path11.join)(info.directory, "index.md");
       const current = await safeLstat(target);
       if (current) {
         if (current.isSymbolicLink() || !current.isFile()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "index.md \u4E0D\u662F\u5B89\u5168\u666E\u901A\u6587\u4EF6", 403);
@@ -3581,7 +3782,7 @@ var BundleStore = class _BundleStore {
       await this.#prepareOwner(info);
       let current;
       try {
-        current = await (0, import_promises9.readFile)(entry.path);
+        current = await (0, import_promises10.readFile)(entry.path);
       } catch (error3) {
         if (error3?.code === "ENOENT") throw bridgeError("BUNDLE_NOT_FOUND", "\u8D44\u6599\u5305\u6587\u4EF6\u4E0D\u5B58\u5728", 404, { ownerKind: info.ownerKind, ownerId: info.ownerId, fileName: name });
         throw error3;
@@ -3615,19 +3816,19 @@ var BundleStore = class _BundleStore {
       const requestDigest = digest3(JSON.stringify({ name, content: input.content }));
       await this.#assertSafePath(this.projectRoot, this.commandRoot, { allowMissing: true });
       await ensureDirectory(this.commandRoot);
-      const receiptPath = (0, import_node_path10.join)(this.commandRoot, `${digest3(`${info.ownerKind}/${info.ownerId}/${name}/${commandId}`)}.json`);
+      const receiptPath = (0, import_node_path11.join)(this.commandRoot, `${digest3(`${info.ownerKind}/${info.ownerId}/${name}/${commandId}`)}.json`);
       const receipt = await readJson(receiptPath).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
         throw error3;
       })());
       if (receipt?.requestDigest !== void 0 && receipt.requestDigest !== requestDigest) {
         throw bridgeError("BUNDLE_COMMAND_REUSE", "commandId \u5DF2\u7528\u4E8E\u5176\u4ED6 Markdown \u8FFD\u52A0", 409);
       }
-      const target = (0, import_node_path10.join)(info.directory, name);
+      const target = (0, import_node_path11.join)(info.directory, name);
       const current = await safeLstat(target);
       let existing = "";
       if (current) {
         if (current.isSymbolicLink() || !current.isFile()) throw bridgeError("BUNDLE_SYMLINK_FORBIDDEN", "Markdown \u76EE\u6807\u4E0D\u662F\u5B89\u5168\u666E\u901A\u6587\u4EF6", 403);
-        existing = await (0, import_promises9.readFile)(target, "utf8");
+        existing = await (0, import_promises10.readFile)(target, "utf8");
       } else {
         const entries = await this.#entries(info, { includeArchived: true });
         if (entries.length >= MAX_BUNDLE_FILES) throw bridgeError("BUNDLE_FILE_QUOTA", "\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 200 \u4E2A\u6587\u4EF6", 413);
@@ -3682,9 +3883,18 @@ ${right}`;
       }
       const names = new Set((await this.#entries(info, { includeArchived: true })).filter((entry) => caseKey(entry.name) !== caseKey(from)).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(to, names);
-      const target = (0, import_node_path10.join)(info.directory, finalName);
+      const target = (0, import_node_path11.join)(info.directory, finalName);
       await this.#assertSafePath(this.projectRoot, source.path, { allowMissing: false });
-      await (0, import_promises9.rename)(source.path, target);
+      await (0, import_promises10.rename)(source.path, target);
+      await syncMetaRename({
+        mapRoot: this.mapRoot,
+        ownerDirKind: info.ownerKind,
+        ownerId: info.ownerId,
+        directory: info.directory,
+        from: (0, import_node_path11.basename)(source.path),
+        to: finalName,
+        writeText: (path, text) => atomicWriteFile(path, text)
+      }).catch(() => void 0);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
   }
@@ -3695,14 +3905,14 @@ ${right}`;
     if (name === "index.md") throw bridgeError("BUNDLE_INDEX_IMMUTABLE", "index.md \u4E0D\u5141\u8BB8\u5F52\u6863", 409);
     return this.#withOwnerLock(info, async () => {
       const source = await this.#resolveEntry(info, name, { asset: !/\.md$/i.test(name) });
-      const archiveRoot = (0, import_node_path10.join)(info.directory, ".archive");
+      const archiveRoot = (0, import_node_path11.join)(info.directory, ".archive");
       await this.#assertSafePath(this.projectRoot, archiveRoot, { allowMissing: true });
       await ensureDirectory(archiveRoot);
       await this.#assertSafePath(this.projectRoot, archiveRoot, { allowMissing: false });
       const names = new Set((await this.#entries(info, { includeArchived: true })).filter((entry) => entry.archived).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = (0, import_node_path10.join)(archiveRoot, finalName);
-      await (0, import_promises9.rename)(source.path, target);
+      const target = (0, import_node_path11.join)(archiveRoot, finalName);
+      await (0, import_promises10.rename)(source.path, target);
       await writeJsonAtomic(`${target}.meta.json`, { archivedAt: this.clock().toISOString(), originalName: name });
       return this.#fileInfo(info, { name: finalName, path: target, archived: true });
     });
@@ -3717,15 +3927,15 @@ ${right}`;
       await this.#prepareOwner(info);
       const names = new Set((await this.#entries(info)).map((entry) => caseKey(entry.name)));
       const finalName = this.#allocateName(name, names);
-      const target = (0, import_node_path10.join)(info.directory, finalName);
-      await (0, import_promises9.rename)(source.path, target);
-      await (0, import_promises9.rm)(`${source.path}.meta.json`, { force: true }).catch(() => void 0);
+      const target = (0, import_node_path11.join)(info.directory, finalName);
+      await (0, import_promises10.rename)(source.path, target);
+      await (0, import_promises10.rm)(`${source.path}.meta.json`, { force: true }).catch(() => void 0);
       return this.#fileInfo(info, { name: finalName, path: target, archived: false });
     });
   }
   #allocateName(requested, occupied) {
     if (!occupied.has(caseKey(requested))) return requested;
-    const extension = (0, import_node_path10.extname)(requested);
+    const extension = (0, import_node_path11.extname)(requested);
     const stem = requested.slice(0, requested.length - extension.length);
     for (let suffix = 2; suffix < 1e5; suffix += 1) {
       const candidate = `${stem}-${suffix}${extension}`;
@@ -3738,20 +3948,20 @@ ${right}`;
     if (entries.length >= this.maxBundleFiles) throw bridgeError("BUNDLE_FILE_QUOTA", `\u5355\u8D44\u6599\u5305\u6700\u591A\u4FDD\u5B58 ${this.maxBundleFiles} \u4E2A\u6587\u4EF6`, 413);
     const mapEntries = [];
     for (const ownerKind of ["nodes", "routes"]) {
-      const kindRoot = (0, import_node_path10.join)(this.mapRoot, ownerKind);
+      const kindRoot = (0, import_node_path11.join)(this.mapRoot, ownerKind);
       await this.#assertSafePath(this.projectRoot, kindRoot, { allowMissing: true });
-      const owners = await (0, import_promises9.readdir)(kindRoot, { withFileTypes: true }).catch((error3) => error3?.code === "ENOENT" ? [] : (() => {
+      const owners = await (0, import_promises10.readdir)(kindRoot, { withFileTypes: true }).catch((error3) => error3?.code === "ENOENT" ? [] : (() => {
         throw error3;
       })());
       for (const owner2 of owners) {
         if (!owner2.isDirectory() || owner2.name.startsWith(".")) continue;
-        const ownerInfo = { ownerKind, ownerId: owner2.name, directory: (0, import_node_path10.join)(kindRoot, owner2.name) };
+        const ownerInfo = { ownerKind, ownerId: owner2.name, directory: (0, import_node_path11.join)(kindRoot, owner2.name) };
         const ownerEntries = await this.#entries(ownerInfo, { includeArchived: true });
         mapEntries.push(...ownerEntries.filter((entry) => !/\.md$/i.test(entry.name)));
       }
     }
     let total = incomingBytes;
-    for (const entry of mapEntries) total += (await (0, import_promises9.stat)(entry.path)).size;
+    for (const entry of mapEntries) total += (await (0, import_promises10.stat)(entry.path)).size;
     if (total > this.maxMapAssetBytes) throw bridgeError("BUNDLE_SIZE_QUOTA", `\u5355\u5730\u56FE\u9644\u4EF6\u603B\u91CF\u8D85\u8FC7 ${Math.round(this.maxMapAssetBytes / (1024 * 1024 * 1024))} GiB`, 413);
   }
   async #withMapLock(operation) {
@@ -3759,7 +3969,7 @@ ${right}`;
     await this.#assertSafePath(this.projectRoot, this.lockRoot, { allowMissing: true });
     await ensureDirectory(this.lockRoot);
     try {
-      return await withFileLock((0, import_node_path10.join)(this.lockRoot, "map-assets.lock"), operation, { timeoutMs: 1e4, staleMs: 3e4 });
+      return await withFileLock((0, import_node_path11.join)(this.lockRoot, "map-assets.lock"), operation, { timeoutMs: 1e4, staleMs: 3e4 });
     } catch (error3) {
       if (error3?.code === "LOCK_TIMEOUT") throw bridgeError("BUNDLE_BUSY", "\u5730\u56FE\u9644\u4EF6\u6B63\u5728\u88AB\u5176\u4ED6\u5199\u5165\u5360\u7528\uFF0C\u8BF7\u91CD\u8BD5", 409);
       throw error3;
@@ -3767,8 +3977,8 @@ ${right}`;
   }
   async #consumeStream(stream, temporary) {
     if (!stream || typeof stream[Symbol.asyncIterator] !== "function") throw bridgeError("BUNDLE_STREAM_REQUIRED", "\u9644\u4EF6\u5FC5\u987B\u901A\u8FC7\u53EF\u8BFB\u6D41\u5BFC\u5165", 400);
-    await ensureDirectory((0, import_node_path10.dirname)(temporary));
-    const handle = await (0, import_promises9.open)(temporary, "wx", 384);
+    await ensureDirectory((0, import_node_path11.dirname)(temporary));
+    const handle = await (0, import_promises10.open)(temporary, "wx", 384);
     let size = 0;
     const chunks = [];
     let headerSize = 0;
@@ -3790,19 +4000,19 @@ ${right}`;
     return { size, header: Buffer.concat(chunks).subarray(0, 8192) };
   }
   async #copySource(sourcePath, temporary, { allowExternal = false } = {}) {
-    const candidate = allowExternal ? (0, import_node_path10.resolve)(sourcePath) : (0, import_node_path10.resolve)(this.projectRoot, sourcePath);
+    const candidate = allowExternal ? (0, import_node_path11.resolve)(sourcePath) : (0, import_node_path11.resolve)(this.projectRoot, sourcePath);
     if (!allowExternal) await this.#assertSafePath(this.projectRoot, candidate, { allowMissing: false });
-    const before = await (0, import_promises9.stat)(candidate);
+    const before = await (0, import_promises10.stat)(candidate);
     if (!before.isFile()) throw bridgeError("BUNDLE_SOURCE_NOT_FILE", "\u9644\u4EF6\u6E90\u5FC5\u987B\u662F\u666E\u901A\u6587\u4EF6", 400);
     if (before.size > this.maxAssetBytes) throw bridgeError("BUNDLE_ASSET_TOO_LARGE", `\u5355\u9644\u4EF6\u8D85\u8FC7\u9650\u5236\uFF08\u6700\u5927 ${Math.round(this.maxAssetBytes / (1024 * 1024))} MiB\uFF09`, 413, { limit: this.maxAssetBytes });
     let handle;
     try {
       const flags = import_node_fs2.constants.O_RDONLY | (import_node_fs2.constants.O_NOFOLLOW ?? 0);
-      handle = await (0, import_promises9.open)(candidate, flags);
+      handle = await (0, import_promises10.open)(candidate, flags);
       const opened = await handle.stat();
       if (!opened.isFile() || !compareStats(before, opened)) throw bridgeError("BUNDLE_SOURCE_CHANGED", "\u9644\u4EF6\u6E90\u5728\u5BFC\u5165\u524D\u5DF2\u53D8\u5316", 409);
       const result2 = await this.#consumeStream(handle.createReadStream(), temporary);
-      const after = await (0, import_promises9.stat)(candidate);
+      const after = await (0, import_promises10.stat)(candidate);
       if (!compareStats(before, after) || result2.size !== before.size) throw bridgeError("BUNDLE_SOURCE_CHANGED", "\u9644\u4EF6\u6E90\u5728\u5BFC\u5165\u8FC7\u7A0B\u4E2D\u53D1\u751F\u53D8\u5316", 409);
       return result2;
     } catch (error3) {
@@ -3821,7 +4031,7 @@ ${right}`;
     if (declaredMime && declaredMime !== type.mime) throw bridgeError("BUNDLE_MIME_MISMATCH", "\u58F0\u660E MIME \u4E0E\u6269\u5C55\u540D\u4E0D\u4E00\u81F4", 415, { expected: type.mime, received: declaredMime });
     if (!input.sourcePath && !input.stream) throw bridgeError("BUNDLE_SOURCE_REQUIRED", "\u9644\u4EF6\u5BFC\u5165\u9700\u8981 sourcePath \u6216 stream", 400);
     await this.#prepareOwner(info);
-    const temporary = (0, import_node_path10.join)(info.directory, `.${(0, import_node_crypto5.randomBytes)(12).toString("hex")}.upload.tmp`);
+    const temporary = (0, import_node_path11.join)(info.directory, `.${(0, import_node_crypto6.randomBytes)(12).toString("hex")}.upload.tmp`);
     let imported;
     try {
       imported = input.sourcePath ? await this.#copySource(input.sourcePath, temporary, { allowExternal: input.allowExternalPath === true }) : await this.#consumeStream(input.stream, temporary);
@@ -3831,14 +4041,14 @@ ${right}`;
         await this.#quota(info, imported.size);
         const names = new Set((await this.#entries(info, { includeArchived: true })).map((entry) => caseKey(entry.name)));
         const finalName = this.#allocateName(requestedName, names);
-        const target = (0, import_node_path10.join)(info.directory, finalName);
+        const target = (0, import_node_path11.join)(info.directory, finalName);
         await this.#assertSafePath(this.projectRoot, target, { allowMissing: true });
-        await (0, import_promises9.rename)(temporary, target);
+        await (0, import_promises10.rename)(temporary, target);
         const result2 = await this.#fileInfo(info, { name: finalName, path: target, archived: false });
         return { ...result2, mimeType: type.mime, disposition: type.disposition ?? "inline" };
       }));
     } finally {
-      await (0, import_promises9.rm)(temporary, { force: true }).catch(() => void 0);
+      await (0, import_promises10.rm)(temporary, { force: true }).catch(() => void 0);
     }
   }
   async createReadStream(...args) {
@@ -3856,7 +4066,7 @@ var MapManager = class _MapManager {
   constructor(options = {}) {
     if (!options.projectRoot) throw new BridgeError("PROJECT_ROOT_REQUIRED", "MapManager \u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", { status: 400 });
     if (!options.shared) throw new BridgeError("SHARED_ADAPTER_REQUIRED", "MapManager \u9700\u8981 shared adapter", { status: 500 });
-    this.projectRoot = (0, import_node_path11.resolve)(options.projectRoot);
+    this.projectRoot = (0, import_node_path12.resolve)(options.projectRoot);
     this.shared = options.shared;
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.snapshotEvery = options.snapshotEvery;
@@ -3866,10 +4076,12 @@ var MapManager = class _MapManager {
     });
     this.onActiveMapChanged = options.onActiveMapChanged ?? (() => {
     });
+    this.ledger = options.ledger ?? null;
+    this.ledgerTimer = null;
     this.stores = /* @__PURE__ */ new Map();
     this.bundles = /* @__PURE__ */ new Map();
     this.lastImplicitKey = null;
-    this.lockPath = (0, import_node_path11.join)(this.projectRoot, ".live-dot-map", ".bridge", "map-manager.lock");
+    this.lockPath = (0, import_node_path12.join)(this.projectRoot, ".live-dot-map", ".bridge", "map-manager.lock");
   }
   static async open(options) {
     const manager = new _MapManager(options);
@@ -3877,8 +4089,23 @@ var MapManager = class _MapManager {
     return manager;
   }
   async initialize() {
+    await this.ledger?.assertPresent(this.projectRoot);
     await withFileLock(this.lockPath, () => ensureMapsLayout(this.projectRoot));
+    await this.recordLedger();
     return this;
+  }
+  /** 账本只是保护网，记账失败不能影响正常读写。 */
+  async recordLedger() {
+    if (!this.ledger) return;
+    await this.ledger.record(this.projectRoot).catch(() => void 0);
+  }
+  #scheduleLedgerRecord() {
+    if (!this.ledger || this.ledgerTimer) return;
+    this.ledgerTimer = setTimeout(() => {
+      this.ledgerTimer = null;
+      void this.recordLedger();
+    }, 5e3);
+    this.ledgerTimer.unref?.();
   }
   async #assertMapExists(mapKey) {
     if (!isSafeMapId(mapKey)) throw new BridgeError("INVALID_MAP_KEY", "mapKey \u65E0\u6548", { status: 400 });
@@ -3900,7 +4127,10 @@ var MapManager = class _MapManager {
         pollIntervalMs: this.pollIntervalMs,
         clock: this.clock,
         faultInjector: this.faultInjector,
-        onEvent: (event) => this.onEvent({ ...event, mapKey })
+        onEvent: (event) => {
+          this.#scheduleLedgerRecord();
+          this.onEvent({ ...event, mapKey });
+        }
       });
       this.stores.set(mapKey, store);
     }
@@ -3909,7 +4139,12 @@ var MapManager = class _MapManager {
   async resolve(options = {}) {
     const explicit = typeof options.mapKey === "string" && options.mapKey.length > 0;
     const mapKey = explicit ? options.mapKey : await resolveActiveMap(this.projectRoot);
-    await this.#assertMapExists(mapKey);
+    try {
+      await this.#assertMapExists(mapKey);
+    } catch (error3) {
+      if (error3?.code === "MAP_NOT_FOUND") await this.ledger?.assertPresent(this.projectRoot);
+      throw error3;
+    }
     if (!explicit && this.lastImplicitKey && this.lastImplicitKey !== mapKey) {
       const stale = this.stores.get(this.lastImplicitKey);
       await stale?.close().catch(() => void 0);
@@ -3958,6 +4193,7 @@ var MapManager = class _MapManager {
       const context = await this.resolve({ mapKey });
       await writeActiveMap(this.projectRoot, mapKey);
       this.onActiveMapChanged({ type: "active-map-changed", mapKey, documentId: context.documentId });
+      await this.recordLedger();
       return { activeMap: mapKey, documentId: context.documentId, ...context.snapshot };
     }).catch((error3) => {
       if (error3?.code === "LOCK_TIMEOUT") throw new BridgeError("MAP_MANAGER_BUSY", "\u5730\u56FE\u7BA1\u7406\u64CD\u4F5C\u7E41\u5FD9\uFF0C\u8BF7\u91CD\u8BD5", { status: 409 });
@@ -3968,16 +4204,20 @@ var MapManager = class _MapManager {
     const context = await this.resolve({ mapKey });
     const displayName = String(name ?? "").trim().slice(0, 80);
     if (!displayName) throw new BridgeError("MAP_NAME_REQUIRED", "\u5730\u56FE\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A", { status: 400 });
-    return context.store.execute({
+    const executed = await context.store.execute({
       projectId: context.documentId,
       baseRevision: context.snapshot.revision,
-      commandId: `map-rename-${(0, import_node_crypto6.randomUUID)()}`,
+      commandId: `map-rename-${(0, import_node_crypto7.randomUUID)()}`,
       actor,
-      sessionId: `map-manager-${(0, import_node_crypto6.randomUUID)()}`,
+      sessionId: `map-manager-${(0, import_node_crypto7.randomUUID)()}`,
       commands: [{ op: "set_meta", patch: { name: displayName } }]
     });
+    await this.recordLedger();
+    return executed;
   }
   async close() {
+    clearTimeout(this.ledgerTimer);
+    this.ledgerTimer = null;
     await Promise.all([...this.stores.values()].map((store) => store.close().catch(() => void 0)));
     this.stores.clear();
     this.bundles.clear();
@@ -3985,15 +4225,153 @@ var MapManager = class _MapManager {
   }
 };
 
-// src/bridge/tool-service.mjs
-var import_node_crypto8 = require("node:crypto");
+// src/bridge/map-ledger.mjs
 var import_promises11 = require("node:fs/promises");
+var import_node_os3 = require("node:os");
 var import_node_path13 = require("node:path");
+var LEDGER_VERSION = 1;
+function defaultLedgerFile(env = process.env) {
+  if (env.LIVEDOT_MAP_LEDGER_FILE) return (0, import_node_path13.resolve)(env.LIVEDOT_MAP_LEDGER_FILE);
+  if (env.LIVEDOT_RECENT_PROJECTS_FILE) return (0, import_node_path13.join)((0, import_node_path13.dirname)((0, import_node_path13.resolve)(env.LIVEDOT_RECENT_PROJECTS_FILE)), "known-maps.json");
+  if (env.LIVEDOT_TEST_ROOT) return (0, import_node_path13.join)((0, import_node_path13.resolve)(env.LIVEDOT_TEST_ROOT), "known-maps.json");
+  return (0, import_node_path13.join)((0, import_node_os3.homedir)(), ".live-dot-map", "known-maps.json");
+}
+function projectKey(projectRoot) {
+  const absolute = (0, import_node_path13.resolve)(projectRoot);
+  return process.platform === "win32" ? absolute.toLowerCase() : absolute;
+}
+async function inspectPresentMaps(projectRoot) {
+  const present = /* @__PURE__ */ new Map();
+  for (const id of await listMapIds(projectRoot)) {
+    const path = (0, import_node_path13.join)(mapsRoot(projectRoot), id, "map.json");
+    if (!await exists(path)) continue;
+    const document = await readJson(path).catch(() => null);
+    present.set(id, {
+      name: typeof document?.name === "string" && document.name ? document.name : id,
+      nodes: Array.isArray(document?.nodes) ? document.nodes.length : 0,
+      edges: Array.isArray(document?.edges) ? document.edges.length : 0,
+      revision: Number.isSafeInteger(document?.revision) ? document.revision : 0
+    });
+  }
+  return present;
+}
+function mapsMissingMessage(projectRoot, missing) {
+  const names = missing.map((map) => `\u300C${map.name || map.id}\u300D${map.nodes ? `${map.nodes} \u4E2A\u8282\u70B9` : ""}`).join("\u3001");
+  return [
+    `\u6D3B\u70B9\u5730\u56FE\u53D1\u73B0\u5730\u56FE\u4E0D\u89C1\u4E86\uFF1A\u8FD9\u4E2A\u9879\u76EE\u4EE5\u524D\u6709 ${missing.length} \u5F20\u5730\u56FE\uFF08${names}\uFF09\uFF0C\u73B0\u5728 .live-dot-map\\maps \u91CC\u627E\u4E0D\u5230\u3002`,
+    "\u4E3A\u4E86\u4E0D\u8BA9\u65B0\u5EFA\u7684\u7A7A\u5730\u56FE\u628A\u5B83\u4EEC\u76D6\u6389\uFF0C\u5DF2\u505C\u6B62\u6253\u5F00\u3002",
+    `\u8BF7\u5148\u4ECE\u5907\u4EFD\uFF08\u4F8B\u5982\u5938\u514B\u7F51\u76D8\uFF09\u628A .live-dot-map \u6587\u4EF6\u5939\u6062\u590D\u5230 ${projectRoot}\uFF0C\u518D\u91CD\u65B0\u6253\u5F00\u3002`,
+    `\u5982\u679C\u786E\u8BA4\u662F\u6545\u610F\u5220\u9664\u7684\uFF0C\u8FD0\u884C\uFF1Anode "%USERPROFILE%\\.live-dot-map\\livedot.mjs" forget-maps --project "${projectRoot}"`
+  ].join("\n");
+}
+var MapLedger = class {
+  constructor({ file, clock } = {}) {
+    this.explicitFile = file ? (0, import_node_path13.resolve)(file) : null;
+    this.clock = clock ?? (() => /* @__PURE__ */ new Date());
+  }
+  get file() {
+    return this.explicitFile ?? defaultLedgerFile();
+  }
+  async #read() {
+    try {
+      const parsed = await readJson(this.file);
+      if (parsed && typeof parsed === "object" && parsed.projects && typeof parsed.projects === "object") return { ledger: parsed, corrupt: false };
+      return { ledger: { version: LEDGER_VERSION, projects: {} }, corrupt: true };
+    } catch (error3) {
+      if (error3?.code === "ENOENT") return { ledger: { version: LEDGER_VERSION, projects: {} }, corrupt: false };
+      return { ledger: { version: LEDGER_VERSION, projects: {} }, corrupt: true };
+    }
+  }
+  async #update(mutate) {
+    const file = this.file;
+    return withFileLock(`${file}.lock`, async () => {
+      const { ledger, corrupt } = await this.#read();
+      if (corrupt) {
+        const stamp2 = this.clock().toISOString().replace(/[:.]/g, "-");
+        await (0, import_promises11.copyFile)(file, `${file}.corrupt-${stamp2}`).catch(() => void 0);
+      }
+      const result2 = await mutate(ledger);
+      await writeJsonAtomic(file, ledger);
+      return result2;
+    });
+  }
+  /** 账本里记过、但现在 map.json 已不在的地图。 */
+  async findMissing(projectRoot) {
+    const { ledger } = await this.#read();
+    const entry = ledger.projects[projectKey(projectRoot)];
+    if (!entry?.maps || typeof entry.maps !== "object") return [];
+    const known = Object.entries(entry.maps);
+    if (!known.length) return [];
+    const present = await inspectPresentMaps(projectRoot);
+    return known.filter(([id]) => !present.has(id)).map(([id, info]) => ({ id, name: String(info?.name || id), nodes: Number(info?.nodes) || 0, lastSeenAt: info?.lastSeenAt ?? null }));
+  }
+  async assertPresent(projectRoot) {
+    const missing = await this.findMissing(projectRoot);
+    if (!missing.length) return;
+    throw new BridgeError("MAPS_MISSING", mapsMissingMessage(projectRoot, missing), {
+      status: 409,
+      details: { projectRoot, missing, ledgerFile: this.file }
+    });
+  }
+  /**
+   * 记下当前在的地图。没内容的新图不入账（删了也不值得报警）；
+   * 已入账的图即使被清空也继续跟踪，账本里“不见了”的图保持原样等待恢复或 forget。
+   */
+  async record(projectRoot) {
+    const present = await inspectPresentMaps(projectRoot);
+    const now = this.clock().toISOString();
+    return this.#update((ledger) => {
+      const key = projectKey(projectRoot);
+      const entry = ledger.projects[key] ?? { root: (0, import_node_path13.resolve)(projectRoot), maps: {} };
+      entry.root = (0, import_node_path13.resolve)(projectRoot);
+      entry.maps ??= {};
+      for (const [id, info] of present) {
+        if (!entry.maps[id] && info.nodes + info.edges === 0) continue;
+        entry.maps[id] = { ...info, lastSeenAt: now };
+      }
+      if (Object.keys(entry.maps).length) {
+        entry.updatedAt = now;
+        ledger.projects[key] = entry;
+      }
+      ledger.version = LEDGER_VERSION;
+      return Object.keys(entry.maps);
+    });
+  }
+  /**
+   * 用户确认是故意删除后，把不见了的图（或指定 id）从账本移除。
+   * @param {string} projectRoot
+   * @param {string[] | null} [mapIds]
+   */
+  async forget(projectRoot, mapIds = null) {
+    const missing = await this.findMissing(projectRoot);
+    const targets = new Set(mapIds?.length ? mapIds : missing.map((map) => map.id));
+    return this.#update((ledger) => {
+      const key = projectKey(projectRoot);
+      const entry = ledger.projects[key];
+      const removed = [];
+      if (entry?.maps) {
+        for (const id of targets) {
+          if (entry.maps[id]) {
+            removed.push({ id, name: entry.maps[id].name ?? id });
+            delete entry.maps[id];
+          }
+        }
+        if (!Object.keys(entry.maps).length) delete ledger.projects[key];
+      }
+      return { removed, ledgerFile: this.file };
+    });
+  }
+};
+
+// src/bridge/tool-service.mjs
+var import_node_crypto10 = require("node:crypto");
+var import_promises13 = require("node:fs/promises");
+var import_node_path15 = require("node:path");
 
 // src/bridge/context-document-provider.mjs
-var import_node_crypto7 = require("node:crypto");
-var import_promises10 = require("node:fs/promises");
-var import_node_path12 = require("node:path");
+var import_node_crypto8 = require("node:crypto");
+var import_promises12 = require("node:fs/promises");
+var import_node_path14 = require("node:path");
 var MAX_MARKDOWN_BYTES3 = 2 * 1024 * 1024;
 var SAFE_OWNER_ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
 var ASSET_TYPES2 = Object.freeze(Object.fromEntries(
@@ -4011,14 +4389,14 @@ function textPath(value) {
   return value.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 function within2(root, candidate) {
-  const value = (0, import_node_path12.relative)(root, candidate);
-  return value === "" || value !== ".." && !value.startsWith(`..${import_node_path12.sep}`) && !/^[A-Za-z]:[\\/]/.test(value);
+  const value = (0, import_node_path14.relative)(root, candidate);
+  return value === "" || value !== ".." && !value.startsWith(`..${import_node_path14.sep}`) && !/^[A-Za-z]:[\\/]/.test(value);
 }
 function projectRelative(root, candidate) {
-  return (0, import_node_path12.relative)(root, candidate).replace(/\\/g, "/");
+  return (0, import_node_path14.relative)(root, candidate).replace(/\\/g, "/");
 }
 function digest4(content) {
-  return (0, import_node_crypto7.createHash)("sha256").update(content).digest("hex");
+  return (0, import_node_crypto8.createHash)("sha256").update(content).digest("hex");
 }
 function collectionOwner(collection, item) {
   const ownerId = String(item?.id ?? "");
@@ -4060,18 +4438,18 @@ function activeObjects(document, includeHistory) {
   return { owners, routeVisible, nodeVisible, edgeVisible };
 }
 async function requireRegularPath(root, candidate, { allowMissing = false } = {}) {
-  const rootReal = await (0, import_promises10.realpath)(root).catch((error3) => {
+  const rootReal = await (0, import_promises12.realpath)(root).catch((error3) => {
     if (error3?.code === "ENOENT") throw contextError("CONTEXT_PROJECT_NOT_FOUND", "\u4E0A\u4E0B\u6587\u9879\u76EE\u6839\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
     throw error3;
   });
-  const resolved = (0, import_node_path12.resolve)(candidate);
+  const resolved = (0, import_node_path14.resolve)(candidate);
   if (!within2(rootReal, resolved)) throw contextError("CONTEXT_PATH_OUTSIDE_PROJECT", "\u4E0A\u4E0B\u6587\u6587\u4EF6\u4E0D\u5728\u9879\u76EE\u6839\u76EE\u5F55\u5185", 403, { path: candidate });
   let cursor = resolved;
   let target;
   while (true) {
     let metadata;
     try {
-      metadata = await (0, import_promises10.lstat)(cursor);
+      metadata = await (0, import_promises12.lstat)(cursor);
     } catch (error3) {
       if (error3?.code !== "ENOENT") throw error3;
       if (!allowMissing) throw contextError("CONTEXT_FILE_NOT_FOUND", "\u4E0A\u4E0B\u6587\u6587\u4EF6\u4E0D\u5B58\u5728", 404, { path: candidate });
@@ -4088,17 +4466,17 @@ async function requireRegularPath(root, candidate, { allowMissing = false } = {}
   return { rootReal, resolved, metadata: target };
 }
 async function requireSafeDirectory(root, candidate, { allowMissing = true } = {}) {
-  const rootReal = await (0, import_promises10.realpath)(root).catch((error3) => {
+  const rootReal = await (0, import_promises12.realpath)(root).catch((error3) => {
     if (error3?.code === "ENOENT") throw contextError("CONTEXT_PROJECT_NOT_FOUND", "\u4E0A\u4E0B\u6587\u9879\u76EE\u6839\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
     throw error3;
   });
-  const resolved = (0, import_node_path12.resolve)(candidate);
+  const resolved = (0, import_node_path14.resolve)(candidate);
   if (!within2(rootReal, resolved)) throw contextError("CONTEXT_PATH_OUTSIDE_PROJECT", "\u4E0A\u4E0B\u6587\u76EE\u5F55\u4E0D\u5728\u9879\u76EE\u6839\u76EE\u5F55\u5185", 403, { path: candidate });
   let cursor = resolved;
   while (true) {
     let metadata;
     try {
-      metadata = await (0, import_promises10.lstat)(cursor);
+      metadata = await (0, import_promises12.lstat)(cursor);
     } catch (error3) {
       if (error3?.code !== "ENOENT") throw error3;
       if (!allowMissing) throw contextError("CONTEXT_DIRECTORY_NOT_FOUND", "\u4E0A\u4E0B\u6587\u76EE\u5F55\u4E0D\u5B58\u5728", 404, { path: candidate });
@@ -4113,8 +4491,8 @@ async function requireSafeDirectory(root, candidate, { allowMissing = true } = {
   return { rootReal, resolved };
 }
 function dirnameSafe(value) {
-  const normalized = (0, import_node_path12.resolve)(value);
-  const parent = (0, import_node_path12.resolve)(normalized, "..");
+  const normalized = (0, import_node_path14.resolve)(value);
+  const parent = (0, import_node_path14.resolve)(normalized, "..");
   return parent === normalized ? normalized : parent;
 }
 function isReservedRelative(relativePath) {
@@ -4126,7 +4504,7 @@ function isReservedRelative(relativePath) {
   return false;
 }
 function normalizedMapRoot(root, mapKey) {
-  return (0, import_node_path12.resolve)(root, ".live-dot-map", "maps", mapKey);
+  return (0, import_node_path14.resolve)(root, ".live-dot-map", "maps", mapKey);
 }
 function isInsideMap(root, mapRoot, candidate) {
   const mapRelative = projectRelative(root, mapRoot).toLowerCase().replace(/\\/g, "/");
@@ -4147,14 +4525,14 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
   if (typeof projectRoot !== "string" || !projectRoot.trim()) throw contextError("CONTEXT_PROJECT_REQUIRED", "\u4E0A\u4E0B\u6587\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
   if (!isSafeMapId(mapKey)) throw contextError("CONTEXT_MAP_INVALID", "\u4E0A\u4E0B\u6587\u5730\u56FE ID \u65E0\u6548", 400, { mapKey });
   if (!document || typeof document !== "object") throw contextError("CONTEXT_DOCUMENT_REQUIRED", "\u4E0A\u4E0B\u6587\u9700\u8981\u5F53\u524D\u5730\u56FE\u6587\u6863", 400);
-  const root = (0, import_node_path12.resolve)(projectRoot);
+  const root = (0, import_node_path14.resolve)(projectRoot);
   const mapRoot = normalizedMapRoot(root, mapKey);
   const mapDir = `.live-dot-map/maps/${mapKey}`;
   const result2 = { mapKey, mapDir, markdown: [], assets: [] };
   const markdownByPath = /* @__PURE__ */ new Map();
   const assetsByPath = /* @__PURE__ */ new Map();
   const { owners } = activeObjects(document, includeHistory === true);
-  const mapMetadata = await (0, import_promises10.lstat)(mapRoot).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
+  const mapMetadata = await (0, import_promises12.lstat)(mapRoot).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
     throw error3;
   })());
   if (mapMetadata?.isSymbolicLink()) throw contextError("CONTEXT_SYMLINK_FORBIDDEN", "\u5F53\u524D\u5730\u56FE\u76EE\u5F55\u4E0D\u5141\u8BB8\u662F\u7B26\u53F7\u94FE\u63A5", 403, { path: mapRoot });
@@ -4165,7 +4543,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
     const safety = await requireRegularPath(root, candidate, { allowMissing });
     if (!safety.metadata) return;
     if (safety.metadata.size > MAX_MARKDOWN_BYTES3) throw contextError("CONTEXT_MARKDOWN_TOO_LARGE", "\u4E0A\u4E0B\u6587 Markdown \u8D85\u8FC7 2 MiB", 413, { path: candidate, size: safety.metadata.size });
-    const content = await (0, import_promises10.readFile)(safety.resolved, "utf8");
+    const content = await (0, import_promises12.readFile)(safety.resolved, "utf8");
     const path = projectRelative(root, safety.resolved);
     const existing = markdownByPath.get(path.toLowerCase());
     if (existing) {
@@ -4198,7 +4576,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
       mergeOwner(existing, owner2);
       return;
     }
-    const type = ASSET_TYPES2[(0, import_node_path12.extname)(name).toLowerCase()] ?? { kind: "file", mimeType: "application/octet-stream" };
+    const type = ASSET_TYPES2[(0, import_node_path14.extname)(name).toLowerCase()] ?? { kind: "file", mimeType: "application/octet-stream" };
     const info = {
       path: relativePath,
       fileName: name,
@@ -4237,6 +4615,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
       etag: String(card.etag ?? ""),
       updatedAt: String(card.updatedAt ?? ""),
       summaryOnly: true,
+      ...typeof card.lead === "string" ? { lead: card.lead } : {},
       assets: Array.isArray(card.assets) ? card.assets : [],
       owners: [{ ownerKind: owner2.ownerKind, ownerId: owner2.ownerId }]
     };
@@ -4244,19 +4623,19 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
     result2.markdown.push(info);
   };
   const scanOwner = async (owner2) => {
-    const directory = (0, import_node_path12.join)(mapRoot, owner2.directoryKind, owner2.ownerId);
-    const ownerMetadata = await (0, import_promises10.lstat)(directory).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
+    const directory = (0, import_node_path14.join)(mapRoot, owner2.directoryKind, owner2.ownerId);
+    const ownerMetadata = await (0, import_promises12.lstat)(directory).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
       throw error3;
     })());
     if (!ownerMetadata) return;
     if (ownerMetadata.isSymbolicLink()) throw contextError("CONTEXT_SYMLINK_FORBIDDEN", "\u8D44\u6599\u5305\u5BF9\u8C61\u76EE\u5F55\u4E0D\u5141\u8BB8\u662F\u7B26\u53F7\u94FE\u63A5", 403, { path: directory });
     if (!ownerMetadata.isDirectory()) throw contextError("CONTEXT_NOT_DIRECTORY", "\u8D44\u6599\u5305\u5BF9\u8C61\u8DEF\u5F84\u4E0D\u662F\u76EE\u5F55", 409, { path: directory });
-    const entries = await (0, import_promises10.readdir)(directory, { withFileTypes: true });
+    const entries = await (0, import_promises12.readdir)(directory, { withFileTypes: true });
     const useIndex = mdIndex && typeof mdIndex.getOrRefreshCard === "function";
     for (const entry of entries) {
       if (entry.name === ".archive" || entry.name.startsWith(".")) continue;
-      const candidate = (0, import_node_path12.join)(directory, entry.name);
-      const metadata = await (0, import_promises10.lstat)(candidate).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
+      const candidate = (0, import_node_path14.join)(directory, entry.name);
+      const metadata = await (0, import_promises12.lstat)(candidate).catch((error3) => error3?.code === "ENOENT" ? null : (() => {
         throw error3;
       })());
       if (!metadata) continue;
@@ -4270,7 +4649,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
         } else {
           await addMarkdown(candidate, owner2, "bundle");
         }
-      } else if (ASSET_TYPES2[(0, import_node_path12.extname)(entry.name).toLowerCase()]) {
+      } else if (ASSET_TYPES2[(0, import_node_path14.extname)(entry.name).toLowerCase()]) {
         await addAsset(candidate, owner2, entry.name);
       }
     }
@@ -4279,7 +4658,7 @@ async function collect({ projectRoot, mapKey, document, includeHistory = false, 
   for (const owner2 of owners) {
     const pointer = textPath(owner2.item?.md);
     if (!pointer || !/\.md$/i.test(pointer)) continue;
-    const candidate = (0, import_node_path12.resolve)(root, pointer);
+    const candidate = (0, import_node_path14.resolve)(root, pointer);
     const relativePath = projectRelative(root, candidate);
     if (isReservedRelative(relativePath)) continue;
     if (!within2(root, candidate)) continue;
@@ -4302,6 +4681,851 @@ var ContextDocumentProvider = class {
     return collect(input);
   }
 };
+
+// src/bridge/agent-tools.mjs
+var import_node_crypto9 = require("node:crypto");
+
+// src/bridge/analysis.mjs
+var MIN_GROUP = 5;
+var MAX_ROWS_OUT = 20;
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+  const source = text.replace(/^\uFEFF/, "");
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quoted) {
+      if (char === '"') {
+        if (source[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else quoted = false;
+      } else field += char;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === ",") {
+      row.push(field);
+      field = "";
+    } else if (char === "\n" || char === "\r") {
+      if (char === "\r" && source[index + 1] === "\n") index += 1;
+      row.push(field);
+      field = "";
+      if (row.some((cell) => cell.trim() !== "")) rows.push(row);
+      row = [];
+    } else field += char;
+  }
+  row.push(field);
+  if (row.some((cell) => cell.trim() !== "")) rows.push(row);
+  if (rows.length < 2) return [];
+  const header = rows[0].map((cell, index) => cell.trim() || `\u5217${index + 1}`);
+  return rows.slice(1).map((cells) => Object.fromEntries(header.map((key, index) => [key, cells[index] ?? ""])));
+}
+function flatten(value, prefix = "", out = {}) {
+  for (const [key, inner] of Object.entries(value ?? {})) {
+    const name = prefix ? `${prefix}.${key}` : key;
+    if (inner && typeof inner === "object" && !Array.isArray(inner)) flatten(inner, name, out);
+    else out[name] = Array.isArray(inner) ? inner.join("|") : inner;
+  }
+  return out;
+}
+function parseDataset(text, fileName = "") {
+  const lower = String(fileName).toLowerCase();
+  const body = String(text ?? "");
+  if (lower.endsWith(".csv")) return parseCsv(body);
+  if (lower.endsWith(".jsonl") || lower.endsWith(".ndjson")) {
+    return body.split(/\r?\n/).filter((line) => line.trim()).map((line, index) => {
+      try {
+        return flatten(JSON.parse(line));
+      } catch {
+        throw new BridgeError("DATASET_PARSE_FAILED", `\u7B2C ${index + 1} \u884C\u4E0D\u662F\u5408\u6CD5 JSON`, { status: 422 });
+      }
+    });
+  }
+  if (lower.endsWith(".json")) {
+    let parsed;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      throw new BridgeError("DATASET_PARSE_FAILED", "JSON \u89E3\u6790\u5931\u8D25", { status: 422 });
+    }
+    const list2 = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.rows) ? parsed.rows : null;
+    if (!list2) throw new BridgeError("DATASET_PARSE_FAILED", "JSON \u6570\u636E\u96C6\u5FC5\u987B\u662F\u5BF9\u8C61\u6570\u7EC4\u6216 {rows:[...]}", { status: 422 });
+    return list2.map((item) => flatten(item));
+  }
+  throw new BridgeError("DATASET_TYPE_UNSUPPORTED", "\u6570\u636E\u96C6\u53EA\u652F\u6301 .csv / .jsonl / .json", { status: 415 });
+}
+function toNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const text = value.trim().replace(/,/g, "");
+  if (!text) return null;
+  const match = text.match(/^(-?\d+(?:\.\d+)?)\s*(万|w|W|亿|k|K)?$/);
+  if (!match) return null;
+  const unit = { \u4E07: 1e4, w: 1e4, W: 1e4, \u4EBF: 1e8, k: 1e3, K: 1e3 }[match[2]] ?? 1;
+  return Number(match[1]) * unit;
+}
+function quantile(sorted, q) {
+  if (!sorted.length) return null;
+  const position = (sorted.length - 1) * q;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
+var round = (value) => value === null || value === void 0 ? null : Math.round(value * 100) / 100;
+function numericValues(rows, field) {
+  return rows.map((row) => toNumber(row[field])).filter((value) => value !== null);
+}
+function fieldTypes(rows) {
+  const fields = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  return fields.map((field) => {
+    const present = rows.map((row) => row[field]).filter((value) => value !== void 0 && value !== null && String(value).trim() !== "");
+    const numeric = present.filter((value) => toNumber(value) !== null).length;
+    return { field, type: present.length && numeric / present.length >= 0.8 ? "num" : "cat", present: present.length };
+  });
+}
+function aggregate(values, agg) {
+  if (agg === "count") return values.length;
+  if (!values.length) return null;
+  if (agg === "sum") return values.reduce((sum, value) => sum + value, 0);
+  if (agg === "mean") return values.reduce((sum, value) => sum + value, 0) / values.length;
+  return quantile([...values].sort((a, b) => a - b), 0.5);
+}
+function requireField(rows, field, label) {
+  if (typeof field !== "string" || !field) throw new BridgeError("ANALYSIS_PARAM_REQUIRED", `\u7F3A\u5C11 params.${label}`, { status: 400 });
+  if (!rows.some((row) => field in row)) {
+    const fields = fieldTypes(rows).map((item) => item.field).slice(0, 30).join("\u3001");
+    throw new BridgeError("ANALYSIS_FIELD_NOT_FOUND", `\u5B57\u6BB5\u300C${field}\u300D\u4E0D\u5B58\u5728\u3002\u53EF\u7528\u5B57\u6BB5\uFF1A${fields}`, { status: 422 });
+  }
+  return field;
+}
+function describe(rows) {
+  const fields = fieldTypes(rows).map(({ field, type, present }) => {
+    const missing = rows.length - present;
+    if (type === "num") {
+      const sorted = numericValues(rows, field).sort((a, b) => a - b);
+      return { field, type, missing, min: round(sorted[0]), q1: round(quantile(sorted, 0.25)), median: round(quantile(sorted, 0.5)), q3: round(quantile(sorted, 0.75)), max: round(sorted.at(-1)) };
+    }
+    const counts = /* @__PURE__ */ new Map();
+    for (const row of rows) {
+      const key = String(row[field] ?? "").trim();
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const top2 = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([value, n]) => `${value}:${n}`);
+    return { field, type, missing, distinct: counts.size, top: top2 };
+  });
+  const numeric = fields.filter((item) => item.type === "num").map((item) => `${item.field} \u4E2D\u4F4D ${item.median}`).slice(0, 3);
+  return { result: fields.slice(0, 40), summary: `${rows.length} \u884C ${fields.length} \u4E2A\u5B57\u6BB5${numeric.length ? `\uFF1B${numeric.join("\uFF0C")}` : ""}` };
+}
+function group(rows, params) {
+  const by = (Array.isArray(params.by) ? params.by : [params.by]).filter(Boolean).slice(0, 2);
+  if (!by.length) throw new BridgeError("ANALYSIS_PARAM_REQUIRED", "\u7F3A\u5C11 params.by\uFF08\u5206\u7EC4\u5B57\u6BB5\uFF0C\u6700\u591A 2 \u4E2A\uFF09", { status: 400 });
+  for (const field of by) requireField(rows, field, "by");
+  const metric = params.metric ? requireField(rows, params.metric, "metric") : null;
+  const agg = metric ? ["median", "mean", "sum", "count"].includes(params.agg) ? params.agg : "median" : "count";
+  const buckets = /* @__PURE__ */ new Map();
+  for (const row of rows) {
+    const key = by.map((field) => String(row[field] ?? "").trim() || "(\u7A7A)").join(" \xD7 ");
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(row);
+  }
+  const groups = [...buckets.entries()].map(([key, members]) => {
+    const values = metric ? numericValues(members, metric) : [];
+    const value = metric ? aggregate(values, agg) : members.length;
+    return { key, n: members.length, value: round(value), ...members.length < MIN_GROUP ? { flag: "\u6837\u672C\u4E0D\u8DB3" } : {} };
+  });
+  groups.sort((a, b) => Number(Boolean(a.flag)) - Number(Boolean(b.flag)) || (b.value ?? -Infinity) - (a.value ?? -Infinity));
+  const best = groups.find((item) => !item.flag);
+  const summary = best ? `\u6309 ${by.join("\xD7")} \u5206 ${groups.length} \u7EC4${metric ? `\uFF0C${metric} ${agg}` : ""}\u6700\u9AD8\uFF1A${best.key}\uFF08n=${best.n}${metric ? `\uFF0C${best.value}` : ""}\uFF09` : `\u6309 ${by.join("\xD7")} \u5206 ${groups.length} \u7EC4\uFF0C\u6BCF\u7EC4\u90FD\u5C11\u4E8E ${MIN_GROUP} \u6761\uFF0C\u6837\u672C\u4E0D\u8DB3`;
+  return { by, ...metric ? { metric } : {}, agg, result: groups.slice(0, MAX_ROWS_OUT), summary, ...groups.length > MAX_ROWS_OUT ? { truncated: groups.length } : {} };
+}
+function top(rows, params) {
+  const metric = requireField(rows, params.metric, "metric");
+  const ratio = Number(params.ratio) > 0 && Number(params.ratio) < 1 ? Number(params.ratio) : 0.2;
+  const scored = rows.map((row) => ({ row, value: toNumber(row[metric]) })).filter((item) => item.value !== null).sort((a, b) => b.value - a.value);
+  if (scored.length < 2) throw new BridgeError("ANALYSIS_TOO_FEW_ROWS", `\u6307\u6807\u300C${metric}\u300D\u6709\u6548\u6570\u503C\u4E0D\u8DB3 2 \u6761`, { status: 422 });
+  const cut = Math.max(1, Math.round(scored.length * ratio));
+  const head = scored.slice(0, cut).map((item) => item.row);
+  const rest = scored.slice(cut).map((item) => item.row);
+  const wanted = Array.isArray(params.fields) && params.fields.length ? params.fields.map(String) : null;
+  const types = fieldTypes(rows).filter((item) => item.field !== metric && (!wanted || wanted.includes(item.field)));
+  const diffs = [];
+  for (const { field, type } of types) {
+    if (type === "num") {
+      const headMedian = aggregate(numericValues(head, field), "median");
+      const restMedian = aggregate(numericValues(rest, field), "median");
+      if (headMedian !== null && restMedian !== null && headMedian !== restMedian) diffs.push({ field, kind: "num", top: round(headMedian), rest: round(restMedian), gap: Math.abs(headMedian - restMedian) / (Math.abs(restMedian) || 1) });
+      continue;
+    }
+    const values = new Set(rows.map((row) => String(row[field] ?? "").trim()).filter(Boolean));
+    if (values.size > 30 || !wanted && values.size > rows.length / 2) continue;
+    for (const value of values) {
+      const headShare = head.filter((row) => String(row[field] ?? "").trim() === value).length / head.length;
+      const restShare = rest.length ? rest.filter((row) => String(row[field] ?? "").trim() === value).length / rest.length : 0;
+      if (headShare !== restShare) diffs.push({ field, kind: "cat", value, top: round(headShare), rest: round(restShare), gap: Math.abs(headShare - restShare) });
+    }
+  }
+  diffs.sort((a, b) => b.gap - a.gap);
+  const result2 = diffs.slice(0, 10).map(({ gap: _gap, ...item }) => item);
+  const lead = result2[0];
+  const leadText = lead ? lead.kind === "cat" ? `${lead.field}=${lead.value} \u5360\u6BD4 \u524D\u7EC4 ${lead.top} / \u5176\u4F59 ${lead.rest}` : `${lead.field} \u4E2D\u4F4D \u524D\u7EC4 ${lead.top} / \u5176\u4F59 ${lead.rest}` : "\u65E0\u660E\u663E\u5DEE\u5F02\u5B57\u6BB5";
+  return {
+    result: result2,
+    summary: `${metric} \u524D ${Math.round(ratio * 100)}%\uFF08n=${head.length}\uFF09\u5BF9\u6BD4\u5176\u4F59\uFF08n=${rest.length}\uFF09\uFF1A${leadText}${head.length < MIN_GROUP ? "\uFF1B\u524D\u7EC4\u6837\u672C\u4E0D\u8DB3" : ""}`,
+    groups: { top: head.length, rest: rest.length }
+  };
+}
+var ANALYSIS_OPS = Object.freeze(["describe", "group", "top"]);
+function runAnalysis(rows, op, params = {}) {
+  if (!Array.isArray(rows) || rows.length === 0) throw new BridgeError("DATASET_EMPTY", "\u6570\u636E\u96C6\u4E3A\u7A7A\u6216\u6CA1\u6709\u8868\u5934", { status: 422 });
+  const options = params && typeof params === "object" ? params : {};
+  if (op === "describe") return { rows: rows.length, op, ...describe(rows) };
+  if (op === "group") return { rows: rows.length, op, ...group(rows, options) };
+  if (op === "top") return { rows: rows.length, op, ...top(rows, options) };
+  throw new BridgeError("ANALYSIS_OP_UNKNOWN", `\u672A\u77E5 op\u300C${op}\u300D\uFF0C\u53EF\u7528\uFF1A${ANALYSIS_OPS.join(" | ")}`, { status: 400 });
+}
+
+// src/bridge/agent-tools.mjs
+var def = (name, description, properties, required2 = []) => ({
+  name,
+  description,
+  inputSchema: { type: "object", properties, ...required2.length ? { required: required2 } : {}, additionalProperties: true }
+});
+var MANAGE_ACTIONS = Object.freeze([
+  "maps",
+  "create_map",
+  "switch_map",
+  "rename_map",
+  "files",
+  "rename_file",
+  "archive",
+  "restore",
+  "import",
+  "validate",
+  "checkpoint",
+  "plan",
+  "human"
+]);
+var AGENT_TOOL_DEFINITIONS = Object.freeze([
+  def("map_look", "\u770B\u5730\u56FE\u76EE\u5F55\uFF0C\u4E0D\u542B\u6B63\u6587\u3002\u4E0D\u5E26 query \u8FD4\u56DE\u6574\u5F20\u76EE\u5F55\uFF08\u6BCF\u9879\u4E00\u53E5\u6458\u8981\uFF0C\u6309\u610F\u601D\u81EA\u5DF1\u6311\uFF09\uFF1B\u5E26 query \u8FD4\u56DE\u5173\u952E\u8BCD\u76F8\u5173\u9879\u548C\u7406\u7531\uFF0C\u6CA1\u547D\u4E2D\u5C31\u6362\u4E2A\u8BF4\u6CD5\u3002\u518D\u7528 map_read \u8BFB\u6B63\u6587\u3002", {
+    query: { type: "string", description: "\u5173\u952E\u8BCD\uFF0C\u53EF\u7A7A" },
+    nodeId: { type: "string" },
+    limit: { type: "integer", minimum: 1, maximum: 12 }
+  }),
+  def("map_read", '\u8BFB\u6B63\u6587\uFF08index.md \u9644\u5E26\u8BE5\u8282\u70B9\u7684\u6807\u6CE8 anns\uFF09\u3002path \u7528 look \u7ED9\u7684\u8DEF\u5F84\u6216\u8282\u70B9 id\uFF1B\u540C\u4F1A\u8BDD\u5185\u672A\u53D8\u5316\u7684\u6587\u4EF6\u53EA\u56DE unchanged\uFF0Cforce:true \u5F3A\u5236\u91CD\u8BFB\uFF1B\u4EE5 / \u7ED3\u5C3E\u5217\u51FA\u8D44\u6599\u5305\u6587\u4EF6\u53CA\u8BF4\u660E\u3002\u7ED3\u679C\u5E26 meta:"\u7F3A\u6458\u8981|\u6458\u8981\u8FC7\u671F|\u65E0\u8BF4\u660E" \u65F6\uFF0C\u8BFB\u61C2\u540E\u7528 map_write \u7684 meta \u8865\u4E00\u53E5\u3002', {
+    path: { type: "string" },
+    force: { type: "boolean" }
+  }, ["path"]),
+  def("map_write", "\u5199\u5165\u3002path+content \u9ED8\u8BA4\u8FFD\u52A0\uFF08\u6587\u4EF6\u4E0D\u5B58\u5728\u5219\u65B0\u5EFA\uFF09\uFF1B\u5E26 baseEtag \u4E3A\u6574\u6587\u66FF\u6362\u3002node:{name,kind} \u65B0\u5EFA\u8282\u70B9\uFF1Bmeta:{summary?, files?:{\u6587\u4EF6\u540D:\u8BF4\u660E}} \u5199 Agent\u5143\u6570\u636E\uFF08\u4E00\u53E5\u8BDD\u5BFC\u822A\uFF0C\u4E0D\u5F53\u8BC1\u636E\uFF09\uFF1Bcommands \u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002", {
+    path: { type: "string" },
+    content: { type: "string" },
+    baseEtag: { type: "string" },
+    node: { type: "object", properties: { name: { type: "string" }, kind: { type: "string", enum: ["goal", "problem"] }, near: { type: "string" } } },
+    meta: { type: "object", properties: { summary: { type: "string" }, files: { type: "object" } } },
+    commands: { type: "array", items: { type: "object" } }
+  }),
+  def("analysis_run", "\u5BF9\u8D44\u6599\u5305\u91CC\u7684 CSV/JSONL/JSON \u8868\u505A\u786E\u5B9A\u6027\u7EDF\u8BA1\uFF0C\u53EA\u56DE\u6458\u8981\u3002op: describe \u5B57\u6BB5\u6982\u51B5 | group \u5206\u7EC4\u5BF9\u6BD4 | top \u524D20%\u5BF9\u6BD4\u5176\u4F59\u3002", {
+    path: { type: "string" },
+    op: { type: "string", enum: [...ANALYSIS_OPS] },
+    params: { type: "object", description: "group: {by, metric?, agg?}\uFF1Btop: {metric, ratio?, fields?}" }
+  }, ["path", "op"]),
+  def("map_manage", `\u4F4E\u9891\u7BA1\u7406\u3002action: ${MANAGE_ACTIONS.join("|")}\u3002`, {
+    action: { type: "string", enum: [...MANAGE_ACTIONS] },
+    mapKey: { type: "string" },
+    name: { type: "string" },
+    path: { type: "string" },
+    to: { type: "string" },
+    sourcePath: { type: "string" }
+  }, ["action"])
+]);
+var AGENT_TOOL_NAMES = Object.freeze(AGENT_TOOL_DEFINITIONS.map((tool) => tool.name));
+var USAGE = {
+  map_look: 'map_look({query:"\u5173\u952E\u8BCD"}) \u6216 map_look({nodeId:"n3"})',
+  map_read: 'map_read({path:"nodes/n3/index.md"})\uFF0Cpath \u4E5F\u53EF\u76F4\u63A5\u5199\u8282\u70B9 id \u5982 "n3"',
+  map_write: 'map_write({path:"nodes/n3/index.md", content:"\u2026"}) \u8FFD\u52A0\uFF1B\u5E26 baseEtag \u624D\u662F\u6574\u6587\u66FF\u6362\uFF1B\u65B0\u5EFA\u8282\u70B9 map_write({node:{name:"\u2026"}, content:"\u2026"})',
+  analysis_run: 'analysis_run({path:"nodes/n3/data.csv", op:"describe|group|top", params:{by:"\u5B57\u6BB5", metric:"\u6307\u6807"}})',
+  map_manage: `map_manage({action:"${MANAGE_ACTIONS.join("|")}", \u2026})`
+};
+var LEGACY_NAME_HINTS = [
+  [/map_append_markdown/g, "map_write\uFF08\u4E0D\u5E26 baseEtag \u5373\u8FFD\u52A0\uFF09"],
+  [/map_write_markdown/g, "map_write"],
+  [/map_read_markdown/g, "map_read"],
+  [/map_get_context|map_next_candidates/g, "map_look"],
+  [/map_plan_consolidation/g, 'map_manage({action:"plan"})'],
+  [/map_ack_human_updates/g, "map_write({ack:[\u2026]})"],
+  [/map_apply_commands/g, "map_write({commands:[\u2026]})"]
+];
+function rewriteError(name, error3) {
+  if (!(error3 instanceof BridgeError)) return error3;
+  let message = String(error3.message || "");
+  for (const [pattern, replacement] of LEGACY_NAME_HINTS) message = message.replace(pattern, replacement);
+  const status = Number(error3.status) || 500;
+  if (error3.code === "MARKDOWN_CONFLICT") message += " \u5148 map_read \u62FF\u6700\u65B0 etag \u518D\u5199\uFF1B\u53EA\u60F3\u8FFD\u52A0\u5C31\u53BB\u6389 baseEtag\u3002";
+  else if (status >= 400 && status < 500 && status !== 409) message += ` \u7528\u6CD5\uFF1A${USAGE[name]}`;
+  let details = error3.details;
+  if (details && typeof details === "object" && details.current && typeof details.current === "object") {
+    details = { ...details, current: { etag: details.current.etag, size: details.current.size } };
+  }
+  return new BridgeError(error3.code, message, { status, details, cause: error3 });
+}
+function stripMapPrefix(raw) {
+  let path = String(raw ?? "").trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  let mapKey = null;
+  const scoped = path.match(/^\.live-dot-map\/maps\/([^/]+)\/(.*)$/);
+  if (scoped) {
+    mapKey = scoped[1];
+    path = scoped[2];
+  } else path = path.replace(/^\.live-dot-map\//, "");
+  return { path, mapKey };
+}
+function ownerOfId(document, id) {
+  if ((document.nodes || []).some((item) => String(item.id) === id)) return "node";
+  if ((document.edges || []).some((item) => String(item.id) === id)) return "route";
+  if ((document.routes || []).some((item) => String(item.id) === id)) return "route";
+  return null;
+}
+function parseTarget(raw, document) {
+  const { path } = stripMapPrefix(raw);
+  if (!path) throw new BridgeError("PATH_REQUIRED", "\u7F3A\u5C11 path", { status: 400 });
+  const listing = path.endsWith("/");
+  const parts = path.split("/").filter(Boolean);
+  let ownerKind;
+  let ownerId;
+  let rest;
+  if (parts[0] === "nodes" || parts[0] === "routes") {
+    if (!parts[1]) throw new BridgeError("PATH_INVALID", `\u8DEF\u5F84\u300C${raw}\u300D\u7F3A\u5C11\u5BF9\u8C61 id`, { status: 400 });
+    ownerKind = parts[0] === "nodes" ? "node" : "route";
+    ownerId = parts[1];
+    rest = parts.slice(2).join("/");
+    if (!ownerOfId(document, ownerId)) throw new BridgeError("OWNER_NOT_FOUND", `\u5F53\u524D\u5730\u56FE\u6CA1\u6709\u5BF9\u8C61\u300C${ownerId}\u300D\uFF0C\u5148\u7528 map_look \u627E id`, { status: 404 });
+  } else {
+    ownerId = parts[0];
+    ownerKind = ownerOfId(document, ownerId);
+    if (!ownerKind) throw new BridgeError("OWNER_NOT_FOUND", `\u5F53\u524D\u5730\u56FE\u6CA1\u6709\u5BF9\u8C61\u300C${ownerId}\u300D\uFF0C\u5148\u7528 map_look \u627E id`, { status: 404 });
+    rest = parts.slice(1).join("/");
+  }
+  const dir = ownerKind === "node" ? "nodes" : "routes";
+  return { ownerKind, ownerId, fileName: rest || null, listing, display: `${dir}/${ownerId}/${rest || "index.md"}` };
+}
+function scopedArgs(args) {
+  const { mapKey } = stripMapPrefix(args.path);
+  if (typeof args.mapKey === "string" && args.mapKey) return { mapKey: args.mapKey };
+  return mapKey ? { mapKey } : {};
+}
+var isMarkdownName = (name) => /\.(md|markdown)$/i.test(String(name || "index.md"));
+function relativeMapPath(value) {
+  if (typeof value !== "string" || !value) return "";
+  return stripMapPrefix(value).path;
+}
+function shortText(value, max = 40) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max)}\u2026` : text;
+}
+var SENT = /* @__PURE__ */ new Map();
+var MAX_SESSIONS = 200;
+function sentFor(key) {
+  if (!key) return null;
+  let entry = SENT.get(key);
+  if (!entry) {
+    if (SENT.size >= MAX_SESSIONS) SENT.delete(SENT.keys().next().value);
+    entry = /* @__PURE__ */ new Map();
+    SENT.set(key, entry);
+  }
+  return entry;
+}
+function sessionKey(service, mapKey, args) {
+  const session = typeof args.sessionId === "string" && args.sessionId ? args.sessionId : "";
+  return session ? `${service.actor}|${mapKey}|${session}` : "";
+}
+function objectRow(entry, document) {
+  const item = entry.value ?? {};
+  const kind = entry.kind === "nodes" ? String(item.kind ?? "goal") : entry.kind === "edges" ? "edge" : entry.kind === "routes" ? "route" : "ann";
+  let path = relativeMapPath(item.md);
+  if (!path && entry.kind === "nodes") path = `nodes/${entry.id}/index.md`;
+  if (!path && (entry.kind === "edges" || entry.kind === "routes")) path = `routes/${entry.id}/index.md`;
+  if (entry.kind === "anns") {
+    const target = item.target && typeof item.target === "object" ? String(item.target.id ?? "") : "";
+    path = target && ownerOfId(document, target) === "node" ? `nodes/${target}/index.md` : "";
+  }
+  const name = entry.kind === "anns" ? shortText(item.text, 30) : shortText(item.name ?? entry.id, 30);
+  const reason = String((entry.reasons || []).find((value) => !/^最近修改|^质量评分/.test(value)) ?? entry.reasons?.[0] ?? "");
+  return [entry.id, name, kind, path, reason.replace(/ \+\d+$/, "")];
+}
+function hasRealReason(entry) {
+  return (entry.reasons || []).some((value) => !/^最近修改|^质量评分/.test(value));
+}
+function markdownTitle(text, path) {
+  const heading = String(text ?? "").match(/^\s*#{1,6}\s+(.+)$/m);
+  return shortText(heading ? heading[1] : path.split("/").slice(-2).join("/"), 30);
+}
+var CATALOG_LIMIT = 40;
+var isHidden = (item) => item?.archived === true || item?.shelved === true;
+async function loadMetaTexts(context, documents) {
+  const texts = /* @__PURE__ */ new Map();
+  for (const doc of documents.markdown || []) {
+    if (!isMetaFile(doc.path)) continue;
+    const ownerId = String(doc.ownerId ?? "");
+    let text = doc.summaryOnly ? null : doc.text;
+    if (text == null) {
+      text = await context.bundleStore.readMarkdown({ ownerKind: doc.ownerKind, ownerId, fileName: META_FILE }).then((file) => String(file.content ?? "")).catch(() => null);
+    }
+    if (text == null) continue;
+    doc.text = text;
+    doc.summaryOnly = false;
+    const index = await context.bundleStore.readMarkdown({ ownerKind: doc.ownerKind, ownerId, fileName: "index.md" }).then((file) => String(file.content ?? "")).catch(() => "");
+    texts.set(ownerId, { text, indexVer: bodyVersion(index) });
+  }
+  return texts;
+}
+function catalogSummary(meta, indexDoc, name) {
+  const summary = meta ? metaView(parseMeta(meta.text), { indexVer: meta.indexVer }).summary : null;
+  if (summary?.text) return `${summary.text}${summary.stale ? "\uFF08\u8FC7\u671F\uFF09" : ""}`;
+  const lead = typeof indexDoc?.lead === "string" ? indexDoc.lead : indexDoc && !indexDoc.summaryOnly ? markdownLead(indexDoc.text) : "";
+  return lead === name ? "" : lead;
+}
+function catalogRows(document, documents, metaTexts) {
+  const routes = new Map((document.routes || []).map((route) => [String(route.id), route]));
+  const fileCount = /* @__PURE__ */ new Map();
+  const indexDocs = /* @__PURE__ */ new Map();
+  for (const entry of [...documents.markdown || [], ...documents.assets || []]) {
+    if (isMetaFile(entry.path)) continue;
+    for (const owner2 of entry.owners || [{ ownerId: entry.ownerId }]) {
+      const id = String(owner2.ownerId ?? "");
+      if (!id) continue;
+      fileCount.set(id, (fileCount.get(id) ?? 0) + 1);
+      if (entry.isIndex && !indexDocs.has(id)) indexDocs.set(id, entry);
+    }
+  }
+  const rows = [];
+  for (const node of document.nodes || []) {
+    if (isHidden(node) || typeof node.route === "string" && isHidden(routes.get(node.route))) continue;
+    const id = String(node.id);
+    const name = shortText(node.name ?? id, 30);
+    rows.push([id, name, String(node.kind ?? "goal"), relativeMapPath(node.md) || `nodes/${id}/index.md`, catalogSummary(metaTexts.get(id), indexDocs.get(id), name), fileCount.get(id) ?? 0]);
+  }
+  for (const edge of document.edges || []) {
+    const id = String(edge.id);
+    if (isHidden(edge) || !indexDocs.has(id)) continue;
+    const name = shortText(edge.name ?? id, 30);
+    rows.push([id, name, "edge", relativeMapPath(edge.md) || `routes/${id}/index.md`, catalogSummary(metaTexts.get(id), indexDocs.get(id), name), fileCount.get(id) ?? 0]);
+  }
+  return rows;
+}
+async function look(service, args) {
+  const { context, documents } = await service.agentView({ ...args, includeHistory: args.includeHistory === true });
+  const document = context.snapshot.document;
+  const metaTexts = await loadMetaTexts(context, documents);
+  const query = String(args.query ?? args.q ?? "").trim();
+  const nodeId = args.nodeId ?? args.currentNodeId ?? args.node;
+  const limit = Math.max(1, Math.min(12, Number.isInteger(args.limit) ? args.limit : 5));
+  const retrieved = service.shared.retrieveContext(document, query, {
+    currentNodeId: nodeId == null ? null : String(nodeId),
+    limit: 12,
+    includeHistory: args.includeHistory === true,
+    markdown: documents.markdown
+  });
+  const focused = Boolean(query) || nodeId != null;
+  const objects = retrieved.objects.filter((entry) => !focused || hasRealReason(entry));
+  const rows = objects.map((entry) => objectRow(entry, document));
+  const seenPaths = new Set(rows.map((row) => row[3]).filter(Boolean));
+  if (query) {
+    for (const hit of retrieved.markdown) {
+      let path = relativeMapPath(hit.path);
+      const source = documents.markdown.find((doc) => doc.path === hit.path);
+      const meta = isMetaFile(path);
+      if (meta) path = path.replace(/[^/]+$/, "index.md");
+      if (!path || seenPaths.has(path)) continue;
+      seenPaths.add(path);
+      const ownerId = path.split("/")[1] ?? path;
+      const owner2 = meta ? [...document.nodes || [], ...document.edges || []].find((item) => String(item.id) === ownerId) : null;
+      rows.push([ownerId, owner2 ? shortText(owner2.name ?? ownerId, 30) : markdownTitle(source?.text, path), meta ? String(owner2?.kind ?? "goal") : "md", path, meta ? "\u5143\u6570\u636E\u547D\u4E2D" : "\u6B63\u6587\u547D\u4E2D"]);
+    }
+  }
+  const goal = shortText(service.shared.buildProjectProjection(document).totalGoal, 60);
+  const result2 = {
+    map: context.mapKey,
+    name: shortText(document.name, 30),
+    rev: context.snapshot.revision,
+    ...goal ? { goal } : {}
+  };
+  if (!focused) {
+    const catalog = catalogRows(document, documents, metaTexts);
+    const cap = Number.isInteger(args.limit) ? limit : CATALOG_LIMIT;
+    Object.assign(result2, { cols: ["id", "name", "kind", "path", "summary", "files"], items: catalog.slice(0, cap) });
+    if (catalog.length > cap) Object.assign(result2, { more: catalog.length - cap, hint: "\u76EE\u5F55\u8FC7\u957F\uFF0C\u7528 query \u5173\u952E\u8BCD\u7F29\u5C0F" });
+    if (!catalog.length) result2.hint = "\u5730\u56FE\u8FD8\u6CA1\u6709\u5185\u5BB9";
+    return result2;
+  }
+  Object.assign(result2, { cols: ["id", "name", "kind", "path", "why"], items: rows.slice(0, limit) });
+  if (rows.length > limit) result2.more = rows.length - limit;
+  if (!rows.length) result2.hint = query ? "\u6CA1\u6709\u547D\u4E2D\uFF0C\u6362\u4E2A\u5173\u952E\u8BCD\u6216\u4E0D\u5E26 query \u770B\u603B\u89C8" : "\u5730\u56FE\u8FD8\u6CA1\u6709\u5185\u5BB9";
+  return result2;
+}
+async function read(service, args) {
+  const scope = scopedArgs(args);
+  const { context } = await service.agentView({ ...scope, skipDocuments: true });
+  const document = context.snapshot.document;
+  const annId = String(args.path ?? "").trim();
+  const ann = (document.anns || []).find((item) => String(item.id) === annId);
+  if (ann) {
+    const on = ann.target?.id ? `${ann.target.kind === "node" ? "nodes" : "routes"}/${ann.target.id}/index.md` : "canvas";
+    return {
+      // updatedBy 会被 ack 改成确认的 Agent，署名要看来源。
+      id: ann.id,
+      kind: "ann",
+      text: String(ann.text ?? ""),
+      on,
+      by: ann.source === "human" ? "human" : ann.createdBy ?? ann.updatedBy ?? ann.source,
+      ...ann.priority ? { priority: ann.priority } : {}
+    };
+  }
+  const target = parseTarget(args.path, document);
+  const owner2 = { ...scope, ownerKind: target.ownerKind, ownerId: target.ownerId };
+  if (target.listing) {
+    const facts = await bundleFacts(context, target, { includeArchived: args.includeArchived === true });
+    const view = await currentMeta(context, target, facts);
+    const refs = referenceLines(facts.mdTexts, facts.files.map((file2) => file2.name));
+    const describe2 = (file2) => {
+      if (file2.name === "index.md") return "\u4E3B\u6587\u6863";
+      const entry = view.files.get(file2.name);
+      if (entry) return describeEntry(entry);
+      if (refs.has(file2.name)) return `\u5F15\u7528\u5904\uFF1A${refs.get(file2.name)}`;
+      if (/\.(md|markdown)$/i.test(file2.name) && file2.title) return `\u6807\u9898\uFF1A${file2.title}`;
+      return "\u672A\u63CF\u8FF0";
+    };
+    return {
+      path: `${target.ownerKind === "node" ? "nodes" : "routes"}/${target.ownerId}/`,
+      cols: ["name", "kind", "size", "note"],
+      files: facts.all.map((file2) => [file2.name, file2.kind, file2.size, file2.archived ? "\u5DF2\u5F52\u6863" : describe2(file2)]),
+      ...view.missing.length ? { gone: view.missing.map((entry) => entry.name) } : {}
+    };
+  }
+  const fileName = target.fileName || "index.md";
+  if (!isMarkdownName(fileName)) {
+    const asset = await service.dispatchLegacy("map_read_asset", { ...owner2, fileName, includeContent: false });
+    const text = typeof asset.content === "string" ? asset.content : void 0;
+    const limit = 64 * 1024;
+    const facts = await bundleFacts(context, target);
+    const view = await currentMeta(context, target, facts);
+    const entry = view.files.get(asset.fileName ?? fileName);
+    return {
+      path: target.display,
+      kind: asset.kind,
+      mimeType: asset.mimeType,
+      size: asset.size,
+      file: asset.path,
+      ...entry ? { note: describeEntry(entry) } : view.deleted.has(`file:${fileName}`) ? {} : { meta: "\u65E0\u8BF4\u660E" },
+      ...text !== void 0 ? { content: text.length > limit ? text.slice(0, limit) : text, ...text.length > limit ? { truncated: true } : {} } : {}
+    };
+  }
+  const file = await service.dispatchLegacy("map_read_markdown", { ...owner2, fileName });
+  const sent = sentFor(sessionKey(service, context.mapKey, args));
+  if (sent && args.force !== true && sent.get(target.display) === file.etag) {
+    return { path: target.display, etag: file.etag, unchanged: true, hint: "\u5DF2\u8BFB\u8FC7\u672A\u53D8\uFF1B\u8981\u6B63\u6587\u52A0 force" };
+  }
+  sent?.set(target.display, file.etag);
+  const result2 = { path: target.display, etag: file.etag, content: String(file.content ?? "") };
+  if (fileName === "index.md") {
+    const anns = (document.anns || []).filter((ann2) => !isHidden(ann2) && String(ann2.target?.id ?? "") === target.ownerId).map((ann2) => [String(ann2.id), String(ann2.text ?? ""), ann2.source === "human" ? "human" : String(ann2.createdBy ?? ann2.source ?? "").replace(/^agent:/, "")]);
+    if (anns.length) result2.anns = anns;
+    const facts = await bundleFacts(context, target);
+    if (facts.files.length) result2.otherFiles = facts.files.length;
+    const view = await currentMeta(context, target, facts);
+    if (!view.summary && !view.deleted.has("summary")) result2.meta = "\u7F3A\u6458\u8981";
+    else if (view.summary?.stale) result2.meta = "\u6458\u8981\u8FC7\u671F";
+  }
+  return result2;
+}
+async function bundleFacts(context, target, { includeArchived = false } = {}) {
+  const store = context.bundleStore;
+  const owner2 = { ownerKind: target.ownerKind, ownerId: target.ownerId };
+  const listed = await store.list({ ...owner2, includeArchived }).catch(() => []);
+  const facts = { all: [], files: [], mdTexts: [], indexVer: "", metaText: null, metaEtag: null };
+  for (const entry of listed) {
+    const name = entry.fileName ?? entry.name;
+    if (isMetaFile(name)) {
+      if (!entry.archived) {
+        facts.metaEtag = entry.etag;
+        facts.metaText = String((await store.readMarkdown({ ...owner2, fileName: name }).catch(() => ({}))).content ?? "");
+      }
+      continue;
+    }
+    const file = { name, kind: entry.kind, size: entry.size, archived: Boolean(entry.archived) };
+    facts.all.push(file);
+    if (entry.archived) continue;
+    if (entry.kind === "markdown") {
+      const content = String((await store.readMarkdown({ ...owner2, fileName: name }).catch(() => ({}))).content ?? "");
+      facts.mdTexts.push(content);
+      file.ver = contentVersion(content);
+      if (name === "index.md") facts.indexVer = bodyVersion(content);
+      file.title = content.match(/^\s*#{1,6}\s+(.+)$/m)?.[1]?.trim() ?? "";
+    } else {
+      const asset = await store.readAsset({ ...owner2, fileName: name }).catch(() => null);
+      file.ver = asset?.buffer ? contentVersion(asset.buffer) : "";
+    }
+    if (name !== "index.md") facts.files.push(file);
+  }
+  return facts;
+}
+function metaStateFor(context, target) {
+  return metaStatePath(context.bundleStore.mapRoot, target.ownerKind === "node" ? "nodes" : "routes", target.ownerId);
+}
+async function currentMeta(context, target, facts) {
+  const state = await readMetaState(metaStateFor(context, target));
+  const { model, deleted } = reconcile(facts.metaText ?? "", state);
+  return { model, deleted, state, ...metaView(model, { files: facts.files, indexVer: facts.indexVer }) };
+}
+var collapse = (text) => String(text ?? "").replace(/\s+/g, "");
+async function writeMeta(service, context, document, args) {
+  const meta = args.meta;
+  if (!args.path) throw new BridgeError("META_PATH_REQUIRED", 'meta \u9700\u8981 path \u6307\u660E\u8282\u70B9\uFF0C\u5982 path:"n3"', { status: 400 });
+  const target = parseTarget(args.path, document);
+  const facts = await bundleFacts(context, target);
+  const current = await currentMeta(context, target, facts);
+  const { deleted } = current;
+  const model = { ...current.model, files: /* @__PURE__ */ new Map() };
+  for (const [name, entry] of current.files) model.files.set(name, stripView(entry));
+  for (const entry of current.missing) model.files.set(entry.name, stripView(entry));
+  const userAsked = meta.userAsked === true;
+  const by = String(service.actor).replace(/^agent:/, "");
+  const date = todayLabel();
+  const label = (text) => collapse(text).length >= 6 && facts.mdTexts.some((md) => collapse(md).includes(collapse(text))) ? "\u539F\u8BDD" : "\u63A8\u65AD";
+  const guard = (key, existing, what) => {
+    if (userAsked) return;
+    if (existing?.label === "\u4EBA") throw new BridgeError("META_HUMAN_LOCKED", `${what}\u662F\u4EBA\u5199/\u4EBA\u6539\u7684\uFF0CAgent \u4E0D\u6539\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u65F6\u5E26 meta.userAsked:true`, { status: 409 });
+    if (deleted.has(key)) throw new BridgeError("META_HUMAN_DELETED", `${what}\u88AB\u4EBA\u5220\u8FC7\uFF0C\u4E0D\u518D\u8865\u5199\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u65F6\u5E26 meta.userAsked:true`, { status: 409 });
+  };
+  const written = [];
+  if (typeof meta.summary === "string" && meta.summary.trim()) {
+    guard("summary", model.summary, "\u6458\u8981");
+    const text = oneLine(meta.summary, 60);
+    model.summary = { text, label: label(text), by, date, ver: facts.indexVer };
+    deleted.delete("summary");
+    written.push("summary");
+  }
+  const fileNotes = meta.files && typeof meta.files === "object" ? Object.entries(meta.files) : [];
+  for (const [rawName, rawText] of fileNotes) {
+    const name = String(rawName).split("/").pop();
+    const file = facts.files.find((item) => item.name === name);
+    if (!file) {
+      const names = facts.files.map((item) => item.name);
+      throw new BridgeError("META_FILE_NOT_FOUND", `\u8D44\u6599\u5305\u91CC\u6CA1\u6709\u6587\u4EF6\u300C${name}\u300D${names.length ? `\uFF1B\u73B0\u6709\uFF1A${names.slice(0, 20).join("\u3001")}` : ""}`, { status: 404 });
+    }
+    if (typeof rawText !== "string" || !rawText.trim()) continue;
+    guard(`file:${name}`, model.files.get(name), `\u300C${name}\u300D\u7684\u8BF4\u660E`);
+    const text = oneLine(rawText, 60);
+    model.files.set(name, { name, text, label: label(text), by, date, ver: file.ver });
+    deleted.delete(`file:${name}`);
+    written.push(name);
+  }
+  if (!written.length) throw new BridgeError("META_EMPTY", 'meta \u81F3\u5C11\u8981\u6709 summary \u6216 files:{\u6587\u4EF6\u540D:"\u8BF4\u660E"}', { status: 400 });
+  const content = renderMeta(model);
+  const owner2 = { ownerKind: target.ownerKind, ownerId: target.ownerId };
+  if (facts.metaText === null) await context.bundleStore.createMarkdown({ ...owner2, fileName: META_FILE, content });
+  else await context.bundleStore.replaceMarkdown({ ...owner2, fileName: META_FILE, content, baseEtag: facts.metaEtag });
+  await writeMetaState(metaStateFor(context, target), { written: content, deleted: [...deleted] });
+  return { path: `${target.ownerKind === "node" ? "nodes" : "routes"}/${target.ownerId}/${META_FILE}`, wrote: written };
+}
+function stripView(entry) {
+  const { stale: _stale, renamedFrom: _renamed, missing: _missing, ...rest } = entry;
+  return rest;
+}
+function nextNodeId(document) {
+  let max = 0;
+  for (const node of document.nodes || []) {
+    const match = String(node.id).match(/^n(\d+)$/);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  let id = `n${max + 1}`;
+  while ((document.nodes || []).some((node) => String(node.id) === id)) id = `n${Number(id.slice(1)) + 1}`;
+  return id;
+}
+function placeNear(document, nearId) {
+  const nodes = document.nodes || [];
+  const anchor = nodes.find((node) => String(node.id) === String(nearId)) ?? nodes.at(-1);
+  if (!anchor || typeof anchor.x !== "number" || typeof anchor.y !== "number") return { x: 80 + nodes.length * 40, y: 200 };
+  return { x: anchor.x + 240, y: anchor.y + nodes.length % 3 * 60 };
+}
+async function write(service, args) {
+  const scope = scopedArgs(args);
+  const out = { ok: true };
+  let { context } = await service.agentView({ ...scope, skipDocuments: true });
+  let document = context.snapshot.document;
+  const hasContent = typeof args.content === "string";
+  const hasMeta = Boolean(args.meta && typeof args.meta === "object");
+  if (!args.node && !args.commands && !args.ack && !hasMeta && !(args.path && hasContent)) {
+    throw new BridgeError("WRITE_NOTHING", "map_write \u81F3\u5C11\u9700\u8981 path+content\u3001node\u3001meta \u6216 commands \u4E4B\u4E00", { status: 400 });
+  }
+  if (hasContent && args.path && isMetaFile(String(args.path))) {
+    throw new BridgeError("META_WRITE_VIA_META", `${META_FILE} \u7531\u7A0B\u5E8F\u6392\u7248\uFF0C\u4E0D\u80FD\u76F4\u63A5\u5199\uFF1B\u7528 map_write({path:"n3", meta:{summary:"\u2026", files:{"\u6587\u4EF6\u540D":"\u8BF4\u660E"}}})`, { status: 400 });
+  }
+  const commands = Array.isArray(args.commands) ? [...args.commands] : [];
+  let createdNode = null;
+  if (args.node && typeof args.node === "object") {
+    const name = String(args.node.name ?? "").trim();
+    if (!name) throw new BridgeError("NODE_NAME_REQUIRED", "node.name \u4E0D\u80FD\u4E3A\u7A7A", { status: 400 });
+    createdNode = nextNodeId(document);
+    const kind = args.node.kind === "problem" ? "problem" : "goal";
+    const position = placeNear(document, args.node.near);
+    commands.push({
+      op: "create",
+      collection: "nodes",
+      value: { id: createdNode, name, kind, type: kind === "problem" ? "\u95EE\u9898" : "\u76EE\u6807", num: String((document.nodes || []).length + 1).padStart(2, "0"), ...position }
+    });
+  }
+  if (commands.length) {
+    const applied = await service.dispatchLegacy("map_apply_commands", {
+      ...scope,
+      commands,
+      ...Number.isInteger(args.baseRevision) ? { baseRevision: args.baseRevision } : {},
+      ...typeof args.commandId === "string" ? { commandId: args.commandId } : {}
+    });
+    out.rev = applied?.revision ?? applied?.snapshot?.revision;
+    if (createdNode) out.node = createdNode;
+    ({ context } = await service.agentView({ ...scope, skipDocuments: true }));
+    document = context.snapshot.document;
+  }
+  if (Array.isArray(args.ack) && args.ack.length) {
+    const ids = args.ack.map(String);
+    const summary = typeof args.summary === "string" && ids.every((id) => args.summary.includes(id)) ? args.summary : `\u5DF2\u8BFB\uFF1A${ids.join("\u3001")}`;
+    await service.dispatchLegacy("map_ack_human_updates", { ...scope, ids, summary });
+    out.acked = ids;
+  }
+  const path = args.path ?? (createdNode && hasContent ? `nodes/${createdNode}/index.md` : null);
+  if (path && hasContent) {
+    const target = parseTarget(path, document);
+    const owner2 = { ...scope, ownerKind: target.ownerKind, ownerId: target.ownerId };
+    const fileName = target.fileName || "index.md";
+    if (!isMarkdownName(fileName)) throw new BridgeError("WRITE_MARKDOWN_ONLY", '\u53EA\u80FD\u5199 .md \u6587\u4EF6\uFF1B\u9644\u4EF6\u7528 map_manage({action:"import"})', { status: 415 });
+    let result2;
+    if (typeof args.baseEtag === "string" && args.baseEtag) {
+      result2 = await service.dispatchLegacy("map_write_markdown", {
+        ...owner2,
+        fileName,
+        content: args.content,
+        baseEtag: args.baseEtag,
+        ...args.allowContentRemoval === true ? { allowContentRemoval: true } : {}
+      });
+      out.mode = "replace";
+    } else {
+      const listed = await service.dispatchLegacy("map_list_bundle_files", owner2).catch(() => ({ files: [] }));
+      const exists3 = (listed.files || []).some((file) => String(file.fileName ?? file.name).toLowerCase() === fileName.toLowerCase());
+      if (!exists3 && fileName !== "index.md") {
+        result2 = await service.dispatchLegacy("map_create_markdown", { ...owner2, fileName, content: args.content });
+        out.mode = "create";
+      } else {
+        result2 = await service.dispatchLegacy("map_append_markdown", {
+          ...owner2,
+          fileName,
+          content: args.content,
+          commandId: typeof args.commandId === "string" && args.commandId ? `${args.commandId}-md` : `agent-${(0, import_node_crypto9.randomUUID)()}`
+        });
+        out.mode = "append";
+      }
+    }
+    out.path = `${target.ownerKind === "node" ? "nodes" : "routes"}/${target.ownerId}/${result2?.fileName ?? fileName}`;
+    if (result2?.etag) out.etag = result2.etag;
+  }
+  if (hasMeta) {
+    out.meta = await writeMeta(service, context, document, { ...args, path: args.path ?? createdNode ?? void 0 });
+  } else if (createdNode) {
+    out.hint = `\u5199\u4E00\u53E5\u6458\u8981\uFF1Amap_write({path:"${createdNode}", meta:{summary:"\u2026"}})`;
+  }
+  return out;
+}
+async function analyze(service, args) {
+  const scope = scopedArgs(args);
+  const { context } = await service.agentView({ ...scope, skipDocuments: true });
+  const target = parseTarget(args.path, context.snapshot.document);
+  if (!target.fileName) throw new BridgeError("DATASET_PATH_REQUIRED", "path \u8981\u6307\u5411\u8D44\u6599\u5305\u91CC\u7684\u6570\u636E\u6587\u4EF6\uFF0C\u5982 nodes/n3/data.csv", { status: 400 });
+  const asset = await service.dispatchLegacy("map_read_asset", { ...scope, ownerKind: target.ownerKind, ownerId: target.ownerId, fileName: target.fileName, includeContent: true });
+  const text = typeof asset.content === "string" ? asset.content : asset.base64 ? Buffer.from(asset.base64, "base64").toString("utf8") : "";
+  const rows = parseDataset(text, target.fileName);
+  return { path: target.display, ...runAnalysis(rows, String(args.op ?? ""), args.params ?? {}) };
+}
+async function manage(service, args) {
+  const action = String(args.action ?? "");
+  const scope = scopedArgs(args);
+  const ownerFrom = async () => {
+    const { context } = await service.agentView({ ...scope, skipDocuments: true });
+    const target = parseTarget(args.path, context.snapshot.document);
+    return { target, owner: { ...scope, ownerKind: target.ownerKind, ownerId: target.ownerId } };
+  };
+  switch (action) {
+    case "maps": {
+      const listed = await service.dispatchLegacy("map_list", {});
+      return { active: listed.activeMap, maps: (listed.maps || []).map((item) => [item.id, item.name]) };
+    }
+    case "create_map": {
+      const created = await service.dispatchLegacy("map_create", { name: String(args.name ?? "") });
+      return { ok: true, map: created.createdMap, active: created.activeMap };
+    }
+    case "switch_map": {
+      const switched = await service.dispatchLegacy("map_switch", { mapKey: String(args.mapKey ?? args.name ?? "") });
+      return { ok: true, active: switched.activeMap };
+    }
+    case "rename_map":
+      await service.dispatchLegacy("map_rename", { mapKey: String(args.mapKey ?? ""), name: String(args.name ?? "") });
+      return { ok: true };
+    case "files": {
+      const { target, owner: owner2 } = await ownerFrom();
+      const listed = await service.dispatchLegacy("map_list_bundle_files", { ...owner2, includeArchived: args.includeArchived === true });
+      return { path: `${target.ownerKind === "node" ? "nodes" : "routes"}/${target.ownerId}/`, files: (listed.files || []).map((file) => ({ name: file.fileName ?? file.name, kind: file.kind, size: file.size, ...file.archived ? { archived: true } : {} })) };
+    }
+    case "rename_file": {
+      const { target, owner: owner2 } = await ownerFrom();
+      if (!target.fileName || !args.to) throw new BridgeError("RENAME_ARGS_REQUIRED", "rename_file \u9700\u8981 path\uFF08\u542B\u6587\u4EF6\u540D\uFF09\u548C to", { status: 400 });
+      await service.dispatchLegacy("map_rename_bundle_file", { ...owner2, from: target.fileName, to: String(args.to) });
+      return { ok: true };
+    }
+    case "archive":
+    case "restore": {
+      const { target, owner: owner2 } = await ownerFrom();
+      if (!target.fileName) throw new BridgeError("FILE_REQUIRED", `${action} \u9700\u8981 path \u6307\u5411\u5177\u4F53\u6587\u4EF6`, { status: 400 });
+      const md = isMarkdownName(target.fileName);
+      const legacy = action === "archive" ? md ? "map_archive_bundle_file" : "map_archive_asset" : md ? "map_restore_bundle_file" : "map_restore_asset";
+      await service.dispatchLegacy(legacy, { ...owner2, fileName: target.fileName });
+      return { ok: true };
+    }
+    case "import": {
+      const { target, owner: owner2 } = await ownerFrom();
+      if (!args.sourcePath) throw new BridgeError("SOURCE_PATH_REQUIRED", "import \u9700\u8981 sourcePath", { status: 400 });
+      const imported = await service.dispatchLegacy("map_import_asset", { ...owner2, sourcePath: String(args.sourcePath), ...target.fileName ? { fileName: target.fileName } : {} });
+      const importedName = imported.fileName ?? imported.name ?? "";
+      return {
+        ok: true,
+        path: `${target.ownerKind === "node" ? "nodes" : "routes"}/${target.ownerId}/${importedName}`,
+        hint: `\u5199\u4E00\u53E5\u8BF4\u660E\uFF1Amap_write({path:"${target.ownerId}", meta:{files:{"${importedName}":"\u2026"}}})`
+      };
+    }
+    case "validate": {
+      const result2 = await service.dispatchLegacy("map_validate", scope);
+      return { ok: result2.ok, ...result2.errors?.length ? { errors: result2.errors.slice(0, 10) } : {}, ...result2.orphanBundles?.length ? { orphanBundles: result2.orphanBundles } : {} };
+    }
+    case "checkpoint": {
+      const result2 = await service.dispatchLegacy("map_checkpoint", scope);
+      return { ok: true, ...result2?.id ? { id: result2.id } : {}, ...result2?.revision !== void 0 ? { rev: result2.revision } : {} };
+    }
+    case "plan":
+      return service.dispatchLegacy("map_plan_consolidation", { ...scope, maxSuggestions: Number.isInteger(args.maxSuggestions) ? args.maxSuggestions : 8 });
+    case "human": {
+      const result2 = await service.dispatchLegacy("map_list_human_updates", scope);
+      return { updates: (result2.updates || []).map((item) => [String(item.id), shortText(item.text, 60), String(item.attention ?? "")]) };
+    }
+    default:
+      throw new BridgeError("MANAGE_ACTION_UNKNOWN", `\u672A\u77E5 action\u300C${action}\u300D`, { status: 400 });
+  }
+}
+var HANDLERS = { map_look: look, map_read: read, map_write: write, analysis_run: analyze, map_manage: manage };
+async function runAgentTool(service, name, args = {}) {
+  try {
+    return await HANDLERS[name](service, args && typeof args === "object" ? args : {});
+  } catch (error3) {
+    throw rewriteError(name, error3);
+  }
+}
 
 // src/bridge/tool-service.mjs
 var schema = (name, description, properties = {}, required2 = []) => ({
@@ -4375,8 +5599,8 @@ function extractHumanLines(markdown) {
 async function syncBundleIndexToMainMarkdown(bundleStore, ownerKind, ownerId) {
   if (!bundleStore || !ownerKind || !ownerId) return;
   try {
-    const list = await bundleStore.list({ ownerKind, ownerId, includeArchived: false });
-    const otherFiles = (list || []).filter((f) => f.fileName !== "index.md" && f.name !== "index.md");
+    const list2 = await bundleStore.list({ ownerKind, ownerId, includeArchived: false });
+    const otherFiles = (list2 || []).filter((f) => f.fileName !== "index.md" && f.name !== "index.md" && !isMetaFile(f.fileName ?? f.name));
     const indexEntry = await bundleStore.readMarkdown({ ownerKind, ownerId, fileName: "index.md" }).catch(() => null);
     if (!indexEntry || typeof indexEntry.content !== "string") return;
     const currentContent = indexEntry.content;
@@ -4416,7 +5640,7 @@ ${items}
   } catch {
   }
 }
-var TOOL_DEFINITIONS = Object.freeze([
+var LEGACY_TOOL_DEFINITIONS = Object.freeze([
   schema("map_get_context", "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u7684\u7ED3\u6784\u3001\u63A8\u8FDB\u6458\u8981\u4E0E\u660E\u786E\u5173\u8054 Markdown\u3002", { query: { type: "string" }, currentNodeId: { anyOf: [{ type: "string" }, { type: "null" }] }, includeHistory: { type: "boolean" }, limit: { type: "integer", minimum: 1, maximum: 12 } }),
   schema("map_list_human_updates", "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002"),
   schema("map_ack_human_updates", "\u6458\u8981\u660E\u786E\u5F15\u7528\u6807\u6CE8 ID \u540E\u786E\u8BA4\u8BFB\u53D6\u3002", { ids: { type: "array", items: { type: "string" } }, summary: { type: "string" } }, ["ids", "summary"]),
@@ -4443,8 +5667,10 @@ var TOOL_DEFINITIONS = Object.freeze([
   schema("map_restore_asset", "\u6062\u590D\u5BF9\u8C61\u9644\u4EF6\u3002", { ...owner, fileName: { type: "string" } }, ["ownerKind", "ownerId", "fileName"]),
   schema("map_read_asset", "\u8FD4\u56DE\u5BF9\u8C61\u9644\u4EF6\u8DEF\u5F84\u4E0E\u5143\u6570\u636E\uFF08\u4E0D\u642C\u8FD0\u4E8C\u8FDB\u5236\uFF09\u3002\u6587\u672C\u7C7B\u9644 content\uFF0C\u4E8C\u8FDB\u5236\u53EF\u4F20 includeContent \u53D6 base64\u3002", { ...owner, fileName: { type: "string" }, includeContent: { type: "boolean" } }, ["ownerKind", "ownerId", "fileName"])
 ]);
-var TOOL_NAMES = Object.freeze(TOOL_DEFINITIONS.map((tool) => tool.name));
-var TOOL_NAME_SET = new Set(TOOL_NAMES);
+var TOOL_DEFINITIONS = AGENT_TOOL_DEFINITIONS;
+var LEGACY_TOOL_NAMES = Object.freeze(LEGACY_TOOL_DEFINITIONS.map((tool) => tool.name));
+var AGENT_TOOL_NAME_SET = new Set(AGENT_TOOL_NAMES);
+var TOOL_NAME_SET = new Set(LEGACY_TOOL_NAMES);
 function cleanResult(value) {
   if (!value || typeof value !== "object") return value;
   const { buffer: _buffer, stream: _stream, ...rest } = value;
@@ -4572,7 +5798,7 @@ var ToolService = class {
       await index.load();
       this.mdIndexes.set(key, index);
     }
-    await index.ensureBuilt({ mapRoot: (0, import_node_path13.join)(context.projectRoot, ".live-dot-map", "maps", context.mapKey) });
+    await index.ensureBuilt({ mapRoot: (0, import_node_path15.join)(context.projectRoot, ".live-dot-map", "maps", context.mapKey) });
     return index;
   }
   /** 写路径成功后刷单 owner 卡片（保存/改名/归档/资产/建节点等，双写全覆盖）。 */
@@ -4581,7 +5807,7 @@ var ToolService = class {
     try {
       const index = await this.#mdIndexFor(context);
       await index.refreshOwnerAndPersist({
-        mapRoot: (0, import_node_path13.join)(context.projectRoot, ".live-dot-map", "maps", context.mapKey),
+        mapRoot: (0, import_node_path15.join)(context.projectRoot, ".live-dot-map", "maps", context.mapKey),
         ownerKind: ownerKindNodeOrRoute === "route" ? "routes" : "nodes",
         ownerId: String(ownerId)
       });
@@ -4599,14 +5825,34 @@ var ToolService = class {
     return {
       projectId: context.documentId,
       baseRevision: Number.isInteger(args.baseRevision) ? args.baseRevision : context.snapshot.revision,
-      commandId: typeof args.commandId === "string" ? args.commandId : `${prefix}-${(0, import_node_crypto8.randomUUID)()}`,
+      commandId: typeof args.commandId === "string" ? args.commandId : `${prefix}-${(0, import_node_crypto10.randomUUID)()}`,
       actor: this.actor,
-      sessionId: typeof args.sessionId === "string" ? args.sessionId : `tool-${(0, import_node_crypto8.randomUUID)()}`,
+      sessionId: typeof args.sessionId === "string" ? args.sessionId : `tool-${(0, import_node_crypto10.randomUUID)()}`,
       commands
     };
   }
+  /** Agent 工具层用：解析目标地图，按需收集 Markdown/附件（skipDocuments 时跳过收集）。 */
+  async agentView(args = {}) {
+    const context = await this.#context(args);
+    if (args.skipDocuments === true) return { context, documents: { markdown: [], assets: [] } };
+    const mdIndex = await this.#mdIndexFor(context);
+    const documents = await this.contextProvider.collect({
+      projectRoot: context.projectRoot,
+      mapKey: context.mapKey,
+      document: context.snapshot.document,
+      includeHistory: args.includeHistory === true,
+      mdIndex
+    });
+    return { context, documents };
+  }
   async dispatch(name, args = {}) {
-    if (!TOOL_NAME_SET.has(name)) throw new BridgeError("UNKNOWN_MCP_TOOL", `\u672A\u77E5\u5730\u56FE\u5DE5\u5177\uFF1A${name}`, { status: 404 });
+    if (AGENT_TOOL_NAME_SET.has(name)) return runAgentTool(this, name, args);
+    return this.dispatchLegacy(name, args);
+  }
+  async dispatchLegacy(name, args = {}) {
+    if (!TOOL_NAME_SET.has(name)) {
+      throw new BridgeError("UNKNOWN_MCP_TOOL", `\u672A\u77E5\u5730\u56FE\u5DE5\u5177\uFF1A${name}\u3002\u53EF\u7528\uFF1A${AGENT_TOOL_NAMES.join("\u3001")}`, { status: 404 });
+    }
     if (name === "map_list") return this.mapManager.list();
     if (name === "map_create") return this.mapManager.create(String(args.name || ""));
     if (name === "map_switch") return this.mapManager.switch(String(args.mapKey || ""));
@@ -4707,10 +5953,10 @@ var ToolService = class {
       const knownIds = new Set([...document.nodes || [], ...document.routes || []].map((item) => String(item.id)));
       const orphanBundles = [];
       for (const kind of ["nodes", "routes"]) {
-        const dir = (0, import_node_path13.join)(context.projectRoot, ".live-dot-map", "maps", mapKey, kind);
+        const dir = (0, import_node_path15.join)(context.projectRoot, ".live-dot-map", "maps", mapKey, kind);
         let entries = [];
         try {
-          entries = await (0, import_promises11.readdir)(dir, { withFileTypes: true });
+          entries = await (0, import_promises13.readdir)(dir, { withFileTypes: true });
         } catch {
           continue;
         }
@@ -4728,10 +5974,10 @@ var ToolService = class {
     const file = ownerArgs(args, mapKey);
     const ownerCollection = file.ownerKind === "route" ? "routes" : "nodes";
     if (!(document[ownerCollection] || []).some((item) => String(item.id) === String(file.ownerId))) {
-      const bundleDir = (0, import_node_path13.join)(context.projectRoot, ".live-dot-map", "maps", mapKey, ownerCollection, String(file.ownerId));
+      const bundleDir = (0, import_node_path15.join)(context.projectRoot, ".live-dot-map", "maps", mapKey, ownerCollection, String(file.ownerId));
       let bundleDirExists = false;
       try {
-        bundleDirExists = (await (0, import_promises11.stat)(bundleDir)).isDirectory();
+        bundleDirExists = (await (0, import_promises13.stat)(bundleDir)).isDirectory();
       } catch {
       }
       if (!bundleDirExists) {
@@ -4810,10 +6056,10 @@ var ToolService = class {
     }
     if (name === "map_import_asset") {
       const sourcePath = String(args.sourcePath || "");
-      const isExt = (0, import_node_path13.isAbsolute)(sourcePath);
+      const isExt = (0, import_node_path15.isAbsolute)(sourcePath);
       const result2 = await bundleStore.importAsset({
         ...file,
-        fileName: String(args.fileName || (0, import_node_path13.basename)(sourcePath)),
+        fileName: String(args.fileName || (0, import_node_path15.basename)(sourcePath)),
         sourcePath,
         mimeType: args.mimeType,
         allowExternalPath: isExt || args.allowExternalPath === true
@@ -4847,9 +6093,9 @@ var ToolService = class {
 };
 
 // src/bridge/archive-lifecycle.mjs
-var import_node_crypto9 = require("node:crypto");
-var import_promises12 = require("node:fs/promises");
-var import_node_path14 = require("node:path");
+var import_node_crypto11 = require("node:crypto");
+var import_promises14 = require("node:fs/promises");
+var import_node_path16 = require("node:path");
 var PURGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
 var PURGE_COLLECTIONS = /* @__PURE__ */ new Set(["nodes", "routes", "edges", "anns"]);
 var ID = /^[A-Za-z][A-Za-z0-9._-]{0,127}$/;
@@ -4935,7 +6181,7 @@ function applyPhysicalPurge(document, { collection, id }, now) {
   return next;
 }
 function packagePath(mapRoot, collection, id) {
-  return (0, import_node_path14.join)(mapRoot, collection, id);
+  return (0, import_node_path16.join)(mapRoot, collection, id);
 }
 function purgePackageOwners(document, collection, id) {
   const owners = collection === "nodes" ? [{ collection: "nodes", id }] : collection === "edges" ? [{ collection: "routes", id }] : [];
@@ -4950,7 +6196,7 @@ function purgePackageOwners(document, collection, id) {
   return owners;
 }
 async function assertPackagePath(path) {
-  const metadata = await (0, import_promises12.lstat)(path).catch((cause) => {
+  const metadata = await (0, import_promises14.lstat)(path).catch((cause) => {
     if (cause?.code === "ENOENT") return null;
     throw cause;
   });
@@ -4966,16 +6212,16 @@ var ArchiveLifecycle = class {
   constructor(options = {}) {
     if (!options.store) throw error("PURGE_STORE_REQUIRED", "\u5F52\u6863\u751F\u547D\u5468\u671F\u9700\u8981 ProjectStore", 500);
     this.store = options.store;
-    this.projectRoot = (0, import_node_path14.resolve)(options.projectRoot ?? this.store.projectRoot);
-    this.mapRoot = (0, import_node_path14.resolve)(options.mapRoot ?? this.store.dataDirectory);
+    this.projectRoot = (0, import_node_path16.resolve)(options.projectRoot ?? this.store.projectRoot);
+    this.mapRoot = (0, import_node_path16.resolve)(options.mapRoot ?? this.store.dataDirectory);
     this.shared = options.shared ?? this.store.shared;
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.retentionMs = Number(options.retentionMs ?? PURGE_RETENTION_MS);
     this.recycleBin = options.recycleBin;
     this.faultInjector = options.faultInjector ?? (() => {
     });
-    this.stagingRoot = (0, import_node_path14.join)(this.mapRoot, ".bridge", "purge-staging");
-    this.lockPath = (0, import_node_path14.join)(this.mapRoot, ".bridge", "purge.lock");
+    this.stagingRoot = (0, import_node_path16.join)(this.mapRoot, ".bridge", "purge-staging");
+    this.lockPath = (0, import_node_path16.join)(this.mapRoot, ".bridge", "purge.lock");
   }
   eligible(item, options = {}) {
     return isPurgeEligible(item, { retentionMs: this.retentionMs, ...options });
@@ -4990,10 +6236,10 @@ var ArchiveLifecycle = class {
     const base = this.shared;
     const physicalShared = {
       ...base,
-      applyEnvelope(document, envelope2, options = {}) {
-        if (envelope2?.actor !== "system:purge") throw error("PURGE_ACTOR_INVALID", "\u7269\u7406\u6E05\u9664\u53EA\u80FD\u7531\u7CFB\u7EDF\u751F\u547D\u5468\u671F\u670D\u52A1\u6267\u884C", 403);
-        const command2 = envelope2?.commands?.[0];
-        if (!command2 || command2.op !== "purge" || envelope2.commands.length !== 1) throw error("PURGE_COMMAND_INVALID", "\u7269\u7406\u6E05\u9664\u547D\u4EE4\u65E0\u6548", 400);
+      applyEnvelope(document, envelope, options = {}) {
+        if (envelope?.actor !== "system:purge") throw error("PURGE_ACTOR_INVALID", "\u7269\u7406\u6E05\u9664\u53EA\u80FD\u7531\u7CFB\u7EDF\u751F\u547D\u5468\u671F\u670D\u52A1\u6267\u884C", 403);
+        const command2 = envelope?.commands?.[0];
+        if (!command2 || command2.op !== "purge" || envelope.commands.length !== 1) throw error("PURGE_COMMAND_INVALID", "\u7269\u7406\u6E05\u9664\u547D\u4EE4\u65E0\u6548", 400);
         return applyPhysicalPurge(document, command2, options.now ?? (/* @__PURE__ */ new Date()).toISOString());
       }
     };
@@ -5020,8 +6266,8 @@ var ArchiveLifecycle = class {
         const target = packagePath(txnRoot, collection, id);
         await assertPackagePath(target);
         if (await exists(target)) throw error("PURGE_STAGING_CONFLICT", "\u6E05\u9664\u6682\u5B58\u76EE\u5F55\u5DF2\u6709\u540C\u540D\u8D44\u6599\u5305", 409, { collection, id });
-        await ensureDirectory((0, import_node_path14.join)(txnRoot, collection));
-        await (0, import_promises12.rename)(source, target);
+        await ensureDirectory((0, import_node_path16.join)(txnRoot, collection));
+        await (0, import_promises14.rename)(source, target);
         moved.push({ collection, id, source, target });
       }
       return moved;
@@ -5039,8 +6285,8 @@ var ArchiveLifecycle = class {
         throw error("PURGE_PACKAGE_ROLLBACK_FAILED", "\u8D44\u6599\u5305\u5DF2\u4E0D\u5728\u6682\u5B58\u76EE\u5F55\uFF0C\u65E0\u6CD5\u6062\u590D", 500, item);
       }
       if (sourceExists) throw error("PURGE_PACKAGE_ROLLBACK_CONFLICT", "\u8D44\u6599\u5305\u6062\u590D\u76EE\u6807\u5DF2\u88AB\u5360\u7528\uFF0C\u62D2\u7EDD\u8986\u76D6", 409, item);
-      await ensureDirectory((0, import_node_path14.join)(this.mapRoot, item.collection));
-      await (0, import_promises12.rename)(item.target, item.source);
+      await ensureDirectory((0, import_node_path16.join)(this.mapRoot, item.collection));
+      await (0, import_promises14.rename)(item.target, item.source);
     }
   }
   async #rollback(snapshotName, moved, mapAttempted) {
@@ -5086,8 +6332,8 @@ var ArchiveLifecycle = class {
       }
       const snapshot = await this.store.createSnapshot();
       const snapshotName = String(snapshot.path).split(/[\\/]/).pop();
-      const transactionId = `${now.toISOString().replace(/[:.]/g, "-")}-${(0, import_node_crypto9.randomUUID)()}`;
-      const txnRoot = (0, import_node_path14.join)(this.stagingRoot, transactionId);
+      const transactionId = `${now.toISOString().replace(/[:.]/g, "-")}-${(0, import_node_crypto11.randomUUID)()}`;
+      const txnRoot = (0, import_node_path16.join)(this.stagingRoot, transactionId);
       const packageOwners = purgePackageOwners(before.document, collection, id);
       let moved = [];
       let mapAttempted = false;
@@ -5101,7 +6347,7 @@ var ArchiveLifecycle = class {
           const committed = await purgeStore.execute({
             projectId: String(before.document.mapId),
             baseRevision: before.revision,
-            commandId: String(options.commandId ?? `purge-${(0, import_node_crypto9.randomUUID)()}`),
+            commandId: String(options.commandId ?? `purge-${(0, import_node_crypto11.randomUUID)()}`),
             actor: "system:purge",
             sessionId: "archive-lifecycle",
             commands: [{ op: "purge", collection, id }]
@@ -5128,7 +6374,7 @@ var ArchiveLifecycle = class {
         await this.#rollback(snapshotName, moved, mapAttempted).catch((rollbackError) => {
           throw rollbackError;
         });
-        await (0, import_promises12.rm)(txnRoot, { recursive: true, force: true }).catch(() => void 0);
+        await (0, import_promises14.rm)(txnRoot, { recursive: true, force: true }).catch(() => void 0);
         if (cause instanceof BridgeError && cause.code.startsWith("PURGE_")) throw cause;
         if (cause?.code === "RECYCLE_BIN_FAILED") throw cause;
         throw new BridgeError("PURGE_FAILED", "\u6C38\u4E45\u6E05\u9664\u5931\u8D25\uFF0C\u5DF2\u6062\u590D\u5F52\u6863\u5BF9\u8C61\u548C\u8D44\u6599\u5305", { status: 500, cause });
@@ -5142,51 +6388,51 @@ var ArchiveLifecycle = class {
 
 // src/bridge/recycle-bin.mjs
 var import_node_child_process = require("node:child_process");
-var import_promises13 = require("node:fs/promises");
+var import_promises15 = require("node:fs/promises");
 var import_node_fs3 = require("node:fs");
-var import_node_path15 = require("node:path");
+var import_node_path17 = require("node:path");
 var TRANSACTION_ID = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function failure(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
 }
 function defaultNativeHelperPath(options = {}) {
-  if (options.helperPath) return (0, import_node_path15.resolve)(options.helperPath);
+  if (options.helperPath) return (0, import_node_path17.resolve)(options.helperPath);
   const fromEnv = options.envHelper ?? process.env.LIVEDOT_NATIVE_HELPER;
-  if (fromEnv && (0, import_node_fs3.existsSync)(fromEnv)) return (0, import_node_path15.resolve)(fromEnv);
+  if (fromEnv && (0, import_node_fs3.existsSync)(fromEnv)) return (0, import_node_path17.resolve)(fromEnv);
   const execPath = options.execPath ?? process.execPath;
-  const fromExec = (0, import_node_path15.join)((0, import_node_path15.dirname)((0, import_node_path15.resolve)(execPath)), "..", "LiveDotMapSetup.exe");
+  const fromExec = (0, import_node_path17.join)((0, import_node_path17.dirname)((0, import_node_path17.resolve)(execPath)), "..", "LiveDotMapSetup.exe");
   if ((0, import_node_fs3.existsSync)(fromExec)) return fromExec;
   if (options.localAppData) {
-    return (0, import_node_path15.join)((0, import_node_path15.resolve)(options.localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+    return (0, import_node_path17.join)((0, import_node_path17.resolve)(options.localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
   }
-  const fromRelease = (0, import_node_path15.join)(process.cwd(), "installer", "winforms", "bin", "Release", "net8.0-windows", "win-x64", "LiveDotMapSetup.exe");
+  const fromRelease = (0, import_node_path17.join)(process.cwd(), "installer", "winforms", "bin", "Release", "net8.0-windows", "win-x64", "LiveDotMapSetup.exe");
   if ((0, import_node_fs3.existsSync)(fromRelease)) return fromRelease;
-  const fromDist = (0, import_node_path15.join)(process.cwd(), "dist", "windows-installer", "LiveDotMapSetup.exe");
+  const fromDist = (0, import_node_path17.join)(process.cwd(), "dist", "windows-installer", "LiveDotMapSetup.exe");
   if ((0, import_node_fs3.existsSync)(fromDist)) return fromDist;
   const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return null;
-  return (0, import_node_path15.join)((0, import_node_path15.resolve)(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
+  return (0, import_node_path17.join)((0, import_node_path17.resolve)(localAppData), "live-dot-map", "current", "LiveDotMapSetup.exe");
 }
 async function assertPurgeStagingPath(value) {
-  const target = (0, import_node_path15.resolve)(String(value ?? ""));
-  const parts = target.split(import_node_path15.sep);
+  const target = (0, import_node_path17.resolve)(String(value ?? ""));
+  const parts = target.split(import_node_path17.sep);
   const marker = parts.findIndex((part) => part.toLowerCase() === ".live-dot-map");
   const suffix = marker >= 0 ? parts.slice(marker) : [];
   if (suffix.length !== 7 || suffix[1].toLowerCase() !== "maps" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(suffix[2]) || suffix[3].toLowerCase() !== ".bridge" || suffix[4].toLowerCase() !== "purge-staging" || !TRANSACTION_ID.test(suffix[5]) || suffix[6] !== "") {
     if (suffix.length !== 6 || suffix[1].toLowerCase() !== "maps" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(suffix[2]) || suffix[3].toLowerCase() !== ".bridge" || suffix[4].toLowerCase() !== "purge-staging" || !TRANSACTION_ID.test(suffix[5])) throw failure("PURGE_STAGING_PATH_INVALID", "\u56DE\u6536\u7AD9\u6682\u5B58\u8DEF\u5F84\u4E0D\u7B26\u5408\u4EA7\u54C1\u76EE\u5F55\u7EA6\u675F", 400, { path: target });
   }
-  let current = parts[0].endsWith(":") ? `${parts[0]}${import_node_path15.sep}` : parts[0] || import_node_path15.sep;
+  let current = parts[0].endsWith(":") ? `${parts[0]}${import_node_path17.sep}` : parts[0] || import_node_path17.sep;
   for (const part of parts.slice(1)) {
     if (!part) continue;
-    current = (0, import_node_path15.join)(current, part);
-    const metadata = await (0, import_promises13.lstat)(current).catch((cause) => {
+    current = (0, import_node_path17.join)(current, part);
+    const metadata = await (0, import_promises15.lstat)(current).catch((cause) => {
       if (cause?.code === "ENOENT") return null;
       throw cause;
     });
     if (!metadata) throw failure("PURGE_STAGING_MISSING", "\u56DE\u6536\u7AD9\u6682\u5B58\u76EE\u5F55\u4E0D\u5B58\u5728", 404, { path: current });
     if (metadata.isSymbolicLink()) throw failure("PURGE_STAGING_REPARSE_FORBIDDEN", "\u56DE\u6536\u7AD9\u6682\u5B58\u8DEF\u5F84\u4E0D\u80FD\u7ECF\u8FC7\u7B26\u53F7\u94FE\u63A5\u6216\u8054\u63A5", 403, { path: current });
   }
-  const leaf = await (0, import_promises13.lstat)(target);
+  const leaf = await (0, import_promises15.lstat)(target);
   if (!leaf.isDirectory()) throw failure("PURGE_STAGING_NOT_DIRECTORY", "\u56DE\u6536\u7AD9\u6682\u5B58\u76EE\u6807\u4E0D\u662F\u76EE\u5F55", 400, { path: target });
   return target;
 }
@@ -5247,7 +6493,7 @@ function runHelper(spawnImpl, executable, args, timeoutMs) {
 var NativeRecycleBin = class {
   constructor(options = {}) {
     const candidate = options.helperPath ?? defaultNativeHelperPath(options);
-    this.helperPath = candidate ? (0, import_node_path15.resolve)(candidate) : null;
+    this.helperPath = candidate ? (0, import_node_path17.resolve)(candidate) : null;
     this.spawnImpl = options.spawnImpl ?? import_node_child_process.spawn;
     this.timeoutMs = Math.max(1e3, Number(options.timeoutMs) || 3e4);
   }
@@ -5256,7 +6502,7 @@ var NativeRecycleBin = class {
       throw failure("RECYCLE_BIN_UNSUPPORTED", "\u7CFB\u7EDF\u56DE\u6536\u7AD9 helper \u4EC5\u5728 Windows \u5B89\u88C5\u7248\u53EF\u7528");
     }
     if (!this.helperPath) throw failure("RECYCLE_BIN_UNAVAILABLE", "\u672A\u627E\u5230\u7CFB\u7EDF\u56DE\u6536\u7AD9 helper");
-    await (0, import_promises13.access)(this.helperPath).catch(() => {
+    await (0, import_promises15.access)(this.helperPath).catch(() => {
       throw failure("RECYCLE_BIN_UNAVAILABLE", "\u672A\u627E\u5230\u7CFB\u7EDF\u56DE\u6536\u7AD9 helper");
     });
     const safePath = await assertPurgeStagingPath(stagingPath);
@@ -5266,10 +6512,10 @@ var NativeRecycleBin = class {
 
 // src/bridge/editor-service.mjs
 var import_node_child_process2 = require("node:child_process");
-var import_node_crypto10 = require("node:crypto");
-var import_node_os3 = require("node:os");
-var import_promises14 = require("node:fs/promises");
-var import_node_path16 = require("node:path");
+var import_node_crypto12 = require("node:crypto");
+var import_node_os4 = require("node:os");
+var import_promises16 = require("node:fs/promises");
+var import_node_path18 = require("node:path");
 var SETTINGS_VERSION = 1;
 var WINDOWS_EDITOR_IDS = /* @__PURE__ */ new Set(["vscode", "antigravity", "pycharm", "terminal", "gitbash", "system", "folder", "manual"]);
 var EXE_NAME = /^(Code|Antigravity|pycharm64|wt|git-bash)\.exe$/i;
@@ -5283,8 +6529,8 @@ var EXTRA_EDITORS = [
       const out = [];
       const local = process.env.LOCALAPPDATA;
       const programFiles = process.env.ProgramFiles;
-      if (local) out.push((0, import_node_path16.join)(local, "Programs", "Antigravity", "Antigravity.exe"));
-      if (programFiles) out.push((0, import_node_path16.join)(programFiles, "Antigravity", "Antigravity.exe"));
+      if (local) out.push((0, import_node_path18.join)(local, "Programs", "Antigravity", "Antigravity.exe"));
+      if (programFiles) out.push((0, import_node_path18.join)(programFiles, "Antigravity", "Antigravity.exe"));
       return out;
     }
   },
@@ -5296,12 +6542,12 @@ var EXTRA_EDITORS = [
       const out = [];
       const local = process.env.LOCALAPPDATA;
       if (local) {
-        out.push((0, import_node_path16.join)(local, "Programs", "PyCharm", "bin", "pycharm64.exe"));
-        const toolbox = (0, import_node_path16.join)(local, "JetBrains", "Toolbox", "apps");
+        out.push((0, import_node_path18.join)(local, "Programs", "PyCharm", "bin", "pycharm64.exe"));
+        const toolbox = (0, import_node_path18.join)(local, "JetBrains", "Toolbox", "apps");
         out.push(...await scanVersionedEditors(toolbox, 3));
       }
       const programFiles = process.env.ProgramFiles;
-      if (programFiles) out.push(...await scanVersionedEditors((0, import_node_path16.join)(programFiles, "JetBrains"), 1));
+      if (programFiles) out.push(...await scanVersionedEditors((0, import_node_path18.join)(programFiles, "JetBrains"), 1));
       return out;
     }
   },
@@ -5312,11 +6558,11 @@ var EXTRA_EDITORS = [
     candidates() {
       const out = [];
       const local = process.env.LOCALAPPDATA;
-      if (local) out.push((0, import_node_path16.join)(local, "Microsoft", "WindowsApps", "wt.exe"));
+      if (local) out.push((0, import_node_path18.join)(local, "Microsoft", "WindowsApps", "wt.exe"));
       return out;
     },
     getArgs(target) {
-      return ["-d", (0, import_node_path16.dirname)(target)];
+      return ["-d", (0, import_node_path18.dirname)(target)];
     }
   },
   {
@@ -5326,13 +6572,13 @@ var EXTRA_EDITORS = [
     candidates() {
       const out = [];
       const programFiles = process.env.ProgramFiles;
-      if (programFiles) out.push((0, import_node_path16.join)(programFiles, "Git", "git-bash.exe"));
+      if (programFiles) out.push((0, import_node_path18.join)(programFiles, "Git", "git-bash.exe"));
       const programFilesX86 = process.env["ProgramFiles(x86)"];
-      if (programFilesX86) out.push((0, import_node_path16.join)(programFilesX86, "Git", "git-bash.exe"));
+      if (programFilesX86) out.push((0, import_node_path18.join)(programFilesX86, "Git", "git-bash.exe"));
       return out;
     },
     getArgs(target) {
-      return [`--cd=${(0, import_node_path16.dirname)(target)}`];
+      return [`--cd=${(0, import_node_path18.dirname)(target)}`];
     }
   }
 ];
@@ -5340,15 +6586,15 @@ async function scanVersionedEditors(root, depth) {
   const found = [];
   let entries;
   try {
-    entries = await (0, import_promises14.readdir)(root, { withFileTypes: true });
+    entries = await (0, import_promises16.readdir)(root, { withFileTypes: true });
   } catch {
     return found;
   }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const dir = (0, import_node_path16.join)(root, entry.name);
+    const dir = (0, import_node_path18.join)(root, entry.name);
     if (depth <= 1) {
-      found.push((0, import_node_path16.join)(dir, "bin", "pycharm64.exe"));
+      found.push((0, import_node_path18.join)(dir, "bin", "pycharm64.exe"));
     } else {
       found.push(...await scanVersionedEditors(dir, depth - 1));
     }
@@ -5359,22 +6605,22 @@ function bridgeError2(code, message, status = 400, details) {
   return new BridgeError(code, message, { status, details });
 }
 function defaultSettingsPath() {
-  const localAppData = process.env.LOCALAPPDATA || (0, import_node_path16.join)((0, import_node_os3.homedir)(), "AppData", "Local");
-  return (0, import_node_path16.join)(localAppData, "live-dot-map", "settings.json");
+  const localAppData = process.env.LOCALAPPDATA || (0, import_node_path18.join)((0, import_node_os4.homedir)(), "AppData", "Local");
+  return (0, import_node_path18.join)(localAppData, "live-dot-map", "settings.json");
 }
 function normalizePathForCompare(path) {
-  const value = (0, import_node_path16.resolve)(path);
+  const value = (0, import_node_path18.resolve)(path);
   return process.platform === "win32" ? value.toLowerCase() : value;
 }
 function isInside(root, candidate, { allowRoot = false } = {}) {
   const rootPath = normalizePathForCompare(root);
   const candidatePath = normalizePathForCompare(candidate);
-  const rest = (0, import_node_path16.relative)(rootPath, candidatePath);
+  const rest = (0, import_node_path18.relative)(rootPath, candidatePath);
   if (!rest) return allowRoot;
-  return !rest.startsWith("..") && !(0, import_node_path16.isAbsolute)(rest) && !import_node_path16.win32.isAbsolute(rest);
+  return !rest.startsWith("..") && !(0, import_node_path18.isAbsolute)(rest) && !import_node_path18.win32.isAbsolute(rest);
 }
 function isAbsoluteAny(path) {
-  return (0, import_node_path16.isAbsolute)(path) || import_node_path16.win32.isAbsolute(path);
+  return (0, import_node_path18.isAbsolute)(path) || import_node_path18.win32.isAbsolute(path);
 }
 function isRegularFile(metadata) {
   return Boolean(metadata?.isFile?.());
@@ -5443,9 +6689,9 @@ function knownVSCodePaths() {
   const local = process.env.LOCALAPPDATA;
   const programFiles = process.env.ProgramFiles;
   const programFilesX86 = process.env["ProgramFiles(x86)"];
-  if (local) candidates.push((0, import_node_path16.join)(local, "Programs", "Microsoft VS Code", "Code.exe"));
-  if (programFiles) candidates.push((0, import_node_path16.join)(programFiles, "Microsoft VS Code", "Code.exe"));
-  if (programFilesX86) candidates.push((0, import_node_path16.join)(programFilesX86, "Microsoft VS Code", "Code.exe"));
+  if (local) candidates.push((0, import_node_path18.join)(local, "Programs", "Microsoft VS Code", "Code.exe"));
+  if (programFiles) candidates.push((0, import_node_path18.join)(programFiles, "Microsoft VS Code", "Code.exe"));
+  if (programFilesX86) candidates.push((0, import_node_path18.join)(programFilesX86, "Microsoft VS Code", "Code.exe"));
   return candidates;
 }
 function safeSettings(value) {
@@ -5462,7 +6708,7 @@ function safeSettings(value) {
 }
 async function readSettingsFile(path) {
   try {
-    return safeSettings(JSON.parse(await (0, import_promises14.readFile)(path, "utf8")));
+    return safeSettings(JSON.parse(await (0, import_promises16.readFile)(path, "utf8")));
   } catch (error3) {
     if (error3?.code === "ENOENT" || error3 instanceof SyntaxError) return safeSettings({});
     throw error3;
@@ -5471,8 +6717,8 @@ async function readSettingsFile(path) {
 var EditorService = class _EditorService {
   constructor(options = {}) {
     if (!options.projectRoot) throw bridgeError2("PROJECT_ROOT_REQUIRED", "\u7F16\u8F91\u5668\u670D\u52A1\u9700\u8981\u9879\u76EE\u6839\u76EE\u5F55", 400);
-    this.projectRoot = (0, import_node_path16.resolve)(options.projectRoot);
-    this.settingsPath = (0, import_node_path16.resolve)(options.settingsPath || defaultSettingsPath());
+    this.projectRoot = (0, import_node_path18.resolve)(options.projectRoot);
+    this.settingsPath = (0, import_node_path18.resolve)(options.settingsPath || defaultSettingsPath());
     this.clock = options.clock ?? (() => /* @__PURE__ */ new Date());
     this.spawn = options.spawn ?? import_node_child_process2.spawn;
     this.nativeHelper = options.nativeHelper ?? null;
@@ -5503,34 +6749,34 @@ var EditorService = class _EditorService {
   async #assertProjectRoot() {
     let metadata;
     try {
-      metadata = await (0, import_promises14.lstat)(this.projectRoot);
+      metadata = await (0, import_promises16.lstat)(this.projectRoot);
     } catch (error3) {
       if (error3?.code === "ENOENT") throw bridgeError2("PROJECT_NOT_FOUND", "\u9879\u76EE\u76EE\u5F55\u4E0D\u5B58\u5728", 404);
       throw error3;
     }
     if (isLink(metadata) || !isDirectory(metadata)) throw bridgeError2("PROJECT_ROOT_INVALID", "\u9879\u76EE\u76EE\u5F55\u4E0D\u662F\u5B89\u5168\u7684\u666E\u901A\u76EE\u5F55", 403);
-    const canonical = await (0, import_promises14.realpath)(this.projectRoot);
-    if (!isInside((0, import_node_path16.resolve)(this.projectRoot, ".."), canonical, { allowRoot: true })) {
+    const canonical = await (0, import_promises16.realpath)(this.projectRoot);
+    if (!isInside((0, import_node_path18.resolve)(this.projectRoot, ".."), canonical, { allowRoot: true })) {
       throw bridgeError2("PROJECT_ROOT_INVALID", "\u9879\u76EE\u76EE\u5F55\u65E0\u6CD5\u5B89\u5168\u89E3\u6790", 403);
     }
   }
   async #assertNoSymlinkEscape(candidate, { allowMissing = false, root = this.projectRoot } = {}) {
-    const canonicalRoot = await (0, import_promises14.realpath)(root);
-    let current = (0, import_node_path16.resolve)(candidate);
+    const canonicalRoot = await (0, import_promises16.realpath)(root);
+    let current = (0, import_node_path18.resolve)(candidate);
     let metadata = null;
     while (true) {
       try {
-        metadata = await (0, import_promises14.lstat)(current);
+        metadata = await (0, import_promises16.lstat)(current);
         break;
       } catch (error3) {
         if (!allowMissing || error3?.code !== "ENOENT") throw error3;
-        const parent = (0, import_node_path16.dirname)(current);
+        const parent = (0, import_node_path18.dirname)(current);
         if (parent === current) throw error3;
         current = parent;
       }
     }
     if (isLink(metadata)) throw bridgeError2("SYMLINK_ESCAPE", "\u62D2\u7EDD\u901A\u8FC7\u7B26\u53F7\u94FE\u63A5\u6216\u91CD\u89E3\u6790\u70B9\u6253\u5F00\u6587\u4EF6", 403);
-    const canonicalCandidate = await (0, import_promises14.realpath)(current);
+    const canonicalCandidate = await (0, import_promises16.realpath)(current);
     if (!isInside(canonicalRoot, canonicalCandidate, { allowRoot: true })) {
       throw bridgeError2("SYMLINK_ESCAPE", "\u8DEF\u5F84\u89E3\u6790\u540E\u5DF2\u8D8A\u51FA\u9879\u76EE\u76EE\u5F55", 403);
     }
@@ -5541,14 +6787,14 @@ var EditorService = class _EditorService {
       throw bridgeError2("INVALID_EDITOR_PATH", "\u7F16\u8F91\u5668\u76EE\u6807\u8DEF\u5F84\u65E0\u6548", 400);
     }
     if (isAbsoluteAny(relativePath)) throw bridgeError2("EDITOR_PATH_OUTSIDE_PROJECT", "\u7F16\u8F91\u5668\u53EA\u80FD\u6253\u5F00\u9879\u76EE\u5185\u6587\u4EF6", 403);
-    const candidate = (0, import_node_path16.resolve)(this.projectRoot, relativePath);
+    const candidate = (0, import_node_path18.resolve)(this.projectRoot, relativePath);
     if (!isInside(this.projectRoot, candidate, { allowRoot: kind === "directory" })) {
       throw bridgeError2("EDITOR_PATH_OUTSIDE_PROJECT", "\u7F16\u8F91\u5668\u53EA\u80FD\u6253\u5F00\u9879\u76EE\u5185\u6587\u4EF6", 403);
     }
     await this.#assertNoSymlinkEscape(candidate, { allowMissing });
     let metadata;
     try {
-      metadata = await (0, import_promises14.lstat)(candidate);
+      metadata = await (0, import_promises16.lstat)(candidate);
     } catch (error3) {
       if (allowMissing && error3?.code === "ENOENT") return candidate;
       if (error3?.code === "ENOENT") throw bridgeError2("EDITOR_TARGET_NOT_FOUND", "\u7F16\u8F91\u5668\u76EE\u6807\u4E0D\u5B58\u5728", 404);
@@ -5565,17 +6811,17 @@ var EditorService = class _EditorService {
     }
     let metadata;
     try {
-      metadata = await (0, import_promises14.lstat)(path);
+      metadata = await (0, import_promises16.lstat)(path);
     } catch (error3) {
       if (error3?.code === "ENOENT") throw bridgeError2("EDITOR_NOT_FOUND", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u4E0D\u5B58\u5728", 404);
       throw error3;
     }
     if (isLink(metadata) || !isRegularFile(metadata)) throw bridgeError2("EDITOR_EXECUTABLE_INVALID", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u4E0D\u662F\u5B89\u5168\u7684\u666E\u901A\u6587\u4EF6", 403);
-    const canonical = await (0, import_promises14.realpath)(path);
-    if (!isInside((0, import_node_path16.resolve)(path, ".."), canonical, { allowRoot: true })) {
+    const canonical = await (0, import_promises16.realpath)(path);
+    if (!isInside((0, import_node_path18.resolve)(path, ".."), canonical, { allowRoot: true })) {
       throw bridgeError2("EDITOR_EXECUTABLE_INVALID", "\u7F16\u8F91\u5668\u7A0B\u5E8F\u65E0\u6CD5\u5B89\u5168\u89E3\u6790", 403);
     }
-    return (0, import_node_path16.resolve)(path);
+    return (0, import_node_path18.resolve)(path);
   }
   async #assertManualExecutable(path) {
     if (typeof path !== "string" || !isAbsoluteAny(path) || !/\.exe$/i.test(path)) {
@@ -5587,17 +6833,17 @@ var EditorService = class _EditorService {
     }
     let metadata;
     try {
-      metadata = await (0, import_promises14.lstat)(path);
+      metadata = await (0, import_promises16.lstat)(path);
     } catch (error3) {
       if (error3?.code === "ENOENT") throw bridgeError2("EDITOR_NOT_FOUND", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u4E0D\u5B58\u5728", 404);
       throw error3;
     }
     if (isLink(metadata) || !isRegularFile(metadata)) throw bridgeError2("MANUAL_EDITOR_INVALID", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u5FC5\u987B\u662F\u666E\u901A .exe \u6587\u4EF6", 403);
-    const canonical = await (0, import_promises14.realpath)(path);
+    const canonical = await (0, import_promises16.realpath)(path);
     if (normalizePathForCompare(canonical) !== normalizePathForCompare(path)) {
       throw bridgeError2("MANUAL_EDITOR_INVALID", "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F\u4E0D\u80FD\u662F\u7B26\u53F7\u94FE\u63A5\u6216\u91CD\u89E3\u6790\u70B9", 403);
     }
-    return (0, import_node_path16.resolve)(path);
+    return (0, import_node_path18.resolve)(path);
   }
   async #resolveVSCode() {
     if (this.vscodePath) {
@@ -5626,19 +6872,19 @@ var EditorService = class _EditorService {
     return void 0;
   }
   /* VS Code 之外的编辑器走同一条候选解析+安全校验管线,结果按 id 缓存。 */
-  async #resolveExtra(def) {
-    const cached = this.extraPaths.get(def.id);
+  async #resolveExtra(def2) {
+    const cached = this.extraPaths.get(def2.id);
     if (cached) {
       try {
         const verified = await this.#assertExternalExecutable(cached);
-        this.extraPaths.set(def.id, verified);
+        this.extraPaths.set(def2.id, verified);
         return verified;
       } catch {
-        this.extraPaths.delete(def.id);
+        this.extraPaths.delete(def2.id);
       }
     }
-    const registry = await Promise.resolve(this.extraRegistryReader(def.appPaths || [])).catch(() => []);
-    const known = typeof def.candidates === "function" ? await def.candidates() : def.candidates;
+    const registry = await Promise.resolve(this.extraRegistryReader(def2.appPaths || [])).catch(() => []);
+    const known = typeof def2.candidates === "function" ? await def2.candidates() : def2.candidates;
     const candidates = [...normalizeCandidates(registry), ...normalizeCandidates(known)];
     const seen = /* @__PURE__ */ new Set();
     for (const candidate of candidates) {
@@ -5647,12 +6893,12 @@ var EditorService = class _EditorService {
       seen.add(normalizePathForCompare(path));
       try {
         const resolved = await this.#assertExternalExecutable(path);
-        this.extraPaths.set(def.id, resolved);
+        this.extraPaths.set(def2.id, resolved);
         return resolved;
       } catch {
       }
     }
-    this.extraPaths.delete(def.id);
+    this.extraPaths.delete(def2.id);
     return void 0;
   }
   async list() {
@@ -5670,8 +6916,8 @@ var EditorService = class _EditorService {
     const editors = [
       ...vscode ? [{ id: "vscode", label: "VS Code", kind: "editor", available: true }] : []
     ];
-    for (const def of this.extraEditors) {
-      if (await this.#resolveExtra(def)) editors.push({ id: def.id, label: def.label, kind: "editor", available: true });
+    for (const def2 of this.extraEditors) {
+      if (await this.#resolveExtra(def2)) editors.push({ id: def2.id, label: def2.label, kind: "editor", available: true });
     }
     editors.push(
       { id: "system", label: "\u7528\u9ED8\u8BA4\u5E94\u7528\u6253\u5F00", kind: "system", available: process.platform === "win32" || Boolean(this.nativeHelper) },
@@ -5706,7 +6952,7 @@ var EditorService = class _EditorService {
   }
   async pickManualEditor() {
     await this.#ensureInitialized();
-    const pickerToken = (0, import_node_crypto10.randomUUID)();
+    const pickerToken = (0, import_node_crypto12.randomUUID)();
     this.pendingPickerToken = pickerToken;
     let picked;
     try {
@@ -5737,7 +6983,7 @@ var EditorService = class _EditorService {
     return { id: "manual", label: "\u624B\u52A8\u9009\u62E9\u7684\u7A0B\u5E8F", available: true };
   }
   async #writeSettings() {
-    await (0, import_promises14.mkdir)((0, import_node_path16.dirname)(this.settingsPath), { recursive: true });
+    await (0, import_promises16.mkdir)((0, import_node_path18.dirname)(this.settingsPath), { recursive: true });
     const output = {
       version: SETTINGS_VERSION,
       preferredEditorId: this.settings.preferredEditorId || null,
@@ -5770,8 +7016,8 @@ var EditorService = class _EditorService {
     }
     if (editorId === "folder") {
       const candidate = await this.#projectPath(relativePath, { kind: targetKind === "directory" ? "directory" : "file" });
-      const metadata = await (0, import_promises14.stat)(candidate);
-      const folder = isDirectory(metadata) ? candidate : (0, import_node_path16.dirname)(candidate);
+      const metadata = await (0, import_promises16.stat)(candidate);
+      const folder = isDirectory(metadata) ? candidate : (0, import_node_path18.dirname)(candidate);
       await this.#assertNoSymlinkEscape(folder);
       const targetPath = isDirectory(metadata) ? folder : candidate;
       try {
@@ -5797,7 +7043,7 @@ var EditorService = class _EditorService {
       if (!executable) throw bridgeError2("EDITOR_NOT_AVAILABLE", "\u672A\u68C0\u6D4B\u5230 VS Code", 503);
       return { editorId, ...this.#launch(executable, ["--reuse-window", target]) };
     }
-    const extraDef = this.extraEditors.find((def) => def.id === editorId);
+    const extraDef = this.extraEditors.find((def2) => def2.id === editorId);
     if (extraDef) {
       const executable = await this.#resolveExtra(extraDef);
       if (!executable) throw bridgeError2("EDITOR_NOT_AVAILABLE", `\u672A\u68C0\u6D4B\u5230 ${extraDef.label}`, 503);
@@ -5858,22 +7104,22 @@ var EditorService = class _EditorService {
 
 // src/bridge/native-helper.mjs
 var import_node_child_process3 = require("node:child_process");
-var import_promises15 = require("node:fs/promises");
-var import_node_path17 = require("node:path");
+var import_promises17 = require("node:fs/promises");
+var import_node_path19 = require("node:path");
 function error2(code, message, status = 503, details) {
   return new BridgeError(code, message, { status, details });
 }
 var MODES = Object.freeze({
   "pick-editor": (request) => ["--pick-editor"],
-  "save-as": (request) => ["--save-as", (0, import_node_path17.resolve)(String(request.sourcePath || ""))],
-  "open-default": (request) => ["--open-default", (0, import_node_path17.resolve)(String(request.targetPath || ""))],
-  "open-folder": (request) => ["--open-folder", (0, import_node_path17.resolve)(String(request.targetPath || ""))],
-  "open-manual": (request) => ["--open-manual", (0, import_node_path17.resolve)(String(request.executablePath || "")), (0, import_node_path17.resolve)(String(request.targetPath || ""))]
+  "save-as": (request) => ["--save-as", (0, import_node_path19.resolve)(String(request.sourcePath || ""))],
+  "open-default": (request) => ["--open-default", (0, import_node_path19.resolve)(String(request.targetPath || ""))],
+  "open-folder": (request) => ["--open-folder", (0, import_node_path19.resolve)(String(request.targetPath || ""))],
+  "open-manual": (request) => ["--open-manual", (0, import_node_path19.resolve)(String(request.executablePath || "")), (0, import_node_path19.resolve)(String(request.targetPath || ""))]
 });
 var NativeWindowsHelper = class {
   constructor(options = {}) {
     const candidate = options.helperPath ?? defaultNativeHelperPath(options);
-    this.helperPath = candidate ? (0, import_node_path17.resolve)(candidate) : null;
+    this.helperPath = candidate ? (0, import_node_path19.resolve)(candidate) : null;
     this.spawnImpl = options.spawnImpl ?? import_node_child_process3.spawn;
     this.timeoutMs = Math.max(1e3, Number(options.timeoutMs) || 12e4);
   }
@@ -5881,11 +7127,11 @@ var NativeWindowsHelper = class {
     const buildArgs = MODES[request.operation];
     if (!buildArgs) throw error2("NATIVE_HELPER_OPERATION_INVALID", "\u539F\u751F\u52A9\u624B\u64CD\u4F5C\u65E0\u6548", 400);
     if (!this.helperPath) throw error2("NATIVE_HELPER_UNAVAILABLE", "\u672A\u627E\u5230\u672C\u4EA7\u54C1\u539F\u751F\u52A9\u624B");
-    await (0, import_promises15.access)(this.helperPath).catch(() => {
+    await (0, import_promises17.access)(this.helperPath).catch(() => {
       throw error2("NATIVE_HELPER_UNAVAILABLE", "\u672A\u627E\u5230\u672C\u4EA7\u54C1\u539F\u751F\u52A9\u624B");
     });
     const args = buildArgs(request);
-    if (args.some((value, index) => index > 0 && (!value || value === (0, import_node_path17.resolve)("")))) {
+    if (args.some((value, index) => index > 0 && (!value || value === (0, import_node_path19.resolve)("")))) {
       throw error2("NATIVE_HELPER_ARGUMENT_REQUIRED", "\u539F\u751F\u52A9\u624B\u7F3A\u5C11\u76EE\u6807\u8DEF\u5F84", 400);
     }
     return new Promise((resolvePromise, reject) => {
@@ -5984,348 +7230,66 @@ var sharedBridgeContract = Object.freeze({
 });
 
 // agent-kit/lib/installer.mjs
-var import_node_crypto12 = require("node:crypto");
+var import_node_crypto14 = require("node:crypto");
 var import_node_child_process5 = require("node:child_process");
-var import_promises16 = require("node:fs/promises");
+var import_promises18 = require("node:fs/promises");
 var import_node_fs4 = require("node:fs");
-var import_node_path19 = require("node:path");
-var import_node_os5 = require("node:os");
+var import_node_path21 = require("node:path");
+var import_node_os6 = require("node:os");
 var import_node_url = require("node:url");
 
 // agent-kit/lib/bridge-client.mjs
-var import_node_crypto11 = require("node:crypto");
+var import_node_crypto13 = require("node:crypto");
 
 // agent-kit/lib/tool-definitions.generated.mjs
 var MCP_TOOL_DEFINITIONS = Object.freeze([
   {
-    "name": "map_get_context",
-    "description": "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u7684\u7ED3\u6784\u3001\u63A8\u8FDB\u6458\u8981\u4E0E\u660E\u786E\u5173\u8054 Markdown\u3002",
+    "name": "map_look",
+    "description": "\u770B\u5730\u56FE\u76EE\u5F55\uFF0C\u4E0D\u542B\u6B63\u6587\u3002\u4E0D\u5E26 query \u8FD4\u56DE\u6574\u5F20\u76EE\u5F55\uFF08\u6BCF\u9879\u4E00\u53E5\u6458\u8981\uFF0C\u6309\u610F\u601D\u81EA\u5DF1\u6311\uFF09\uFF1B\u5E26 query \u8FD4\u56DE\u5173\u952E\u8BCD\u76F8\u5173\u9879\u548C\u7406\u7531\uFF0C\u6CA1\u547D\u4E2D\u5C31\u6362\u4E2A\u8BF4\u6CD5\u3002\u518D\u7528 map_read \u8BFB\u6B63\u6587\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
         "query": {
+          "type": "string",
+          "description": "\u5173\u952E\u8BCD\uFF0C\u53EF\u7A7A"
+        },
+        "nodeId": {
           "type": "string"
-        },
-        "currentNodeId": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "includeHistory": {
-          "type": "boolean"
         },
         "limit": {
           "type": "integer",
           "minimum": 1,
           "maximum": 12
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "additionalProperties": true
     }
   },
   {
-    "name": "map_list_human_updates",
-    "description": "\u5217\u51FA\u4EBA\u7C7B\u5C1A\u672A\u786E\u8BA4\u7684\u6807\u6CE8\u3002",
+    "name": "map_read",
+    "description": '\u8BFB\u6B63\u6587\uFF08index.md \u9644\u5E26\u8BE5\u8282\u70B9\u7684\u6807\u6CE8 anns\uFF09\u3002path \u7528 look \u7ED9\u7684\u8DEF\u5F84\u6216\u8282\u70B9 id\uFF1B\u540C\u4F1A\u8BDD\u5185\u672A\u53D8\u5316\u7684\u6587\u4EF6\u53EA\u56DE unchanged\uFF0Cforce:true \u5F3A\u5236\u91CD\u8BFB\uFF1B\u4EE5 / \u7ED3\u5C3E\u5217\u51FA\u8D44\u6599\u5305\u6587\u4EF6\u53CA\u8BF4\u660E\u3002\u7ED3\u679C\u5E26 meta:"\u7F3A\u6458\u8981|\u6458\u8981\u8FC7\u671F|\u65E0\u8BF4\u660E" \u65F6\uFF0C\u8BFB\u61C2\u540E\u7528 map_write \u7684 meta \u8865\u4E00\u53E5\u3002',
     "inputSchema": {
       "type": "object",
       "properties": {
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_ack_human_updates",
-    "description": "\u6458\u8981\u660E\u786E\u5F15\u7528\u6807\u6CE8 ID \u540E\u786E\u8BA4\u8BFB\u53D6\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ids": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "summary": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "ids",
-        "summary"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_list",
-    "description": "\u5217\u51FA\u9879\u76EE\u5185\u5730\u56FE\u4E0E\u5F53\u524D active-map\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_create",
-    "description": "\u65B0\u5EFA\u5B8C\u6574\u5730\u56FE\u4F46\u4E0D\u81EA\u52A8\u5207\u6362\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_switch",
-    "description": "\u6821\u9A8C\u76EE\u6807\u5730\u56FE\u540E\u5207\u6362 active-map\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "mapKey": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "mapKey"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_rename",
-    "description": "\u4FEE\u6539\u5730\u56FE\u663E\u793A\u540D\uFF0C\u4E0D\u6539\u53D8 mapKey\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "mapKey": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "mapKey",
-        "name"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_next_candidates",
-    "description": "\u8FD4\u56DE\u5E26\u89E3\u91CA\u7684\u63A8\u8FDB\u5019\u9009\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "query": {
-          "type": "string"
-        },
-        "currentNodeId": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 12
-        },
-        "includeHistory": {
-          "type": "boolean"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_apply_commands",
-    "description": "\u901A\u8FC7\u7EDF\u4E00 reducer \u539F\u5B50\u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002\u26A0 \u5199\u5165\u76EE\u6807\u9ED8\u8BA4\u53D6\u5168\u5C40 active-map \u6307\u9488\u2014\u2014\u8DE8\u5730\u56FE\u64CD\u4F5C\u5FC5\u987B\u663E\u5F0F\u4F20 mapKey\uFF0C\u5426\u5219\u4F1A\u5199\u8FDB\u6307\u9488\u6240\u6307\u7684\u65E7\u56FE\uFF1B\u7981\u6B62\u4FEE\u6539\u975E\u4F60\u521B\u5EFA\u8282\u70B9\u7684 name\uFF08\u4F1A\u88AB\u62D2\u7EDD\uFF09\uFF1B\u8981\u8BB0\u5F55\u4EFB\u52A1\u6E05\u5355/\u65B0\u5185\u5BB9\u65F6\u8BF7\u65B0\u5EFA\u8282\u70B9\uFF0C\u4E0D\u8981\u539F\u5730\u6539\u540D\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "mapKey": {
-          "type": "string"
-        },
-        "documentId": {
-          "type": "string"
-        },
-        "baseRevision": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "commandId": {
-          "type": "string"
-        },
-        "commands": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 100,
-          "items": {
-            "type": "object"
-          }
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "commands"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_validate",
-    "description": "\u6821\u9A8C\u5F53\u524D\u5730\u56FE\u4E0E\u5173\u8054 Markdown \u8BC1\u636E\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "document": {
-          "type": "object"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_checkpoint",
-    "description": "\u521B\u5EFA\u53EF\u6062\u590D\u68C0\u67E5\u70B9\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "reason": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_plan_consolidation",
-    "description": "\u53EA\u8BFB\u751F\u6210\u53EF\u5BA1\u6838\u7684\u6574\u7406\u5EFA\u8BAE\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "maxSuggestions": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 20
-        },
-        "now": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_read_markdown",
-    "description": "\u8BFB\u53D6\u5F53\u524D\u5730\u56FE\u8D44\u6599\u5305 Markdown\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "fileName": {
-          "type": "string"
-        },
         "path": {
           "type": "string"
         },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+        "force": {
+          "type": "boolean"
         }
       },
+      "required": [
+        "path"
+      ],
       "additionalProperties": true
     }
   },
   {
-    "name": "map_write_markdown",
-    "description": "\u7528 baseEtag \u539F\u5B50\u66FF\u6362\u8D44\u6599\u5305 Markdown\u3002\u5168\u57DF\u4EBA\u7C7B\u539F\u58F0\u4FDD\u62A4\uFF1A\u4E25\u7981\u5220\u9664\u6216\u8986\u76D6\u4EBA\u7C7B\u539F\u59CB\u6587\u5B57\uFF08\u8FDD\u89C4\u5C06\u88AB\u62D2\u7EDD HUMAN_CONTENT_PROTECTED\uFF09\uFF1B\u9ED8\u8BA4\u8FFD\u52A0\u5F0F\uFF1A\u82E5\u66FF\u6362\u4F1A\u5220\u9664\u5DF2\u6709\u5185\u5BB9\u7684\u884C\u5C06\u88AB\u62D2\u7EDD\uFF08REWRITE_REMOVES_CONTENT\uFF09\uFF0C\u8BF7\u4F18\u5148\u7528 map_append_markdown\uFF1B\u786E\u5C5E\u7528\u6237\u660E\u786E\u8981\u6C42\u6539\u5199\u65F6\u624D\u4F20 allowContentRemoval: true\u3002",
+    "name": "map_write",
+    "description": "\u5199\u5165\u3002path+content \u9ED8\u8BA4\u8FFD\u52A0\uFF08\u6587\u4EF6\u4E0D\u5B58\u5728\u5219\u65B0\u5EFA\uFF09\uFF1B\u5E26 baseEtag \u4E3A\u6574\u6587\u66FF\u6362\u3002node:{name,kind} \u65B0\u5EFA\u8282\u70B9\uFF1Bmeta:{summary?, files?:{\u6587\u4EF6\u540D:\u8BF4\u660E}} \u5199 Agent\u5143\u6570\u636E\uFF08\u4E00\u53E5\u8BDD\u5BFC\u822A\uFF0C\u4E0D\u5F53\u8BC1\u636E\uFF09\uFF1Bcommands \u63D0\u4EA4\u5730\u56FE\u547D\u4EE4\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "fileName": {
-          "type": "string"
-        },
         "path": {
           "type": "string"
         },
@@ -6335,412 +7299,123 @@ var MCP_TOOL_DEFINITIONS = Object.freeze([
         "baseEtag": {
           "type": "string"
         },
-        "allowContentRemoval": {
-          "type": "boolean"
+        "node": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "goal",
+                "problem"
+              ]
+            },
+            "near": {
+              "type": "string"
+            }
+          }
         },
-        "allowHumanContentOverride": {
-          "type": "boolean"
+        "meta": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "files": {
+              "type": "object"
+            }
+          }
         },
-        "allowIndexModification": {
-          "type": "boolean"
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  {
+    "name": "analysis_run",
+    "description": "\u5BF9\u8D44\u6599\u5305\u91CC\u7684 CSV/JSONL/JSON \u8868\u505A\u786E\u5B9A\u6027\u7EDF\u8BA1\uFF0C\u53EA\u56DE\u6458\u8981\u3002op: describe \u5B57\u6BB5\u6982\u51B5 | group \u5206\u7EC4\u5BF9\u6BD4 | top \u524D20%\u5BF9\u6BD4\u5176\u4F59\u3002",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
         },
-        "wrapAuthor": {
-          "type": "boolean"
-        },
-        "projectRoot": {
+        "op": {
           "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
+          "enum": [
+            "describe",
+            "group",
+            "top"
+          ]
+        },
+        "params": {
+          "type": "object",
+          "description": "group: {by, metric?, agg?}\uFF1Btop: {metric, ratio?, fields?}"
         }
       },
       "required": [
-        "content",
-        "baseEtag"
+        "path",
+        "op"
       ],
       "additionalProperties": true
     }
   },
   {
-    "name": "map_append_markdown",
-    "description": "\u6309\u8DEF\u5F84\u9501\u5E42\u7B49\u8FFD\u52A0 Markdown\u3002\u53EF\u5728\u4EFB\u610F\u6587\u4EF6\uFF08\u542B index.md\uFF09\u672B\u5C3E\u5B89\u5168\u8FFD\u52A0 Agent \u7ED3\u8BBA\u3001\u56DE\u590D\u6216\u8865\u5145\u8981\u70B9\uFF0C\u81EA\u52A8\u5305\u88F9\u6210\u5BF9 @author \u95ED\u5408\u6807\u7B7E\uFF0C\u7EDD\u4E0D\u7834\u574F\u4E0A\u65B9\u5DF2\u6709\u7684\u4EBA\u7C7B\u539F\u8BDD\u3002",
+    "name": "map_manage",
+    "description": "\u4F4E\u9891\u7BA1\u7406\u3002action: maps|create_map|switch_map|rename_map|files|rename_file|archive|restore|import|validate|checkpoint|plan|human\u3002",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "ownerKind": {
+        "action": {
           "type": "string",
           "enum": [
-            "node",
-            "route"
+            "maps",
+            "create_map",
+            "switch_map",
+            "rename_map",
+            "files",
+            "rename_file",
+            "archive",
+            "restore",
+            "import",
+            "validate",
+            "checkpoint",
+            "plan",
+            "human"
           ]
         },
-        "ownerId": {
+        "mapKey": {
           "type": "string"
         },
-        "fileName": {
+        "name": {
           "type": "string"
         },
         "path": {
           "type": "string"
         },
-        "content": {
-          "type": "string"
-        },
-        "commandId": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "content",
-        "commandId"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_list_bundle_files",
-    "description": "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u6587\u4EF6\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "includeArchived": {
-          "type": "boolean"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "ownerKind",
-        "ownerId"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_create_markdown",
-    "description": "\u5728\u5BF9\u8C61\u8D44\u6599\u5305\u4E2D\u65B0\u5EFA\u8865\u5145 Markdown\uFF08\u5982 01-\u65B9\u6848.md\uFF09\u3002\u521B\u5EFA\u540E\u7CFB\u7EDF\u5C06\u5728 index.md \u81EA\u52A8\u540C\u6B65\u767B\u8BB0\u8D44\u6599\u5305\u7D22\u5F15\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "fileName": {
-          "type": "string"
-        },
-        "title": {
-          "type": "string"
-        },
-        "content": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "ownerKind",
-        "ownerId",
-        "fileName"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_rename_bundle_file",
-    "description": "\u6539\u540D\u8865\u5145 Markdown \u6216\u9644\u4EF6\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "from": {
-          "type": "string"
-        },
         "to": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "ownerKind",
-        "ownerId",
-        "from",
-        "to"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_archive_bundle_file",
-    "description": "\u5F52\u6863\u8865\u5145 Markdown\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "fileName": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "ownerKind",
-        "ownerId",
-        "fileName"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_restore_bundle_file",
-    "description": "\u6062\u590D\u8865\u5145 Markdown\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "fileName": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "ownerKind",
-        "ownerId",
-        "fileName"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_list_assets",
-    "description": "\u5217\u51FA\u5BF9\u8C61\u8D44\u6599\u5305\u9644\u4EF6\u5143\u6570\u636E\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "includeArchived": {
-          "type": "boolean"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "ownerKind",
-        "ownerId"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_import_asset",
-    "description": "\u4ECE sourcePath\uFF08\u652F\u6301\u9879\u76EE\u5185\u76F8\u5BF9\u8DEF\u5F84\u6216\u672C\u673A\u4EFB\u610F\u7EDD\u5BF9\u8DEF\u5F84\uFF09\u6D41\u5F0F\u5BFC\u5165\u9644\u4EF6\uFF08\u652F\u6301 zip\u3001\u6570\u636E\u5305\u3001\u4EE3\u7801\u3001\u56FE\u7247\u3001\u6587\u6863\u7B49\u5404\u7C7B\u6587\u4EF6\uFF09\u3002\u5BFC\u5165\u540E\u7CFB\u7EDF\u5C06\u5728 index.md \u81EA\u52A8\u540C\u6B65\u767B\u8BB0\u8D44\u6599\u5305\u7D22\u5F15\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
           "type": "string"
         },
         "sourcePath": {
           "type": "string"
-        },
-        "fileName": {
-          "type": "string"
-        },
-        "mimeType": {
-          "type": "string"
-        },
-        "allowExternalPath": {
-          "type": "boolean"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
         }
       },
       "required": [
-        "ownerKind",
-        "ownerId",
-        "sourcePath"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_archive_asset",
-    "description": "\u5F52\u6863\u5BF9\u8C61\u9644\u4EF6\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "fileName": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "ownerKind",
-        "ownerId",
-        "fileName"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_restore_asset",
-    "description": "\u6062\u590D\u5BF9\u8C61\u9644\u4EF6\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "fileName": {
-          "type": "string"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "ownerKind",
-        "ownerId",
-        "fileName"
-      ],
-      "additionalProperties": true
-    }
-  },
-  {
-    "name": "map_read_asset",
-    "description": "\u8FD4\u56DE\u5BF9\u8C61\u9644\u4EF6\u8DEF\u5F84\u4E0E\u5143\u6570\u636E\uFF08\u4E0D\u642C\u8FD0\u4E8C\u8FDB\u5236\uFF09\u3002\u6587\u672C\u7C7B\u9644 content\uFF0C\u4E8C\u8FDB\u5236\u53EF\u4F20 includeContent \u53D6 base64\u3002",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "ownerKind": {
-          "type": "string",
-          "enum": [
-            "node",
-            "route"
-          ]
-        },
-        "ownerId": {
-          "type": "string"
-        },
-        "fileName": {
-          "type": "string"
-        },
-        "includeContent": {
-          "type": "boolean"
-        },
-        "projectRoot": {
-          "type": "string",
-          "description": "\uFF08\u53EF\u9009\uFF09\u76EE\u6807\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u7684\u7269\u7406\u7EDD\u5BF9\u8DEF\u5F84\u3002\u9ED8\u8BA4\u81EA\u52A8\u8DDF\u968F\u5F53\u524D\u753B\u5E03\u6216\u5F53\u524D\u5DE5\u4F5C\u533A\uFF1B\u5982\u9700\u8DE8\u9879\u76EE\u67E5\u9605\u6216\u4FEE\u6539\u5176\u4ED6\u72EC\u7ACB\u9879\u76EE\u7684\u8BB0\u5FC6\uFF0C\u53EF\u663E\u5F0F\u4F20\u5165\u8BE5\u9879\u76EE\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002"
-        }
-      },
-      "required": [
-        "ownerKind",
-        "ownerId",
-        "fileName"
+        "action"
       ],
       "additionalProperties": true
     }
   }
 ]);
 var MCP_TOOL_NAMES = Object.freeze(MCP_TOOL_DEFINITIONS.map((tool) => tool.name));
+var MCP_LEGACY_TOOL_NAMES = Object.freeze(["map_get_context", "map_list_human_updates", "map_ack_human_updates", "map_list", "map_create", "map_switch", "map_rename", "map_next_candidates", "map_apply_commands", "map_validate", "map_checkpoint", "map_plan_consolidation", "map_read_markdown", "map_write_markdown", "map_append_markdown", "map_list_bundle_files", "map_create_markdown", "map_rename_bundle_file", "map_archive_bundle_file", "map_restore_bundle_file", "map_list_assets", "map_import_asset", "map_archive_asset", "map_restore_asset", "map_read_asset"]);
 
 // agent-kit/lib/bridge-client.mjs
 var BridgeClientError = class extends Error {
@@ -6775,23 +7450,23 @@ function assertLoopbackUrl(value) {
   return url;
 }
 function projectIdForRoot(projectRoot) {
-  const digest6 = (0, import_node_crypto11.createHash)("sha256").update(String(projectRoot)).digest("hex").slice(0, 32);
+  const digest6 = (0, import_node_crypto13.createHash)("sha256").update(String(projectRoot)).digest("hex").slice(0, 32);
   return `project:${digest6}`;
 }
 
 // agent-kit/lib/shortcut.mjs
 var import_node_child_process4 = require("node:child_process");
-var import_node_os4 = require("node:os");
-var import_node_path18 = require("node:path");
+var import_node_os5 = require("node:os");
+var import_node_path20 = require("node:path");
 function windowsDesktopDirectory({ platform = process.platform, env = process.env, exec = import_node_child_process4.execFileSync } = {}) {
-  if (platform !== "win32") return (0, import_node_path18.join)((0, import_node_os4.homedir)(), "Desktop");
+  if (platform !== "win32") return (0, import_node_path20.join)((0, import_node_os5.homedir)(), "Desktop");
   try {
     const output = exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "[Environment]::GetFolderPath('Desktop')"], { encoding: "utf8", timeout: 5e3 });
     const path = String(output || "").trim();
     if (path) return path;
   } catch {
   }
-  return (0, import_node_path18.join)(env.USERPROFILE || (0, import_node_os4.homedir)(), "Desktop");
+  return (0, import_node_path20.join)(env.USERPROFILE || (0, import_node_os5.homedir)(), "Desktop");
 }
 
 // agent-kit/lib/portable-node.mjs
@@ -6876,9 +7551,9 @@ var map_template_default = {
 var ADAPTERS = Object.freeze(["codex", "claude-code", "kimi-code", "antigravity"]);
 var OPTIONAL_ADAPTERS = Object.freeze(["codebuddy", "qoder", "zcode"]);
 var ALL_ADAPTERS = Object.freeze([...ADAPTERS, ...OPTIONAL_ADAPTERS]);
-var skillTargetPaths = (home, id) => id === "codex" ? (0, import_node_path19.join)(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? (0, import_node_path19.join)(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? (0, import_node_path19.join)(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : id === "codebuddy" ? (0, import_node_path19.join)(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "zcode" ? (0, import_node_path19.join)(home, ".zcode", "skills", "live-dot-map", "SKILL.md") : (0, import_node_fs4.existsSync)((0, import_node_path19.join)(home, ".qoder")) && !(0, import_node_fs4.existsSync)((0, import_node_path19.join)(home, ".qoder-cn")) ? (0, import_node_path19.join)(home, ".qoder", "skills", "live-dot-map", "SKILL.md") : (0, import_node_path19.join)(home, ".qoder-cn", "skills", "live-dot-map", "SKILL.md");
-var kimiPluginRoot = (home) => (0, import_node_path19.join)(home, ".kimi-code", "plugins", "live-dot-map");
-var codebuddyPluginRoot = (home) => (0, import_node_path19.join)(home, ".codebuddy", "plugins", "live-dot-map");
+var skillTargetPaths = (home, id) => id === "codex" ? (0, import_node_path21.join)(home, ".codex", "skills", "live-dot-map", "SKILL.md") : id === "claude-code" ? (0, import_node_path21.join)(home, ".claude", "skills", "live-dot-map", "SKILL.md") : id === "kimi-code" ? (0, import_node_path21.join)(home, ".kimi-code", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "antigravity" ? null : id === "codebuddy" ? (0, import_node_path21.join)(home, ".codebuddy", "plugins", "live-dot-map", "skills", "live-dot-map", "SKILL.md") : id === "zcode" ? (0, import_node_path21.join)(home, ".zcode", "skills", "live-dot-map", "SKILL.md") : (0, import_node_fs4.existsSync)((0, import_node_path21.join)(home, ".qoder")) && !(0, import_node_fs4.existsSync)((0, import_node_path21.join)(home, ".qoder-cn")) ? (0, import_node_path21.join)(home, ".qoder", "skills", "live-dot-map", "SKILL.md") : (0, import_node_path21.join)(home, ".qoder-cn", "skills", "live-dot-map", "SKILL.md");
+var kimiPluginRoot = (home) => (0, import_node_path21.join)(home, ".kimi-code", "plugins", "live-dot-map");
+var codebuddyPluginRoot = (home) => (0, import_node_path21.join)(home, ".codebuddy", "plugins", "live-dot-map");
 var ADAPTER_PROBES = Object.freeze({
   codex: ["codex"],
   "claude-code": ["claude", "claude-code"],
@@ -6894,53 +7569,53 @@ function adapterFingerprints(id, { platform, home }) {
     const programFiles = process.env.ProgramFiles;
     const out = [];
     if (platform === "win32") {
-      if (local) out.push((0, import_node_path19.join)(local, "Programs", "Antigravity", "Antigravity.exe"));
-      if (programFiles) out.push((0, import_node_path19.join)(programFiles, "Antigravity", "Antigravity.exe"));
+      if (local) out.push((0, import_node_path21.join)(local, "Programs", "Antigravity", "Antigravity.exe"));
+      if (programFiles) out.push((0, import_node_path21.join)(programFiles, "Antigravity", "Antigravity.exe"));
     }
-    out.push((0, import_node_path19.join)(home, ".gemini", "antigravity-ide"));
+    out.push((0, import_node_path21.join)(home, ".gemini", "antigravity-ide"));
     return out;
   }
   if (id === "qoder") {
     const out = [
-      (0, import_node_path19.join)(home, ".qoder-cn"),
-      (0, import_node_path19.join)(home, ".qoder")
+      (0, import_node_path21.join)(home, ".qoder-cn"),
+      (0, import_node_path21.join)(home, ".qoder")
     ];
     const appData = process.env.APPDATA;
     const local = process.env.LOCALAPPDATA;
     const programFiles = process.env.ProgramFiles;
     if (platform === "win32") {
       if (appData) {
-        out.push((0, import_node_path19.join)(appData, "QoderCN"));
-        out.push((0, import_node_path19.join)(appData, "Qoder"));
+        out.push((0, import_node_path21.join)(appData, "QoderCN"));
+        out.push((0, import_node_path21.join)(appData, "Qoder"));
       }
       if (local) {
-        out.push((0, import_node_path19.join)(local, "Programs", "QoderCN", "QoderCN.exe"));
-        out.push((0, import_node_path19.join)(local, "Programs", "Qoder", "Qoder.exe"));
+        out.push((0, import_node_path21.join)(local, "Programs", "QoderCN", "QoderCN.exe"));
+        out.push((0, import_node_path21.join)(local, "Programs", "Qoder", "Qoder.exe"));
       }
       if (programFiles) {
-        out.push((0, import_node_path19.join)(programFiles, "QoderCN", "QoderCN.exe"));
-        out.push((0, import_node_path19.join)(programFiles, "Qoder", "Qoder.exe"));
+        out.push((0, import_node_path21.join)(programFiles, "QoderCN", "QoderCN.exe"));
+        out.push((0, import_node_path21.join)(programFiles, "Qoder", "Qoder.exe"));
       }
     }
     return out;
   }
   if (id === "zcode") {
     const out = [
-      (0, import_node_path19.join)(home, ".zcode")
+      (0, import_node_path21.join)(home, ".zcode")
     ];
     const appData = process.env.APPDATA;
     const local = process.env.LOCALAPPDATA;
     const programFiles = process.env.ProgramFiles;
     if (platform === "win32") {
       if (appData) {
-        out.push((0, import_node_path19.join)(appData, "ZCode"));
+        out.push((0, import_node_path21.join)(appData, "ZCode"));
       }
       if (local) {
-        out.push((0, import_node_path19.join)(local, "@zcodedesktop-updater"));
-        out.push((0, import_node_path19.join)(local, "Programs", "ZCode", "ZCode.exe"));
+        out.push((0, import_node_path21.join)(local, "@zcodedesktop-updater"));
+        out.push((0, import_node_path21.join)(local, "Programs", "ZCode", "ZCode.exe"));
       }
       if (programFiles) {
-        out.push((0, import_node_path19.join)(programFiles, "ZCode", "ZCode.exe"));
+        out.push((0, import_node_path21.join)(programFiles, "ZCode", "ZCode.exe"));
       }
       out.push("D:\\zcode\\ZCode.exe");
     }
@@ -6950,17 +7625,17 @@ function adapterFingerprints(id, { platform, home }) {
 }
 async function exists2(path) {
   try {
-    await (0, import_promises16.access)(path, import_node_fs4.constants.F_OK);
+    await (0, import_promises18.access)(path, import_node_fs4.constants.F_OK);
     return true;
   } catch {
     return false;
   }
 }
 async function atomicText(path, text) {
-  await (0, import_promises16.mkdir)((0, import_node_path19.dirname)(path), { recursive: true });
-  const temp = `${path}.tmp-${process.pid}-${(0, import_node_crypto12.randomUUID)()}`;
-  await (0, import_promises16.writeFile)(temp, text, { encoding: "utf8", flag: "wx" });
-  await (0, import_promises16.rename)(temp, path);
+  await (0, import_promises18.mkdir)((0, import_node_path21.dirname)(path), { recursive: true });
+  const temp = `${path}.tmp-${process.pid}-${(0, import_node_crypto14.randomUUID)()}`;
+  await (0, import_promises18.writeFile)(temp, text, { encoding: "utf8", flag: "wx" });
+  await (0, import_promises18.rename)(temp, path);
 }
 async function atomicJson(path, value) {
   await atomicText(path, `${JSON.stringify(value, null, 2)}
@@ -6968,20 +7643,20 @@ async function atomicJson(path, value) {
 }
 async function readJson2(path, fallback = {}) {
   try {
-    const value = JSON.parse(await (0, import_promises16.readFile)(path, "utf8"));
+    const value = JSON.parse(await (0, import_promises18.readFile)(path, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : fallback;
   } catch {
     return fallback;
   }
 }
 function sha256(bytes) {
-  return (0, import_node_crypto12.createHash)("sha256").update(bytes).digest("hex");
+  return (0, import_node_crypto14.createHash)("sha256").update(bytes).digest("hex");
 }
 async function captureFile(path) {
   try {
-    const metadata = await (0, import_promises16.stat)(path);
+    const metadata = await (0, import_promises18.stat)(path);
     if (metadata.isDirectory()) return { path, exists: true, kind: "directory", sha256: null, content: null };
-    const bytes = await (0, import_promises16.readFile)(path);
+    const bytes = await (0, import_promises18.readFile)(path);
     return { path, exists: true, kind: "file", sha256: sha256(bytes), content: bytes.toString("base64") };
   } catch {
     return { path, exists: false, kind: "missing", sha256: null, content: null };
@@ -6990,42 +7665,42 @@ async function captureFile(path) {
 async function restoreCapturedFile(entry) {
   if (entry?.kind === "directory") return;
   if (entry?.exists) {
-    await (0, import_promises16.mkdir)((0, import_node_path19.dirname)(entry.path), { recursive: true });
-    await (0, import_promises16.writeFile)(entry.path, Buffer.from(String(entry.content || ""), "base64"));
+    await (0, import_promises18.mkdir)((0, import_node_path21.dirname)(entry.path), { recursive: true });
+    await (0, import_promises18.writeFile)(entry.path, Buffer.from(String(entry.content || ""), "base64"));
   } else {
-    await (0, import_promises16.rm)(entry.path, { force: true }).catch(() => void 0);
+    await (0, import_promises18.rm)(entry.path, { force: true }).catch(() => void 0);
   }
 }
 function qoderConfigPaths(home) {
   const paths = [
-    (0, import_node_path19.join)(home, ".qoder-cn", "mcp.json"),
-    (0, import_node_path19.join)(home, ".qoder", "mcp.json")
+    (0, import_node_path21.join)(home, ".qoder-cn", "mcp.json"),
+    (0, import_node_path21.join)(home, ".qoder", "mcp.json")
   ];
-  if (process.env.APPDATA && (process.env.APPDATA.startsWith(home) || home === (0, import_node_os5.homedir)())) {
+  if (process.env.APPDATA && (process.env.APPDATA.startsWith(home) || home === (0, import_node_os6.homedir)())) {
     paths.push(
-      (0, import_node_path19.join)(process.env.APPDATA, "QoderCN", "SharedClientCache", "mcp.json"),
-      (0, import_node_path19.join)(process.env.APPDATA, "Qoder", "SharedClientCache", "mcp.json")
+      (0, import_node_path21.join)(process.env.APPDATA, "QoderCN", "SharedClientCache", "mcp.json"),
+      (0, import_node_path21.join)(process.env.APPDATA, "Qoder", "SharedClientCache", "mcp.json")
     );
   }
   return paths;
 }
 function zcodeConfigPaths(home) {
   return [
-    (0, import_node_path19.join)(home, ".zcode", "cli", "config.json")
+    (0, import_node_path21.join)(home, ".zcode", "cli", "config.json")
   ];
 }
 var adapterConfigPaths = (home, id) => {
   switch (id) {
     case "codex":
-      return [(0, import_node_path19.join)(home, ".codex", "config.toml"), (0, import_node_path19.join)(home, ".codex", "hooks.json")];
+      return [(0, import_node_path21.join)(home, ".codex", "config.toml"), (0, import_node_path21.join)(home, ".codex", "hooks.json")];
     case "claude-code":
-      return [(0, import_node_path19.join)(home, ".claude", "settings.json")];
+      return [(0, import_node_path21.join)(home, ".claude", "settings.json")];
     case "kimi-code":
-      return [(0, import_node_path19.join)(home, ".kimi-code", "mcp.json"), (0, import_node_path19.join)(kimiPluginRoot(home), "kimi.plugin.json")];
+      return [(0, import_node_path21.join)(home, ".kimi-code", "mcp.json"), (0, import_node_path21.join)(kimiPluginRoot(home), "kimi.plugin.json")];
     case "antigravity":
-      return [(0, import_node_path19.join)(home, ".gemini", "config", "mcp_config.json"), (0, import_node_path19.join)(home, ".gemini", "antigravity-ide", "mcp_config.json")];
+      return [(0, import_node_path21.join)(home, ".gemini", "config", "mcp_config.json"), (0, import_node_path21.join)(home, ".gemini", "antigravity-ide", "mcp_config.json")];
     case "codebuddy":
-      return [(0, import_node_path19.join)(home, ".codebuddy", "settings.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), (0, import_node_path19.join)(codebuddyPluginRoot(home), "hooks", "hooks.json")];
+      return [(0, import_node_path21.join)(home, ".codebuddy", "settings.json"), (0, import_node_path21.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json"), (0, import_node_path21.join)(codebuddyPluginRoot(home), ".workbuddy-plugin", "plugin.json"), (0, import_node_path21.join)(codebuddyPluginRoot(home), "hooks", "hooks.json")];
     case "qoder":
       return qoderConfigPaths(home);
     case "zcode":
@@ -7045,16 +7720,16 @@ function command(nodeCommand, runtime, agent, event) {
   return process.platform === "win32" ? ["cmd", "/d", "/s", "/c", invocation].join(" ") : invocation;
 }
 function execProbe(file, args = []) {
-  return new Promise((resolve18) => {
+  return new Promise((resolve19) => {
     (0, import_node_child_process5.execFile)(file, args, { windowsHide: true, timeout: 4e3 }, (error3, stdout = "") => {
-      resolve18(!error3 && String(stdout).trim().length > 0);
+      resolve19(!error3 && String(stdout).trim().length > 0);
     });
   });
 }
 function execText(file, args = [], timeout = 2500) {
-  return new Promise((resolve18) => {
+  return new Promise((resolve19) => {
     (0, import_node_child_process5.execFile)(file, args, { windowsHide: true, timeout, encoding: "utf8" }, (error3, stdout = "") => {
-      resolve18(error3 ? "" : String(stdout));
+      resolve19(error3 ? "" : String(stdout));
     });
   });
 }
@@ -7077,19 +7752,19 @@ async function discoverEmbeddedCodeBuddy({ platform = process.platform } = {}) {
     return [match[1].trim().replace(/^"|"$/g, "").replace(/,\d+$/, "")];
   }));
   for (const iconPath of iconPaths) {
-    const installRoot = (0, import_node_path19.dirname)(iconPath);
-    const candidate = (0, import_node_path19.join)(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
+    const installRoot = (0, import_node_path21.dirname)(iconPath);
+    const candidate = (0, import_node_path21.join)(installRoot, "resources", "app.asar.unpacked", "cli", "bin", "codebuddy");
     if (await exists2(candidate)) return candidate;
   }
   return null;
 }
-async function detectInstalledAdapters({ projectRoot = process.cwd(), platform = process.platform, homeRoot = (0, import_node_os5.homedir)() } = {}) {
-  const root = (0, import_node_path19.resolve)(projectRoot);
-  const home = (0, import_node_path19.resolve)(homeRoot);
+async function detectInstalledAdapters({ projectRoot = process.cwd(), platform = process.platform, homeRoot = (0, import_node_os6.homedir)() } = {}) {
+  const root = (0, import_node_path21.resolve)(projectRoot);
+  const home = (0, import_node_path21.resolve)(homeRoot);
   const checks = await Promise.all(ALL_ADAPTERS.map(async (id) => {
     const configPaths = adapterConfigPaths(home, id);
     const configured = (await Promise.all(configPaths.map(async (path) => {
-      const text = await (0, import_promises16.readFile)(path, "utf8").catch(() => "");
+      const text = await (0, import_promises18.readFile)(path, "utf8").catch(() => "");
       return text.includes("livedot-map");
     }))).some(Boolean);
     const probes = platform === "win32" || platform === "darwin" || platform === "linux" ? ADAPTER_PROBES[id] : [];
@@ -7131,17 +7806,17 @@ function isLiveDotHookCommand(value, eventName) {
   if (!(hasProductScript || hasProductExecutable || hasScopedLegacyLauncher)) return false;
   return /(?:^|[^a-z0-9])hook(?:$|[^a-z0-9])/i.test(normalized) || hasScopedLegacyLauncher;
 }
-function stripOwnedHookGroup(group, eventName) {
-  if (!group || typeof group !== "object" || Array.isArray(group) || !Array.isArray(group.hooks)) return group;
-  const kept = group.hooks.filter((hook) => !(hook && typeof hook === "object" && hook.type === "command" && isLiveDotHookCommand(hook.command, eventName)));
+function stripOwnedHookGroup(group2, eventName) {
+  if (!group2 || typeof group2 !== "object" || Array.isArray(group2) || !Array.isArray(group2.hooks)) return group2;
+  const kept = group2.hooks.filter((hook) => !(hook && typeof hook === "object" && hook.type === "command" && isLiveDotHookCommand(hook.command, eventName)));
   if (!kept.length) return null;
-  return { ...group, hooks: kept };
+  return { ...group2, hooks: kept };
 }
 function mergeHooks(existing, additions) {
   const hooks = { ...existing?.hooks || {} };
   for (const [event, groups] of Object.entries(additions)) {
     const prior = Array.isArray(hooks[event]) ? hooks[event] : [];
-    const kept = prior.map((group) => stripOwnedHookGroup(group, event)).filter((group) => group !== null);
+    const kept = prior.map((group2) => stripOwnedHookGroup(group2, event)).filter((group2) => group2 !== null);
     hooks[event] = [...kept, ...groups];
   }
   return { ...existing, hooks };
@@ -7176,10 +7851,10 @@ function assertNoDuplicateTomlTables(text) {
   }
 }
 async function writeCodexConfig(home, nodeCommand, runtime) {
-  const path = (0, import_node_path19.join)(home, ".codex", "config.toml");
+  const path = (0, import_node_path21.join)(home, ".codex", "config.toml");
   const begin = "# BEGIN LIVE-DOT-MAP";
   const end = "# END LIVE-DOT-MAP";
-  const old = await (0, import_promises16.readFile)(path, "utf8").catch(() => "");
+  const old = await (0, import_promises18.readFile)(path, "utf8").catch(() => "");
   const stripped = stripCodexMcpBlock(old);
   const block = [begin, '[mcp_servers."livedot-map"]', `command = ${tomlString(nodeCommand)}`, `args = [${[...runtimeArgs(runtime), "mcp", "--agent", "codex"].map(tomlString).join(", ")}]`, "required = false", end].join("\n");
   const newContent = `${stripped ? `${stripped}
@@ -7190,12 +7865,12 @@ async function writeCodexConfig(home, nodeCommand, runtime) {
   if (newContent.trim() !== old.trim()) {
     await atomicText(path, newContent);
   }
-  const hooksPath = (0, import_node_path19.join)(home, ".codex", "hooks.json");
+  const hooksPath = (0, import_node_path21.join)(home, ".codex", "hooks.json");
   await atomicJson(hooksPath, mergeHooks(await readJson2(hooksPath), hooksFor(nodeCommand, runtime, "codex")));
   return [path, hooksPath];
 }
 async function writeClaudeConfig(home, nodeCommand, runtime) {
-  const settingsPath = (0, import_node_path19.join)(home, ".claude", "settings.json");
+  const settingsPath = (0, import_node_path21.join)(home, ".claude", "settings.json");
   const settings = await readJson2(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, "claude");
@@ -7210,14 +7885,14 @@ async function writeClaudeConfig(home, nodeCommand, runtime) {
   return [settingsPath];
 }
 async function writeKimiConfig(home, nodeCommand, runtime) {
-  const mcpPath = (0, import_node_path19.join)(home, ".kimi-code", "mcp.json");
+  const mcpPath = (0, import_node_path21.join)(home, ".kimi-code", "mcp.json");
   const mcp = await readJson2(mcpPath);
   mcp.mcpServers = { ...mcp.mcpServers || {}, "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "kimi"] } };
   await atomicJson(mcpPath, mcp);
   const plugin = kimiPluginRoot(home);
-  const pluginRuntime = (0, import_node_path19.join)(plugin, "runtime", "livedot.mjs");
-  await (0, import_promises16.mkdir)((0, import_node_path19.dirname)(pluginRuntime), { recursive: true });
-  if (!seaRuntime()) await (0, import_promises16.copyFile)(runtime, pluginRuntime);
+  const pluginRuntime = (0, import_node_path21.join)(plugin, "runtime", "livedot.mjs");
+  await (0, import_promises18.mkdir)((0, import_node_path21.dirname)(pluginRuntime), { recursive: true });
+  if (!seaRuntime()) await (0, import_promises18.copyFile)(runtime, pluginRuntime);
   const manifest = {
     name: "livedot-map",
     version: "2.0.0",
@@ -7229,14 +7904,14 @@ async function writeKimiConfig(home, nodeCommand, runtime) {
       { event: "Stop", command: command(nodeCommand, runtime, "kimi", "stop"), timeout: 30 }
     ]
   };
-  await atomicJson((0, import_node_path19.join)(plugin, "kimi.plugin.json"), manifest);
-  return [mcpPath, (0, import_node_path19.join)(plugin, "kimi.plugin.json")];
+  await atomicJson((0, import_node_path21.join)(plugin, "kimi.plugin.json"), manifest);
+  return [mcpPath, (0, import_node_path21.join)(plugin, "kimi.plugin.json")];
 }
 async function writeAntigravityConfig(home, nodeCommand, runtime) {
   const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "antigravity"] };
   const paths = [
-    (0, import_node_path19.join)(home, ".gemini", "config", "mcp_config.json"),
-    (0, import_node_path19.join)(home, ".gemini", "antigravity-ide", "mcp_config.json")
+    (0, import_node_path21.join)(home, ".gemini", "config", "mcp_config.json"),
+    (0, import_node_path21.join)(home, ".gemini", "antigravity-ide", "mcp_config.json")
   ];
   for (const path of paths) {
     const mcp = await readJson2(path);
@@ -7245,7 +7920,7 @@ async function writeAntigravityConfig(home, nodeCommand, runtime) {
     mcp.mcpServers = servers;
     await atomicJson(path, mcp);
   }
-  const configPath = (0, import_node_path19.join)(home, ".gemini", "config", "config.json");
+  const configPath = (0, import_node_path21.join)(home, ".gemini", "config", "config.json");
   try {
     const config = await readJson2(configPath);
     if (config && typeof config === "object") {
@@ -7267,7 +7942,7 @@ async function writeAntigravityConfig(home, nodeCommand, runtime) {
   return paths;
 }
 async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
-  const settingsPath = (0, import_node_path19.join)(home, ".codebuddy", "settings.json");
+  const settingsPath = (0, import_node_path21.join)(home, ".codebuddy", "settings.json");
   const settings = await readJson2(settingsPath);
   const mcp = { mcpServers: settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {} };
   const key = mcpServerKey(mcp, "codebuddy");
@@ -7282,10 +7957,10 @@ async function writeCodeBuddyConfig(home, nodeCommand, runtime) {
     hooks: "./hooks/hooks.json",
     mcpServers: { "livedot-map": { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "codebuddy"] } }
   };
-  await atomicJson((0, import_node_path19.join)(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
-  await atomicJson((0, import_node_path19.join)(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
-  await atomicJson((0, import_node_path19.join)(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
-  return [settingsPath, (0, import_node_path19.join)(plugin, ".codebuddy-plugin", "plugin.json"), (0, import_node_path19.join)(plugin, ".workbuddy-plugin", "plugin.json"), (0, import_node_path19.join)(plugin, "hooks", "hooks.json")];
+  await atomicJson((0, import_node_path21.join)(plugin, ".codebuddy-plugin", "plugin.json"), manifest);
+  await atomicJson((0, import_node_path21.join)(plugin, ".workbuddy-plugin", "plugin.json"), manifest);
+  await atomicJson((0, import_node_path21.join)(plugin, "hooks", "hooks.json"), { hooks: hooksFor(nodeCommand, runtime, "codebuddy") });
+  return [settingsPath, (0, import_node_path21.join)(plugin, ".codebuddy-plugin", "plugin.json"), (0, import_node_path21.join)(plugin, ".workbuddy-plugin", "plugin.json"), (0, import_node_path21.join)(plugin, "hooks", "hooks.json")];
 }
 async function writeQoderConfig(home, nodeCommand, runtime) {
   const entry = { command: nodeCommand, args: [...runtimeArgs(runtime), "mcp", "--agent", "qoder"] };
@@ -7334,15 +8009,15 @@ async function installProject({
   exec,
   discoverAgents = true,
   detectedAgents = null,
-  homeRoot = (0, import_node_os5.homedir)(),
+  homeRoot = (0, import_node_os6.homedir)(),
   targetAdapters = null
 } = {}) {
-  const root = (0, import_node_path19.resolve)(projectRoot);
-  const home = (0, import_node_path19.resolve)(homeRoot);
+  const root = (0, import_node_path21.resolve)(projectRoot);
+  const home = (0, import_node_path21.resolve)(homeRoot);
   if (!await exists2(root)) throw new Error(`\u9879\u76EE\u76EE\u5F55\u4E0D\u5B58\u5728: ${root}`);
-  const source = (0, import_node_path19.resolve)(sourceRoot instanceof URL ? (0, import_node_url.fileURLToPath)(sourceRoot) : sourceRoot || process.cwd());
-  const sourceRuntime = (0, import_node_path19.resolve)(runtimeSource || (0, import_node_path19.resolve)(source, "livedot.mjs"));
-  const canonicalCandidates = [(0, import_node_path19.resolve)(source, "skills", "live-dot-map", "SKILL.md"), (0, import_node_path19.resolve)(source, "agent-kit", "skills", "live-dot-map", "SKILL.md")];
+  const source = (0, import_node_path21.resolve)(sourceRoot instanceof URL ? (0, import_node_url.fileURLToPath)(sourceRoot) : sourceRoot || process.cwd());
+  const sourceRuntime = (0, import_node_path21.resolve)(runtimeSource || (0, import_node_path21.resolve)(source, "livedot.mjs"));
+  const canonicalCandidates = [(0, import_node_path21.resolve)(source, "skills", "live-dot-map", "SKILL.md"), (0, import_node_path21.resolve)(source, "agent-kit", "skills", "live-dot-map", "SKILL.md")];
   let canonicalSkill = null;
   for (const candidate of canonicalCandidates) if (await exists2(candidate)) {
     canonicalSkill = candidate;
@@ -7350,13 +8025,13 @@ async function installProject({
   }
   if (!canonicalSkill || !await exists2(canonicalSkill)) throw new Error(`\u7F3A\u5C11 canonical Skill: ${canonicalCandidates[0]}`);
   if (!seaRuntime() && !await exists2(sourceRuntime)) throw new Error(`\u7F3A\u5C11\u5DF2\u6784\u5EFA\u8FD0\u884C\u65F6: ${sourceRuntime}`);
-  const dataDir = (0, import_node_path19.join)(root, ".live-dot-map");
-  const globalDataDir = (0, import_node_path19.join)(home, ".live-dot-map");
-  const runtime = seaRuntime() ? null : (0, import_node_path19.join)(globalDataDir, "livedot.mjs");
-  await (0, import_promises16.mkdir)(dataDir, { recursive: true });
+  const dataDir = (0, import_node_path21.join)(root, ".live-dot-map");
+  const globalDataDir = (0, import_node_path21.join)(home, ".live-dot-map");
+  const runtime = seaRuntime() ? null : (0, import_node_path21.join)(globalDataDir, "livedot.mjs");
+  await (0, import_promises18.mkdir)(dataDir, { recursive: true });
   const projectId = projectIdForRoot(root);
-  const mapPath = (0, import_node_path19.join)(dataDir, "map.json");
-  const configPath = (0, import_node_path19.join)(dataDir, "agent-kit.json");
+  const mapPath = (0, import_node_path21.join)(dataDir, "map.json");
+  const configPath = (0, import_node_path21.join)(dataDir, "agent-kit.json");
   const old = await readJson2(configPath);
   const url = bridgeUrl || old?.bridge?.url || "http://127.0.0.1:0";
   assertLoopbackUrl(url);
@@ -7367,11 +8042,11 @@ async function installProject({
     if (targetAdapters && !targetAdapters.includes(id)) continue;
     if (detected[id]?.discovered) installed[id] = true;
   }
-  const backupPath = (0, import_node_path19.join)(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
+  const backupPath = (0, import_node_path21.join)(globalDataDir, "backups", `agent-kit-install-${projectId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
   const beforeBackup = await captureFile(backupPath);
   const oldRuntime = runtime ? await captureFile(runtime) : { exists: false, kind: "missing", path: null };
   const oldMap = await captureFile(mapPath);
-  const mapsLayoutExists = await exists2((0, import_node_path19.join)(dataDir, "maps"));
+  const mapsLayoutExists = await exists2((0, import_node_path21.join)(dataDir, "maps"));
   let createdMapsLayout = false;
   const touched = /* @__PURE__ */ new Set([configPath, ...runtime ? [runtime] : []]);
   for (const id of /* @__PURE__ */ new Set([...Object.keys(old.installed || {}), ...Object.keys(installed)])) for (const path of adapterConfigPaths(home, id)) touched.add(path);
@@ -7386,32 +8061,32 @@ async function installProject({
   const rollback = async () => {
     for (const entry of backup.files) await restoreCapturedFile(entry);
     await restoreCapturedFile(beforeBackup);
-    if (!oldMap.exists) await (0, import_promises16.rm)(mapPath, { force: true }).catch(() => void 0);
+    if (!oldMap.exists) await (0, import_promises18.rm)(mapPath, { force: true }).catch(() => void 0);
     if (createdMapsLayout) {
-      await (0, import_promises16.rm)((0, import_node_path19.join)(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
-      await (0, import_promises16.rm)((0, import_node_path19.join)(dataDir, "active-map"), { force: true }).catch(() => void 0);
+      await (0, import_promises18.rm)((0, import_node_path21.join)(dataDir, "maps"), { recursive: true, force: true }).catch(() => void 0);
+      await (0, import_promises18.rm)((0, import_node_path21.join)(dataDir, "active-map"), { force: true }).catch(() => void 0);
     }
-    if (runtime && !oldRuntime.exists) await (0, import_promises16.rm)(runtime, { force: true }).catch(() => void 0);
+    if (runtime && !oldRuntime.exists) await (0, import_promises18.rm)(runtime, { force: true }).catch(() => void 0);
   };
   try {
     await atomicJson(backupPath, backup);
-    if (runtime && (0, import_node_path19.resolve)(sourceRuntime) !== (0, import_node_path19.resolve)(runtime)) {
-      await (0, import_promises16.mkdir)(globalDataDir, { recursive: true });
-      await (0, import_promises16.copyFile)(sourceRuntime, runtime);
+    if (runtime && (0, import_node_path21.resolve)(sourceRuntime) !== (0, import_node_path21.resolve)(runtime)) {
+      await (0, import_promises18.mkdir)(globalDataDir, { recursive: true });
+      await (0, import_promises18.copyFile)(sourceRuntime, runtime);
     }
     for (const id of Object.keys(installed)) {
       if (targetAdapters && !targetAdapters.includes(id)) continue;
       const target = skillTargetPaths(home, id);
       if (!target) continue;
-      await (0, import_promises16.mkdir)((0, import_node_path19.dirname)(target), { recursive: true });
-      await (0, import_promises16.copyFile)(canonicalSkill, target);
+      await (0, import_promises18.mkdir)((0, import_node_path21.dirname)(target), { recursive: true });
+      await (0, import_promises18.copyFile)(canonicalSkill, target);
     }
     if (!oldMap.exists && !mapsLayoutExists) {
       const map = structuredClone(map_template_default);
       if (map.version !== 2) throw new Error("\u5185\u7F6E map.json \u6A21\u677F\u4E0D\u662F v2");
       const now = (/* @__PURE__ */ new Date()).toISOString();
       map.mapId = projectId;
-      map.name = (0, import_node_path19.basename)(root);
+      map.name = (0, import_node_path21.basename)(root);
       map.createdAt = now;
       map.updatedAt = now;
       map.mapDir = ".live-dot-map/maps/default";
@@ -7423,8 +8098,8 @@ async function installProject({
           item.md = `.live-dot-map/maps/default${item.md.slice(".live-dot-map".length)}`;
         }
       }
-      await atomicJson((0, import_node_path19.join)(dataDir, "maps", "default", "map.json"), map);
-      await atomicText((0, import_node_path19.join)(dataDir, "active-map"), "default\n");
+      await atomicJson((0, import_node_path21.join)(dataDir, "maps", "default", "map.json"), map);
+      await atomicText((0, import_node_path21.join)(dataDir, "active-map"), "default\n");
       createdMapsLayout = true;
     }
     const shouldWrite = (id) => Boolean(installed[id]) && (!targetAdapters || targetAdapters.includes(id));
@@ -7485,18 +8160,18 @@ async function installProject({
   }
 }
 async function uninstallProject({ projectRoot = process.cwd(), platform = process.platform, env = process.env, exec } = {}) {
-  const root = (0, import_node_path19.resolve)(projectRoot);
-  const dataDir = (0, import_node_path19.join)(root, ".live-dot-map");
-  const configPath = (0, import_node_path19.join)(dataDir, "agent-kit.json");
+  const root = (0, import_node_path21.resolve)(projectRoot);
+  const dataDir = (0, import_node_path21.join)(root, ".live-dot-map");
+  const configPath = (0, import_node_path21.join)(dataDir, "agent-kit.json");
   const config = await readJson2(configPath, null);
-  if (!config || typeof config !== "object") return { ok: false, reason: "not-installed", projectRoot: root, mapPreserved: await exists2((0, import_node_path19.join)(dataDir, "map.json")) || await exists2((0, import_node_path19.join)(dataDir, "maps")) };
-  const backupPath = typeof config.installBackup === "string" ? config.installBackup : (0, import_node_path19.join)(dataDir, "backups", "agent-kit-install.json");
+  if (!config || typeof config !== "object") return { ok: false, reason: "not-installed", projectRoot: root, mapPreserved: await exists2((0, import_node_path21.join)(dataDir, "map.json")) || await exists2((0, import_node_path21.join)(dataDir, "maps")) };
+  const backupPath = typeof config.installBackup === "string" ? config.installBackup : (0, import_node_path21.join)(dataDir, "backups", "agent-kit-install.json");
   const backup = await readJson2(backupPath, null);
   const installedFiles = config.installedFiles && typeof config.installedFiles === "object" ? config.installedFiles : {};
   const restored = [];
   const skipped = [];
   for (const entry of Array.isArray(backup?.files) ? backup.files : []) {
-    if (!entry?.path || entry.path === (0, import_node_path19.join)(dataDir, "map.json") || entry.path === backupPath) continue;
+    if (!entry?.path || entry.path === (0, import_node_path21.join)(dataDir, "map.json") || entry.path === backupPath) continue;
     const current = await captureFile(entry.path);
     const expected = installedFiles[entry.path];
     let configOwned = false;
@@ -7519,49 +8194,49 @@ async function uninstallProject({ projectRoot = process.cwd(), platform = proces
       skipped.push({ path: entry.path, reason: "after-install-change" });
     }
   }
-  const launcherPaths = [(0, import_node_path19.join)(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), (0, import_node_path19.join)(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
-  const homeRoot = config.homeRoot ? (0, import_node_path19.resolve)(config.homeRoot) : null;
+  const launcherPaths = [(0, import_node_path21.join)(dataDir, "\u542F\u52A8\u6D3B\u70B9\u5730\u56FE.cmd"), (0, import_node_path21.join)(dataDir, "\u6253\u5F00\u6D3B\u70B9\u5730\u56FE.cmd")];
+  const homeRoot = config.homeRoot ? (0, import_node_path21.resolve)(config.homeRoot) : null;
   if (homeRoot && config.installed?.antigravity) {
     for (const name of ["antigravity", "antigravity-ide", "antigravity-cli"]) {
-      await (0, import_promises16.rm)((0, import_node_path19.join)(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
+      await (0, import_promises18.rm)((0, import_node_path21.join)(homeRoot, ".gemini", name, "mcp", "livedot-map"), { recursive: true, force: true }).catch(() => void 0);
     }
   }
   if (platform === "win32") {
     const desktop = windowsDesktopDirectory({ platform, env, exec });
-    launcherPaths.push((0, import_node_path19.join)(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), (0, import_node_path19.join)(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
+    launcherPaths.push((0, import_node_path21.join)(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.lnk"), (0, import_node_path21.join)(desktop, "\u6D3B\u70B9\u5730\u56FE\u672C\u5730\u6865.cmd"));
   }
   for (const path of launcherPaths) {
     const current = await captureFile(path);
     if (!current.exists) continue;
     const looksOwned = path.includes(dataDir) || current.content?.includes(Buffer.from("livedot.mjs").toString("base64"));
     if (looksOwned) {
-      await (0, import_promises16.rm)(path, { force: true });
+      await (0, import_promises18.rm)(path, { force: true });
       restored.push(path);
     }
   }
-  const mapPreserved = await exists2((0, import_node_path19.join)(dataDir, "map.json")) || await exists2((0, import_node_path19.join)(dataDir, "maps"));
+  const mapPreserved = await exists2((0, import_node_path21.join)(dataDir, "map.json")) || await exists2((0, import_node_path21.join)(dataDir, "maps"));
   return { ok: skipped.length === 0, projectRoot: root, restored, skipped, mapPreserved, backupPath };
 }
-async function doctorProject({ projectRoot = process.cwd(), checkBridge = false, bridgeClient, offline = true, homeRoot = (0, import_node_os5.homedir)() } = {}) {
-  const root = (0, import_node_path19.resolve)(projectRoot);
-  const home = (0, import_node_path19.resolve)(homeRoot);
-  const configPath = (0, import_node_path19.join)(root, ".live-dot-map", "agent-kit.json");
+async function doctorProject({ projectRoot = process.cwd(), checkBridge = false, bridgeClient, offline = true, homeRoot = (0, import_node_os6.homedir)() } = {}) {
+  const root = (0, import_node_path21.resolve)(projectRoot);
+  const home = (0, import_node_path21.resolve)(homeRoot);
+  const configPath = (0, import_node_path21.join)(root, ".live-dot-map", "agent-kit.json");
   const config = await readJson2(configPath, null);
   const installed = config?.installed && typeof config.installed === "object" ? config.installed : {};
   const expected = [
     ["agent-kit-config", configPath]
   ];
-  if (config?.runtimeMode !== "sea" && config?.runtime !== null) expected.push(["runtime", (0, import_node_path19.join)(home, ".live-dot-map", "livedot.mjs")]);
-  if (installed.codex) expected.push(["codex-hooks", (0, import_node_path19.join)(home, ".codex", "hooks.json")], ["codex-mcp", (0, import_node_path19.join)(home, ".codex", "config.toml")]);
-  if (installed["claude-code"]) expected.push(["claude-hooks", (0, import_node_path19.join)(home, ".claude", "settings.json")]);
-  if (installed["kimi-code"]) expected.push(["kimi-mcp", (0, import_node_path19.join)(home, ".kimi-code", "mcp.json")], ["kimi-plugin", (0, import_node_path19.join)(kimiPluginRoot(home), "kimi.plugin.json")]);
-  if (installed.antigravity) expected.push(["antigravity-mcp", (0, import_node_path19.join)(home, ".gemini", "config", "mcp_config.json")]);
-  if (installed.codebuddy) expected.push(["codebuddy-hooks", (0, import_node_path19.join)(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", (0, import_node_path19.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
-  if (installed.qoder) expected.push(["qoder-mcp", (0, import_node_fs4.existsSync)((0, import_node_path19.join)(home, ".qoder-cn", "mcp.json")) ? (0, import_node_path19.join)(home, ".qoder-cn", "mcp.json") : (0, import_node_path19.join)(home, ".qoder", "mcp.json")]);
-  if (installed.zcode) expected.push(["zcode-mcp", (0, import_node_path19.join)(home, ".zcode", "cli", "config.json")]);
+  if (config?.runtimeMode !== "sea" && config?.runtime !== null) expected.push(["runtime", (0, import_node_path21.join)(home, ".live-dot-map", "livedot.mjs")]);
+  if (installed.codex) expected.push(["codex-hooks", (0, import_node_path21.join)(home, ".codex", "hooks.json")], ["codex-mcp", (0, import_node_path21.join)(home, ".codex", "config.toml")]);
+  if (installed["claude-code"]) expected.push(["claude-hooks", (0, import_node_path21.join)(home, ".claude", "settings.json")]);
+  if (installed["kimi-code"]) expected.push(["kimi-mcp", (0, import_node_path21.join)(home, ".kimi-code", "mcp.json")], ["kimi-plugin", (0, import_node_path21.join)(kimiPluginRoot(home), "kimi.plugin.json")]);
+  if (installed.antigravity) expected.push(["antigravity-mcp", (0, import_node_path21.join)(home, ".gemini", "config", "mcp_config.json")]);
+  if (installed.codebuddy) expected.push(["codebuddy-hooks", (0, import_node_path21.join)(home, ".codebuddy", "settings.json")], ["codebuddy-plugin", (0, import_node_path21.join)(codebuddyPluginRoot(home), ".codebuddy-plugin", "plugin.json")]);
+  if (installed.qoder) expected.push(["qoder-mcp", (0, import_node_fs4.existsSync)((0, import_node_path21.join)(home, ".qoder-cn", "mcp.json")) ? (0, import_node_path21.join)(home, ".qoder-cn", "mcp.json") : (0, import_node_path21.join)(home, ".qoder", "mcp.json")]);
+  if (installed.zcode) expected.push(["zcode-mcp", (0, import_node_path21.join)(home, ".zcode", "cli", "config.json")]);
   const checks = [{ name: "project-root", ok: await exists2(root), detail: root }];
   for (const [name, path] of expected) checks.push({ name, ok: await exists2(path), detail: path });
-  checks.push({ name: "map", ok: await exists2((0, import_node_path19.join)(root, ".live-dot-map", "map.json")) || await exists2((0, import_node_path19.join)(root, ".live-dot-map", "maps")), detail: (0, import_node_path19.join)(root, ".live-dot-map") });
+  checks.push({ name: "map", ok: await exists2((0, import_node_path21.join)(root, ".live-dot-map", "map.json")) || await exists2((0, import_node_path21.join)(root, ".live-dot-map", "maps")), detail: (0, import_node_path21.join)(root, ".live-dot-map") });
   const detectedAgents = await detectInstalledAdapters({ projectRoot: root, homeRoot: home });
   checks.push({ name: "agent-discovery", ok: Object.values(detectedAgents).every((item) => !item.discovered || Boolean(installed[item.id])), detail: detectedAgents });
   checks.push({ name: "node", ok: runtimePlan({ offline }).use === "system-node", detail: process.versions.node });
@@ -7581,25 +8256,25 @@ async function doctorProject({ projectRoot = process.cwd(), checkBridge = false,
 var SESSION_COOKIE = "ldm_bridge_session";
 var DEFAULT_BODY_LIMIT = 16 * 1024 * 1024;
 var DEFAULT_SESSION_TTL = 8 * 60 * 60 * 1e3;
-var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || (0, import_node_path20.join)((0, import_node_os6.homedir)(), ".live-dot-map", "recent-projects.json");
+var RECENT_PROJECTS_FILE = () => process.env.LIVEDOT_RECENT_PROJECTS_FILE || (0, import_node_path22.join)((0, import_node_os7.homedir)(), ".live-dot-map", "recent-projects.json");
 async function recordRecentProject(root) {
   let recent = [];
   try {
-    const parsed = JSON.parse(await (0, import_promises17.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
+    const parsed = JSON.parse(await (0, import_promises19.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
     if (Array.isArray(parsed)) recent = parsed.filter((item) => typeof item === "string");
   } catch {
   }
   recent = [root, ...recent.filter((item) => item !== root)].slice(0, 15);
-  await (0, import_promises17.mkdir)((0, import_node_path20.dirname)(RECENT_PROJECTS_FILE()), { recursive: true });
-  await (0, import_promises17.writeFile)(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
+  await (0, import_promises19.mkdir)((0, import_node_path22.dirname)(RECENT_PROJECTS_FILE()), { recursive: true });
+  await (0, import_promises19.writeFile)(RECENT_PROJECTS_FILE(), `${JSON.stringify(recent, null, 2)}
 `, "utf8");
 }
 async function readRecentProjects() {
   try {
-    const parsed = JSON.parse(await (0, import_promises17.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
-    const list = Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+    const parsed = JSON.parse(await (0, import_promises19.readFile)(RECENT_PROJECTS_FILE(), "utf8"));
+    const list2 = Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
     const valid = [];
-    for (const item of list) {
+    for (const item of list2) {
       try {
         await canonicalDirectory(item);
         valid.push(item);
@@ -7727,9 +8402,9 @@ if ($path) {
 `;
 }
 async function pickProjectFolder({ logger = noopLogger } = {}) {
-  const tmpDir = (0, import_node_path20.join)((0, import_node_os6.homedir)(), ".live-dot-map", "tmp");
-  await (0, import_promises17.mkdir)(tmpDir, { recursive: true });
-  const marker = (0, import_node_path20.join)(tmpDir, `pick-${(0, import_node_crypto13.randomUUID)()}.txt`);
+  const tmpDir = (0, import_node_path22.join)((0, import_node_os7.homedir)(), ".live-dot-map", "tmp");
+  await (0, import_promises19.mkdir)(tmpDir, { recursive: true });
+  const marker = (0, import_node_path22.join)(tmpDir, `pick-${(0, import_node_crypto15.randomUUID)()}.txt`);
   const script = buildPickFolderScript(marker);
   const run = await new Promise((resolveRun, rejectRun) => {
     const child = (0, import_node_child_process6.spawn)("powershell.exe", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script], { windowsHide: true });
@@ -7758,12 +8433,12 @@ async function pickProjectFolder({ logger = noopLogger } = {}) {
   const diag = run.stdout.split(/\r?\n/).filter((line) => line.startsWith("PICK:DIAG")).join(" | ");
   if (run.code !== 0) {
     await logger.warn("project.pick", { outcome: "error", exitCode: run.code, stderr: run.stderr.slice(0, 400), diag });
-    await (0, import_promises17.rm)(marker, { force: true }).catch(() => void 0);
+    await (0, import_promises19.rm)(marker, { force: true }).catch(() => void 0);
     return { cancelled: true };
   }
   try {
-    const text = (await (0, import_promises17.readFile)(marker, "utf8")).trim();
-    await (0, import_promises17.rm)(marker, { force: true }).catch(() => void 0);
+    const text = (await (0, import_promises19.readFile)(marker, "utf8")).trim();
+    await (0, import_promises19.rm)(marker, { force: true }).catch(() => void 0);
     if (text) {
       await logger.info("project.pick", { outcome: "ok", mode, path: text, diag });
       return { cancelled: false, path: text };
@@ -7776,11 +8451,11 @@ async function pickProjectFolder({ logger = noopLogger } = {}) {
   }
 }
 function randomToken(bytes = 32) {
-  return (0, import_node_crypto13.randomBytes)(bytes).toString("base64url");
+  return (0, import_node_crypto15.randomBytes)(bytes).toString("base64url");
 }
 async function recordAgentHealth(root, actor, event, status, error3) {
-  const path = (0, import_node_path20.join)(root, ".live-dot-map", ".bridge", "agent-health.json");
-  const prior = await (0, import_promises17.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
+  const path = (0, import_node_path22.join)(root, ".live-dot-map", ".bridge", "agent-health.json");
+  const prior = await (0, import_promises19.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   records[String(actor).replace(/^agent:/, "")] = {
     status,
@@ -7790,24 +8465,24 @@ async function recordAgentHealth(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: error3?.code || "BRIDGE_MCP_FAILED", message: String(error3?.message || error3 || "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await (0, import_promises17.mkdir)((0, import_node_path20.join)(root, ".live-dot-map", ".bridge"), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_node_path22.join)(root, ".live-dot-map", ".bridge"), { recursive: true });
   const temporary = `${path}.${process.pid}.${randomToken(8)}.tmp`;
   try {
-    await (0, import_promises17.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
+    await (0, import_promises19.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
 `, "utf8");
-    await (0, import_promises17.rename)(temporary, path);
+    await (0, import_promises19.rename)(temporary, path);
   } catch {
   }
 }
 async function readAgentHealth(root) {
-  return (0, import_promises17.readFile)((0, import_node_path20.join)(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
+  return (0, import_promises19.readFile)((0, import_node_path22.join)(root, ".live-dot-map", ".bridge", "agent-health.json"), "utf8").then((text) => {
     const value = JSON.parse(text);
     return value && typeof value.records === "object" && !Array.isArray(value.records) ? value.records : {};
   }).catch(() => ({}));
 }
 async function readObject(path) {
   try {
-    const value = JSON.parse(await (0, import_promises17.readFile)(path, "utf8"));
+    const value = JSON.parse(await (0, import_promises19.readFile)(path, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
   } catch {
     return null;
@@ -7815,39 +8490,39 @@ async function readObject(path) {
 }
 async function sha256File(path) {
   try {
-    return (0, import_node_crypto13.createHash)("sha256").update(await (0, import_promises17.readFile)(path)).digest("hex");
+    return (0, import_node_crypto15.createHash)("sha256").update(await (0, import_promises19.readFile)(path)).digest("hex");
   } catch {
     return null;
   }
 }
 async function refreshAgentRuntime({ runtimeSource, homeRoot } = {}) {
   if (!runtimeSource) return false;
-  const source = (0, import_node_path20.resolve)(runtimeSource);
-  const target = (0, import_node_path20.join)((0, import_node_path20.resolve)(homeRoot || (0, import_node_os6.homedir)()), ".live-dot-map", "livedot.mjs");
+  const source = (0, import_node_path22.resolve)(runtimeSource);
+  const target = (0, import_node_path22.join)((0, import_node_path22.resolve)(homeRoot || (0, import_node_os7.homedir)()), ".live-dot-map", "livedot.mjs");
   if (source.toLowerCase() === target.toLowerCase()) return false;
   const [sourceHash, targetHash] = await Promise.all([sha256File(source), sha256File(target)]);
   if (!sourceHash || sourceHash === targetHash) return false;
-  const temp = (0, import_node_path20.join)((0, import_node_path20.dirname)(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
-  await (0, import_promises17.mkdir)((0, import_node_path20.dirname)(target), { recursive: true });
-  await (0, import_promises17.writeFile)(temp, await (0, import_promises17.readFile)(source));
-  await (0, import_promises17.rename)(temp, target);
+  const temp = (0, import_node_path22.join)((0, import_node_path22.dirname)(target), `.livedot-${process.pid}-${Date.now()}.tmp`);
+  await (0, import_promises19.mkdir)((0, import_node_path22.dirname)(target), { recursive: true });
+  await (0, import_promises19.writeFile)(temp, await (0, import_promises19.readFile)(source));
+  await (0, import_promises19.rename)(temp, target);
   return true;
 }
 function runtimeSources({ sourceRoot, runtimeSource } = {}) {
-  const entry = process.argv[1] ? (0, import_node_path20.resolve)(process.argv[1]) : "";
-  const entryRoot = entry ? (0, import_node_path20.dirname)(entry) : "";
+  const entry = process.argv[1] ? (0, import_node_path22.resolve)(process.argv[1]) : "";
+  const entryRoot = entry ? (0, import_node_path22.dirname)(entry) : "";
   const roots = [
     sourceRoot,
     process.env.LIVEDOT_AGENT_KIT_SOURCE,
     process.cwd(),
     entryRoot
-  ].filter(Boolean).map((value) => (0, import_node_path20.resolve)(value));
+  ].filter(Boolean).map((value) => (0, import_node_path22.resolve)(value));
   const uniqueRoots = [...new Set(roots)];
   const runtimes = [
     runtimeSource,
     process.env.LIVEDOT_RUNTIME_SOURCE,
-    ...uniqueRoots.map((root) => (0, import_node_path20.join)(root, "livedot.mjs"))
-  ].filter(Boolean).map((value) => (0, import_node_path20.resolve)(value));
+    ...uniqueRoots.map((root) => (0, import_node_path22.join)(root, "livedot.mjs"))
+  ].filter(Boolean).map((value) => (0, import_node_path22.resolve)(value));
   return { sourceRoot: uniqueRoots[0] || process.cwd(), runtimeSource: runtimes[0] || "" };
 }
 async function ensureProjectAgentConfig(projectRoot, {
@@ -7858,11 +8533,11 @@ async function ensureProjectAgentConfig(projectRoot, {
   detect = detectInstalledAdapters,
   install = installProject
 } = {}) {
-  const root = (0, import_node_path20.resolve)(projectRoot);
+  const root = (0, import_node_path22.resolve)(projectRoot);
   try {
     const detected = await detect({ projectRoot: root, platform, ...homeRoot ? { homeRoot } : {} });
     const available = Object.values(detected || {}).filter((item) => item?.discovered === true);
-    const configPath = (0, import_node_path20.join)(root, ".live-dot-map", "agent-kit.json");
+    const configPath = (0, import_node_path22.join)(root, ".live-dot-map", "agent-kit.json");
     const existing = await readObject(configPath);
     if (!available.length) {
       return { ok: true, status: "none", changed: false, projectRoot: root, detectedAgents: detected || {}, configured: existing?.installed || {} };
@@ -7914,7 +8589,7 @@ async function ensureProjectAgentConfig(projectRoot, {
 function constantEqual(left, right) {
   const a = Buffer.from(String(left));
   const b = Buffer.from(String(right));
-  return a.length === b.length && (0, import_node_crypto13.timingSafeEqual)(a, b);
+  return a.length === b.length && (0, import_node_crypto15.timingSafeEqual)(a, b);
 }
 function parseCookies(header = "") {
   if (header.length > 8192) throw new BridgeError("COOKIE_HEADER_TOO_LARGE", "Cookie header is too large", { status: 400 });
@@ -8043,6 +8718,8 @@ async function createBridgeServer({
   projectRegistry = null,
   sessionStore = null,
   recentProjectsStore = { record: recordRecentProject, list: readRecentProjects },
+  // 地图账本（已知地图清单，存在 .live-dot-map 之外）；传 null 关闭丢图检测。
+  mapLedger = new MapLedger(),
   recycleBin = null,
   nativeHelper = null,
   editorOpener = null,
@@ -8057,7 +8734,7 @@ async function createBridgeServer({
   // 安装版：桥 exe 位于 <安装目录>/current/payload/，payload-manifest.json 就在旁边。
   // 用 exe 自身目录而不是 process.cwd()：启动器「正常启动」与更新器「重启」的 cwd 不一致，
   // 以 cwd 为准会导致正常启动时读不到本地安装信息（current:null），更新判定失效。
-  installRoot = process.execPath ? (0, import_node_path20.dirname)((0, import_node_path20.resolve)(process.execPath)) : process.cwd(),
+  installRoot = process.execPath ? (0, import_node_path22.dirname)((0, import_node_path22.resolve)(process.execPath)) : process.cwd(),
   spawnUpdater = null,
   restartOnUpdate = true,
   shutdownHandler = null
@@ -8205,6 +8882,7 @@ async function createBridgeServer({
         pollIntervalMs,
         clock,
         faultInjector,
+        ledger: mapLedger,
         onEvent: (event) => events.publish(
           storeKey(root, event.mapKey),
           event.type === "external" ? { ...event, type: "revision", source: "external" } : event
@@ -8267,8 +8945,15 @@ async function createBridgeServer({
     }
     if (!roots.has(root)) roots.set(root, true);
     await recentProjectsStore.record(root).catch(() => void 0);
+    try {
+      await mapLedger?.assertPresent(root);
+    } catch (error3) {
+      if (error3?.code === "MAPS_MISSING") logger.error("project.maps-missing", { root, missing: error3.details?.missing });
+      throw error3;
+    }
     const { activeMap } = await ensureMapsLayout(root);
     const store = await openMapStore(root, activeMap);
+    await (await mapManagerFor(root)).recordLedger();
     markdownStoreFor(root);
     logger.info("project.open", { root, map: activeMap });
     return { root, store, mapId: activeMap };
@@ -8306,7 +8991,7 @@ async function createBridgeServer({
   const UPDATE_BASE = (updateBase || process.env.LIVEDOT_UPDATE_BASE || "https://livedotmap.top/windows-installer").replace(/\/+$/, "");
   async function readLocalPayloadInfo() {
     try {
-      const parsed = JSON.parse(await (0, import_promises17.readFile)((0, import_node_path20.join)(installRoot, "payload-manifest.json"), "utf8"));
+      const parsed = JSON.parse(await (0, import_promises19.readFile)((0, import_node_path22.join)(installRoot, "payload-manifest.json"), "utf8"));
       return {
         version: typeof parsed.version === "string" ? parsed.version : null,
         payloadHash: typeof parsed.payloadHash === "string" ? parsed.payloadHash : null
@@ -8392,10 +9077,10 @@ async function createBridgeServer({
     }
     if (!response.ok) throw new BridgeError("UPDATE_DOWNLOAD_FAILED", `\u66F4\u65B0\u5305\u4E0B\u8F7D\u5931\u8D25\uFF08${label}\uFF0CHTTP ${response.status}\uFF09\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5`, { status: 502 });
     const buffer = Buffer.from(await response.arrayBuffer());
-    const actual = (0, import_node_crypto13.createHash)("sha256").update(buffer).digest("hex");
+    const actual = (0, import_node_crypto15.createHash)("sha256").update(buffer).digest("hex");
     if (actual !== meta.sha256.toLowerCase()) throw new BridgeError("UPDATE_CHECKSUM_MISMATCH", `\u66F4\u65B0\u5305\u6821\u9A8C\u5931\u8D25\uFF08${label} \u4E0E\u6E05\u5355\u4E0D\u4E00\u81F4\uFF0C\u6587\u4EF6\u53EF\u80FD\u635F\u574F\u6216\u88AB\u7BE1\u6539\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E2D\u6B62\uFF0C\u73B0\u6709\u7248\u672C\u4E0D\u53D7\u5F71\u54CD`, { status: 502 });
-    await (0, import_promises17.mkdir)((0, import_node_path20.dirname)(target), { recursive: true });
-    await (0, import_promises17.writeFile)(target, buffer);
+    await (0, import_promises19.mkdir)((0, import_node_path22.dirname)(target), { recursive: true });
+    await (0, import_promises19.writeFile)(target, buffer);
   }
   async function applyUpdate() {
     const local = await readLocalPayloadInfo();
@@ -8403,39 +9088,39 @@ async function createBridgeServer({
     if (!isUpdateAvailable(local, manifest)) {
       throw new BridgeError("ALREADY_UP_TO_DATE", `Current version ${local.version ?? "unknown"} is up to date`, { status: 409 });
     }
-    const tempRoot = (0, import_node_path20.join)(process.env.TEMP || process.env.TMP || (0, import_node_os6.homedir)(), `livedot-update-${manifest.version}-${(0, import_node_crypto13.randomUUID)()}`);
-    const payloadDir = (0, import_node_path20.join)(tempRoot, "payload");
-    await (0, import_promises17.mkdir)(payloadDir, { recursive: true });
+    const tempRoot = (0, import_node_path22.join)(process.env.TEMP || process.env.TMP || (0, import_node_os7.homedir)(), `livedot-update-${manifest.version}-${(0, import_node_crypto15.randomUUID)()}`);
+    const payloadDir = (0, import_node_path22.join)(tempRoot, "payload");
+    await (0, import_promises19.mkdir)(payloadDir, { recursive: true });
     try {
       for (const [relative6, meta] of Object.entries(manifest.files)) {
         if (relative6.includes("..") || relative6.startsWith("/") || /^[a-zA-Z]:/.test(relative6)) {
           throw new BridgeError("UPDATE_MANIFEST_INVALID", `Unsafe file path: ${relative6}`, { status: 502 });
         }
-        await downloadUpdateFile(meta, (0, import_node_path20.join)(payloadDir, relative6), relative6);
+        await downloadUpdateFile(meta, (0, import_node_path22.join)(payloadDir, relative6), relative6);
       }
     } catch (error3) {
-      await (0, import_promises17.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
+      await (0, import_promises19.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
       throw error3;
     }
     let updater;
     if (manifest.installer && typeof manifest.installer === "object") {
-      updater = (0, import_node_path20.join)(tempRoot, "LiveDotMapSetup.exe");
+      updater = (0, import_node_path22.join)(tempRoot, "LiveDotMapSetup.exe");
       try {
         await downloadUpdateFile(manifest.installer, updater, "LiveDotMapSetup.exe");
       } catch (error3) {
-        await (0, import_promises17.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
+        await (0, import_promises19.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
         throw error3;
       }
     } else {
-      updater = (0, import_node_path20.resolve)((0, import_node_path20.join)(installRoot, "..", "LiveDotMapSetup.exe"));
+      updater = (0, import_node_path22.resolve)((0, import_node_path22.join)(installRoot, "..", "LiveDotMapSetup.exe"));
       try {
-        await (0, import_promises17.access)(updater);
+        await (0, import_promises19.access)(updater);
       } catch {
-        await (0, import_promises17.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
+        await (0, import_promises19.rm)(tempRoot, { recursive: true, force: true }).catch(() => void 0);
         throw new BridgeError("UPDATER_UNAVAILABLE", "Installer entry not found; updates are only available in installed mode", { status: 501 });
       }
     }
-    const updaterArgs = ["--update", (0, import_node_path20.join)(tempRoot, "LiveDotMapSetup.exe"), (0, import_node_path20.resolve)((0, import_node_path20.join)(installRoot, ".."))];
+    const updaterArgs = ["--update", (0, import_node_path22.join)(tempRoot, "LiveDotMapSetup.exe"), (0, import_node_path22.resolve)((0, import_node_path22.join)(installRoot, ".."))];
     if (spawnUpdater) {
       spawnUpdater(updater, updaterArgs);
     } else {
@@ -8571,7 +9256,7 @@ async function createBridgeServer({
         let healthRoot = null;
         let actor = "agent:mcp-proxy";
         try {
-          if (typeof body.projectRoot !== "string" || !(0, import_node_path20.isAbsolute)(body.projectRoot)) {
+          if (typeof body.projectRoot !== "string" || !(0, import_node_path22.isAbsolute)(body.projectRoot)) {
             throw new BridgeError("PROJECT_ROOT_REQUIRED", "projectRoot must be an absolute path", { status: 400 });
           }
           let root;
@@ -8840,8 +9525,8 @@ async function createBridgeServer({
           if (!item || typeof item !== "object" || Array.isArray(item)) continue;
           const { level, event, at, ...fields } = item;
           if (typeof event !== "string" || !event) continue;
-          const write = levels.has(level) ? level : "info";
-          await clientLog[write](String(event), { ...typeof at === "string" ? { clientAt: at } : {}, ...fields });
+          const write2 = levels.has(level) ? level : "info";
+          await clientLog[write2](String(event), { ...typeof at === "string" ? { clientAt: at } : {}, ...fields });
           accepted += 1;
         }
         sendJson(response, 200, { ok: true, accepted });
@@ -8854,7 +9539,7 @@ async function createBridgeServer({
         const detected = await detectInstalledAdapters({ projectRoot: root });
         let config = {};
         try {
-          const parsed = JSON.parse(await (0, import_promises17.readFile)((0, import_node_path20.join)(root, ".live-dot-map", "agent-kit.json"), "utf8"));
+          const parsed = JSON.parse(await (0, import_promises19.readFile)((0, import_node_path22.join)(root, ".live-dot-map", "agent-kit.json"), "utf8"));
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) config = parsed;
         } catch {
         }
@@ -8920,7 +9605,7 @@ async function createBridgeServer({
         const result2 = await store.execute({
           projectId: String(snapshot.document.mapId),
           baseRevision: snapshot.revision,
-          commandId: `human-restore-${(0, import_node_crypto13.randomUUID)()}`,
+          commandId: `human-restore-${(0, import_node_crypto15.randomUUID)()}`,
           actor: "human",
           sessionId: "browser-archive-settings",
           commands: [{ op: "restore", collection, id }]
@@ -8943,7 +9628,7 @@ async function createBridgeServer({
           id,
           actor: "human",
           confirmed: true,
-          commandId: `human-purge-${(0, import_node_crypto13.randomUUID)()}`
+          commandId: `human-purge-${(0, import_node_crypto15.randomUUID)()}`
         });
         sendJson(response, 200, result2);
         return;
@@ -9108,12 +9793,12 @@ async function createBridgeServer({
         const ownerId = String(body.ownerId || "");
         const sourcePath = String(body.sourcePath || "");
         if (!ownerKind || !ownerId || !sourcePath) throw new BridgeError("ASSET_FIELDS_REQUIRED", "ownerKind, ownerId and sourcePath are required", { status: 400 });
-        if (!(0, import_node_path20.isAbsolute)(sourcePath)) throw new BridgeError("ASSET_PATH_NOT_ABSOLUTE", "sourcePath \u5FC5\u987B\u662F\u7EDD\u5BF9\u8DEF\u5F84", { status: 400 });
+        if (!(0, import_node_path22.isAbsolute)(sourcePath)) throw new BridgeError("ASSET_PATH_NOT_ABSOLUTE", "sourcePath \u5FC5\u987B\u662F\u7EDD\u5BF9\u8DEF\u5F84", { status: 400 });
         const bundle = await activeBundleStore(session);
         const result2 = await bundle.importAsset({
           ownerKind,
           ownerId,
-          fileName: (0, import_node_path20.basename)(sourcePath),
+          fileName: (0, import_node_path22.basename)(sourcePath),
           sourcePath,
           allowExternalPath: true
         });
@@ -9157,7 +9842,7 @@ async function createBridgeServer({
                   logger.warn("bundle.ensureIndex", { ownerId: command2.value.id, error: error3?.message });
                 });
                 await index.refreshOwnerAndPersist({
-                  mapRoot: (0, import_node_path20.join)(session.projectRoot, ".live-dot-map", "maps", session.activeMapId ?? await resolveActiveMap(session.projectRoot)),
+                  mapRoot: (0, import_node_path22.join)(session.projectRoot, ".live-dot-map", "maps", session.activeMapId ?? await resolveActiveMap(session.projectRoot)),
                   ownerKind: "nodes",
                   ownerId: command2.value.id
                 }).catch((error3) => {
@@ -9238,9 +9923,9 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
   server.headersTimeout = 1e4;
   server.requestTimeout = 15e3;
   server.keepAliveTimeout = 5e3;
-  await new Promise((resolve18, reject) => {
+  await new Promise((resolve19, reject) => {
     server.once("error", reject);
-    server.listen(listenPort, host, resolve18);
+    server.listen(listenPort, host, resolve19);
   });
   port = server.address().port;
   async function pollActiveMaps() {
@@ -9283,7 +9968,7 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
           const context = await manager.resolve({ mapKey: map.id });
           const lifecycle = new ArchiveLifecycle({ store: context.store, projectRoot, shared: adapter, clock, recycleBin: recycleService });
           for (const item of await lifecycle.listEligible({ now: clock() })) {
-            await lifecycle.purge({ ...item, actor: "system:retention", now: clock(), commandId: `retention-purge-${(0, import_node_crypto13.randomUUID)()}` });
+            await lifecycle.purge({ ...item, actor: "system:retention", now: clock(), commandId: `retention-purge-${(0, import_node_crypto15.randomUUID)()}` });
           }
         }
       } catch (error3) {
@@ -9313,8 +9998,8 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
       await Promise.all([...mapManagers.values()].map((manager) => manager.close()));
       if (sessionStore) await sessionStore.flush();
       else sessions.clear();
-      await new Promise((resolve18, reject) => {
-        server.close((error3) => error3 ? reject(error3) : resolve18());
+      await new Promise((resolve19, reject) => {
+        server.close((error3) => error3 ? reject(error3) : resolve19());
         server.closeAllConnections?.();
       });
     }
@@ -9322,52 +10007,52 @@ data: ${JSON.stringify({ projectHandle: session.projectHandle, mapKey: session.a
 }
 
 // src/bridge/project-registry.mjs
-var import_node_crypto15 = require("node:crypto");
-var import_promises19 = require("node:fs/promises");
-var import_node_path22 = require("node:path");
+var import_node_crypto17 = require("node:crypto");
+var import_promises21 = require("node:fs/promises");
+var import_node_path24 = require("node:path");
 
 // src/bridge/runtime-state.mjs
-var import_node_crypto14 = require("node:crypto");
+var import_node_crypto16 = require("node:crypto");
 var import_node_child_process7 = require("node:child_process");
-var import_promises18 = require("node:fs/promises");
-var import_node_path21 = require("node:path");
-var import_node_os7 = require("node:os");
+var import_promises20 = require("node:fs/promises");
+var import_node_path23 = require("node:path");
+var import_node_os8 = require("node:os");
 var import_node_util = require("node:util");
 var execFileAsync = (0, import_node_util.promisify)(import_node_child_process7.execFile);
 var SCHEMA_VERSION = 1;
 function defaultRuntimeStateDir() {
-  if (process.env.LIVEDOT_RUNTIME_STATE_DIR) return (0, import_node_path21.resolve)(process.env.LIVEDOT_RUNTIME_STATE_DIR);
-  const localAppData = process.env.LOCALAPPDATA || (0, import_node_path21.join)((0, import_node_os7.homedir)(), "AppData", "Local");
-  return (0, import_node_path21.join)(localAppData, "live-dot-map", "run");
+  if (process.env.LIVEDOT_RUNTIME_STATE_DIR) return (0, import_node_path23.resolve)(process.env.LIVEDOT_RUNTIME_STATE_DIR);
+  const localAppData = process.env.LOCALAPPDATA || (0, import_node_path23.join)((0, import_node_os8.homedir)(), "AppData", "Local");
+  return (0, import_node_path23.join)(localAppData, "live-dot-map", "run");
 }
 async function privateDirectory(path) {
-  await (0, import_promises18.mkdir)(path, { recursive: true, mode: 448 });
-  await (0, import_promises18.chmod)(path, 448).catch(() => void 0);
+  await (0, import_promises20.mkdir)(path, { recursive: true, mode: 448 });
+  await (0, import_promises20.chmod)(path, 448).catch(() => void 0);
 }
 async function atomicPrivateWrite(path, value) {
-  await privateDirectory((0, import_node_path21.dirname)(path));
-  const temporary = `${path}.${process.pid}.${(0, import_node_crypto14.randomUUID)()}.tmp`;
-  await (0, import_promises18.writeFile)(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
-  await (0, import_promises18.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises18.rename)(temporary, path);
-  await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
+  await privateDirectory((0, import_node_path23.dirname)(path));
+  const temporary = `${path}.${process.pid}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
+  await (0, import_promises20.writeFile)(temporary, value, { encoding: "utf8", mode: 384, flag: "wx" });
+  await (0, import_promises20.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises20.rename)(temporary, path);
+  await (0, import_promises20.chmod)(path, 384).catch(() => void 0);
 }
 function runtimePaths(runtimeStateDir = defaultRuntimeStateDir()) {
-  const root = (0, import_node_path21.resolve)(runtimeStateDir);
+  const root = (0, import_node_path23.resolve)(runtimeStateDir);
   return {
     root,
-    bridge: (0, import_node_path21.join)(root, "bridge.json"),
-    controlToken: (0, import_node_path21.join)(root, "control.token"),
-    lock: (0, import_node_path21.join)(root, "singleton.lock"),
-    sessions: (0, import_node_path21.join)(root, "sessions.json"),
-    projects: (0, import_node_path21.join)(root, "projects.json")
+    bridge: (0, import_node_path23.join)(root, "bridge.json"),
+    controlToken: (0, import_node_path23.join)(root, "control.token"),
+    lock: (0, import_node_path23.join)(root, "singleton.lock"),
+    sessions: (0, import_node_path23.join)(root, "sessions.json"),
+    projects: (0, import_node_path23.join)(root, "projects.json")
   };
 }
 async function readBridgeState(runtimeStateDir) {
   const paths = runtimePaths(runtimeStateDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises18.readFile)(paths.bridge, "utf8"));
+    parsed = JSON.parse(await (0, import_promises20.readFile)(paths.bridge, "utf8"));
   } catch (error3) {
     if (error3?.code === "ENOENT") return null;
     throw new BridgeError("BRIDGE_STATE_CORRUPT", "Bridge runtime state is unreadable", { cause: error3 });
@@ -9389,7 +10074,7 @@ async function writeBridgeState(runtimeStateDir, { pid, port, startedAt = (/* @_
 async function readOrCreateControlToken(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).controlToken;
   try {
-    const value = (await (0, import_promises18.readFile)(path, "utf8")).trim();
+    const value = (await (0, import_promises20.readFile)(path, "utf8")).trim();
     if (!/^[A-Za-z0-9_-]{43,}$/.test(value)) throw new Error("invalid token");
     return value;
   } catch (error3) {
@@ -9397,26 +10082,26 @@ async function readOrCreateControlToken(runtimeStateDir) {
       throw new BridgeError("CONTROL_TOKEN_CORRUPT", "Bridge control token is unreadable or invalid", { cause: error3 });
     }
   }
-  const token = (0, import_node_crypto14.randomBytes)(32).toString("base64url");
+  const token = (0, import_node_crypto16.randomBytes)(32).toString("base64url");
   try {
-    await privateDirectory((0, import_node_path21.dirname)(path));
-    await (0, import_promises18.writeFile)(path, `${token}
+    await privateDirectory((0, import_node_path23.dirname)(path));
+    await (0, import_promises20.writeFile)(path, `${token}
 `, { encoding: "utf8", mode: 384, flag: "wx" });
-    await (0, import_promises18.chmod)(path, 384).catch(() => void 0);
+    await (0, import_promises20.chmod)(path, 384).catch(() => void 0);
     return token;
   } catch (error3) {
     if (error3?.code !== "EEXIST") throw error3;
-    const existing = (await (0, import_promises18.readFile)(path, "utf8")).trim();
+    const existing = (await (0, import_promises20.readFile)(path, "utf8")).trim();
     if (!/^[A-Za-z0-9_-]{43,}$/.test(existing)) throw new BridgeError("CONTROL_TOKEN_CORRUPT", "Bridge control token is invalid");
     return existing;
   }
 }
 async function acquireSingletonLock(runtimeStateDir) {
   const path = runtimePaths(runtimeStateDir).lock;
-  await privateDirectory((0, import_node_path21.dirname)(path));
+  await privateDirectory((0, import_node_path23.dirname)(path));
   let handle;
   try {
-    handle = await (0, import_promises18.open)(path, "wx", 384);
+    handle = await (0, import_promises20.open)(path, "wx", 384);
     await handle.writeFile(`${JSON.stringify({ pid: process.pid, acquiredAt: (/* @__PURE__ */ new Date()).toISOString() })}
 `, "utf8");
   } catch (error3) {
@@ -9429,7 +10114,7 @@ async function acquireSingletonLock(runtimeStateDir) {
     if (released) return;
     released = true;
     await handle.close().catch(() => void 0);
-    await (0, import_promises18.rm)(path, { force: true }).catch(() => void 0);
+    await (0, import_promises20.rm)(path, { force: true }).catch(() => void 0);
   };
 }
 function isProcessAlive(pid) {
@@ -9469,20 +10154,20 @@ async function clearStaleSingletonLock(runtimeStateDir, expectedPid, options = {
   const path = runtimePaths(runtimeStateDir).lock;
   let lock;
   try {
-    lock = JSON.parse(await (0, import_promises18.readFile)(path, "utf8"));
+    lock = JSON.parse(await (0, import_promises20.readFile)(path, "utf8"));
   } catch (error3) {
     if (error3?.code === "ENOENT") return true;
     throw new BridgeError("BRIDGE_LOCK_CORRUPT", "Bridge singleton lock is unreadable", { cause: error3 });
   }
   if (lock?.pid !== expectedPid) return false;
-  await (0, import_promises18.rm)(path, { force: true });
+  await (0, import_promises20.rm)(path, { force: true });
   return true;
 }
 async function removeBridgeState(runtimeStateDir, expectedPid) {
   const paths = runtimePaths(runtimeStateDir);
   const current = await readBridgeState(runtimeStateDir).catch(() => null);
   if (current && expectedPid && current.pid !== expectedPid) return false;
-  await (0, import_promises18.rm)(paths.bridge, { force: true });
+  await (0, import_promises20.rm)(paths.bridge, { force: true });
   return true;
 }
 async function bridgeProcessImagePath(pid) {
@@ -9504,15 +10189,15 @@ async function bridgeProcessImagePath(pid) {
 // src/bridge/project-registry.mjs
 var SCHEMA_VERSION2 = 1;
 function handleValue() {
-  return `ph_${(0, import_node_crypto15.randomBytes)(24).toString("base64url")}`;
+  return `ph_${(0, import_node_crypto17.randomBytes)(24).toString("base64url")}`;
 }
 async function atomicWrite(path, data) {
-  await (0, import_promises19.mkdir)((0, import_node_path22.dirname)(path), { recursive: true, mode: 448 });
-  const temporary = `${path}.${process.pid}.${(0, import_node_crypto15.randomUUID)()}.tmp`;
-  await (0, import_promises19.writeFile)(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
-  await (0, import_promises19.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises19.rename)(temporary, path);
-  await (0, import_promises19.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises21.mkdir)((0, import_node_path24.dirname)(path), { recursive: true, mode: 448 });
+  const temporary = `${path}.${process.pid}.${(0, import_node_crypto17.randomUUID)()}.tmp`;
+  await (0, import_promises21.writeFile)(temporary, data, { encoding: "utf8", mode: 384, flag: "wx" });
+  await (0, import_promises21.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises21.rename)(temporary, path);
+  await (0, import_promises21.chmod)(path, 384).catch(() => void 0);
 }
 var ProjectRegistry = class _ProjectRegistry {
   constructor({ filePath, entries = [], canonicalize = canonicalDirectory } = {}) {
@@ -9525,7 +10210,7 @@ var ProjectRegistry = class _ProjectRegistry {
   static async open({ runtimeStateDir, filePath = runtimePaths(runtimeStateDir).projects, canonicalize } = {}) {
     let entries = [];
     try {
-      const parsed = JSON.parse(await (0, import_promises19.readFile)(filePath, "utf8"));
+      const parsed = JSON.parse(await (0, import_promises21.readFile)(filePath, "utf8"));
       if (parsed?.schemaVersion !== SCHEMA_VERSION2 || !Array.isArray(parsed.projects)) throw new Error("invalid shape");
       entries = parsed.projects;
       for (const entry of entries) {
@@ -9572,7 +10257,7 @@ var ProjectRegistry = class _ProjectRegistry {
   async refresh() {
     let parsed;
     try {
-      parsed = JSON.parse(await (0, import_promises19.readFile)(this.filePath, "utf8"));
+      parsed = JSON.parse(await (0, import_promises21.readFile)(this.filePath, "utf8"));
     } catch (error3) {
       if (error3?.code === "ENOENT") return;
       throw new BridgeError("PROJECT_REGISTRY_CORRUPT", "Project authorization registry is unreadable or invalid", { cause: error3 });
@@ -9597,20 +10282,20 @@ var ProjectRegistry = class _ProjectRegistry {
 };
 
 // src/bridge/session-store.mjs
-var import_node_crypto16 = require("node:crypto");
-var import_promises20 = require("node:fs/promises");
-var import_node_path23 = require("node:path");
+var import_node_crypto18 = require("node:crypto");
+var import_promises22 = require("node:fs/promises");
+var import_node_path25 = require("node:path");
 var SCHEMA_VERSION3 = 1;
 var DAY = 24 * 60 * 60 * 1e3;
-var secret = () => (0, import_node_crypto16.randomBytes)(32).toString("base64url");
-var digest5 = (value) => (0, import_node_crypto16.createHash)("sha256").update(String(value)).digest("base64url");
+var secret = () => (0, import_node_crypto18.randomBytes)(32).toString("base64url");
+var digest5 = (value) => (0, import_node_crypto18.createHash)("sha256").update(String(value)).digest("base64url");
 async function atomicWrite2(path, content) {
-  await (0, import_promises20.mkdir)((0, import_node_path23.dirname)(path), { recursive: true, mode: 448 });
-  const temporary = `${path}.${process.pid}.${(0, import_node_crypto16.randomUUID)()}.tmp`;
-  await (0, import_promises20.writeFile)(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
-  await (0, import_promises20.chmod)(temporary, 384).catch(() => void 0);
-  await (0, import_promises20.rename)(temporary, path);
-  await (0, import_promises20.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises22.mkdir)((0, import_node_path25.dirname)(path), { recursive: true, mode: 448 });
+  const temporary = `${path}.${process.pid}.${(0, import_node_crypto18.randomUUID)()}.tmp`;
+  await (0, import_promises22.writeFile)(temporary, content, { encoding: "utf8", mode: 384, flag: "wx" });
+  await (0, import_promises22.chmod)(temporary, 384).catch(() => void 0);
+  await (0, import_promises22.rename)(temporary, path);
+  await (0, import_promises22.chmod)(path, 384).catch(() => void 0);
 }
 var SessionStore = class _SessionStore {
   constructor({ filePath, sessions = [], clock = () => /* @__PURE__ */ new Date(), ttlMs = 7 * DAY, persistIntervalMs = 6e4, maxSessions = 64 } = {}) {
@@ -9630,7 +10315,7 @@ var SessionStore = class _SessionStore {
     const filePath = options.filePath || runtimePaths(options.runtimeStateDir).sessions;
     let sessions = [];
     try {
-      const parsed = JSON.parse(await (0, import_promises20.readFile)(filePath, "utf8"));
+      const parsed = JSON.parse(await (0, import_promises22.readFile)(filePath, "utf8"));
       if (parsed?.schemaVersion !== SCHEMA_VERSION3 || !Array.isArray(parsed.sessions)) throw new Error("invalid shape");
       sessions = parsed.sessions;
       for (const session of sessions) {
@@ -9744,6 +10429,333 @@ var SessionStore = class _SessionStore {
   }
 };
 
+// src/cli/agent-cli.ts
+var import_promises23 = require("node:fs/promises");
+var AGENT_COMMANDS = /* @__PURE__ */ new Set(["look", "read", "write", "note", "analyze", "manage"]);
+var INVOKE = 'node "$HOME/.live-dot-map/livedot.mjs"';
+var HELP = `livedot\uFF1A\u6D3B\u70B9\u5730\u56FE\u8BB0\u5FC6\u7A7A\u95F4\u7684\u547D\u4EE4\u884C\uFF0C\u7ED9 Agent \u7528\uFF0C\u8F93\u51FA\u7D27\u51D1 JSON\u3002
+\u8C03\u7528\uFF1A${INVOKE} <\u547D\u4EE4> \u2026\uFF08\u4E0B\u6587\u7B80\u5199 livedot\uFF09
+
+livedot look [\u5173\u952E\u8BCD] [--node n3]         \u770B\u76EE\u5F55\uFF0C\u4E0D\u542B\u6B63\u6587\uFF1B\u4E0D\u5E26\u5173\u952E\u8BCD=\u6574\u5F20\u76EE\u5F55+\u6BCF\u9879\u4E00\u53E5\u6458\u8981
+livedot read <\u8DEF\u5F84|\u8282\u70B9id> [--force]       \u8BFB\u6B63\u6587\uFF08\u9644\u8BE5\u8282\u70B9\u6807\u6CE8 anns\uFF09\uFF1B\u8DEF\u5F84\u53D6 look \u7ED3\u679C\u7684 path \u5217
+livedot write <\u8DEF\u5F84> "<\u5185\u5BB9>"              \u8FFD\u52A0\u5230\u6587\u4EF6\u672B\u5C3E\uFF08\u6587\u4EF6\u4E0D\u5B58\u5728\u5C31\u65B0\u5EFA\uFF09
+livedot write <\u8DEF\u5F84> - --etag <etag>       \u4ECE stdin \u8BFB\u5185\u5BB9\u6574\u6587\u66FF\u6362\uFF08etag \u53D6\u81EA read\uFF09
+livedot write --new "<\u8282\u70B9\u540D>" [--kind problem] ["<\u5185\u5BB9>"]   \u65B0\u5EFA\u8282\u70B9
+livedot write n3 --summary "<\u4E00\u53E5\u8BDD>"      \u5199\u8282\u70B9\u6458\u8981\uFF08Agent\u5143\u6570\u636E\uFF0C\u53EA\u5BFC\u822A\uFF09
+livedot write n3 --file <\u6587\u4EF6\u540D> "<\u8BF4\u660E>"  \u5199\u8D44\u6599\u5305\u91CC\u67D0\u4E2A\u6587\u4EF6\u7684\u4E00\u53E5\u8BF4\u660E
+livedot note <\u8282\u70B9id> "<\u4E00\u53E5\u8BDD>"           \u7ED9\u8282\u70B9\u8FFD\u52A0\u4E00\u6761\u5E26\u65F6\u95F4\u7684\u8BB0\u5F55
+livedot analyze <\u6570\u636E\u6587\u4EF6> describe|group|top [--by \u5B57\u6BB5] [--metric \u6307\u6807]
+livedot manage <\u52A8\u4F5C> [...]                \u4F4E\u9891\u7BA1\u7406\uFF0C\u89C1 livedot manage --help
+
+\u4F8B\uFF1A
+  livedot look "\u6296\u97F3 \u7206\u6B3E"
+  livedot read nodes/n3/index.md
+  livedot note n3 "\u5C01\u9762\u6362\u6696\u8272\u540E\u64AD\u653E +40%\uFF0C\u4F9D\u636E nodes/n3/data.csv"
+  livedot analyze nodes/n3/data.csv group --by \u97F3\u4E50 --metric \u64AD\u653E
+
+\u901A\u7528\u53C2\u6570\uFF1A--project <\u76EE\u5F55>  --map <\u5730\u56FEkey>  --agent <\u540D\u5B57>  --out <\u6587\u4EF6>\uFF08\u5B8C\u6574\u7ED3\u679C\u5199\u6587\u4EF6\uFF0C\u53EA\u6253\u5370\u6458\u8981\uFF09
+\u51FA\u9519\uFF1Astderr \u8F93\u51FA {"error":{"code","message"}}\uFF0C\u9000\u51FA\u7801 1\uFF1B\u6309 message \u91CC\u7684\u7528\u6CD5\u6539\u6B63\u540E\u91CD\u8BD5\u3002`;
+var COMMAND_HELP = {
+  look: `livedot look [\u5173\u952E\u8BCD] [--node <\u8282\u70B9id>] [--limit 5] [--all]
+\u8FD4\u56DE {map,name,rev,goal?,cols,items}\u3002\u4E0D\u5E26\u5173\u952E\u8BCD\uFF1Aitems \u6BCF\u884C [id,\u540D\u79F0,\u7C7B\u578B,\u8DEF\u5F84,\u6458\u8981,\u6587\u4EF6\u6570]\uFF0C\u6309\u610F\u601D\u81EA\u5DF1\u6311\uFF1B
+\u5E26\u5173\u952E\u8BCD\uFF1A\u6BCF\u884C [id,\u540D\u79F0,\u7C7B\u578B,\u8DEF\u5F84,\u7406\u7531]\uFF0C\u6CA1\u547D\u4E2D\u6362\u4E2A\u8BF4\u6CD5\u3002--all \u542B\u5DF2\u5F52\u6863\u5386\u53F2\u3002\u4F8B\uFF1Alivedot look "\u6570\u636E\u5206\u6790"`,
+  read: `livedot read <\u8DEF\u5F84|\u8282\u70B9id|\u6807\u6CE8id> [--force]
+\u8DEF\u5F84\u5982 nodes/n3/index.md\u3001nodes/n3/\u65B9\u6848.md\uFF1B\u53EA\u5199 n3 \u8BFB\u4E3B\u6587\u6863\uFF08\u9644\u6807\u6CE8 anns\u3001\u5176\u4ED6\u6587\u4EF6\u6570 otherFiles\uFF09\uFF1B\u4EE5 / \u7ED3\u5C3E\u5217\u6587\u4EF6\uFF1Ba1 \u8FD9\u7C7B\u6807\u6CE8 id \u8FD4\u56DE\u6807\u6CE8\u5168\u6587\u3002
+\u540C\u4E00 --session \u5185\u6587\u4EF6\u6CA1\u53D8\u65F6\u53EA\u56DE {unchanged:true}\uFF0C--force \u5F3A\u5236\u91CD\u8BFB\u3002\u4F8B\uFF1Alivedot read n3`,
+  write: `livedot write <\u8DEF\u5F84> "<\u5185\u5BB9>"            \u8FFD\u52A0\uFF08\u9ED8\u8BA4\uFF0C\u4E0D\u4F1A\u8986\u76D6\u5DF2\u6709\u5185\u5BB9\uFF09
+livedot write <\u8DEF\u5F84> - --etag <etag>     \u4ECE stdin \u8BFB\u5185\u5BB9\u6574\u6587\u66FF\u6362\uFF0Cetag \u53D6\u81EA read \u7ED3\u679C
+livedot write --new "<\u8282\u70B9\u540D>" [--kind goal|problem] [--near n3] ["<\u5185\u5BB9>"]
+livedot write n3 --summary "<\u4E00\u53E5\u8BDD>"    \u5199\u8282\u70B9\u6458\u8981\u5230 Agent\u5143\u6570\u636E.md\uFF08read \u8FD4\u56DE meta:"\u7F3A\u6458\u8981|\u6458\u8981\u8FC7\u671F" \u65F6\uFF09
+livedot write n3 --file <\u6587\u4EF6\u540D> "<\u8BF4\u660E>" \u5199\u6587\u4EF6\u8BF4\u660E\uFF08read \u8FD4\u56DE meta:"\u65E0\u8BF4\u660E" \u65F6\uFF09\uFF1B\u4EBA\u6539\u8FC7/\u5220\u8FC7\u7684\u4E0D\u80FD\u5199\uFF0C\u7528\u6237\u660E\u786E\u8981\u6C42\u65F6\u52A0 --user-asked
+\u4F8B\uFF1Alivedot write nodes/n3/index.md "## \u7ED3\u8BBA\\n\u94A2\u7434\u914D\u4E50\u7EC4\u4E2D\u4F4D\u64AD\u653E 41 \u4E07"`,
+  note: `livedot note <\u8282\u70B9id> "<\u4E00\u53E5\u8BDD>"
+\u5728\u8282\u70B9\u4E3B\u6587\u6863\u672B\u5C3E\u8FFD\u52A0\u4E00\u884C "- 10-05 14:30 \xB7 \u4E00\u53E5\u8BDD"\u3002\u4F8B\uFF1Alivedot note n3 "\u6539\u7528\u6696\u8272\u5C01\u9762\uFF0C\u5F85\u89C2\u5BDF"`,
+  analyze: `livedot analyze <\u6570\u636E\u6587\u4EF6> <describe|group|top> [\u53C2\u6570]
+\u6570\u636E\u6587\u4EF6\uFF1A\u8282\u70B9\u8D44\u6599\u5305\u91CC\u7684 .csv / .json\uFF08\u5BFC\u5165\u7528 livedot manage import --path n3 --source <\u672C\u673A\u6587\u4EF6>\uFF09
+  describe                                 \u5404\u5B57\u6BB5\u6982\u51B5\uFF08\u6570\u503C\u7ED9\u5206\u4F4D\uFF0C\u7C7B\u522B\u7ED9\u524D 5\uFF09
+  group --by \u5B57\u6BB5[,\u5B57\u6BB52] [--metric \u6307\u6807] [--agg median|mean|sum|count]
+  top --metric \u6307\u6807 [--ratio 0.2] [--fields a,b]   \u524D 20% \u5BF9\u6BD4\u5176\u4F59
+\u6BCF\u7EC4\u5E26\u6837\u672C\u6570 n\uFF0Cn<5 \u6807"\u6837\u672C\u4E0D\u8DB3"\u3002\u4F8B\uFF1Alivedot analyze nodes/n3/data.csv top --metric \u64AD\u653E`,
+  manage: `livedot manage <\u52A8\u4F5C> [\u53C2\u6570]
+  maps                                     \u5217\u51FA\u5730\u56FE
+  create_map --name <\u540D\u79F0>                 \u65B0\u5EFA\u5730\u56FE\uFF08\u4E0D\u5207\u6362\uFF09
+  switch_map --map <\u5730\u56FEkey>               \u5207\u6362\u5F53\u524D\u5730\u56FE
+  rename_map --map <\u5730\u56FEkey> --name <\u540D\u79F0>
+  files --path n3                          \u5217\u8D44\u6599\u5305\u6587\u4EF6
+  rename_file --path n3/\u65E7.md --to \u65B0.md
+  archive --path n3/\u8349\u7A3F.md                \u5F52\u6863\uFF08\u53EF\u6062\u590D\uFF09
+  restore --path n3/\u8349\u7A3F.md
+  import --path n3 --source <\u672C\u673A\u6587\u4EF6\u8DEF\u5F84>  \u5BFC\u5165\u9644\u4EF6/\u6570\u636E
+  validate | checkpoint | plan             \u6821\u9A8C / \u68C0\u67E5\u70B9 / \u6574\u7406\u5EFA\u8BAE`
+};
+var COMMON_FLAGS = /* @__PURE__ */ new Set(["project", "map", "agent", "session", "out", "runtime-state-dir", "app", "help"]);
+var COMMAND_FLAGS = {
+  look: ["node", "limit", "all"],
+  read: ["force"],
+  write: ["etag", "new", "kind", "near", "summary", "file", "user-asked", "replace-all"],
+  note: [],
+  analyze: ["by", "metric", "agg", "ratio", "fields"],
+  manage: ["path", "name", "to", "source", "include-archived"]
+};
+var BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["force", "all", "help", "include-archived", "replace-all", "user-asked"]);
+var CliError = class extends Error {
+  code;
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+};
+function parse(argv) {
+  const positional = [];
+  const flags = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const value = argv[index];
+    if (value === "--") {
+      positional.push(...argv.slice(index + 1));
+      break;
+    }
+    if (value === "-h") {
+      flags.help = true;
+      continue;
+    }
+    if (!value.startsWith("--") || value === "-") {
+      positional.push(value);
+      continue;
+    }
+    const [key, inline] = value.slice(2).split(/=(.*)/s, 2);
+    if (inline !== void 0) flags[key] = inline;
+    else if (BOOLEAN_FLAGS.has(key)) flags[key] = true;
+    else if (index + 1 < argv.length && !argv[index + 1].startsWith("--")) {
+      flags[key] = argv[index + 1];
+      index += 1;
+    } else flags[key] = true;
+  }
+  return { positional, flags };
+}
+function usageError(command2, message) {
+  const usage = COMMAND_HELP[command2]?.split("\n")[0] ?? "livedot --help";
+  return new CliError("CLI_USAGE", `${message}\u3002\u6B63\u786E\u7528\u6CD5\uFF1A${usage}\uFF08\u8BE6\u89C1 livedot ${command2} --help\uFF09`);
+}
+function editDistance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    let previous = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const current = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+      previous = current;
+    }
+  }
+  return row[b.length];
+}
+function unknownFlagError(command2, flag) {
+  const own = COMMAND_FLAGS[command2] ?? [];
+  const candidates = [...own, ...COMMON_FLAGS];
+  const guess = candidates.map((name) => [name, editDistance(flag, name)]).sort((a, b) => a[1] - b[1])[0];
+  const suggestion = guess && guess[1] <= 2 ? `\uFF0C\u662F\u4E0D\u662F --${guess[0]}\uFF1F` : "";
+  const legal = own.length ? `\uFF1B${command2} \u53EF\u7528\u53C2\u6570\uFF1A${own.map((name) => `--${name}`).join(" ")}` : "";
+  return new CliError("CLI_USAGE", `\u672A\u77E5\u53C2\u6570 --${flag}${suggestion}${legal}\uFF08\u8BE6\u89C1 livedot ${command2} --help\uFF09`);
+}
+var CLI_REWRITES = [
+  [/ 用法：.*$/s, ""],
+  [/map_write（不带 baseEtag 即追加）/g, "livedot write\uFF08\u4E0D\u5E26 --etag \u5373\u8FFD\u52A0\uFF09"],
+  [/map_write\(\{path:"([^"]+)", meta:\{summary:"…"\}\}\)/g, 'livedot write $1 --summary "\u2026"'],
+  [/map_write\(\{path:"([^"]+)", meta:\{files:\{"([^"]+)":"…"\}\}\}\)/g, 'livedot write $1 --file "$2" "\u2026"'],
+  [/map_write\(\{path:"n3", meta:\{summary:"…", files:\{"文件名":"说明"\}\}\}\)/g, 'livedot write n3 --summary "\u2026" \u6216 livedot write n3 --file <\u6587\u4EF6\u540D> "\u8BF4\u660E"'],
+  [/带 meta\.userAsked:true/g, "\u52A0 --user-asked"],
+  [/map_manage\(\{action:"(\w+)"\}\)/g, "livedot manage $1"],
+  [/map_write\(\{commands:\[…\]\}\)/g, "MCP map_write \u7684 commands\uFF08CLI \u4E0D\u652F\u6301\uFF09"],
+  [/\bmap_look\b/g, "livedot look"],
+  [/\bmap_read\b/g, "livedot read"],
+  [/\bmap_write\b/g, "livedot write"],
+  [/\banalysis_run\b/g, "livedot analyze"],
+  [/\bmap_manage\b/g, "livedot manage"],
+  [/\bbaseEtag\b/g, "--etag"]
+];
+function cliMessage(command2, message, fromBridge) {
+  if (!fromBridge) return message;
+  let text = message;
+  for (const [pattern, replacement] of CLI_REWRITES) text = text.replace(pattern, replacement);
+  const usage = COMMAND_HELP[command2]?.split("\n")[0];
+  return usage && text !== message && / 用法：/.test(message) ? `${text} \u6B63\u786E\u7528\u6CD5\uFF1A${usage}` : text;
+}
+function str(flags, key) {
+  const value = flags[key];
+  return typeof value === "string" && value ? value : void 0;
+}
+function list(value) {
+  return value ? value.split(/[,，]/).map((item) => item.trim()).filter(Boolean) : void 0;
+}
+async function readStdin() {
+  let raw = "";
+  for await (const chunk of process.stdin) raw += chunk;
+  return raw;
+}
+function unescapeInline(text) {
+  return text.replace(/\\n/g, "\n");
+}
+function stamp(now = /* @__PURE__ */ new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+async function build(command2, positional, flags) {
+  const map = str(flags, "map");
+  const scope = map ? { mapKey: map } : {};
+  if (command2 === "look") {
+    const limit = str(flags, "limit");
+    return {
+      tool: "map_look",
+      args: {
+        ...scope,
+        ...positional.length ? { query: positional.join(" ") } : {},
+        ...str(flags, "node") ? { nodeId: str(flags, "node") } : {},
+        ...limit ? { limit: Number(limit) } : {},
+        ...flags.all === true ? { includeHistory: true } : {}
+      }
+    };
+  }
+  if (command2 === "read") {
+    if (!positional[0]) throw usageError(command2, "\u7F3A\u5C11 <\u8DEF\u5F84|\u8282\u70B9id>");
+    return { tool: "map_read", args: { ...scope, path: positional[0], ...flags.force === true ? { force: true } : {} } };
+  }
+  if (command2 === "write") {
+    const args = { ...scope };
+    const created = str(flags, "new");
+    const summary = str(flags, "summary");
+    const file = str(flags, "file");
+    if (summary || file) {
+      const [owner2, note] = positional;
+      if (!owner2) throw usageError(command2, "\u7F3A\u5C11 <\u8282\u70B9id>");
+      if (file && note === void 0) throw usageError(command2, '\u7F3A\u5C11\u6587\u4EF6\u8BF4\u660E "<\u8BF4\u660E>"');
+      args.path = owner2;
+      args.meta = {
+        ...summary ? { summary: unescapeInline(summary) } : {},
+        ...file ? { files: { [file]: unescapeInline(note ?? "") } } : {},
+        ...flags["user-asked"] === true ? { userAsked: true } : {}
+      };
+      return { tool: "map_write", args };
+    }
+    let path;
+    let content;
+    if (created) {
+      args.node = { name: created, ...str(flags, "kind") ? { kind: str(flags, "kind") } : {}, ...str(flags, "near") ? { near: str(flags, "near") } : {} };
+      content = positional[0];
+    } else {
+      [path, content] = positional;
+      if (!path) throw usageError(command2, "\u7F3A\u5C11 <\u8DEF\u5F84>");
+      if (content === void 0) throw usageError(command2, '\u7F3A\u5C11 "<\u5185\u5BB9>"\uFF08\u7528 - \u8868\u793A\u4ECE stdin \u8BFB\uFF09');
+    }
+    if (content === "-") content = await readStdin();
+    else if (content !== void 0) content = unescapeInline(content);
+    if (path) args.path = path;
+    if (content !== void 0) args.content = content;
+    if (str(flags, "etag")) args.baseEtag = str(flags, "etag");
+    if (flags["replace-all"] === true) args.allowContentRemoval = true;
+    return { tool: "map_write", args };
+  }
+  if (command2 === "note") {
+    const [node, ...words] = positional;
+    if (!node || !words.length) throw usageError(command2, '\u7F3A\u5C11 <\u8282\u70B9id> \u6216 "<\u4E00\u53E5\u8BDD>"');
+    const text = unescapeInline(words.join(" ")).trim();
+    return { tool: "map_write", args: { ...scope, path: node.includes("/") ? node : `nodes/${node}/index.md`, content: `- ${stamp()} \xB7 ${text}` } };
+  }
+  if (command2 === "analyze") {
+    const [path, op, ...extra] = positional;
+    if (!path || !op) throw usageError(command2, "\u7F3A\u5C11 <\u6570\u636E\u6587\u4EF6> \u6216 <describe|group|top>");
+    if (extra.length) throw usageError(command2, `\u591A\u4F59\u53C2\u6570\u300C${extra.join(" ")}\u300D\uFF1B\u591A\u4E2A\u5B57\u6BB5\u8981\u5199\u6210 --by "\u97F3\u4E50,\u5C01\u9762"\uFF08\u52A0\u5F15\u53F7\uFF09`);
+    const params = {};
+    const by = list(str(flags, "by"));
+    if (by) params.by = by.length === 1 ? by[0] : by;
+    for (const key of ["metric", "agg"]) if (str(flags, key)) params[key] = str(flags, key);
+    if (str(flags, "ratio")) params.ratio = Number(str(flags, "ratio"));
+    if (list(str(flags, "fields"))) params.fields = list(str(flags, "fields"));
+    return { tool: "analysis_run", args: { ...scope, path, op, params } };
+  }
+  const [action] = positional;
+  if (!action) throw usageError(command2, "\u7F3A\u5C11 <\u52A8\u4F5C>");
+  return {
+    tool: "map_manage",
+    args: {
+      ...scope,
+      action,
+      ...str(flags, "path") ? { path: str(flags, "path") } : {},
+      ...str(flags, "name") ? { name: str(flags, "name") } : {},
+      ...str(flags, "to") ? { to: str(flags, "to") } : {},
+      ...str(flags, "source") ? { sourcePath: str(flags, "source") } : {},
+      ...flags["include-archived"] === true ? { includeArchived: true } : {}
+    }
+  };
+}
+function summarize(tool, value) {
+  const result2 = value && typeof value === "object" ? value : {};
+  if (typeof result2.summary === "string") return { summary: result2.summary, rows: result2.rows };
+  if (Array.isArray(result2.items)) return { items: result2.items.length };
+  if (typeof result2.content === "string") return { path: result2.path, etag: result2.etag, bytes: Buffer.byteLength(result2.content) };
+  return { tool };
+}
+function detectAgent(env) {
+  if (env.LIVEDOT_AGENT) return env.LIVEDOT_AGENT;
+  if (env.CLAUDECODE || env.CLAUDE_CODE_ENTRYPOINT) return "claude";
+  if (env.CODEX_THREAD_ID || env.CODEX_SANDBOX || env.CODEX_MANAGED_BY_NPM) return "codex";
+  if (env.CODEBUDDY || env.CODEBUDDY_PROJECT_DIR) return "codebuddy";
+  if (env.FACTORY_ENV || env.FACTORY_API_BASE_URL) return "droid";
+  return "cli";
+}
+function helpText(command2) {
+  return command2 && COMMAND_HELP[command2] ? COMMAND_HELP[command2] : HELP;
+}
+async function runAgentCli(argv, callTool) {
+  const [command2 = "help", ...rest] = argv;
+  const { positional, flags } = parse(rest);
+  if (!AGENT_COMMANDS.has(command2)) {
+    process.stdout.write(`${HELP}
+`);
+    return command2 === "help" || command2 === "--help" || command2 === "-h" ? 0 : 1;
+  }
+  if (flags.help === true) {
+    process.stdout.write(`${helpText(command2)}
+`);
+    return 0;
+  }
+  try {
+    const allowed = /* @__PURE__ */ new Set([...COMMON_FLAGS, ...COMMAND_FLAGS[command2] ?? []]);
+    const unknown = Object.keys(flags).find((key) => !allowed.has(key));
+    if (unknown) throw unknownFlagError(command2, unknown);
+    const globals = {
+      project: str(flags, "project") ?? process.env.LIVEDOT_PROJECT_ROOT,
+      agent: str(flags, "agent") ?? detectAgent(process.env),
+      session: str(flags, "session") ?? process.env.LIVEDOT_SESSION,
+      runtimeStateDir: str(flags, "runtime-state-dir") ?? process.env.LIVEDOT_RUNTIME_STATE_DIR,
+      app: str(flags, "app")
+    };
+    const { tool, args } = await build(command2, positional, flags);
+    if (globals.session) args.sessionId = globals.session;
+    const value = await callTool(tool, args, globals);
+    if (value && typeof value === "object" && typeof value.hint === "string") {
+      value.hint = cliMessage(command2, String(value.hint), true);
+    }
+    const out = str(flags, "out");
+    if (out) {
+      await (0, import_promises23.writeFile)(out, `${JSON.stringify(value, null, 2)}
+`, "utf8");
+      process.stdout.write(`${JSON.stringify({ ok: true, out, ...summarize(tool, value) })}
+`);
+    } else {
+      process.stdout.write(`${JSON.stringify(value)}
+`);
+    }
+    return 0;
+  } catch (error3) {
+    const value = error3;
+    const code = typeof value?.code === "string" ? value.code : "CLI_FAILED";
+    const message = cliMessage(command2, String(value?.message ?? error3), !(error3 instanceof CliError));
+    process.stderr.write(`${JSON.stringify({ error: { code, message } })}
+`);
+    return 1;
+  }
+}
+
 // src/cli/livedot.ts
 if ((0, import_node_sea.isSea)()) process.env.LIVEDOT_SEA = "1";
 function parseArgs(values) {
@@ -9827,8 +10839,8 @@ async function shutdownRunningBridge(state, controlToken) {
   return !isProcessAlive(state.pid);
 }
 async function recordAgentHealth2(root, actor, event, status, error3) {
-  const path = (0, import_node_path24.join)(root, ".live-dot-map", ".bridge", "agent-health.json");
-  const prior = await (0, import_promises21.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
+  const path = (0, import_node_path26.join)(root, ".live-dot-map", ".bridge", "agent-health.json");
+  const prior = await (0, import_promises24.readFile)(path, "utf8").then((text) => JSON.parse(text)).catch(() => ({}));
   const records = prior.records && typeof prior.records === "object" && !Array.isArray(prior.records) ? prior.records : {};
   const value = error3;
   records[actor.replace(/^agent:/, "")] = {
@@ -9839,40 +10851,40 @@ async function recordAgentHealth2(root, actor, event, status, error3) {
     at: (/* @__PURE__ */ new Date()).toISOString(),
     ...status === "error" ? { code: value?.code ?? "HOOK_FAILED", message: String(value?.message ?? value ?? "\u672A\u77E5\u9519\u8BEF").slice(0, 400) } : {}
   };
-  await (0, import_promises21.mkdir)((0, import_node_path24.dirname)(path), { recursive: true });
-  const temporary = `${path}.${process.pid}.${(0, import_node_crypto17.randomUUID)()}.tmp`;
+  await (0, import_promises24.mkdir)((0, import_node_path26.dirname)(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.${(0, import_node_crypto19.randomUUID)()}.tmp`;
   try {
-    await (0, import_promises21.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
+    await (0, import_promises24.writeFile)(temporary, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), records }, null, 2)}
 `, "utf8");
-    await (0, import_promises21.rename)(temporary, path);
+    await (0, import_promises24.rename)(temporary, path);
   } catch {
   }
 }
 async function inspectProjectQualification(projectRoot) {
-  const root = (0, import_node_path24.resolve)(projectRoot);
-  const rootMetadata = await (0, import_promises21.lstat)(root).catch(() => null);
+  const root = (0, import_node_path26.resolve)(projectRoot);
+  const rootMetadata = await (0, import_promises24.lstat)(root).catch(() => null);
   if (!rootMetadata || !rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
     return { ok: false, code: "PROJECT_NOT_FOUND", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u5B58\u5728\u6216\u4E0D\u662F\u6709\u6548\u9879\u76EE\u76EE\u5F55\u3002" };
   }
-  const dataDirectory = (0, import_node_path24.join)(root, ".live-dot-map");
-  const dataMetadata = await (0, import_promises21.stat)(dataDirectory).catch(() => null);
+  const dataDirectory = (0, import_node_path26.join)(root, ".live-dot-map");
+  const dataMetadata = await (0, import_promises24.stat)(dataDirectory).catch(() => null);
   if (!dataMetadata) return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u8FD8\u6CA1\u6709\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
   if (!dataMetadata.isDirectory()) {
     return { ok: false, code: "PROJECT_LAYOUT_INVALID", message: "\u6D3B\u70B9\u5730\u56FE\u6570\u636E\u76EE\u5F55\u4E0D\u662F\u53EF\u5B89\u5168\u8BFB\u53D6\u7684\u76EE\u5F55\u3002" };
   }
   const marker = async (path) => {
-    const metadata = await (0, import_promises21.stat)(path).catch(() => null);
+    const metadata = await (0, import_promises24.stat)(path).catch(() => null);
     return Boolean(metadata && metadata.isFile());
   };
-  const legacy = await marker((0, import_node_path24.join)(dataDirectory, "map.json"));
-  const mapsPath = (0, import_node_path24.join)(dataDirectory, "maps");
-  const mapsMetadata = await (0, import_promises21.stat)(mapsPath).catch(() => null);
+  const legacy = await marker((0, import_node_path26.join)(dataDirectory, "map.json"));
+  const mapsPath = (0, import_node_path26.join)(dataDirectory, "maps");
+  const mapsMetadata = await (0, import_promises24.stat)(mapsPath).catch(() => null);
   let packageMap = false;
   if (mapsMetadata?.isDirectory()) {
-    const entries = await (0, import_promises21.readdir)(mapsPath, { withFileTypes: true }).catch(() => []);
+    const entries = await (0, import_promises24.readdir)(mapsPath, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      if (await marker((0, import_node_path24.join)(mapsPath, entry.name, "map.json"))) {
+      if (await marker((0, import_node_path26.join)(mapsPath, entry.name, "map.json"))) {
         packageMap = true;
         break;
       }
@@ -9881,23 +10893,23 @@ async function inspectProjectQualification(projectRoot) {
   if (!legacy && !packageMap) {
     return { ok: false, code: "PROJECT_NOT_INITIALIZED", message: "\u5F53\u524D\u76EE\u5F55\u4E0D\u662F\u5DF2\u521D\u59CB\u5316\u7684\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002" };
   }
-  const writableTarget = packageMap ? await (0, import_promises21.access)(mapsPath, import_node_fs5.constants.W_OK).then(() => true).catch(() => false) : await (0, import_promises21.access)(dataDirectory, import_node_fs5.constants.W_OK).then(() => true).catch(() => false);
+  const writableTarget = packageMap ? await (0, import_promises24.access)(mapsPath, import_node_fs5.constants.W_OK).then(() => true).catch(() => false) : await (0, import_promises24.access)(dataDirectory, import_node_fs5.constants.W_OK).then(() => true).catch(() => false);
   if (!writableTarget) return { ok: false, code: "PROJECT_READONLY", message: "\u5F53\u524D\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u76EE\u5F55\u4E0D\u53EF\u5199\u3002" };
   return { ok: true };
 }
 function unavailableToolResult(qualification) {
   const code = qualification.code ?? "PROJECT_NOT_INITIALIZED";
   const message = qualification.message ?? "\u5F53\u524D\u76EE\u5F55\u6CA1\u6709\u53EF\u7528\u7684\u6D3B\u70B9\u5730\u56FE\u9879\u76EE\u3002";
-  return {
-    isError: true,
-    content: [{ type: "text", text: `[\u6D3B\u70B9\u5730\u56FE] ${message}` }],
-    structuredContent: { ok: false, error: { code, message } }
-  };
+  return { isError: true, content: [{ type: "text", text: JSON.stringify({ ok: false, error: { code, message } }) }] };
 }
-function envelope(projectId, revision, actor, sessionId, commands) {
-  return { projectId, baseRevision: revision, commandId: `cmd-${(0, import_node_crypto17.randomUUID)()}`, actor, sessionId, commands };
+function toolTextResult(value) {
+  return { content: [{ type: "text", text: JSON.stringify(value === void 0 ? null : value) }] };
 }
 var toolDefinitions = TOOL_DEFINITIONS;
+var MCP_SESSION_ID = `mcp-${(0, import_node_crypto19.randomUUID)()}`;
+function withSession(name, args) {
+  return name === "map_read" && !args.sessionId ? { ...args, sessionId: MCP_SESSION_ID } : args;
+}
 var BRIDGE_IGNITE_TIMEOUT_MS = Number(process.env.LIVEDOT_MCP_IGNITE_TIMEOUT_MS) || 15e3;
 function bridgeUnavailableError(message) {
   return Object.assign(new Error(message), { code: "BRIDGE_UNAVAILABLE", proxyFailure: true });
@@ -9918,17 +10930,17 @@ async function probeBridgeControl(handle) {
 async function resolveAppHtmlPath(explicit) {
   const candidates = [];
   if (explicit) candidates.push(explicit);
-  if (process.argv[1]) candidates.push((0, import_node_path24.join)((0, import_node_path24.dirname)((0, import_node_path24.resolve)(process.argv[1])), "app.html"));
-  candidates.push((0, import_node_path24.join)((0, import_node_path24.dirname)(process.execPath), "app.html"));
-  candidates.push((0, import_node_path24.join)((0, import_node_os8.homedir)(), ".live-dot-map", "app.html"));
-  candidates.push((0, import_node_path24.join)(process.cwd(), "app.html"));
+  if (process.argv[1]) candidates.push((0, import_node_path26.join)((0, import_node_path26.dirname)((0, import_node_path26.resolve)(process.argv[1])), "app.html"));
+  candidates.push((0, import_node_path26.join)((0, import_node_path26.dirname)(process.execPath), "app.html"));
+  candidates.push((0, import_node_path26.join)((0, import_node_os9.homedir)(), ".live-dot-map", "app.html"));
+  candidates.push((0, import_node_path26.join)(process.cwd(), "app.html"));
   for (const candidate of [...new Set(candidates)]) {
-    if (await (0, import_promises21.access)(candidate, import_node_fs5.constants.F_OK).then(() => true).catch(() => false)) return candidate;
+    if (await (0, import_promises24.access)(candidate, import_node_fs5.constants.F_OK).then(() => true).catch(() => false)) return candidate;
   }
   return null;
 }
 async function igniteBridge(projectRoot, appPath, runtimeStateDir) {
-  const script = process.argv[1] ? (0, import_node_path24.resolve)(process.argv[1]) : "";
+  const script = process.argv[1] ? (0, import_node_path26.resolve)(process.argv[1]) : "";
   const serveArgs = [
     ...(0, import_node_sea.isSea)() || !script ? [] : [script],
     "serve",
@@ -9982,7 +10994,7 @@ async function forwardToolCall(handle, targetRoot, actor, name, args) {
   return body.result;
 }
 async function runMcpProxy(projectRoot, actor, options) {
-  const root = (0, import_node_path24.resolve)(projectRoot);
+  const root = (0, import_node_path26.resolve)(projectRoot);
   let currentRoot = await resolveProjectRootToUse(null, root);
   let qualification = await inspectProjectQualification(currentRoot);
   if (!qualification.ok && currentRoot !== root) {
@@ -10009,7 +11021,7 @@ async function runMcpProxy(projectRoot, actor, options) {
       else if (request.method === "tools/call") {
         const params = request.params;
         const name = String(params.name);
-        const callArgs = params.arguments ?? {};
+        const callArgs = withSession(name, params.arguments ?? {});
         const explicitProject = typeof callArgs.projectRoot === "string" && callArgs.projectRoot.trim() ? String(callArgs.projectRoot).trim() : typeof callArgs.project === "string" && callArgs.project.trim() ? String(callArgs.project).trim() : null;
         let targetRoot = await resolveProjectRootToUse(explicitProject, root);
         let activeQual = await inspectProjectQualification(targetRoot);
@@ -10046,7 +11058,7 @@ async function runMcpProxy(projectRoot, actor, options) {
             }
           }
           if (lastError) throw lastError;
-          result2 = { content: [{ type: "text", text: JSON.stringify(value, null, 2) }], structuredContent: value };
+          result2 = toolTextResult(value);
         }
       } else throw Object.assign(new Error(`\u672A\u77E5\u65B9\u6CD5 ${String(request.method)}`), { code: -32601 });
       process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result: result2 })}
@@ -10063,7 +11075,7 @@ async function runMcpProxy(projectRoot, actor, options) {
   }
 }
 async function runMcpLocal(projectRoot, actor) {
-  const root = (0, import_node_path24.resolve)(projectRoot);
+  const root = (0, import_node_path26.resolve)(projectRoot);
   const qualification = await inspectProjectQualification(root);
   const logger = qualification.ok ? createLogger({ source: "agent" }) : noopLogger;
   let currentRoot = root;
@@ -10098,8 +11110,8 @@ async function runMcpLocal(projectRoot, actor) {
             entries.set(targetRoot, entry);
           }
           currentRoot = targetRoot;
-          const value = await entry.tools.dispatch(String(params.name), params.arguments ?? {});
-          result2 = { content: [{ type: "text", text: JSON.stringify(value, null, 2) }], structuredContent: value };
+          const value = await entry.tools.dispatch(String(params.name), withSession(String(params.name), params.arguments ?? {}));
+          result2 = toolTextResult(value);
         }
       } else throw Object.assign(new Error(`\u672A\u77E5\u65B9\u6CD5 ${String(request.method)}`), { code: -32601 });
       if (qualification.ok) await recordAgentHealth2(root, actor, `mcp:${String(request.method === "tools/call" ? request.params?.name ?? "call" : request.method)}`, "ok");
@@ -10117,164 +11129,59 @@ async function runMcpLocal(projectRoot, actor) {
   }
   for (const entry of entries.values()) await entry.manager.close().catch(() => void 0);
 }
+async function callAgentTool(name, args, globals) {
+  const explicit = globals.project ? (0, import_node_path26.resolve)(globals.project) : null;
+  const fallback = explicit ?? (0, import_node_path26.resolve)(process.cwd());
+  let root = await resolveProjectRootToUse(explicit, fallback);
+  let qualification = await inspectProjectQualification(root);
+  if (!qualification.ok && root !== fallback) {
+    root = fallback;
+    qualification = await inspectProjectQualification(root);
+  }
+  if (!qualification.ok) {
+    throw Object.assign(new Error(`${qualification.message ?? "\u6CA1\u6709\u53EF\u7528\u7684\u6D3B\u70B9\u5730\u56FE\u9879\u76EE"}\uFF08\u9879\u76EE\u76EE\u5F55\uFF1A${root}\uFF1B\u7528 --project \u6307\u5B9A\uFF09`), { code: qualification.code ?? "PROJECT_NOT_INITIALIZED" });
+  }
+  const actor = `agent:${globals.agent || "cli"}`;
+  const options = {
+    runtimeStateDir: globals.runtimeStateDir ? (0, import_node_path26.resolve)(globals.runtimeStateDir) : void 0,
+    appPath: globals.app ? (0, import_node_path26.resolve)(globals.app) : void 0
+  };
+  if (process.env.LIVEDOT_MCP_LOCAL !== "1") {
+    try {
+      const bridge = await ensureBridge(root, options);
+      return await forwardToolCall(bridge, root, actor, name, args);
+    } catch (error3) {
+      if (!error3?.proxyFailure) throw error3;
+    }
+  }
+  const shared = await loadSharedAdapter();
+  const manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
+  try {
+    return await new ToolService({ mapManager: manager, shared, actor, projectHandle: "cli" }).dispatch(name, args);
+  } finally {
+    await manager.close().catch(() => void 0);
+  }
+}
 async function runMcp(projectRoot, actor, options = {}) {
   if (process.env.LIVEDOT_MCP_LOCAL === "1") return runMcpLocal(projectRoot, actor);
   return runMcpProxy(projectRoot, actor, options);
 }
 async function runHook(kind, args) {
-  const root = (0, import_node_path24.resolve)(required(args, "project"));
-  const actor = `agent:${String(args.agent || "generic")}`;
-  const sessionId = String(args.session || `session-${(0, import_node_crypto17.randomUUID)()}`);
+  const root = (0, import_node_path26.resolve)(required(args, "project"));
+  const agent = String(args.agent || "generic");
+  const actor = `agent:${agent}`;
+  const sessionId = String(args.session || `session-${(0, import_node_crypto19.randomUUID)()}`);
   const qualification = await inspectProjectQualification(root);
   if (!qualification.ok) return;
+  if (kind === "stop" && !process.stdin.isTTY) for await (const _chunk of process.stdin) {
+  }
   const logger = createLogger({ source: "agent" });
-  await logger.info("agent.hook.start", { event: kind, actor, project: root });
-  const shared = await loadSharedAdapter();
-  const manager = await MapManager.open({ projectRoot: root, shared, pollIntervalMs: 0 });
-  const resolvedMap = await manager.resolve();
-  const store = resolvedMap.store;
-  const tools = new ToolService({ mapManager: manager, shared, actor, projectHandle: "hook" });
-  const snapshot = await store.snapshot();
-  const document = snapshot.document;
-  if (kind === "session-start") {
-    const watermarkPath = (0, import_node_path24.join)(root, ".live-dot-map", "agent-read.json");
-    let watermark = 0;
-    try {
-      const parsed = JSON.parse(await (0, import_promises21.readFile)(watermarkPath, "utf8"));
-      if (typeof parsed?.updatedAt === "string") watermark = Date.parse(parsed.updatedAt);
-    } catch {
-    }
-    const since = watermark || Date.now();
-    const changes = [];
-    const collections = [["nodes", "\u8282\u70B9"], ["edges", "\u65B9\u6848"], ["anns", "\u6807\u6CE8"], ["routes", "\u8DEF\u7EBF"]];
-    for (const [collection, label] of collections) {
-      for (const item of Array.isArray(document[collection]) ? document[collection] : []) {
-        const updated = Date.parse(String(item.updatedAt));
-        if (Number.isFinite(updated) && updated > since) {
-          changes.push({
-            label,
-            id: String(item.id),
-            name: String(item.name ?? item.text ?? ""),
-            status: item.status ? String(item.status) : "",
-            attention: item.attention ? String(item.attention) : ""
-          });
-        }
-      }
-    }
-    const newAnns = document.anns.filter((ann) => ann.source === "human" && ann.attention === "new");
-    let deliveredIds = [];
-    if (newAnns.length) {
-      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: "deliver_annotations", ids: newAnns.map((ann) => String(ann.id)), deliveryId: sessionId }]));
-      deliveredIds = newAnns.map((ann) => String(ann.id));
-    }
-    if (changes.length || deliveredIds.length) {
-      await (0, import_promises21.mkdir)((0, import_node_path24.dirname)(watermarkPath), { recursive: true });
-      await (0, import_promises21.writeFile)(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
-`, "utf8");
-      const newCount = changes.filter((item) => item.label === "\u6807\u6CE8" && item.attention === "new").length;
-      const lines = changes.slice(0, 20).map((item) => `${item.label} ${item.id}${item.name ? `\u300C${item.name}\u300D` : ""}${item.status ? `(${item.status})` : ""}`);
-      const output = {
-        hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: [
-          `[\u6D3B\u70B9\u5730\u56FE] \u81EA\u4E0A\u6B21\u4EE5\u6765\u6709 ${changes.length} \u5904\u66F4\u65B0\uFF08${newCount} \u6761\u65B0\u6807\u6CE8\u4F18\u5148\uFF09\uFF1A`,
-          ...lines,
-          ...deliveredIds.length ? [`\u4EBA\u7C7B\u6807\u6CE8\u5DF2\u4EA4\u4ED8\uFF08\u6458\u8981\u4E2D\u8BF7\u9010\u5B57\u5F15\u7528\uFF09\uFF1A${deliveredIds.join("\u3001")}`] : [],
-          changes.length > 20 ? `\u2026\u5171 ${changes.length} \u5904` : "",
-          "\u8BE6\u7EC6\u8BF7\u8BFB .live-dot-map/map.json\u3002"
-        ].filter(Boolean).join("\n") }
-      };
-      process.stdout.write(`${JSON.stringify(output)}
-`);
-    }
-    await recordAgentHealth2(root, actor, "hook:session-start", "ok");
-    await manager.close();
-    return;
-  }
-  if (kind === "user-prompt") {
-    const watermarkPath = (0, import_node_path24.join)(root, ".live-dot-map", "agent-read.json");
-    let watermark = 0;
-    try {
-      const parsed = JSON.parse(await (0, import_promises21.readFile)(watermarkPath, "utf8"));
-      if (typeof parsed?.updatedAt === "string") watermark = Date.parse(parsed.updatedAt);
-    } catch {
-    }
-    const since = watermark || Date.now();
-    const changes = [];
-    const collections = [["nodes", "\u8282\u70B9"], ["edges", "\u65B9\u6848"], ["anns", "\u6807\u6CE8"], ["routes", "\u8DEF\u7EBF"]];
-    for (const [collection, label] of collections) {
-      for (const item of Array.isArray(document[collection]) ? document[collection] : []) {
-        const updated = Date.parse(String(item.updatedAt));
-        if (Number.isFinite(updated) && updated > since) {
-          changes.push({
-            label,
-            id: String(item.id),
-            name: String(item.name ?? item.text ?? ""),
-            status: item.status ? String(item.status) : "",
-            attention: item.attention ? String(item.attention) : ""
-          });
-        }
-      }
-    }
-    const newAnns = document.anns.filter((ann) => ann.source === "human" && ann.attention === "new");
-    let deliveredIds = [];
-    if (newAnns.length) {
-      await store.execute(envelope(String(document.mapId), snapshot.revision, actor, sessionId, [{ op: "deliver_annotations", ids: newAnns.map((ann) => String(ann.id)), deliveryId: sessionId }]));
-      deliveredIds = newAnns.map((ann) => String(ann.id));
-    }
-    if (changes.length || deliveredIds.length) {
-      await (0, import_promises21.mkdir)((0, import_node_path24.dirname)(watermarkPath), { recursive: true });
-      await (0, import_promises21.writeFile)(watermarkPath, `${JSON.stringify({ version: 1, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
-`, "utf8");
-      const newCount = changes.filter((item) => item.label === "\u6807\u6CE8" && item.attention === "new").length;
-      const lines = changes.slice(0, 5).map((item) => `${item.label} ${item.id}${item.name ? `\u300C${item.name}\u300D` : ""}${item.status ? `(${item.status})` : ""}`);
-      const output = {
-        hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: [
-          `[\u6D3B\u70B9\u5730\u56FE] \u63D0\u793A\uFF1A\u81EA\u4E0A\u6B21\u4EE5\u6765\u753B\u5E03\u6709 ${changes.length} \u5904\u66F4\u65B0${newCount ? `\uFF08\u542B ${newCount} \u6761\u65B0\u6807\u6CE8\uFF09` : ""}\uFF1A`,
-          ...lines,
-          changes.length > 5 ? `\u2026\u5171 ${changes.length} \u5904` : "",
-          "\u5982\u9700\u8BE6\u60C5\u53EF\u968F\u65F6\u8C03\u7528 MCP \u5DE5\u5177\uFF08\u5982 map_list_human_updates / map_get_context\uFF09\u3002"
-        ].filter(Boolean).join("\n") }
-      };
-      process.stdout.write(`${JSON.stringify(output)}
-`);
-    }
-    await recordAgentHealth2(root, actor, "hook:user-prompt", "ok");
-    await manager.close();
-    return;
-  }
-  if (kind === "stop") {
-    let hookInput = {};
-    if (!process.stdin.isTTY) {
-      let raw = "";
-      for await (const chunk of process.stdin) raw += chunk;
-      try {
-        hookInput = raw ? JSON.parse(raw) : {};
-      } catch {
-        hookInput = {};
-      }
-    }
-    const updates = await tools.dispatch("map_list_human_updates", {});
-    const validation = await tools.dispatch("map_validate", {});
-    const attemptIssues = Array.isArray(validation.attemptIssues) ? validation.attemptIssues : [];
-    const incomplete = Array.isArray(updates.updates) && updates.updates.length > 0 || attemptIssues.length > 0 || validation.ok === false;
-    const attempt = Number(args.attempt || process.env.LIVEDOT_STOP_ATTEMPT || (hookInput.stop_hook_active ? 2 : 1)) || 1;
-    if (incomplete && attempt >= 2) {
-      const current = await store.snapshot();
-      await store.execute(envelope(String(current.document.mapId), current.revision, actor, sessionId, [{
-        op: "set_ui",
-        patch: { collaboration: { status: "incomplete", agent: actor, sessionId, at: (/* @__PURE__ */ new Date()).toISOString(), reason: attemptIssues.length ? `\u5927\u5C1D\u8BD5\u8BC1\u636E\u672A\u95ED\u73AF\uFF1A${attemptIssues.map((item) => `${item.edgeId}\uFF08${(item.missing || []).join("\u3001")}\uFF09`).join("\uFF1B")}` : "\u4EBA\u7C7B\u6807\u6CE8\u672A\u5B8C\u6210\u6458\u8981\u5F15\u7528\u4E0E\u786E\u8BA4" } }
-      }]));
-    }
-    const reason = incomplete ? attemptIssues.length ? attempt < 2 ? "\u5927\u5C1D\u8BD5\u7F3A\u5C11\u8BC1\u636E/\u7ED3\u679C/\u4E0B\u4E00\u6B65 Markdown\uFF1B\u8BF7\u5148\u8865\u9F50\u65B9\u6848\u8BB0\u5F55\u3002" : "\u7B2C\u4E8C\u6B21\u68C0\u67E5\u4ECD\u6709\u5927\u5C1D\u8BD5\u8BC1\u636E\u7F3A\u53E3\uFF0C\u5141\u8BB8\u7ED3\u675F\u4F46\u753B\u5E03\u4FDD\u6301\u7EA2\u8272\u3002" : attempt < 2 ? "\u4ECD\u6709\u4EBA\u7C7B\u6807\u6CE8\u672A\u5B8C\u6210\u6458\u8981\u5F15\u7528\u4E0E ack\uFF1B\u8BF7\u5148\u95ED\u73AF\u5730\u56FE\u3002" : "\u7B2C\u4E8C\u6B21\u68C0\u67E5\u4ECD\u672A\u95ED\u73AF\uFF0C\u5141\u8BB8\u7ED3\u675F\u4F46\u753B\u5E03\u4FDD\u6301\u7EA2\u8272\u3002" : "\u5730\u56FE\u95ED\u73AF\u5B8C\u6210\u3002";
-    const output = incomplete && attempt < 2 ? { decision: "block", reason } : { systemMessage: reason };
-    process.stdout.write(`${JSON.stringify(output)}
-`);
-    await recordAgentHealth2(root, actor, "hook:stop", incomplete ? "error" : "ok", incomplete ? new Error(reason) : void 0);
-    await manager.close();
-  }
+  await logger.info("agent.hook.start", { event: kind, actor, project: root, sessionId });
+  await recordAgentHealth2(root, actor, `hook:${kind}`, "ok");
 }
 function hasDirtyGitWorktree(root) {
   try {
-    if (!(0, import_node_fs5.existsSync)((0, import_node_path24.join)(root, ".git"))) return false;
+    if (!(0, import_node_fs5.existsSync)((0, import_node_path26.join)(root, ".git"))) return false;
     const status = (0, import_node_child_process8.execFileSync)("git", ["-C", root, "status", "--porcelain=v1", "--untracked-files=no"], {
       encoding: "utf8",
       windowsHide: true,
@@ -10293,19 +11200,24 @@ function markDevCanvas(html) {
   return out;
 }
 async function main() {
-  const { command: command2, args } = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (AGENT_COMMANDS.has(argv[0] ?? "") || argv[0] === "help" || argv[0] === "--help" || argv[0] === "-h") {
+    process.exitCode = await runAgentCli(argv, callAgentTool);
+    return;
+  }
+  const { command: command2, args } = parseArgs(argv);
   if (command2 === "serve") {
     const logger = createLogger({ source: "bridge" });
-    const requestedRoot = (0, import_node_path24.resolve)(required(args, "project"));
+    const requestedRoot = (0, import_node_path26.resolve)(required(args, "project"));
     const worktreeMain = resolveGitWorktreeMain(requestedRoot);
     const projectRoot = await canonicalDirectory(worktreeMain ?? requestedRoot).catch(() => requestedRoot);
-    let runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? (0, import_node_path24.resolve)(args["runtime-state-dir"]) : void 0;
+    let runtimeStateDir = typeof args["runtime-state-dir"] === "string" ? (0, import_node_path26.resolve)(args["runtime-state-dir"]) : void 0;
     if (!runtimeStateDir && worktreeMain) {
-      runtimeStateDir = (0, import_node_path24.join)(requestedRoot, ".live-dot-map-dev");
+      runtimeStateDir = (0, import_node_path26.join)(requestedRoot, ".live-dot-map-dev");
       await logger.info("bridge.worktree-isolated", { worktree: requestedRoot, runtimeStateDir });
     }
     if (!runtimeStateDir && !worktreeMain && hasDirtyGitWorktree(requestedRoot)) {
-      runtimeStateDir = (0, import_node_path24.join)(requestedRoot, ".live-dot-map-dev");
+      runtimeStateDir = (0, import_node_path26.join)(requestedRoot, ".live-dot-map-dev");
       await logger.info("bridge.dev-isolated", { reason: "dirty-tree", worktree: requestedRoot, runtimeStateDir });
     }
     const controlToken = await readOrCreateControlToken(runtimeStateDir);
@@ -10318,7 +11230,7 @@ async function main() {
       const image = await bridgeProcessImagePath(state.pid);
       const imageName = image ? image.replace(/\\/g, "/").split("/").pop().toLowerCase() : "";
       const looksLikeBridge = /^(livedot-bridge[^/]*\.exe|livedotmapsetup\.exe|node\.exe|node)$/.test(imageName) || imageName.includes("livedot");
-      if (image && looksLikeBridge && (0, import_node_path24.resolve)(image).toLowerCase() !== (0, import_node_path24.resolve)(process.execPath).toLowerCase()) {
+      if (image && looksLikeBridge && (0, import_node_path26.resolve)(image).toLowerCase() !== (0, import_node_path26.resolve)(process.execPath).toLowerCase()) {
         await logger.info("bridge.replace-stale", { pid: state.pid, image });
         const stalePort = state.port;
         if (!await shutdownRunningBridge(state, controlToken)) {
@@ -10378,18 +11290,18 @@ async function main() {
       }
       throw new Error("Bridge \u6B63\u5728\u542F\u52A8\uFF0C\u4F46\u5728 2 \u79D2\u5185\u6CA1\u6709\u8FDB\u5165\u53EF\u590D\u7528\u72B6\u6001");
     }
-    const appPath = (0, import_node_path24.resolve)(typeof args.app === "string" ? args.app : (0, import_node_path24.join)(process.cwd(), "app.html"));
-    const appHtml = runtimeStateDir ? markDevCanvas(await (0, import_promises21.readFile)(appPath, "utf8")) : await (0, import_promises21.readFile)(appPath, "utf8");
-    const assetRoot = (0, import_node_path24.dirname)(appPath);
+    const appPath = (0, import_node_path26.resolve)(typeof args.app === "string" ? args.app : (0, import_node_path26.join)(process.cwd(), "app.html"));
+    const appHtml = runtimeStateDir ? markDevCanvas(await (0, import_promises24.readFile)(appPath, "utf8")) : await (0, import_promises24.readFile)(appPath, "utf8");
+    const assetRoot = (0, import_node_path26.dirname)(appPath);
     const staticAssets = {};
     for (const [urlPath, file, type] of [
       ["/sw.js", "sw.js", "text/javascript; charset=utf-8"],
       ["/manifest.webmanifest", "manifest.webmanifest", "application/manifest+json; charset=utf-8"],
-      ["/icons/icon-192.png", (0, import_node_path24.join)("icons", "icon-192.png"), "image/png"],
-      ["/icons/icon-512.png", (0, import_node_path24.join)("icons", "icon-512.png"), "image/png"]
+      ["/icons/icon-192.png", (0, import_node_path26.join)("icons", "icon-192.png"), "image/png"],
+      ["/icons/icon-512.png", (0, import_node_path26.join)("icons", "icon-512.png"), "image/png"]
     ]) {
       try {
-        staticAssets[urlPath] = { body: await (0, import_promises21.readFile)((0, import_node_path24.join)(assetRoot, file)), type };
+        staticAssets[urlPath] = { body: await (0, import_promises24.readFile)((0, import_node_path26.join)(assetRoot, file)), type };
       } catch {
       }
     }
@@ -10431,20 +11343,20 @@ async function main() {
     return;
   }
   if (command2 === "mcp") {
-    const project = (0, import_node_path24.resolve)(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
+    const project = (0, import_node_path26.resolve)(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
     return runMcp(project, `agent:${String(args.agent || "generic")}`, {
-      runtimeStateDir: typeof args["runtime-state-dir"] === "string" ? (0, import_node_path24.resolve)(args["runtime-state-dir"]) : void 0,
-      appPath: typeof args.app === "string" ? (0, import_node_path24.resolve)(args.app) : void 0
+      runtimeStateDir: typeof args["runtime-state-dir"] === "string" ? (0, import_node_path26.resolve)(args["runtime-state-dir"]) : void 0,
+      appPath: typeof args.app === "string" ? (0, import_node_path26.resolve)(args.app) : void 0
     });
   }
   if (command2 === "hook") {
-    const project = (0, import_node_path24.resolve)(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
+    const project = (0, import_node_path26.resolve)(typeof args.project === "string" && args.project.trim() ? args.project : process.cwd());
     return runHook(String(args.event || "session-start"), { ...args, project });
   }
   if (command2 === "install") {
-    const root = (0, import_node_path24.resolve)(typeof args.project === "string" ? args.project : process.cwd());
+    const root = (0, import_node_path26.resolve)(typeof args.project === "string" ? args.project : process.cwd());
     const runtimeSource = process.env.LIVEDOT_RUNTIME_SOURCE || process.argv[1] || process.cwd();
-    const appPath = (0, import_node_path24.resolve)(typeof args.app === "string" ? args.app : (0, import_node_path24.join)((0, import_node_path24.dirname)(runtimeSource), "app.html"));
+    const appPath = (0, import_node_path26.resolve)(typeof args.app === "string" ? args.app : (0, import_node_path26.join)((0, import_node_path26.dirname)(runtimeSource), "app.html"));
     const install = installProject;
     const result2 = await install({ projectRoot: root, runtimeSource, appPath, createDesktopShortcut: args["no-shortcut"] !== true, register: false });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
@@ -10452,7 +11364,7 @@ async function main() {
     return;
   }
   if (command2 === "doctor") {
-    const root = (0, import_node_path24.resolve)(required(args, "project"));
+    const root = (0, import_node_path26.resolve)(required(args, "project"));
     const result2 = await doctorProject({ projectRoot: root });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
 `);
@@ -10460,19 +11372,34 @@ async function main() {
     return;
   }
   if (command2 === "uninstall") {
-    const root = (0, import_node_path24.resolve)(required(args, "project"));
+    const root = (0, import_node_path26.resolve)(required(args, "project"));
     const result2 = await uninstallProject({ projectRoot: root });
     process.stdout.write(`${JSON.stringify(result2, null, 2)}
 `);
     if (!result2.ok && result2.reason !== "not-installed") process.exitCode = 1;
     return;
   }
-  process.stdout.write("\u6D3B\u70B9\u5730\u56FE v2\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n");
+  if (command2 === "forget-maps") {
+    const requested = (0, import_node_path26.resolve)(required(args, "project"));
+    const root = await canonicalDirectory(requested).catch(() => requested);
+    const ledger = new MapLedger();
+    const missing = await ledger.findMissing(root);
+    if (!missing.length) {
+      process.stdout.write(`${JSON.stringify({ ok: true, removed: [], message: "\u8D26\u672C\u91CC\u6CA1\u6709\u4E0D\u89C1\u4E86\u7684\u5730\u56FE\uFF0C\u65E0\u9700\u5904\u7406", ledgerFile: ledger.file }, null, 2)}
+`);
+      return;
+    }
+    const result2 = await ledger.forget(root, missing.map((map) => map.id));
+    process.stdout.write(`${JSON.stringify({ ok: true, ...result2, message: "\u5DF2\u4ECE\u8D26\u672C\u79FB\u9664\uFF0C\u91CD\u65B0\u6253\u5F00\u9879\u76EE\u5373\u53EF" }, null, 2)}
+`);
+    return;
+  }
+  process.stdout.write("\u6D3B\u70B9\u5730\u56FE v2\n  Agent \u547D\u4EE4\uFF1Alivedot.mjs look|read|write|note|analyze|manage \u2026\uFF08\u8BE6\u89C1 livedot.mjs --help\uFF09\n  livedot.mjs install --project <path> --app <app.html>\n  livedot.mjs serve --project <path> --app <app.html>\n  livedot.mjs mcp [--project <path>] [--app <app.html>] [--runtime-state-dir <dir>] --agent codex|claude|kimi|antigravity\n  livedot.mjs hook --event session-start|user-prompt|stop --project <path>\n  livedot.mjs doctor --project <path>\n  livedot.mjs uninstall --project <path>\n  livedot.mjs forget-maps --project <path>   \uFF08\u786E\u8BA4\u5730\u56FE\u662F\u6545\u610F\u5220\u9664\u540E\uFF0C\u89E3\u9664\u201C\u5730\u56FE\u4E22\u5931\u201D\u62E6\u622A\uFF09\n");
 }
 void main().catch(async (error3) => {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed.command === "hook" || parsed.command === "mcp") {
-    const project = (0, import_node_path24.resolve)(typeof parsed.args.project === "string" && parsed.args.project.trim() ? parsed.args.project : process.cwd());
+    const project = (0, import_node_path26.resolve)(typeof parsed.args.project === "string" && parsed.args.project.trim() ? parsed.args.project : process.cwd());
     await recordAgentHealth2(project, `agent:${String(parsed.args.agent || "generic")}`, `${parsed.command === "hook" ? `hook:${String(parsed.args.event || "unknown")}` : "mcp:process"}`, "error", error3).catch(() => void 0);
   }
   await createLogger({ source: parsed.command === "serve" ? "bridge" : "agent" }).error("process.error", { command: parsed.command, error: error3 });
