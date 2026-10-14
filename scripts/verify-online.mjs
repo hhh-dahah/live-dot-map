@@ -7,7 +7,6 @@ const root = resolve(import.meta.dirname, '..');
 const sources = (process.env.LIVEDOT_ONLINE_SOURCES || [
   'https://livedotmap.top',
   'https://app.live-dot-map.workers.dev',
-  'https://test-d0gims26n5c5ce096-1425841737.tcloudbaseapp.com',
 ].join('\n')).split(/\r?\n|,/).map((value) => value.trim()).filter(Boolean);
 const files = ['app.html', 'livedot.mjs', 'agent-kit/setup.md'];
 const local = Object.fromEntries(await Promise.all(files.map(async (file) => {
